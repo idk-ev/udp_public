@@ -199,7 +199,7 @@ jobs:
 
       - name: Digest als Artefakt anhängen
         if: steps.ctx.outputs.push == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.valueKey }}
           path: digests/${{ matrix.valueKey }}
@@ -367,7 +367,7 @@ jobs:
       - name: Chart als Artefakt anhängen
         # Damit sich das Paket auch aus einem Fork-PR herunterladen und lokal
         # installieren lässt, ohne dass es in der Registry landet.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: udp-chart-${{ steps.ver.outputs.version }}
           path: dist/*.tgz
