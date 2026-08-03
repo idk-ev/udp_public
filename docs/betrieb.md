@@ -48,7 +48,9 @@ genau nicht. Compose und Helm: [`monitoring/`](../monitoring/README.md).
 
 - **Täglich** automatisierte Dumps aller PostgreSQL-Datenbanken
   (Compose-Referenz: Dienst `backup`; Kubernetes: CronJob) mit Aufbewahrung
-  14 Tage / 8 Wochen / 12 Monate.
+  14 Tage / 8 Wochen / 3 Monate (die TRoE-Historie ist append-only und steckt
+  in jedem Voll-Dump erneut — längere Monats-Staffeln wären fast nur
+  redundantes Volumen).
 - **Kontinuierlich**: WAL-Archivierung (PITR) für PostgreSQL; Volume-
   Snapshots für MongoDB und Node-RED; Kopie in zweite Brandzone/Region
   (3-2-1-Regel). Das Monitoring sichert sein `/app/data` (SQLite mit der
@@ -157,20 +159,26 @@ Drei Gegenmaßnahmen sind umgesetzt:
 
 1. **Nur Änderungen schreiben.** Ladestationen und Carsharing-Stationen
    werden gegen die letzte Statussignatur geprüft; eine Station, deren
-   Belegung sich nicht geändert hat, erzeugt keinen Eintrag.
+   Belegung sich nicht geändert hat, erzeugt keinen Eintrag. Dasselbe Gate
+   trägt die CityPulse-Aggregate (unveränderte Gemeinde-Pulse entfallen),
+   und der ÖPNV-Abfahrtsmonitor dedupliziert je Attribut: Stammdaten wie
+   `name`/`location`/`stopCode` gehen nur mit, wenn sie sich geändert haben
+   (`options=update` lässt den Broker-Rest unangetastet).
 2. **Takt an den Nutzen angepasst.** Der OCPDB-Abzug läuft stündlich statt
    halbstündlich, die Feinstaub-Einzelsensoren stündlich statt alle 15 min
    (die Gemeindemediane bleiben im 15-Minuten-Takt).
 3. **Gestaffelte Aufbewahrung.** Aggregate je Gemeinde bleiben 12 Monate —
    auf ihnen beruhen die Verlaufsdiagramme. Einzelstandorte
-   (`EVChargingStation`, `CarSharingStation`, `AirQualityObserved:bw-sensor-*`)
-   werden nach 3 Monaten gelöscht; sie werden nirgends über Monate
+   (`EVChargingStation`, `CarSharingStation`, `ParkingSite`,
+   `AirQualityObserved:bw-sensor-*`) werden nach 3 Monaten gelöscht; sie werden nirgends über Monate
    ausgewertet, die Dashboards zeigen ihren aktuellen Zustand auf der Karte.
 
 **Retention ist aktiv** (Sprint 1.6): Der Registry-Konnektor
 `troe-retention` löscht täglich 03:40 via Node-RED/pg aus `attributes` und
 `subattributes` (die kleine `entities`-Tabelle bleibt für Mintaka-Metadaten)
-und pflegt idempotente `ts`-Indizes. `drop_chunks` ist bewusst NICHT im
+und pflegt idempotente Indizes (`ts` sowie `(entityid, ts)` mit
+`text_pattern_ops` — Letzterer trägt die Mintaka-Temporalabfragen je Entität
+und die LIKE-Staffeln der Retention). `drop_chunks` ist bewusst NICHT im
 Einsatz — TRoE nutzt einfache Tabellen, keine Hypertables.
 
 Zu beobachten: Der Plattenbedarf im eingeschwungenen Zustand liegt bei
