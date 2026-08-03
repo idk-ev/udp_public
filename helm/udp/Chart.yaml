@@ -11,13 +11,15 @@ description: >-
   wird bewusst getrennt ausgerollt: monitoring/helm/uptime-kuma.
 type: application
 
-# Chart-Version (SemVer) – bei jeder Chart-Änderung erhöhen.
-# 2.0.0: Uptime Kuma ist aus dem Chart entfernt (eigenes Release unter
-# monitoring/). Breaking – ein Upgrade raeumt PVC kuma-data ab, s. DEPLOY.md §11.
-version: 2.0.0
+# Chart-Version (SemVer) – bei jeder Chart-Änderung erhöhen. Muss zum
+# Release-Tag passen: der Job "chart" in .github/workflows/build-images.yml
+# bricht ab, wenn "v<version>" nicht dem getaggten Release entspricht.
+# Uptime Kuma ist nicht Teil des Charts (eigenes Release unter monitoring/) –
+# zum Upgrade von einem Stand, der es noch enthielt, s. DEPLOY.md §11.
+version: 1.0.1
 
 # Version der ausgelieferten Plattform (informativ, erscheint in kubectl).
-appVersion: "1.0.0"
+appVersion: "1.0.1"
 
 keywords:
   - fiware

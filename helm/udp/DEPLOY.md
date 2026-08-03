@@ -461,9 +461,9 @@ Das Monitoring hat ein eigenes Release und wird separat entfernt
 (`helm -n udp-monitoring uninstall uptime-kuma`); sein PVC trägt
 `resource-policy: keep`, damit die Verfügbarkeitshistorie erhalten bleibt.
 
-> **Beim Upgrade von einem Chart-Stand ≤ 1.0.0**: Uptime Kuma war früher Teil
-> dieses Charts. Das nächste `helm upgrade` entfernt Deployment, Service **und
-> das PVC `kuma-data`**. Vorher aus Helms Zugriff nehmen:
+> **Beim Upgrade von einem Chart-Stand, der Uptime Kuma noch enthielt**: Das
+> nächste `helm upgrade` entfernt Deployment, Service **und das PVC
+> `kuma-data`**. Vorher aus Helms Zugriff nehmen:
 > `kubectl -n udp annotate pvc kuma-data helm.sh/resource-policy=keep`
 > — Details in [`monitoring/README.md`](../../monitoring/README.md).
 

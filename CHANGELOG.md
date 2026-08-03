@@ -2,6 +2,15 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## 1.0.1 — Chart-Veröffentlichung korrigiert
+
+Keine funktionalen Änderungen an der Plattform. Der Release-Lauf zu `v1.0.0`
+baute die vier eigenen Images, brach aber vor dem Chart-Push ab: `version:` in
+`helm/udp/Chart.yaml` stammte noch aus der internen Zählung und passte nicht
+zum Release-Tag. Die Chart-Version folgt jetzt wieder dem Tag, `v1.0.1`
+veröffentlicht damit das erste Chart unter
+`oci://ghcr.io/idk-ev/udp_public/charts/udp`.
+
 ## 1.0.0 — Erste öffentliche Veröffentlichung unter EUPL-1.2
 
 Erstveröffentlichung der Urbanen Datenplattform als Open Source. Die
