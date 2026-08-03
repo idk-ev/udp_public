@@ -1,19 +1,18 @@
 {
- "_doc": "Kommunen-Konfiguration für das Dashboard-Framework (Masterplan §5 F3). Konvention: Kommunen OHNE Eintrag stehen automatisch auf Stufe 1 (pre-loaded, Standard-Theme, Disclaimer). Gepflegt werden nur Abweichungen — per scripts/onboard-kommune.py. Felder je Slug: stage (1-4), branding {primary, accent, theme, logoUrl}, kuration [Kachel-Reihenfolge], officialUrl, kontakt, gtmPriority.",
+ "_doc": "Kommunen-Konfiguration für das Dashboard-Framework. Konvention: Kommunen OHNE Eintrag laufen mit Standard-Theme und Disclaimer. Gepflegt werden nur Abweichungen — per scripts/onboard-kommune.py. Felder je Slug: adoptiert (true, wenn die Kommune das Dashboard offiziell übernommen hat), branding {primary, accent, theme, logoUrl}, kuration [Kachel-Reihenfolge], officialUrl, kontakt, gtmPriority.",
  "kommunen": {
   "reutlingen": {
-   "stage": 3,
    "gtmPriority": 1,
-   "notiz": "UDP-Referenzkommune: Stufe-3-Konnektoren (EFA-Abfahrten, B+R, Ladesäulen-Livestatus, amtliche DWD-Station, Sharing-Detail, PV nightly); hystreet vorbereitet.",
+   "notiz": "UDP-Referenzkommune: kommunenspezifische Konnektoren (EFA-Abfahrten, B+R, Ladesäulen-Livestatus, amtliche DWD-Station, Sharing-Detail, PV nightly); hystreet vorbereitet.",
    "links": {
     "maengelmelder": "https://reutlingen.schadensmelder.ceasy.de/",
     "veranstaltungen": "https://www.reutlingen.de/veranstaltungen",
     "abfall": "https://www.tbr-reutlingen.de"
-   }
+   },
+   "adoptiert": true
   },
   "tuebingen": {
    "gtmPriority": 1,
-   "stage": 1,
    "links": {
     "maengelmelder": "https://www.tuebingen.de/maengelmelder/",
     "veranstaltungen": "https://www.tuebingen.de/veranstaltungen"
@@ -21,7 +20,6 @@
   },
   "freiburg-im-breisgau": {
    "gtmPriority": 1,
-   "stage": 1,
    "links": {
     "abfall": "https://www.freiburg.de/abfall/index.html",
     "baeder": "https://www.freiburg.de/baeder/index.html",
@@ -31,14 +29,12 @@
   },
   "konstanz": {
    "gtmPriority": 1,
-   "stage": 1,
    "links": {
     "veranstaltungen": "https://www.konstanz.de/veranstaltungskalender"
    }
   },
   "stuttgart": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "abfall": "https://www.stuttgart.de/abfall",
     "baeder": "https://www.stuttgarterbaeder.de/",
@@ -47,7 +43,6 @@
   },
   "heidelberg": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "abfall": "https://asz.heidelberg.de/start",
     "veranstaltungen": "https://www.heidelberg.de/833798"
@@ -55,7 +50,6 @@
   },
   "karlsruhe": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "abfall": "https://tsk.karlsruhe.de/",
     "baeder": "https://www.karlsruhe.de/kultur-freizeit/freizeit-und-tourismus/baeder",
@@ -65,7 +59,6 @@
   "mannheim": {
    "gtmPriority": 2,
    "officialUrl": "https://smartmannheim.de",
-   "stage": 1,
    "links": {
     "abfall": "https://www.mannheim.de/de/service-bieten/umwelt/stadtraumservice-mannheim/abfallwirtschaft/abfallkalender/abfallkalender-online",
     "baeder": "https://www.mannheim.de/de/service-bieten/sport/schwimmbaeder",
@@ -74,7 +67,6 @@
   },
   "heilbronn": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "baeder": "https://www.heilbronn.de/kultur-freizeit/sportstadt/schwimmbaeder-1.html",
     "veranstaltungen": "https://www.heilbronn.de/tourismus/veranstaltungskalender.html"
@@ -82,7 +74,6 @@
   },
   "pforzheim": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "abfall": "https://www.abfallwirtschaft-pforzheim.de/",
     "veranstaltungen": "https://www.pforzheim.de/veranstaltungen"
@@ -98,7 +89,6 @@
   },
   "baden-baden": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "veranstaltungen": "https://www.baden-baden.de/auth/login.html?secure=true&url=/veranstaltungen&locale=null",
     "abfall": "https://www.baden-baden.de/entsorgung"
@@ -106,7 +96,6 @@
   },
   "ludwigsburg": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "maengelmelder": "https://www.ludwigsburg.de/maengelmelder",
     "veranstaltungen": "https://www.ludwigsburg.de/veranstaltungskalender"
@@ -114,7 +103,6 @@
   },
   "loerrach": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "baeder": "https://www.loerrach.de/schwimmbaeder",
     "veranstaltungen": "https://www.loerrach.de/veranstaltungen"
@@ -122,14 +110,12 @@
   },
   "offenburg": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "veranstaltungen": "https://www.offenburg.de/de/zu-gast-in-offenburg/veranstaltungen/"
    }
   },
   "ravensburg": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "abfall": "https://www.ravensburg.de/rv/buergerservice-verwaltung/stadtverwaltung/dienstleistungen/abfallberatung.php",
     "baeder": "https://www.ravensburg.de/rv/wGlobal/content/errordocs/404.php",
@@ -139,7 +125,6 @@
   },
   "singen-hohentwiel": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "abfall": "https://www.singen.de/abfall",
     "baeder": "https://www.singen.de/baeder",
@@ -155,7 +140,6 @@
   },
   "kirchheim-unter-teck": {
    "gtmPriority": 2,
-   "stage": 1,
    "links": {
     "baeder": "https://www.kirchheim-teck.de/hallenbad",
     "veranstaltungen": "https://www.kirchheim-teck.de/veranstaltungen"
@@ -168,20 +152,17 @@
    }
   },
   "aalen": {
-   "stage": 1,
    "links": {
     "veranstaltungen": "https://www.aalen.de/veranstaltungen.115071.25.htm"
    }
   },
   "heidenheim-an-der-brenz": {
-   "stage": 1,
    "links": {
     "baeder": "https://www.heidenheim.de/baeder",
     "veranstaltungen": "https://hz-ticketshop.de/"
    }
   },
   "herrenberg": {
-   "stage": 1,
    "links": {
     "baeder": "https://www.herrenberg.de/hallenbad",
     "veranstaltungen": "https://www.herrenberg.de/veranstaltungen"

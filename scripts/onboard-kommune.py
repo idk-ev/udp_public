@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: EUPL-1.2
 # © 2024–2026 Thomas Kieß and contributors
 
-"""Onboarding einer Kommune auf Stufe 2+ (Masterplan §5 F3).
+"""Onboarding einer Kommune (Masterplan §5 F3).
 
 Beispiele:
-  scripts/onboard-kommune.py tuebingen --stage 2 --theme wald
-  scripts/onboard-kommune.py tuebingen --stage 2 --primary "#0e6f5c" --accent "#12a380"
+  scripts/onboard-kommune.py tuebingen --adoptiert --theme wald
+  scripts/onboard-kommune.py tuebingen --adoptiert --primary "#0e6f5c" --accent "#12a380"
   scripts/onboard-kommune.py tuebingen --official-url https://www.tuebingen.de
 
 Freie Farben werden mit dem Dataviz-Palettenvalidator geprüft (Kachel-
@@ -38,7 +38,8 @@ def contrast_white(hexcol: str) -> float:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("slug")
-    p.add_argument("--stage", type=int, choices=[1, 2, 3, 4])
+    p.add_argument("--adoptiert", action="store_true",
+                   help="Kommune hat das Dashboard offiziell übernommen (blendet den Disclaimer um)")
     p.add_argument("--theme", help="Theme-ID aus dem validierten Katalog (F6)")
     p.add_argument("--primary", help="Kachel-Farbe (Hex), weiße Schrift muss >= 3:1 erreichen")
     p.add_argument("--accent", help="Akzentfarbe (Hex)")
@@ -55,8 +56,8 @@ def main() -> None:
 
     data = json.loads(DASH.read_text())
     k = data["kommunen"].setdefault(args.slug, {})
-    if args.stage:
-        k["stage"] = args.stage
+    if args.adoptiert:
+        k["adoptiert"] = True
     branding = k.setdefault("branding", {})
     if args.theme:
         if args.theme not in THEMES:
