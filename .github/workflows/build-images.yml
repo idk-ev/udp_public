@@ -139,7 +139,7 @@ jobs:
             org.opencontainers.image.title=${{ matrix.name }}
             org.opencontainers.image.description=${{ matrix.description }}
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: An ghcr.io anmelden
         if: steps.ctx.outputs.push == 'true'
