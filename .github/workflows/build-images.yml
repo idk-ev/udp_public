@@ -121,7 +121,7 @@ jobs:
 
       - name: Tags und Labels ableiten
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ steps.ctx.outputs.path }}/${{ matrix.name }}
           # Bei PRs setzt die Action {{sha}} auf den HEAD-Commit des Branches,
