@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  # SQLite auf einem RWO-Volume: der alte Pod muss WEG sein, bevor der neue
+  # startet – ein RollingUpdate bliebe im Pending haengen bzw. liefe in eine
+  # zweite Schreibverbindung auf dieselbe Datei.
+  strategy:
+    type: {{ .Values.strategy }}
+  selector:
+    matchLabels:
+      {{- include "uptime-kuma.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "uptime-kuma.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "uptime-kuma.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- include "uptime-kuma.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: uptime-kuma
+          image: {{ include "uptime-kuma.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          # Der Image-Entrypoint (extra/entrypoint.sh) ruft "chown -hRc /app/data"
+          # und "setpriv --clear-groups" auf – das braucht CAP_CHOWN bzw.
+          # CAP_SETGID/CAP_SETUID und scheitert mit "setgroups failed: Operation
+          # not permitted", sobald alle Capabilities gedroppt sind. Wir starten
+          # deshalb direkt (dumb-init bleibt fuer die Signalweitergabe) und
+          # ueberlassen die Rechte an /app/data der fsGroup.
+          command: ["/usr/bin/dumb-init", "--", "node", "server/server.js"]
+          ports:
+            - { name: http, containerPort: 3001 }
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          # "/" liefert die SPA (index.html) – auch VOR der Einrichtung des
+          # Administratorkontos, denn das Umleiten auf /setup macht der
+          # Vue-Router im Browser, nicht der Server. Damit ist der Pfad in jedem
+          # Zustand ein gueltiges Bereitschaftssignal.
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 15
+          # Bewusst nur TCP: Liveness darf den Pod neu starten. Ein HTTP-Pfad,
+          # der sich zwischen Kuma-Versionen aendert, wuerde daraus eine
+          # Neustartschleife machen – der offene Port ist das robuste Kriterium.
+          livenessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 5
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "uptime-kuma.claimName" . }}
+          {{- else }}
+          # Ohne Persistenz sind Monitore UND Historie nach jedem Neustart weg –
+          # nur fuer Tests brauchbar.
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

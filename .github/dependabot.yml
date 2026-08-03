@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# Dependabot (Sprintplan 2.8): wöchentlich, gebündelt — npm (GUI), Docker (Stack), Actions
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /gui
+    schedule: { interval: weekly, day: monday }
+    groups:
+      gui-deps: { patterns: ["*"] }
+    ignore:
+      # TypeScript 7 (Go-Rewrite) wird von typescript-eslint noch nicht getragen
+      # (Peer-Range <6.1.0) — der Lint bricht damit ab. Sperre aufheben, sobald
+      # typescript-eslint TS 7 unterstützt.
+      - dependency-name: typescript
+        versions: [">=7.0.0"]
+  - package-ecosystem: docker
+    directory: /platform
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      # Orion-LD 1.6 setzt MongoDB <= 5.0 mit md5-Auth voraus (Legacy-Treiber);
+      # neuere Majors brechen den Broker-Start. Siehe THIRD-PARTY-NOTICES.md.
+      - dependency-name: mongo
+        update-types: [version-update:semver-major]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }

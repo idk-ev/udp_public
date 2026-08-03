@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+apiVersion: v2
+name: uptime-kuma
+description: >-
+  Verfügbarkeits-Monitoring der Urbanen Datenplattform (UDP): HTTP-/TCP-Monitore
+  auf die öffentlichen Endpunkte, Statusseiten und Alarmierung (E-Mail, Webhook,
+  MS Teams). Bewusst als EIGENES Release ausgerollt – getrennt vom Chart der
+  Plattform, damit ein Plattform-Rollout die Außensicht nicht mit abschaltet.
+type: application
+
+# Chart-Version (SemVer) – bei jeder Chart-Änderung erhöhen.
+version: 1.0.0
+
+# Version der ausgelieferten Anwendung (informativ, erscheint in kubectl).
+appVersion: "1"
+
+keywords:
+  - monitoring
+  - uptime
+  - availability
+  - sla
+  - smart-city
+home: https://github.com/idk-ev/udp
+
+annotations:
+  category: Monitoring

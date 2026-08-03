@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# Uptime Kuma – Verfügbarkeits-Monitoring der UDP
+#
+# Eigenständiges Release. Empfehlung: EIGENER Namespace (z. B. "udp-monitoring")
+# und – wo verfügbar – ein anderer Node-Pool/Cluster als die Plattform. Ein
+# Monitoring im selben Fehlerbereich wie das Überwachte meldet dessen Ausfall
+# nicht.
+#
+#   helm -n udp-monitoring upgrade --install uptime-kuma . --create-namespace
+# =============================================================================
+
+global:
+  # Registry-Prefix für das Upstream-Image (Mirror/Proxy im Betreibernetz).
+  # Leer -> Docker Hub.
+  imageRegistry: ""
+  # Pull-Secrets für private Registries/Mirrors.
+  imagePullSecrets: []
+  #  - name: regcred
+
+image:
+  repository: louislam/uptime-kuma
+  # In Produktion auf einen Digest pinnen: tag: "1@sha256:…"
+  tag: "1"
+  pullPolicy: IfNotPresent
+
+# Uptime Kuma hält seinen Zustand in einer SQLite-Datei unter /app/data –
+# genau ein Replikat, kein RollingUpdate auf dasselbe RWO-Volume.
+replicas: 1
+strategy: Recreate
+
+resources:
+  requests: { cpu: 50m,  memory: 128Mi }
+  limits:   { cpu: 250m, memory: 512Mi }
+
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: ""
+  accessModes: [ReadWriteOnce]
+  # PVC bei `helm uninstall` behalten (helm.sh/resource-policy: keep). Die
+  # Historie der Monitore IST der Verfügbarkeitsnachweis – Default daher an.
+  keepOnDelete: true
+  # Bestehendes PVC weiterverwenden (z. B. das alte "kuma-data" aus dem
+  # UDP-Chart). Gesetzt -> das Chart legt selbst keines an.
+  existingClaim: ""
+
+service:
+  type: ClusterIP
+  port: 3001
+  annotations: {}
+
+# -----------------------------------------------------------------------------
+# Sicherheits-Kontext
+#
+# "drop: ALL" nimmt auch CAP_CHOWN und CAP_SETUID/SETGID. Der Image-Entrypoint
+# (extra/entrypoint.sh) ruft "chown -hRc /app/data" und "setpriv --clear-groups"
+# auf und scheitert damit an "setgroups failed: Operation not permitted".
+# Deshalb wird der Node-Prozess unten direkt gestartet (command:) – dumb-init
+# bleibt für die Signalweitergabe – und die Rechte an /app/data regelt die
+# fsGroup. Der Dienst läuft dadurch als Non-Root ohne Sonderrechte.
+# -----------------------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  # false: Kuma schreibt neben /app/data auch in sein Arbeitsverzeichnis.
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+serviceAccount:
+  create: true
+  name: ""            # leer -> Name des Release-Fullname
+  annotations: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+
+# -----------------------------------------------------------------------------
+# Ingress (Statusseite / Weboberfläche)
+#
+# Standard: AUS. Uptime Kuma bringt eine eigene Anmeldung mit, die beim ERSTEN
+# Aufruf im Browser eingerichtet wird – bis dahin kann sich jeder als Erster
+# registrieren. Ingress deshalb erst aktivieren, wenn das Konto steht, oder
+# vorher per BasicAuth/IP-Allowlist am Ingress-Controller absichern.
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: "nginx"
+  host: "status.example.org"
+  path: "/"
+  pathType: Prefix
+  tls:
+    enabled: true
+    secretName: "uptime-kuma-tls"
+  clusterIssuer: "letsencrypt"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Uptime Kuma nutzt WebSockets (socket.io) – ohne großzügige Timeouts
+    # bricht die Oberfläche im Minutentakt ab.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+
+# -----------------------------------------------------------------------------
+# NetworkPolicies (setzt CNI mit Policy-Unterstützung voraus: Calico/Cilium…)
+#
+# Egress bleibt bewusst OFFEN: Ein Monitoring, dessen ausgehender Verkehr
+# gefiltert ist, prüft nur noch, was die Policy erlaubt – jede neue Zieladresse
+# wäre sonst ein Fehlalarm. Eingehend gilt Default-deny mit Freigabe für den
+# Ingress-Controller.
+# -----------------------------------------------------------------------------
+networkPolicies:
+  enabled: false
+  ingressControllerNamespaceLabel:
+    kubernetes.io/metadata.name: ingress-nginx
+  # Zusätzliche Quellen, die auf die Oberfläche dürfen (z. B. ein VPN-Namespace).
+  extraIngressFrom: []

@@ -1,0 +1,6599 @@
+{
+ "_doc": "Zentraler ÖPNV-Halt je Gemeinde (EFA-BW-Haltestellensuche); erzeugt von scripts/efa-haltestellen.py",
+ "halte": {
+  "08111000": {
+   "stopId": "de:08111:6115",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08115001": {
+   "stopId": "de:08115:4777",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08115003": {
+   "stopId": "de:08115:7100",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115004": {
+   "stopId": "de:08115:4510",
+   "stopName": "Bahnhof",
+   "qualitaet": 961,
+   "art": "bahnhof"
+  },
+  "08115010": {
+   "stopId": "de:08115:4838",
+   "stopName": "Rathaus",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08115013": {
+   "stopId": "de:08115:5773",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115015": {
+   "stopId": "de:08115:5774",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115016": {
+   "stopId": "de:08115:5776",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115021": {
+   "stopId": "de:08115:4512",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08115022": {
+   "stopId": "de:08115:4798",
+   "stopName": "Altes Rathaus",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08115024": {
+   "stopId": "de:08115:4193",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115028": {
+   "stopId": "de:08115:7301",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115029": {
+   "stopId": "de:08115:3196",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115034": {
+   "stopId": "de:08115:4509",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08115037": {
+   "stopId": "de:08115:5775",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115041": {
+   "stopId": "de:08115:7302",
+   "stopName": "Renningen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08115042": {
+   "stopId": "de:08115:1302",
+   "stopName": "Rutesheim Bf",
+   "qualitaet": 967,
+   "art": "bahnhof"
+  },
+  "08115044": {
+   "stopId": "de:09678:25743",
+   "stopName": "Schönaich",
+   "qualitaet": 969,
+   "art": "ort"
+  },
+  "08115045": {
+   "stopId": "de:08115:3201",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115046": {
+   "stopId": "de:08115:7118",
+   "stopName": "Kring",
+   "qualitaet": 966,
+   "art": "ort"
+  },
+  "08115048": {
+   "stopId": "de:08115:2815",
+   "stopName": "Bonholz",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08115050": {
+   "stopId": "de:08115:1303",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08115051": {
+   "stopId": "de:08115:4781",
+   "stopName": "Röte Bahnhof",
+   "qualitaet": 982,
+   "art": "bahnhof"
+  },
+  "08115052": {
+   "stopId": "de:08115:5918",
+   "stopName": "Strudelbachhalle",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08115053": {
+   "stopId": "de:08115:4759",
+   "stopName": "Öfele",
+   "qualitaet": 933,
+   "art": "ort"
+  },
+  "08116004": {
+   "stopId": "de:08116:1800",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116006": {
+   "stopId": "de:08116:2066",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08116007": {
+   "stopId": "de:08116:3808",
+   "stopName": "Rathaus",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08116008": {
+   "stopId": "de:08116:5772",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116011": {
+   "stopId": "de:08136:1806",
+   "stopName": "Beuren",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08116012": {
+   "stopId": "de:08116:4415",
+   "stopName": "Rathaus",
+   "qualitaet": 975,
+   "art": "ort"
+  },
+  "08116014": {
+   "stopId": "de:08116:4057",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08116015": {
+   "stopId": "de:08116:5008",
+   "stopName": "Rathaus",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08116018": {
+   "stopId": "de:08116:4428",
+   "stopName": "Untere Straße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08116019": {
+   "stopId": "de:08116:4000",
+   "stopName": "Am Schönen Rain",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08116020": {
+   "stopId": "de:08116:5793",
+   "stopName": "Bahnhof",
+   "qualitaet": 984,
+   "art": "bahnhof"
+  },
+  "08116022": {
+   "stopId": "de:08116:7413",
+   "stopName": "Rathaus",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08116029": {
+   "stopId": "de:08116:4324",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116035": {
+   "stopId": "de:08116:4088",
+   "stopName": "Rathaus",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08116037": {
+   "stopId": "de:08116:6970",
+   "stopName": "Bürgerzentrum",
+   "qualitaet": 933,
+   "art": "ort"
+  },
+  "08116041": {
+   "stopId": "de:08116:4483",
+   "stopName": "Rathaus",
+   "qualitaet": 966,
+   "art": "ort"
+  },
+  "08116042": {
+   "stopId": "de:08116:4310",
+   "stopName": "Auwiesenschule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08116043": {
+   "stopId": "de:08116:4407",
+   "stopName": "Mitte",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08116046": {
+   "stopId": "de:08116:5794",
+   "stopName": "Neuffen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08116048": {
+   "stopId": "de:08116:4218",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08116049": {
+   "stopId": "de:08116:2931",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116050": {
+   "stopId": "de:08116:5770",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116053": {
+   "stopId": "de:08116:4391",
+   "stopName": "Rathaus",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08116054": {
+   "stopId": "de:08116:5779",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116056": {
+   "stopId": "de:08116:7802",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116063": {
+   "stopId": "de:08116:2062",
+   "stopName": "Mitte",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08116068": {
+   "stopId": "de:08116:4290",
+   "stopName": "Stern",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08116071": {
+   "stopId": "de:08116:6779",
+   "stopName": "Schulzentrum am Berg",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08116072": {
+   "stopId": "de:08116:4241",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116073": {
+   "stopId": "de:08116:2919",
+   "stopName": "Löwen",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08116076": {
+   "stopId": "de:08116:61250",
+   "stopName": "Zentrum",
+   "qualitaet": 934,
+   "art": "ort"
+  },
+  "08116077": {
+   "stopId": "de:08116:1905",
+   "stopName": "Filderstadt Bahnhof",
+   "qualitaet": 953,
+   "art": "bahnhof"
+  },
+  "08116078": {
+   "stopId": "de:08116:175",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08116079": {
+   "stopId": "de:08116:4418",
+   "stopName": "Oberlenningen",
+   "qualitaet": 943,
+   "art": "ort"
+  },
+  "08116080": {
+   "stopId": "de:08116:2974",
+   "stopName": "Ostfildern",
+   "qualitaet": 938,
+   "art": "ort"
+  },
+  "08116081": {
+   "stopId": "de:08116:2001",
+   "stopName": "Ort",
+   "qualitaet": 925,
+   "art": "ort"
+  },
+  "08117001": {
+   "stopId": "de:08117:7656",
+   "stopName": "Volksbank",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08117002": {
+   "stopId": "de:08116:61263",
+   "stopName": "Post",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08117003": {
+   "stopId": "de:08117:2044",
+   "stopName": "Ortsmitte",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08117006": {
+   "stopId": "de:08117:54",
+   "stopName": "Kurklinik",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08117007": {
+   "stopId": "de:08117:46",
+   "stopName": "Bad",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08117009": {
+   "stopId": "de:08117:1103",
+   "stopName": "Bahnhofstraße",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08117010": {
+   "stopId": "de:08117:203",
+   "stopName": "Rathaus",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08117011": {
+   "stopId": "de:08117:4032",
+   "stopName": "Löwen",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08117012": {
+   "stopId": "de:08117:2106",
+   "stopName": "Bahnhofsallee",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08117014": {
+   "stopId": "de:08117:51",
+   "stopName": "Rathaus",
+   "qualitaet": 925,
+   "art": "ort"
+  },
+  "08117015": {
+   "stopId": "de:08117:7619",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08117016": {
+   "stopId": "de:08117:3502",
+   "stopName": "Rathaus",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08117017": {
+   "stopId": "at:44:47053",
+   "stopName": "Dürnau Mitte",
+   "qualitaet": 931,
+   "art": "ort"
+  },
+  "08117019": {
+   "stopId": "de:08117:155",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08117023": {
+   "stopId": "de:08117:3323",
+   "stopName": "Kirche",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08117024": {
+   "stopId": "de:08117:102",
+   "stopName": "Schultheiß-Schneider-Straße",
+   "qualitaet": 635,
+   "art": "ort"
+  },
+  "08117025": {
+   "stopId": "de:08117:87",
+   "stopName": "Ev. Kindergarten",
+   "qualitaet": 580,
+   "art": "ort"
+  },
+  "08117026": {
+   "stopId": "de:08117:154",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08117028": {
+   "stopId": "de:08117:3232",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08117029": {
+   "stopId": "de:09777:1134",
+   "stopName": "Hattenhofen",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08117030": {
+   "stopId": "de:08117:3320",
+   "stopName": "Alter Bahnhof",
+   "qualitaet": 952,
+   "art": "bahnhof"
+  },
+  "08117033": {
+   "stopId": "de:08117:159",
+   "stopName": "Kuchen",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08117035": {
+   "stopId": "de:08117:59",
+   "stopName": "Bahnhofstraße",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08117037": {
+   "stopId": "de:08117:6014",
+   "stopName": "Siedlung",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08117038": {
+   "stopId": "de:08117:4015",
+   "stopName": "Theater im Bahnhof",
+   "qualitaet": 965,
+   "art": "bahnhof"
+  },
+  "08117042": {
+   "stopId": "de:08117:156",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08117043": {
+   "stopId": "de:08117:3018",
+   "stopName": "Kirche",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08117049": {
+   "stopId": "de:08117:157",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08117051": {
+   "stopId": "de:08117:152",
+   "stopName": "Uhingen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08117053": {
+   "stopId": "de:08117:1107",
+   "stopName": "Bahnhofstraße",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08117055": {
+   "stopId": "de:08437:41205",
+   "stopName": "Wangen",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08117061": {
+   "stopId": "de:08117:329",
+   "stopName": "Rathaus",
+   "qualitaet": 939,
+   "art": "ort"
+  },
+  "08118001": {
+   "stopId": "de:08118:3602",
+   "stopName": "Waage",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08118003": {
+   "stopId": "de:08118:7400",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08118006": {
+   "stopId": "de:08118:1500",
+   "stopName": "Bahnhof",
+   "qualitaet": 795,
+   "art": "ort"
+  },
+  "08118007": {
+   "stopId": "de:08118:5583",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08118010": {
+   "stopId": "de:08118:5727",
+   "stopName": "Schulzentrum",
+   "qualitaet": 949,
+   "art": "ort"
+  },
+  "08118011": {
+   "stopId": "de:08118:4536",
+   "stopName": "Bahnhof",
+   "qualitaet": 960,
+   "art": "bahnhof"
+  },
+  "08118012": {
+   "stopId": "de:08118:6468",
+   "stopName": "Nußdorfer Straße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08118014": {
+   "stopId": "de:08118:3514",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08118015": {
+   "stopId": "de:08118:5695",
+   "stopName": "Erligheim",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08118018": {
+   "stopId": "de:08118:6813",
+   "stopName": "Adlerweg",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08118019": {
+   "stopId": "de:08118:7140",
+   "stopName": "Gerlingen",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08118021": {
+   "stopId": "de:08118:5619",
+   "stopName": "Aussiedlerhöfe",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08118027": {
+   "stopId": "de:08118:4527",
+   "stopName": "Hemmingen",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08118028": {
+   "stopId": "de:08118:3564",
+   "stopName": "Schule",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08118040": {
+   "stopId": "de:08118:5723",
+   "stopName": "Bahnhof",
+   "qualitaet": 795,
+   "art": "ort"
+  },
+  "08118046": {
+   "stopId": "de:08118:1402",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08118047": {
+   "stopId": "de:08118:5704",
+   "stopName": "Wette",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08118048": {
+   "stopId": "de:08118:7402",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08118049": {
+   "stopId": "de:08118:7503",
+   "stopName": "Bahnhof",
+   "qualitaet": 779,
+   "art": "ort"
+  },
+  "08118050": {
+   "stopId": "de:08118:3306",
+   "stopName": "Abzweig Bahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08118051": {
+   "stopId": "de:08118:3465",
+   "stopName": "Brühlstraße",
+   "qualitaet": 934,
+   "art": "ort"
+  },
+  "08118053": {
+   "stopId": "de:08118:7810",
+   "stopName": "Kelter",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08118054": {
+   "stopId": "de:08118:5604",
+   "stopName": "Kleinbottwar",
+   "qualitaet": 932,
+   "art": "ort"
+  },
+  "08118059": {
+   "stopId": "de:08118:6934",
+   "stopName": "Rathaus",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08118060": {
+   "stopId": "de:08118:5612",
+   "stopName": "Rathaus",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08118063": {
+   "stopId": "de:08118:5572",
+   "stopName": "SÜWAG",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08118067": {
+   "stopId": "de:08118:5795",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08118068": {
+   "stopId": "de:08118:5782",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08118070": {
+   "stopId": "de:08118:6986",
+   "stopName": "Seestraße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08118071": {
+   "stopId": "de:08118:7404",
+   "stopName": "Tamm",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08118073": {
+   "stopId": "de:08118:3353",
+   "stopName": "Ensinger Straße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08118074": {
+   "stopId": "de:08118:5785",
+   "stopName": "Bahnhof",
+   "qualitaet": 969,
+   "art": "bahnhof"
+  },
+  "08118076": {
+   "stopId": "de:08118:5639",
+   "stopName": "Sachsenheim Bahnhof",
+   "qualitaet": 956,
+   "art": "bahnhof"
+  },
+  "08118077": {
+   "stopId": "fr:24068:5987",
+   "stopName": "Nord",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08118078": {
+   "stopId": "de:08118:1503",
+   "stopName": "Bahnhof",
+   "qualitaet": 787,
+   "art": "ort"
+  },
+  "08118079": {
+   "stopId": "de:08118:1400",
+   "stopName": "Bahnhof",
+   "qualitaet": 978,
+   "art": "bahnhof"
+  },
+  "08118080": {
+   "stopId": "de:08118:7603",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08118081": {
+   "stopId": "de:08118:6852",
+   "stopName": "Haus am Remsufer",
+   "qualitaet": 933,
+   "art": "ort"
+  },
+  "08119001": {
+   "stopId": "de:08119:6640",
+   "stopName": "Schule",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08119003": {
+   "stopId": "de:08119:5032",
+   "stopName": "Ortsmitte",
+   "qualitaet": 968,
+   "art": "ort"
+  },
+  "08119008": {
+   "stopId": "de:08119:7600",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08119018": {
+   "stopId": "de:08119:7500",
+   "stopName": "Bahnhof",
+   "qualitaet": 967,
+   "art": "bahnhof"
+  },
+  "08119020": {
+   "stopId": "de:08119:6500",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08119024": {
+   "stopId": "de:08119:4965",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08119037": {
+   "stopId": "de:08119:5028",
+   "stopName": "Ebni",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08119038": {
+   "stopId": "de:08127:30224",
+   "stopName": "Abzw. Mühle",
+   "qualitaet": 818,
+   "art": "ort"
+  },
+  "08119041": {
+   "stopId": "de:08436:8560",
+   "stopName": "Korb",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08119042": {
+   "stopId": "de:08119:1601",
+   "stopName": "Bahnhof",
+   "qualitaet": 961,
+   "art": "bahnhof"
+  },
+  "08119044": {
+   "stopId": "de:08119:4916",
+   "stopName": "Bf",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08119053": {
+   "stopId": "de:08119:5786",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08119055": {
+   "stopId": "de:08119:5761",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08119061": {
+   "stopId": "de:08119:5036",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08119067": {
+   "stopId": "de:08119:7703",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08119068": {
+   "stopId": "de:08119:1603",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08119076": {
+   "stopId": "de:08119:5789",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08119079": {
+   "stopId": "de:08119:7604",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08119083": {
+   "stopId": "de:08119:5375",
+   "stopName": "Rathaus",
+   "qualitaet": 930,
+   "art": "ort"
+  },
+  "08119084": {
+   "stopId": "de:08119:5060",
+   "stopName": "Welzheim",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08119085": {
+   "stopId": "de:08119:7605",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08119086": {
+   "stopId": "de:08119:1705",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08119089": {
+   "stopId": "de:08119:5278",
+   "stopName": "Ödernhardt",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08119090": {
+   "stopId": "de:08119:1703",
+   "stopName": "Bahnhof",
+   "qualitaet": 957,
+   "art": "bahnhof"
+  },
+  "08119091": {
+   "stopId": "de:08119:7704",
+   "stopName": "Bahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08119093": {
+   "stopId": "de:08119:4928",
+   "stopName": "Kelter",
+   "qualitaet": 763,
+   "art": "ort"
+  },
+  "08121000": {
+   "stopId": "de:08121:26",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08125001": {
+   "stopId": "de:08125:4475",
+   "stopName": "Rathaus",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08125005": {
+   "stopId": "de:08125:519",
+   "stopName": "Bad Friedrichshall Hauptbahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08125006": {
+   "stopId": "de:08125:4615",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125007": {
+   "stopId": "de:08125:2002",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125013": {
+   "stopId": "de:08125:1440",
+   "stopName": "ZOB",
+   "qualitaet": 953,
+   "art": "bahnhof"
+  },
+  "08125017": {
+   "stopId": "de:08125:4416",
+   "stopName": "Mitte",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08125021": {
+   "stopId": "de:08125:854",
+   "stopName": "Hölzern",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08125024": {
+   "stopId": "de:08125:2003",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08125026": {
+   "stopId": "de:08125:5404",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125027": {
+   "stopId": "de:09676:50519",
+   "stopName": "Erlenbach",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08125030": {
+   "stopId": "de:08125:9640",
+   "stopName": "Gänsäcker",
+   "qualitaet": 926,
+   "art": "ort"
+  },
+  "08125034": {
+   "stopId": "de:08125:3900",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125038": {
+   "stopId": "de:08125:46093",
+   "stopName": "Schulzentrum",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08125039": {
+   "stopId": "de:08125:4569",
+   "stopName": "Bahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08125046": {
+   "stopId": "de:08125:4651",
+   "stopName": "Ost",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08125047": {
+   "stopId": "de:08125:668",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125048": {
+   "stopId": "de:08125:5500",
+   "stopName": "Rathaus",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08125049": {
+   "stopId": "de:08125:4635",
+   "stopName": "Ortsmitte",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08125056": {
+   "stopId": "de:08125:1438",
+   "stopName": "Bahnhof",
+   "qualitaet": 779,
+   "art": "ort"
+  },
+  "08125057": {
+   "stopId": "de:08125:2940",
+   "stopName": "Friedhof",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08125058": {
+   "stopId": "de:08125:7401",
+   "stopName": "Leingarten",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08125059": {
+   "stopId": "de:08125:1031",
+   "stopName": "Post",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08125061": {
+   "stopId": "de:08125:698",
+   "stopName": "Backhaus",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08125063": {
+   "stopId": "de:08125:912",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125065": {
+   "stopId": "de:08125:620",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125066": {
+   "stopId": "de:08125:532",
+   "stopName": "Rathaus",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08125068": {
+   "stopId": "de:08125:1904",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125069": {
+   "stopId": "de:08125:79457",
+   "stopName": "GIK",
+   "qualitaet": 878,
+   "art": "ort"
+  },
+  "08125074": {
+   "stopId": "de:08125:8155",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08125078": {
+   "stopId": "de:08125:566",
+   "stopName": "Rathaus",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08125079": {
+   "stopId": "de:08125:4557",
+   "stopName": "Offenau",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08125084": {
+   "stopId": "de:08125:1913",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125086": {
+   "stopId": "de:08125:693",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08125087": {
+   "stopId": "de:08125:4618",
+   "stopName": "Mitte",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08125096": {
+   "stopId": "de:08125:4592",
+   "stopName": "Mitte",
+   "qualitaet": 968,
+   "art": "ort"
+  },
+  "08125098": {
+   "stopId": "de:08125:810",
+   "stopName": "Rathaus",
+   "qualitaet": 966,
+   "art": "ort"
+  },
+  "08125102": {
+   "stopId": "de:08125:4344",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08125103": {
+   "stopId": "de:08125:5523",
+   "stopName": "Schule",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08125108": {
+   "stopId": "de:08125:3443",
+   "stopName": "Abzw. Bahnhof",
+   "qualitaet": 950,
+   "art": "bahnhof"
+  },
+  "08125110": {
+   "stopId": "de:08125:2017",
+   "stopName": "Bahnhof",
+   "qualitaet": 964,
+   "art": "bahnhof"
+  },
+  "08125111": {
+   "stopId": "de:08125:584",
+   "stopName": "Austraße",
+   "qualitaet": 849,
+   "art": "ort"
+  },
+  "08125113": {
+   "stopId": "de:08125:586",
+   "stopName": "Mitte",
+   "qualitaet": 940,
+   "art": "ort"
+  },
+  "08126011": {
+   "stopId": "de:08126:10101",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08126020": {
+   "stopId": "de:08126:10501",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08126028": {
+   "stopId": "de:08126:10301",
+   "stopName": "Brücke",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08126039": {
+   "stopId": "de:08126:11001",
+   "stopName": "Bahnhof",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08126045": {
+   "stopId": "de:08126:10523",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08126046": {
+   "stopId": "de:08126:10702",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08126047": {
+   "stopId": "de:08126:10805",
+   "stopName": "Schule",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08126056": {
+   "stopId": "de:08126:18401",
+   "stopName": "Bodenhof",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08126058": {
+   "stopId": "de:08126:10902",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08126060": {
+   "stopId": "de:08126:11046",
+   "stopName": "Bildungszentrum",
+   "qualitaet": 944,
+   "art": "ort"
+  },
+  "08126066": {
+   "stopId": "de:08126:10220",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08126069": {
+   "stopId": "de:08126:10153",
+   "stopName": "Huber",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08126072": {
+   "stopId": "de:08126:10405",
+   "stopName": "Bahnhof",
+   "qualitaet": 965,
+   "art": "bahnhof"
+  },
+  "08126085": {
+   "stopId": "de:08126:11951",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08126094": {
+   "stopId": "de:08126:10296",
+   "stopName": "Eichach",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08127008": {
+   "stopId": "de:08127:20581",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08127009": {
+   "stopId": "de:08127:20842",
+   "stopName": "Ort",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08127013": {
+   "stopId": "de:08127:53260",
+   "stopName": "Schule",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08127014": {
+   "stopId": "de:08127:21001",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08127023": {
+   "stopId": "de:08127:20785",
+   "stopName": "Bahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08127025": {
+   "stopId": "de:08127:20153",
+   "stopName": "Stadtmitte",
+   "qualitaet": 946,
+   "art": "ort"
+  },
+  "08127032": {
+   "stopId": "de:08127:20596",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08127043": {
+   "stopId": "de:08127:21002",
+   "stopName": "Bahnhof",
+   "qualitaet": 957,
+   "art": "bahnhof"
+  },
+  "08127046": {
+   "stopId": "de:08127:20300",
+   "stopName": "Schulzentrum",
+   "qualitaet": 968,
+   "art": "ort"
+  },
+  "08127047": {
+   "stopId": "de:08127:20615",
+   "stopName": "Markt",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08127052": {
+   "stopId": "de:08127:28102",
+   "stopName": "B 14",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08127056": {
+   "stopId": "de:08127:20709",
+   "stopName": "Kreuzung",
+   "qualitaet": 974,
+   "art": "ort"
+  },
+  "08127062": {
+   "stopId": "de:08127:20777",
+   "stopName": "Rathaus",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08127063": {
+   "stopId": "de:08127:20359",
+   "stopName": "Post",
+   "qualitaet": 969,
+   "art": "ort"
+  },
+  "08127071": {
+   "stopId": "de:08127:20492",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08127073": {
+   "stopId": "de:08127:25615",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08127075": {
+   "stopId": "de:08127:20536",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08127076": {
+   "stopId": "de:08127:20013",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08127079": {
+   "stopId": "de:08127:20421",
+   "stopName": "Ort",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08127086": {
+   "stopId": "de:08127:20049",
+   "stopName": "Rathaus",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08127089": {
+   "stopId": "de:08127:20450",
+   "stopName": "Bank",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08127091": {
+   "stopId": "de:08127:27531",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08127099": {
+   "stopId": "de:08127:23257",
+   "stopName": "Rathaus",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08127101": {
+   "stopId": "de:08127:27508",
+   "stopName": "Ort",
+   "qualitaet": 943,
+   "art": "ort"
+  },
+  "08127102": {
+   "stopId": "de:08127:30432",
+   "stopName": "Ort",
+   "qualitaet": 943,
+   "art": "ort"
+  },
+  "08127103": {
+   "stopId": "de:08127:30135",
+   "stopName": "Ort",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08127104": {
+   "stopId": "de:08127:30002",
+   "stopName": "Post",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08128006": {
+   "stopId": "de:08128:12205",
+   "stopName": "Gemeidezentrum",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128007": {
+   "stopId": "de:08128:12170",
+   "stopName": "Ort",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128014": {
+   "stopId": "de:08128:12289",
+   "stopName": "Abzw. Bahnhof",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128020": {
+   "stopId": "de:08128:12379",
+   "stopName": "Tauberbrücke",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128047": {
+   "stopId": "de:08128:12507",
+   "stopName": "Kindercampus",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128058": {
+   "stopId": "de:08128:12602",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08128064": {
+   "stopId": "de:08128:13307",
+   "stopName": "Hardheimer Straße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128082": {
+   "stopId": "de:08128:12951",
+   "stopName": "Kindergarten",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128115": {
+   "stopId": "de:08128:13015",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08128126": {
+   "stopId": "de:08128:13209",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08128128": {
+   "stopId": "de:08128:13304",
+   "stopName": "Bahnhof",
+   "qualitaet": 967,
+   "art": "bahnhof"
+  },
+  "08128131": {
+   "stopId": "de:08128:13412",
+   "stopName": "Bahnhof",
+   "qualitaet": 978,
+   "art": "bahnhof"
+  },
+  "08128138": {
+   "stopId": "de:08128:13760",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128139": {
+   "stopId": "de:08128:13805",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08135010": {
+   "stopId": "de:08135:1018",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08135016": {
+   "stopId": "de:08135:1243",
+   "stopName": "Lederstraße",
+   "qualitaet": 613,
+   "art": "ort"
+  },
+  "08135019": {
+   "stopId": "de:08135:221",
+   "stopName": "Levillain Anlage",
+   "qualitaet": 729,
+   "art": "ort"
+  },
+  "08135020": {
+   "stopId": "de:08135:1339",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08135021": {
+   "stopId": "de:08135:1394",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08135025": {
+   "stopId": "de:08135:1426",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08135026": {
+   "stopId": "de:08135:1507",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08135027": {
+   "stopId": "de:08135:1524",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08135032": {
+   "stopId": "de:08135:1643",
+   "stopName": "Ried",
+   "qualitaet": 979,
+   "art": "ort"
+  },
+  "08136002": {
+   "stopId": "de:08136:4001",
+   "stopName": "Busbahnhof",
+   "qualitaet": 980,
+   "art": "bahnhof"
+  },
+  "08136003": {
+   "stopId": "de:08136:4111",
+   "stopName": "Mittelwald",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08136007": {
+   "stopId": "de:08136:6005",
+   "stopName": "Stern",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08136010": {
+   "stopId": "de:08136:4204",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08136015": {
+   "stopId": "de:08136:6203",
+   "stopName": "Raiba",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08136019": {
+   "stopId": "de:08136:2007",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08136021": {
+   "stopId": "de:08136:4409",
+   "stopName": "Rose",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08136024": {
+   "stopId": "de:08136:6404",
+   "stopName": "Horn",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08136029": {
+   "stopId": "de:08136:6701",
+   "stopName": "Krone",
+   "qualitaet": 949,
+   "art": "ort"
+  },
+  "08136033": {
+   "stopId": "de:08136:4511",
+   "stopName": "Post",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08136034": {
+   "stopId": "de:08136:6803",
+   "stopName": "Schule",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08136035": {
+   "stopId": "de:08136:4609",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08136037": {
+   "stopId": "de:08136:4708",
+   "stopName": "Raiba",
+   "qualitaet": 975,
+   "art": "ort"
+  },
+  "08136038": {
+   "stopId": "de:08136:4817",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08136040": {
+   "stopId": "de:08136:6906",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08136042": {
+   "stopId": "de:08136:7005",
+   "stopName": "Bahnhof",
+   "qualitaet": 967,
+   "art": "bahnhof"
+  },
+  "08136043": {
+   "stopId": "de:08136:7101",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08136044": {
+   "stopId": "de:08136:7206",
+   "stopName": "Schulzentrum",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08136045": {
+   "stopId": "de:08136:4923",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08136046": {
+   "stopId": "de:08136:5002",
+   "stopName": "Ebnat",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08136049": {
+   "stopId": "de:08136:7306",
+   "stopName": "Löwen",
+   "qualitaet": 966,
+   "art": "ort"
+  },
+  "08136050": {
+   "stopId": "de:08136:5113",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08136061": {
+   "stopId": "de:08136:7406",
+   "stopName": "Siedlung",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08136062": {
+   "stopId": "de:08136:7504",
+   "stopName": "Bopp",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08136065": {
+   "stopId": "de:08136:3077",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08136066": {
+   "stopId": "de:08136:7606",
+   "stopName": "Trögle",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08136068": {
+   "stopId": "de:08136:5505",
+   "stopName": "Gerau",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08136070": {
+   "stopId": "de:08136:7700",
+   "stopName": "Schule",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08136071": {
+   "stopId": "de:08136:5603",
+   "stopName": "Rathaus",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08136075": {
+   "stopId": "de:08136:5708",
+   "stopName": "Post",
+   "qualitaet": 974,
+   "art": "ort"
+  },
+  "08136079": {
+   "stopId": "de:08225:214",
+   "stopName": "Post",
+   "qualitaet": 949,
+   "art": "ort"
+  },
+  "08136082": {
+   "stopId": "de:08136:5817",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08136084": {
+   "stopId": "de:08136:5070",
+   "stopName": "Rathaus",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08136087": {
+   "stopId": "de:08136:5301",
+   "stopName": "Bahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08136088": {
+   "stopId": "de:08136:1000",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08136089": {
+   "stopId": "de:08136:5210",
+   "stopName": "Bahnhof",
+   "qualitaet": 958,
+   "art": "bahnhof"
+  },
+  "08211000": {
+   "stopId": "de:08211:1847",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08212000": {
+   "stopId": "de:08212:90",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08215007": {
+   "stopId": "de:08215:1838",
+   "stopName": "Bahnhof",
+   "qualitaet": 959,
+   "art": "bahnhof"
+  },
+  "08215009": {
+   "stopId": "de:08215:1856",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08215017": {
+   "stopId": "de:08215:37212",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08215021": {
+   "stopId": "ch:23016:22579",
+   "stopName": "Forst",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08215025": {
+   "stopId": "de:08215:1837",
+   "stopName": "Bahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08215029": {
+   "stopId": "de:08215:32569",
+   "stopName": "Ortsmitte",
+   "qualitaet": 954,
+   "art": "ort"
+  },
+  "08215040": {
+   "stopId": "de:08215:14403",
+   "stopName": "Hessenstraße",
+   "qualitaet": 934,
+   "art": "ort"
+  },
+  "08215046": {
+   "stopId": "de:08215:8207",
+   "stopName": "Sulzbach",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08215047": {
+   "stopId": "de:08215:1303",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08215059": {
+   "stopId": "de:08215:32092",
+   "stopName": "Bahnhof",
+   "qualitaet": 969,
+   "art": "bahnhof"
+  },
+  "08215064": {
+   "stopId": "de:08215:31008",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08215066": {
+   "stopId": "de:08215:32589",
+   "stopName": "Bahnhof Philippsburg",
+   "qualitaet": 953,
+   "art": "bahnhof"
+  },
+  "08215082": {
+   "stopId": "de:08215:32093",
+   "stopName": "Bahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08215084": {
+   "stopId": "de:08215:1861",
+   "stopName": "Bahnhof-Weiher",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08215089": {
+   "stopId": "de:08215:1531",
+   "stopName": "Bahnhof",
+   "qualitaet": 965,
+   "art": "bahnhof"
+  },
+  "08215090": {
+   "stopId": "de:08215:1853",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08215094": {
+   "stopId": "de:08215:32618",
+   "stopName": "Bahnhof",
+   "qualitaet": 976,
+   "art": "bahnhof"
+  },
+  "08215096": {
+   "stopId": "de:08215:1409",
+   "stopName": "Bahnhof",
+   "qualitaet": 962,
+   "art": "bahnhof"
+  },
+  "08215097": {
+   "stopId": "de:08215:32005",
+   "stopName": "Bahnhof",
+   "qualitaet": 962,
+   "art": "bahnhof"
+  },
+  "08215099": {
+   "stopId": "de:08215:32585",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08215100": {
+   "stopId": "de:08215:1863",
+   "stopName": "Bahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08215101": {
+   "stopId": "de:08215:2012",
+   "stopName": "Rathaus",
+   "qualitaet": 933,
+   "art": "ort"
+  },
+  "08215102": {
+   "stopId": "de:08215:1120",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08215103": {
+   "stopId": "de:08215:32592",
+   "stopName": "Bahnhof Karlsdorf-Neuthard",
+   "qualitaet": 959,
+   "art": "bahnhof"
+  },
+  "08215105": {
+   "stopId": "de:08215:1153",
+   "stopName": "Rathaus",
+   "qualitaet": 973,
+   "art": "ort"
+  },
+  "08215106": {
+   "stopId": "de:08215:32509",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08215107": {
+   "stopId": "de:08215:32505",
+   "stopName": "Schule",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08215108": {
+   "stopId": "de:08215:6408",
+   "stopName": "Mitte",
+   "qualitaet": 940,
+   "art": "ort"
+  },
+  "08215109": {
+   "stopId": "de:08215:32239",
+   "stopName": "Bahnhof",
+   "qualitaet": 962,
+   "art": "bahnhof"
+  },
+  "08215110": {
+   "stopId": "de:08215:1301",
+   "stopName": "Bahnhof",
+   "qualitaet": 967,
+   "art": "bahnhof"
+  },
+  "08215111": {
+   "stopId": "de:08215:7709",
+   "stopName": "Mitte",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08216002": {
+   "stopId": "de:08216:6412",
+   "stopName": "Ortsmitte",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08216005": {
+   "stopId": "de:08216:1820",
+   "stopName": "Bietigheim (Baden)",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08216006": {
+   "stopId": "de:08216:34764",
+   "stopName": "Bahnhof Bischweier",
+   "qualitaet": 953,
+   "art": "bahnhof"
+  },
+  "08216007": {
+   "stopId": "de:08216:32227",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08216008": {
+   "stopId": "de:08216:32196",
+   "stopName": "Post",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08216009": {
+   "stopId": "de:08216:1819",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08216012": {
+   "stopId": "de:08216:6420",
+   "stopName": "Gemeindezentrum",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08216013": {
+   "stopId": "de:08216:32184",
+   "stopName": "Bahnhof",
+   "qualitaet": 959,
+   "art": "bahnhof"
+  },
+  "08216015": {
+   "stopId": "de:08216:32160",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08216017": {
+   "stopId": "de:08216:32142",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08216022": {
+   "stopId": "de:08216:34635",
+   "stopName": "Nord",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08216023": {
+   "stopId": "de:08216:31919",
+   "stopName": "Bruchweg",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08216024": {
+   "stopId": "de:08216:34763",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08216028": {
+   "stopId": "de:09272:4768",
+   "stopName": "Lichtenau",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08216029": {
+   "stopId": "de:08216:34782",
+   "stopName": "Käppele",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08216033": {
+   "stopId": "de:08216:1843",
+   "stopName": "Muggensturm",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08216039": {
+   "stopId": "de:08216:1821",
+   "stopName": "Ötigheim",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08216041": {
+   "stopId": "de:08216:33124",
+   "stopName": "Hard",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08216043": {
+   "stopId": "de:08216:1844",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08216049": {
+   "stopId": "de:08216:35112",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08216052": {
+   "stopId": "de:08216:32012",
+   "stopName": "Rathaus",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08216059": {
+   "stopId": "de:08216:34768",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08216063": {
+   "stopId": "de:08216:34641",
+   "stopName": "Bahnhof",
+   "qualitaet": 956,
+   "art": "bahnhof"
+  },
+  "08221000": {
+   "stopId": "de:08221:1160",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08222000": {
+   "stopId": "de:08222:2417",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08225001": {
+   "stopId": "de:08225:1450",
+   "stopName": "Schulzentrum",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08225002": {
+   "stopId": "de:08225:9175",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225009": {
+   "stopId": "de:08225:1382",
+   "stopName": "Ort",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08225010": {
+   "stopId": "de:08225:281",
+   "stopName": "Abzw. Bahnhof",
+   "qualitaet": 965,
+   "art": "bahnhof"
+  },
+  "08225014": {
+   "stopId": "de:08225:9176",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225024": {
+   "stopId": "de:08225:1423",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08225032": {
+   "stopId": "de:08225:1359",
+   "stopName": "Post",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08225033": {
+   "stopId": "de:08225:8222",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225039": {
+   "stopId": "de:08225:1355",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08225042": {
+   "stopId": "de:08225:9178",
+   "stopName": "Evangelische Kirche",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08225058": {
+   "stopId": "de:08225:9180",
+   "stopName": "Bahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08225060": {
+   "stopId": "de:08225:2751",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225064": {
+   "stopId": "de:08225:9129",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225067": {
+   "stopId": "de:08225:8223",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225074": {
+   "stopId": "de:08225:2782",
+   "stopName": "Schule",
+   "qualitaet": 940,
+   "art": "ort"
+  },
+  "08225075": {
+   "stopId": "de:08225:8200",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225082": {
+   "stopId": "de:08225:6109",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08225091": {
+   "stopId": "de:08225:8203",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225109": {
+   "stopId": "de:08225:6573",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08225113": {
+   "stopId": "de:08225:9191",
+   "stopName": "Bahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08225114": {
+   "stopId": "de:08225:6026",
+   "stopName": "Ort",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08225115": {
+   "stopId": "de:08225:8204",
+   "stopName": "Bahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08225117": {
+   "stopId": "de:08225:8207",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08225118": {
+   "stopId": "de:09272:4774",
+   "stopName": "Waldbrunn",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08226003": {
+   "stopId": "de:08226:34",
+   "stopName": "Quelle",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08226006": {
+   "stopId": "de:08226:200",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226009": {
+   "stopId": "de:08235:1050",
+   "stopName": "Brühl",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08226010": {
+   "stopId": "de:08226:10593",
+   "stopName": "Mitte",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08226012": {
+   "stopId": "de:08226:515",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226013": {
+   "stopId": "de:08226:534",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08226017": {
+   "stopId": "de:08226:691",
+   "stopName": "Schulzentrum",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08226018": {
+   "stopId": "de:08226:697",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08226020": {
+   "stopId": "de:08226:710",
+   "stopName": "Eschelbronn",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08226022": {
+   "stopId": "de:08226:1702",
+   "stopName": "Dobel",
+   "qualitaet": 939,
+   "art": "ort"
+  },
+  "08226027": {
+   "stopId": "de:08226:1105",
+   "stopName": "Heddesbach",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08226028": {
+   "stopId": "de:08226:1110",
+   "stopName": "Bahnhof DB",
+   "qualitaet": 964,
+   "art": "bahnhof"
+  },
+  "08226029": {
+   "stopId": "de:08226:5873",
+   "stopName": "Schule",
+   "qualitaet": 971,
+   "art": "ort"
+  },
+  "08226031": {
+   "stopId": "de:08226:1471",
+   "stopName": "Bahnhof",
+   "qualitaet": 960,
+   "art": "bahnhof"
+  },
+  "08226032": {
+   "stopId": "de:08226:1620",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226036": {
+   "stopId": "de:08226:1643",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08226037": {
+   "stopId": "de:08226:1661",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226038": {
+   "stopId": "de:08226:1711",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226040": {
+   "stopId": "de:08128:13250",
+   "stopName": "Laudenbach (Württ)",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08226046": {
+   "stopId": "de:08226:3806",
+   "stopName": "Bahnhof",
+   "qualitaet": 964,
+   "art": "bahnhof"
+  },
+  "08226048": {
+   "stopId": "de:08226:2800",
+   "stopName": "Bahnhof",
+   "qualitaet": 959,
+   "art": "bahnhof"
+  },
+  "08226049": {
+   "stopId": "de:08226:2835",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226055": {
+   "stopId": "de:08226:2966",
+   "stopName": "Rathaus",
+   "qualitaet": 968,
+   "art": "ort"
+  },
+  "08226056": {
+   "stopId": "de:08226:2986",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226058": {
+   "stopId": "de:08226:3065",
+   "stopName": "Bahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08226059": {
+   "stopId": "de:08226:3101",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226060": {
+   "stopId": "de:08226:3247",
+   "stopName": "Kreuz",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08226062": {
+   "stopId": "de:08226:3285",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226063": {
+   "stopId": "de:08226:3317",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08226065": {
+   "stopId": "de:08226:3327",
+   "stopName": "Kirche",
+   "qualitaet": 938,
+   "art": "ort"
+  },
+  "08226066": {
+   "stopId": "de:08226:3337",
+   "stopName": "Alter Rathausplatz",
+   "qualitaet": 937,
+   "art": "ort"
+  },
+  "08226068": {
+   "stopId": "de:08226:3345",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08226076": {
+   "stopId": "de:08226:3418",
+   "stopName": "Nord",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08226080": {
+   "stopId": "de:08222:5553",
+   "stopName": "Schönau",
+   "qualitaet": 969,
+   "art": "ort"
+  },
+  "08226082": {
+   "stopId": "de:08226:3479",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226084": {
+   "stopId": "de:08226:3505",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226085": {
+   "stopId": "de:08226:3550",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08226086": {
+   "stopId": "de:08226:3593",
+   "stopName": "Altenheim",
+   "qualitaet": 938,
+   "art": "ort"
+  },
+  "08226091": {
+   "stopId": "de:08226:3943",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226095": {
+   "stopId": "de:08226:4252",
+   "stopName": "Bahnhof",
+   "qualitaet": 966,
+   "art": "bahnhof"
+  },
+  "08226096": {
+   "stopId": "de:08226:4095",
+   "stopName": "Rittenweier",
+   "qualitaet": 944,
+   "art": "ort"
+  },
+  "08226098": {
+   "stopId": "de:08226:3806",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08226099": {
+   "stopId": "de:08226:4293",
+   "stopName": "Rathaus",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08226101": {
+   "stopId": "de:08226:4520",
+   "stopName": "Zuzenhausen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08226102": {
+   "stopId": "de:08226:95",
+   "stopName": "Bahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08226103": {
+   "stopId": "de:08226:3806",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08226104": {
+   "stopId": "de:08226:6816",
+   "stopName": "Ortsmitte",
+   "qualitaet": 930,
+   "art": "ort"
+  },
+  "08226105": {
+   "stopId": "de:08226:625",
+   "stopName": "Ost",
+   "qualitaet": 970,
+   "art": "ort"
+  },
+  "08226106": {
+   "stopId": "de:08226:1464",
+   "stopName": "Bahnhof",
+   "qualitaet": 980,
+   "art": "bahnhof"
+  },
+  "08226107": {
+   "stopId": "de:08226:6457",
+   "stopName": "Dr.-W.-Schmitt-Anlage",
+   "qualitaet": 819,
+   "art": "ort"
+  },
+  "08231000": {
+   "stopId": "de:08231:50",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08235006": {
+   "stopId": "de:08235:7875",
+   "stopName": "Bahnhof",
+   "qualitaet": 955,
+   "art": "bahnhof"
+  },
+  "08235007": {
+   "stopId": "de:08235:1170",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08235008": {
+   "stopId": "de:08235:4150",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08235018": {
+   "stopId": "de:08235:9504",
+   "stopName": "Ortsmitte",
+   "qualitaet": 928,
+   "art": "ort"
+  },
+  "08235020": {
+   "stopId": "de:08235:10207",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08235022": {
+   "stopId": "de:08235:10198",
+   "stopName": "Rathaus",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08235025": {
+   "stopId": "de:08235:2734",
+   "stopName": "Mittelenztal",
+   "qualitaet": 952,
+   "art": "ort"
+  },
+  "08235029": {
+   "stopId": "de:08235:1510",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08235032": {
+   "stopId": "de:08235:10264",
+   "stopName": "Post",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08235033": {
+   "stopId": "de:08235:9558",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08235035": {
+   "stopId": "de:03454:9056",
+   "stopName": "Hüvede, An den Höfen",
+   "qualitaet": 739,
+   "art": "ort"
+  },
+  "08235046": {
+   "stopId": "de:08235:10168",
+   "stopName": "Nagold",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08235047": {
+   "stopId": "de:08235:7910",
+   "stopName": "Neubulach",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08235057": {
+   "stopId": "de:08235:1182",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08235060": {
+   "stopId": "de:08235:10165",
+   "stopName": "Bahnhof",
+   "qualitaet": 962,
+   "art": "bahnhof"
+  },
+  "08235065": {
+   "stopId": "de:08237:2831",
+   "stopName": "Solhof",
+   "qualitaet": 940,
+   "art": "ort"
+  },
+  "08235066": {
+   "stopId": "de:08235:10288",
+   "stopName": "Anker",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08235067": {
+   "stopId": "de:08235:1240",
+   "stopName": "Ortsmitte",
+   "qualitaet": 952,
+   "art": "ort"
+  },
+  "08235073": {
+   "stopId": "de:08235:9000",
+   "stopName": "Bahnhof",
+   "qualitaet": 986,
+   "art": "bahnhof"
+  },
+  "08235079": {
+   "stopId": "de:08235:8960",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08235080": {
+   "stopId": "de:08235:9050",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08235084": {
+   "stopId": "de:08235:7660",
+   "stopName": "Feuersee",
+   "qualitaet": 968,
+   "art": "ort"
+  },
+  "08235085": {
+   "stopId": "de:08235:9020",
+   "stopName": "Bahnhof",
+   "qualitaet": 966,
+   "art": "bahnhof"
+  },
+  "08236004": {
+   "stopId": "de:08236:1090",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08236011": {
+   "stopId": "de:08236:1710",
+   "stopName": "Rathaus",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08236013": {
+   "stopId": "de:08236:1805",
+   "stopName": "Rathaus",
+   "qualitaet": 932,
+   "art": "ort"
+  },
+  "08236019": {
+   "stopId": "de:08236:3500",
+   "stopName": "Ortsmitte",
+   "qualitaet": 952,
+   "art": "ort"
+  },
+  "08236025": {
+   "stopId": "de:08236:3510",
+   "stopName": "See",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08236028": {
+   "stopId": "de:08236:2590",
+   "stopName": "Bahnhof",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08236030": {
+   "stopId": "de:08236:1717",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08236031": {
+   "stopId": "de:08236:2103",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08236033": {
+   "stopId": "de:08236:2301",
+   "stopName": "Nord",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08236038": {
+   "stopId": "de:08236:2292",
+   "stopName": "West",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08236039": {
+   "stopId": "de:08236:3416",
+   "stopName": "Nord",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08236040": {
+   "stopId": "de:08236:3090",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08236043": {
+   "stopId": "de:08236:1490",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08236044": {
+   "stopId": "de:09678:75068",
+   "stopName": "Neuhausen",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08236046": {
+   "stopId": "de:08236:2890",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08236050": {
+   "stopId": "de:08236:2790",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08236061": {
+   "stopId": "de:08236:2401",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08236062": {
+   "stopId": "de:08236:3601",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08236065": {
+   "stopId": "de:08236:2908",
+   "stopName": "Schillerstrasse",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08236067": {
+   "stopId": "de:08236:3401",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08236068": {
+   "stopId": "de:09673:3196",
+   "stopName": "Wurmberg",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08236070": {
+   "stopId": "de:08236:1519",
+   "stopName": "Rathaus",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08236071": {
+   "stopId": "de:08236:1606",
+   "stopName": "Ortsmitte",
+   "qualitaet": 936,
+   "art": "ort"
+  },
+  "08236072": {
+   "stopId": "de:08236:1306",
+   "stopName": "Rathaus",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08236073": {
+   "stopId": "de:08236:2003",
+   "stopName": "Auweg",
+   "qualitaet": 937,
+   "art": "ort"
+  },
+  "08236074": {
+   "stopId": "de:08236:1791",
+   "stopName": "Bahnhof",
+   "qualitaet": 953,
+   "art": "bahnhof"
+  },
+  "08236075": {
+   "stopId": "de:08236:2290",
+   "stopName": "Ölbronn-Dürrn",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08236076": {
+   "stopId": "de:08236:1719",
+   "stopName": "Wagnerstraße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08237002": {
+   "stopId": "de:08237:3801",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08237004": {
+   "stopId": "de:08237:1201",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08237019": {
+   "stopId": "de:08237:4001",
+   "stopName": "Bahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08237024": {
+   "stopId": "de:08237:7202",
+   "stopName": "Seiten",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08237027": {
+   "stopId": "de:08237:7965",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08237028": {
+   "stopId": "de:08237:1050",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 976,
+   "art": "bahnhof"
+  },
+  "08237030": {
+   "stopId": "de:08237:4206",
+   "stopName": "Ortsmitte",
+   "qualitaet": 946,
+   "art": "ort"
+  },
+  "08237032": {
+   "stopId": "de:08237:4665",
+   "stopName": "Kirche",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08237040": {
+   "stopId": "de:08237:5441",
+   "stopName": "Am Dorfbrunnen",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08237045": {
+   "stopId": "de:08237:9602",
+   "stopName": "Bahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08237054": {
+   "stopId": "de:08237:4501",
+   "stopName": "Rathaus",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08237061": {
+   "stopId": "de:08237:9604",
+   "stopName": "Bahnhof",
+   "qualitaet": 966,
+   "art": "bahnhof"
+  },
+  "08237072": {
+   "stopId": "de:08237:4660",
+   "stopName": "Wörnersberg",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08237074": {
+   "stopId": "de:08237:4511",
+   "stopName": "Cresbach",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08237075": {
+   "stopId": "de:08237:2625",
+   "stopName": "Dollenbach",
+   "qualitaet": 882,
+   "art": "ort"
+  },
+  "08311000": {
+   "stopId": "de:08311:6508",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 983,
+   "art": "bahnhof"
+  },
+  "08315003": {
+   "stopId": "fl:21:4117",
+   "stopName": "Au",
+   "qualitaet": 939,
+   "art": "ort"
+  },
+  "08315004": {
+   "stopId": "de:08315:6642",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315006": {
+   "stopId": "de:08315:6501",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315007": {
+   "stopId": "de:08315:358",
+   "stopName": "Busbahnhof",
+   "qualitaet": 980,
+   "art": "bahnhof"
+  },
+  "08315008": {
+   "stopId": "de:08315:5017",
+   "stopName": "Rathaus",
+   "qualitaet": 888,
+   "art": "ort"
+  },
+  "08315013": {
+   "stopId": "de:08315:6658",
+   "stopName": "Bahnhof",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08315014": {
+   "stopId": "de:08315:440",
+   "stopName": "Abzweigung Aubach",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08315015": {
+   "stopId": "de:08315:6504",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315016": {
+   "stopId": "de:08315:560",
+   "stopName": "Löwen",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08315020": {
+   "stopId": "de:08315:166",
+   "stopName": "Rathaus",
+   "qualitaet": 939,
+   "art": "ort"
+  },
+  "08315022": {
+   "stopId": "de:08315:6644",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315028": {
+   "stopId": "de:08315:6661",
+   "stopName": "Bahnhof",
+   "qualitaet": 966,
+   "art": "bahnhof"
+  },
+  "08315030": {
+   "stopId": "de:08315:6662",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315031": {
+   "stopId": "de:08315:6018",
+   "stopName": "Rathaus",
+   "qualitaet": 975,
+   "art": "ort"
+  },
+  "08315037": {
+   "stopId": "de:08315:6539",
+   "stopName": "Bahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08315039": {
+   "stopId": "de:08315:6545",
+   "stopName": "Bahnhof",
+   "qualitaet": 952,
+   "art": "bahnhof"
+  },
+  "08315041": {
+   "stopId": "de:08315:496",
+   "stopName": "Sonne",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08315043": {
+   "stopId": "de:08315:6513",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315047": {
+   "stopId": "de:08315:6514",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08315048": {
+   "stopId": "de:08315:5117",
+   "stopName": "Rathaus",
+   "qualitaet": 779,
+   "art": "ort"
+  },
+  "08315050": {
+   "stopId": "de:08315:6665",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315051": {
+   "stopId": "de:08315:500",
+   "stopName": "Laube",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08315052": {
+   "stopId": "de:08315:6542",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315059": {
+   "stopId": "de:08315:6517",
+   "stopName": "Bahnhof",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08315064": {
+   "stopId": "de:08315:6519",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315068": {
+   "stopId": "de:08315:6120",
+   "stopName": "Schule",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08315070": {
+   "stopId": "de:08315:6543",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315072": {
+   "stopId": "de:08315:30092",
+   "stopName": "Sonne",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08315073": {
+   "stopId": "de:08315:224",
+   "stopName": "Gasthaus Grüner Baum",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08315074": {
+   "stopId": "de:08315:6522",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08315076": {
+   "stopId": "de:08315:6740",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315089": {
+   "stopId": "de:08315:568",
+   "stopName": "Schulstraße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08315094": {
+   "stopId": "de:08315:265",
+   "stopName": "Post",
+   "qualitaet": 969,
+   "art": "ort"
+  },
+  "08315095": {
+   "stopId": "de:05162:20285",
+   "stopName": "St. Peter",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08315098": {
+   "stopId": "de:08315:6677",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315102": {
+   "stopId": "de:08315:6546",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315107": {
+   "stopId": "de:09275:4457",
+   "stopName": "Söldenau",
+   "qualitaet": 949,
+   "art": "ort"
+  },
+  "08315108": {
+   "stopId": "de:08315:6526",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315111": {
+   "stopId": "de:08315:5021",
+   "stopName": "Bf (Bus)",
+   "qualitaet": 978,
+   "art": "bahnhof"
+  },
+  "08315113": {
+   "stopId": "de:08315:6548",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08315115": {
+   "stopId": "de:08315:30052",
+   "stopName": "Adler",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08315125": {
+   "stopId": "de:08315:294",
+   "stopName": "Wittnau",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08315130": {
+   "stopId": "de:08317:12032",
+   "stopName": "Münchtal-Mitte",
+   "qualitaet": 762,
+   "art": "ort"
+  },
+  "08315131": {
+   "stopId": "de:08315:6670",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08315132": {
+   "stopId": "de:08315:6521",
+   "stopName": "Bahnhof",
+   "qualitaet": 959,
+   "art": "bahnhof"
+  },
+  "08316002": {
+   "stopId": "de:08316:6687",
+   "stopName": "Bahnhof",
+   "qualitaet": 828,
+   "art": "ort"
+  },
+  "08316003": {
+   "stopId": "de:08316:199",
+   "stopName": "Heidburg",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08316009": {
+   "stopId": "de:08316:6505",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08316010": {
+   "stopId": "de:08316:6507",
+   "stopName": "Bahnhof",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08316011": {
+   "stopId": "de:08316:89",
+   "stopName": "Ramie",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08316012": {
+   "stopId": "de:08316:6688",
+   "stopName": "Bahnhof",
+   "qualitaet": 822,
+   "art": "ort"
+  },
+  "08316013": {
+   "stopId": "de:09474:9665",
+   "stopName": "Ermreus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08316014": {
+   "stopId": "de:08316:6503",
+   "stopName": "Bahnhof",
+   "qualitaet": 966,
+   "art": "bahnhof"
+  },
+  "08316017": {
+   "stopId": "de:08316:6562",
+   "stopName": "Bahnhof",
+   "qualitaet": 978,
+   "art": "bahnhof"
+  },
+  "08316020": {
+   "stopId": "de:08316:6518",
+   "stopName": "Bahnhof",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08316024": {
+   "stopId": "de:08316:115",
+   "stopName": "Siedlung",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08316036": {
+   "stopId": "de:08436:8656",
+   "stopName": "Reute",
+   "qualitaet": 943,
+   "art": "ort"
+  },
+  "08316037": {
+   "stopId": "de:08316:5114",
+   "stopName": "Rathaus",
+   "qualitaet": 810,
+   "art": "ort"
+  },
+  "08316038": {
+   "stopId": "de:08316:6672",
+   "stopName": "Bahnhof",
+   "qualitaet": 816,
+   "art": "ort"
+  },
+  "08316039": {
+   "stopId": "de:08316:5063",
+   "stopName": "Rathaus",
+   "qualitaet": 945,
+   "art": "ort"
+  },
+  "08316042": {
+   "stopId": "de:08316:462",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08316043": {
+   "stopId": "de:08316:729",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08316045": {
+   "stopId": "de:08316:5033",
+   "stopName": "Ortsmitte",
+   "qualitaet": 954,
+   "art": "ort"
+  },
+  "08316049": {
+   "stopId": "de:08316:5297",
+   "stopName": "Rathaus",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08316051": {
+   "stopId": "de:08316:11221",
+   "stopName": "Wyhler Straße",
+   "qualitaet": 708,
+   "art": "ort"
+  },
+  "08316053": {
+   "stopId": "de:08316:6420",
+   "stopName": "REWE",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08316054": {
+   "stopId": "de:08316:5051",
+   "stopName": "Hard",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08316055": {
+   "stopId": "de:08316:6525",
+   "stopName": "Bahnhof",
+   "qualitaet": 969,
+   "art": "bahnhof"
+  },
+  "08316056": {
+   "stopId": "de:08316:6533",
+   "stopName": "Bahnhof",
+   "qualitaet": 969,
+   "art": "bahnhof"
+  },
+  "08317001": {
+   "stopId": "de:08317:33013",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317005": {
+   "stopId": "de:08317:14120",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317008": {
+   "stopId": "de:08317:14460",
+   "stopName": "Bahnhof",
+   "qualitaet": 984,
+   "art": "bahnhof"
+  },
+  "08317009": {
+   "stopId": "de:08317:15882",
+   "stopName": "Linde",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08317011": {
+   "stopId": "de:08426:6170",
+   "stopName": "Biberach (Riß)",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08317021": {
+   "stopId": "de:08317:15334",
+   "stopName": "Rathaus",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08317026": {
+   "stopId": "de:08317:19501",
+   "stopName": "Wallburg",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08317029": {
+   "stopId": "de:08317:18561",
+   "stopName": "Dorf",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08317031": {
+   "stopId": "de:08317:16220",
+   "stopName": "Bahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08317034": {
+   "stopId": "de:08317:15810",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317039": {
+   "stopId": "de:08317:18720",
+   "stopName": "Turm",
+   "qualitaet": 980,
+   "art": "ort"
+  },
+  "08317040": {
+   "stopId": "de:08317:18520",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317041": {
+   "stopId": "de:08317:18620",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317051": {
+   "stopId": "de:08317:18820",
+   "stopName": "Bahnhof",
+   "qualitaet": 960,
+   "art": "bahnhof"
+  },
+  "08317056": {
+   "stopId": "de:08317:13620",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317057": {
+   "stopId": "de:08317:15011",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317059": {
+   "stopId": "de:08317:18402",
+   "stopName": "Bahnhofstraße",
+   "qualitaet": 944,
+   "art": "ort"
+  },
+  "08317065": {
+   "stopId": "de:08317:12103",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "ort"
+  },
+  "08317067": {
+   "stopId": "de:08317:14211",
+   "stopName": "Bahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08317068": {
+   "stopId": "de:08317:41610",
+   "stopName": "Au",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08317073": {
+   "stopId": "de:08317:18601",
+   "stopName": "Bahnhof",
+   "qualitaet": 962,
+   "art": "bahnhof"
+  },
+  "08317075": {
+   "stopId": "de:08317:12503",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317085": {
+   "stopId": "de:08317:11033",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08317088": {
+   "stopId": "de:08317:11181",
+   "stopName": "Dorf",
+   "qualitaet": 972,
+   "art": "ort"
+  },
+  "08317089": {
+   "stopId": "de:08317:14020",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317093": {
+   "stopId": "de:08317:47216",
+   "stopName": "Edeka",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08317096": {
+   "stopId": "de:08317:14506",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317097": {
+   "stopId": "de:08317:15893",
+   "stopName": "Kirche",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08317098": {
+   "stopId": "de:08317:14360",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317100": {
+   "stopId": "de:08317:17207",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08317110": {
+   "stopId": "de:08317:13554",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317113": {
+   "stopId": "de:08317:16700",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317114": {
+   "stopId": "de:08317:19102",
+   "stopName": "Rathaus",
+   "qualitaet": 928,
+   "art": "ort"
+  },
+  "08317116": {
+   "stopId": "de:08316:6673",
+   "stopName": "Bahnhof",
+   "qualitaet": 931,
+   "art": "ort"
+  },
+  "08317118": {
+   "stopId": "de:08317:30055",
+   "stopName": "Tal",
+   "qualitaet": 973,
+   "art": "ort"
+  },
+  "08317121": {
+   "stopId": "de:08317:11503",
+   "stopName": "Adler",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08317122": {
+   "stopId": "de:08317:14708",
+   "stopName": "Ost",
+   "qualitaet": 972,
+   "art": "ort"
+  },
+  "08317129": {
+   "stopId": "de:08317:18420",
+   "stopName": "Bahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08317141": {
+   "stopId": "de:08317:12475",
+   "stopName": "Bahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08317145": {
+   "stopId": "de:08317:18010",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317146": {
+   "stopId": "de:08317:11022",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08317150": {
+   "stopId": "de:08317:12402",
+   "stopName": "Hirsch",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08317152": {
+   "stopId": "de:08317:19003",
+   "stopName": "Rathaus",
+   "qualitaet": 971,
+   "art": "ort"
+  },
+  "08325001": {
+   "stopId": "de:08325:1405",
+   "stopName": "Rathaus",
+   "qualitaet": 936,
+   "art": "ort"
+  },
+  "08325009": {
+   "stopId": "ch:23008:1184",
+   "stopName": "Dorf",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08325011": {
+   "stopId": "de:08325:7230",
+   "stopName": "Rathaus",
+   "qualitaet": 936,
+   "art": "ort"
+  },
+  "08325012": {
+   "stopId": "de:08325:27103",
+   "stopName": "Pfauhof",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08325014": {
+   "stopId": "de:08325:1483",
+   "stopName": "Post",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08325015": {
+   "stopId": "de:08325:7217",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08325024": {
+   "stopId": "de:09772:7391",
+   "stopName": "Hardt",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08325045": {
+   "stopId": "de:08325:27039",
+   "stopName": "Abzw. Aistaig",
+   "qualitaet": 855,
+   "art": "ort"
+  },
+  "08325049": {
+   "stopId": "de:08325:6584",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08325050": {
+   "stopId": "de:08325:6598",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08325051": {
+   "stopId": "de:08325:6585",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08325053": {
+   "stopId": "de:08325:1925",
+   "stopName": "Busbahnhof",
+   "qualitaet": 980,
+   "art": "bahnhof"
+  },
+  "08325057": {
+   "stopId": "de:08325:27077",
+   "stopName": "Rathaus",
+   "qualitaet": 933,
+   "art": "ort"
+  },
+  "08325060": {
+   "stopId": "de:08325:1315",
+   "stopName": "Linde",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08325064": {
+   "stopId": "de:08325:1234",
+   "stopName": "Adler",
+   "qualitaet": 946,
+   "art": "ort"
+  },
+  "08325069": {
+   "stopId": "de:08325:1956",
+   "stopName": "Steinhäus./K5540",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08325070": {
+   "stopId": "de:08325:7111",
+   "stopName": "Rathaus",
+   "qualitaet": 966,
+   "art": "ort"
+  },
+  "08325071": {
+   "stopId": "de:08325:1622",
+   "stopName": "Rathaus",
+   "qualitaet": 936,
+   "art": "ort"
+  },
+  "08325072": {
+   "stopId": "de:08325:1594",
+   "stopName": "Mitte",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08326003": {
+   "stopId": "de:08326:1011",
+   "stopName": "ZOB",
+   "qualitaet": 956,
+   "art": "bahnhof"
+  },
+  "08326005": {
+   "stopId": "de:08326:6750",
+   "stopName": "Zollhaus Bf",
+   "qualitaet": 953,
+   "art": "bahnhof"
+  },
+  "08326006": {
+   "stopId": "de:08326:6711",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08326010": {
+   "stopId": "de:08326:8096",
+   "stopName": "Lupfenweg",
+   "qualitaet": 952,
+   "art": "ort"
+  },
+  "08326012": {
+   "stopId": "de:08326:6537",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08326017": {
+   "stopId": "de:08326:8451",
+   "stopName": "Irma-Öhrlein-Weg",
+   "qualitaet": 856,
+   "art": "ort"
+  },
+  "08326020": {
+   "stopId": "de:08326:482",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08326027": {
+   "stopId": "de:08326:6701",
+   "stopName": "Mitte Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08326031": {
+   "stopId": "de:08326:28400",
+   "stopName": "Rathausstr.",
+   "qualitaet": 827,
+   "art": "ort"
+  },
+  "08326037": {
+   "stopId": "de:08326:1144",
+   "stopName": "Tannenhöfe",
+   "qualitaet": 952,
+   "art": "ort"
+  },
+  "08326041": {
+   "stopId": "de:08326:8296",
+   "stopName": "Reuten",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08326052": {
+   "stopId": "de:08326:6597",
+   "stopName": "Bahnhof",
+   "qualitaet": 843,
+   "art": "ort"
+  },
+  "08326054": {
+   "stopId": "de:08326:1176",
+   "stopName": "Ortsmitte",
+   "qualitaet": 830,
+   "art": "ort"
+  },
+  "08326055": {
+   "stopId": "de:08326:8846",
+   "stopName": "Rathaus",
+   "qualitaet": 822,
+   "art": "ort"
+  },
+  "08326060": {
+   "stopId": "de:08326:1158",
+   "stopName": "Bühl",
+   "qualitaet": 801,
+   "art": "ort"
+  },
+  "08326061": {
+   "stopId": "de:08326:1324",
+   "stopName": "Wasen",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08326065": {
+   "stopId": "de:08326:8848",
+   "stopName": "Kirche",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08326068": {
+   "stopId": "de:08326:1550",
+   "stopName": "ZOB",
+   "qualitaet": 953,
+   "art": "bahnhof"
+  },
+  "08326074": {
+   "stopId": "de:08326:6592",
+   "stopName": "Bf",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08326075": {
+   "stopId": "de:08326:6666",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08327002": {
+   "stopId": "de:08327:2006",
+   "stopName": "Bahnhof",
+   "qualitaet": 962,
+   "art": "bahnhof"
+  },
+  "08327004": {
+   "stopId": "de:08327:1042",
+   "stopName": "Rathaus",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08327005": {
+   "stopId": "de:08327:3000",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08327006": {
+   "stopId": "de:08327:1079",
+   "stopName": "Schule",
+   "qualitaet": 938,
+   "art": "ort"
+  },
+  "08327007": {
+   "stopId": "de:08327:1085",
+   "stopName": "Kirche",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08327009": {
+   "stopId": "de:08327:1098",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08327010": {
+   "stopId": "de:08327:1109",
+   "stopName": "Rathaus",
+   "qualitaet": 939,
+   "art": "ort"
+  },
+  "08327011": {
+   "stopId": "de:08327:1124",
+   "stopName": "Schule",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08327012": {
+   "stopId": "de:08327:1128",
+   "stopName": "Höfe",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08327013": {
+   "stopId": "de:08327:1916",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08327017": {
+   "stopId": "de:08327:1186",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08327018": {
+   "stopId": "de:08327:3011",
+   "stopName": "Bahnhof",
+   "qualitaet": 965,
+   "art": "bahnhof"
+  },
+  "08327019": {
+   "stopId": "de:08327:1197",
+   "stopName": "Rathaus",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08327020": {
+   "stopId": "de:08327:1204",
+   "stopName": "Rathausstraße",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08327023": {
+   "stopId": "de:08327:1220",
+   "stopName": "Rathaus",
+   "qualitaet": 970,
+   "art": "ort"
+  },
+  "08327025": {
+   "stopId": "de:08327:1242",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08327027": {
+   "stopId": "de:08327:1253",
+   "stopName": "Molkeplatz",
+   "qualitaet": 932,
+   "art": "ort"
+  },
+  "08327029": {
+   "stopId": "de:08327:1264",
+   "stopName": "ZOB/Ortsmitte",
+   "qualitaet": 925,
+   "art": "ort"
+  },
+  "08327030": {
+   "stopId": "de:08327:1273",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08327033": {
+   "stopId": "de:08327:1312",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08327038": {
+   "stopId": "de:08327:1395",
+   "stopName": "Schule",
+   "qualitaet": 972,
+   "art": "ort"
+  },
+  "08327041": {
+   "stopId": "de:08327:1430",
+   "stopName": "Kolbinger Straße",
+   "qualitaet": 946,
+   "art": "ort"
+  },
+  "08327046": {
+   "stopId": "de:08327:1510",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08327049": {
+   "stopId": "de:08327:1696",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08327050": {
+   "stopId": "de:08327:1748",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08327051": {
+   "stopId": "de:08327:1862",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08327054": {
+   "stopId": "de:08327:2017",
+   "stopName": "Nordbahnhof",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08327055": {
+   "stopId": "de:08327:1473",
+   "stopName": "Rathaus",
+   "qualitaet": 972,
+   "art": "ort"
+  },
+  "08327056": {
+   "stopId": "de:08327:1436",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08327057": {
+   "stopId": "de:08327:1303",
+   "stopName": "Rathaus",
+   "qualitaet": 970,
+   "art": "ort"
+  },
+  "08335001": {
+   "stopId": "de:09780:9223",
+   "stopName": "Aach",
+   "qualitaet": 932,
+   "art": "ort"
+  },
+  "08335002": {
+   "stopId": "de:08335:6549",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08335015": {
+   "stopId": "de:07339:33011",
+   "stopName": "Hochstattstraße",
+   "qualitaet": 783,
+   "art": "ort"
+  },
+  "08335021": {
+   "stopId": "de:08335:3328",
+   "stopName": "Kirche",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08335022": {
+   "stopId": "de:08335:6551",
+   "stopName": "Engen",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08335025": {
+   "stopId": "de:08335:11327",
+   "stopName": "Hafen",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08335028": {
+   "stopId": "de:08335:6552",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08335035": {
+   "stopId": "de:08335:2380",
+   "stopName": "Sonne",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08335043": {
+   "stopId": "de:08335:6554",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08335055": {
+   "stopId": "de:09183:80906",
+   "stopName": "Moos",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08335057": {
+   "stopId": "de:08335:2873",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08335061": {
+   "stopId": "de:08335:11332",
+   "stopName": "Hafen",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08335063": {
+   "stopId": "de:08335:2307",
+   "stopName": "Bodenseestraße",
+   "qualitaet": 720,
+   "art": "ort"
+  },
+  "08335066": {
+   "stopId": "de:08335:6561",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08335075": {
+   "stopId": "de:08335:6588",
+   "stopName": "Singen (Htw) Bahnhof",
+   "qualitaet": 969,
+   "art": "bahnhof"
+  },
+  "08335077": {
+   "stopId": "de:08335:2513",
+   "stopName": "Wiechs",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08335079": {
+   "stopId": "de:08335:6692",
+   "stopName": "Bahnhof",
+   "qualitaet": 962,
+   "art": "bahnhof"
+  },
+  "08335080": {
+   "stopId": "de:08335:2383",
+   "stopName": "Rathaus",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08335081": {
+   "stopId": "de:08335:2132",
+   "stopName": "Rathaus",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08335096": {
+   "stopId": "de:08337:5788",
+   "stopName": "Hohenfels",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08335097": {
+   "stopId": "de:08335:6559",
+   "stopName": "Bahnhof",
+   "qualitaet": 978,
+   "art": "bahnhof"
+  },
+  "08335098": {
+   "stopId": "de:08335:6557",
+   "stopName": "Bahnhof",
+   "qualitaet": 978,
+   "art": "bahnhof"
+  },
+  "08335099": {
+   "stopId": "de:08335:6693",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08335100": {
+   "stopId": "de:08335:80029",
+   "stopName": "Neugasse",
+   "qualitaet": 972,
+   "art": "ort"
+  },
+  "08336004": {
+   "stopId": "de:08336:3989",
+   "stopName": "Aitern",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08336006": {
+   "stopId": "de:08336:6628",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336008": {
+   "stopId": "de:08336:11503",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08336010": {
+   "stopId": "de:08336:73899",
+   "stopName": "Böllen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08336014": {
+   "stopId": "de:08336:6631",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336019": {
+   "stopId": "de:08336:6634",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336024": {
+   "stopId": "de:08325:27076",
+   "stopName": "Rathaus",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08336025": {
+   "stopId": "de:08336:3680",
+   "stopName": "Wühre",
+   "qualitaet": 931,
+   "art": "ort"
+  },
+  "08336034": {
+   "stopId": "de:08336:3801",
+   "stopName": "Dorfplatz",
+   "qualitaet": 940,
+   "art": "ort"
+  },
+  "08336036": {
+   "stopId": "de:08336:6637",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336043": {
+   "stopId": "de:08336:11108",
+   "stopName": "Zoll",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08336045": {
+   "stopId": "de:08336:6759",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336050": {
+   "stopId": "de:08336:6600",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08336057": {
+   "stopId": "de:08336:6602",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336069": {
+   "stopId": "de:08336:6578",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336073": {
+   "stopId": "de:08336:11528",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08336075": {
+   "stopId": "de:08336:11529",
+   "stopName": "Schule",
+   "qualitaet": 944,
+   "art": "ort"
+  },
+  "08336078": {
+   "stopId": "de:08336:6678",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336079": {
+   "stopId": "de:08336:3676",
+   "stopName": "Zentrum",
+   "qualitaet": 822,
+   "art": "ort"
+  },
+  "08336081": {
+   "stopId": "de:08336:6601",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336082": {
+   "stopId": "de:08336:3627",
+   "stopName": "Niederdossenbach",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08336084": {
+   "stopId": "de:08336:3788",
+   "stopName": "Lehnacker",
+   "qualitaet": 946,
+   "art": "ort"
+  },
+  "08336087": {
+   "stopId": "de:08336:3667",
+   "stopName": "Busbahnhof",
+   "qualitaet": 977,
+   "art": "bahnhof"
+  },
+  "08336090": {
+   "stopId": "de:08336:3670",
+   "stopName": "Engel",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08336091": {
+   "stopId": "de:08336:6639",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336094": {
+   "stopId": "de:08336:3678",
+   "stopName": "Wembach",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08336100": {
+   "stopId": "de:08336:6756",
+   "stopName": "Bahnhof",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08336103": {
+   "stopId": "de:08336:6599",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336104": {
+   "stopId": "de:08336:11162",
+   "stopName": "Ort",
+   "qualitaet": 978,
+   "art": "ort"
+  },
+  "08336105": {
+   "stopId": "de:08336:6605",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08336106": {
+   "stopId": "de:08336:3914",
+   "stopName": "Ehrsberg",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08336107": {
+   "stopId": "de:08336:3761",
+   "stopName": "Raich",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08337002": {
+   "stopId": "de:08337:6576",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08337013": {
+   "stopId": "de:08337:5636",
+   "stopName": "Innerlehen Rathaus",
+   "qualitaet": 858,
+   "art": "ort"
+  },
+  "08337022": {
+   "stopId": "de:08337:6166",
+   "stopName": "Zentrum",
+   "qualitaet": 877,
+   "art": "ort"
+  },
+  "08337027": {
+   "stopId": "de:08337:5755",
+   "stopName": "Fröhnd",
+   "qualitaet": 975,
+   "art": "ort"
+  },
+  "08337030": {
+   "stopId": "de:08337:4563",
+   "stopName": "Rathaus",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08337032": {
+   "stopId": "de:08337:4017",
+   "stopName": "Ost",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08337038": {
+   "stopId": "de:08337:5801",
+   "stopName": "Schule",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08337039": {
+   "stopId": "de:08337:4752",
+   "stopName": "Bulgenbach",
+   "qualitaet": 954,
+   "art": "ort"
+  },
+  "08337049": {
+   "stopId": "de:08337:4420",
+   "stopName": "Rathaus",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08337051": {
+   "stopId": "de:08337:5696",
+   "stopName": "Rathaus",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08337053": {
+   "stopId": "de:08337:4313",
+   "stopName": "Lienheim",
+   "qualitaet": 724,
+   "art": "ort"
+  },
+  "08337060": {
+   "stopId": "de:08337:6570",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08337062": {
+   "stopId": "de:08337:6568",
+   "stopName": "Bahnhof",
+   "qualitaet": 966,
+   "art": "bahnhof"
+  },
+  "08337065": {
+   "stopId": "de:08337:6608",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08337066": {
+   "stopId": "de:08337:4454",
+   "stopName": "Laufenburger Str.33 ",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08337070": {
+   "stopId": "de:08337:6572",
+   "stopName": "Bf SBB",
+   "qualitaet": 980,
+   "art": "bahnhof"
+  },
+  "08337076": {
+   "stopId": "de:08337:4382",
+   "stopName": "Hänner",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08337090": {
+   "stopId": "de:08337:4373",
+   "stopName": "Bf (Bus)",
+   "qualitaet": 959,
+   "art": "bahnhof"
+  },
+  "08337096": {
+   "stopId": "de:08337:6566",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08337097": {
+   "stopId": "de:08337:5501",
+   "stopName": "Busbahnhof",
+   "qualitaet": 981,
+   "art": "bahnhof"
+  },
+  "08337106": {
+   "stopId": "de:08337:6761",
+   "stopName": "Bahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08337108": {
+   "stopId": "de:08337:5599",
+   "stopName": "Busbahnhof",
+   "qualitaet": 978,
+   "art": "bahnhof"
+  },
+  "08337116": {
+   "stopId": "de:08337:4078",
+   "stopName": "Bf (Bus)",
+   "qualitaet": 955,
+   "art": "bahnhof"
+  },
+  "08337123": {
+   "stopId": "de:08337:6762",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08337124": {
+   "stopId": "de:08337:6133",
+   "stopName": "Bahnhof",
+   "qualitaet": 932,
+   "art": "ort"
+  },
+  "08337125": {
+   "stopId": "de:08337:4310",
+   "stopName": "Küßnach",
+   "qualitaet": 952,
+   "art": "ort"
+  },
+  "08337126": {
+   "stopId": "de:08337:6575",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08337127": {
+   "stopId": "de:08337:1090",
+   "stopName": "Wutachmühle",
+   "qualitaet": 938,
+   "art": "ort"
+  },
+  "08337128": {
+   "stopId": "de:08337:4751",
+   "stopName": "Säge",
+   "qualitaet": 976,
+   "art": "ort"
+  },
+  "08415027": {
+   "stopId": "de:08415:28717",
+   "stopName": "Gomadingen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08415028": {
+   "stopId": "de:08415:28276",
+   "stopName": "Rathaus",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08415034": {
+   "stopId": "de:08415:28557",
+   "stopName": "Schule",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08415039": {
+   "stopId": "de:08415:28219",
+   "stopName": "Rathaus",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08415048": {
+   "stopId": "de:08415:28751",
+   "stopName": "Greut",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08415050": {
+   "stopId": "de:08415:22008",
+   "stopName": "Metzingen",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08415053": {
+   "stopId": "de:08415:21510",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08415058": {
+   "stopId": "de:08415:28760",
+   "stopName": "Ortsmitte",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08415059": {
+   "stopId": "de:08415:29018",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08415060": {
+   "stopId": "de:08415:24323",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08415061": {
+   "stopId": "de:08415:22006",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 975,
+   "art": "bahnhof"
+  },
+  "08415062": {
+   "stopId": "de:08415:28254",
+   "stopName": "Mitte",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08415073": {
+   "stopId": "de:08415:28809",
+   "stopName": "Trochtelfingen",
+   "qualitaet": 978,
+   "art": "ort"
+  },
+  "08415078": {
+   "stopId": "de:08415:28129",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08415080": {
+   "stopId": "de:08415:22003",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08415085": {
+   "stopId": "de:08415:28576",
+   "stopName": "Klinge",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08415087": {
+   "stopId": "de:08415:24319",
+   "stopName": "Rathaus",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08415088": {
+   "stopId": "de:08415:28679",
+   "stopName": "Rathaus",
+   "qualitaet": 939,
+   "art": "ort"
+  },
+  "08415089": {
+   "stopId": "de:08415:28698",
+   "stopName": "Bahnhof",
+   "qualitaet": 957,
+   "art": "bahnhof"
+  },
+  "08415091": {
+   "stopId": "de:08111:2528",
+   "stopName": "Sonnenbühl",
+   "qualitaet": 954,
+   "art": "ort"
+  },
+  "08415093": {
+   "stopId": "de:08415:28373",
+   "stopName": "Ortsmitte",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08416006": {
+   "stopId": "de:08416:2106",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08416009": {
+   "stopId": "de:08416:6349",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08416011": {
+   "stopId": "de:08416:2102",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08416015": {
+   "stopId": "de:08416:4498",
+   "stopName": "Steinach",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08416018": {
+   "stopId": "de:08416:6264",
+   "stopName": "Schule",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08416022": {
+   "stopId": "de:08416:2002",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08416023": {
+   "stopId": "de:08416:807",
+   "stopName": "Schulzentrum",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08416025": {
+   "stopId": "de:08416:1006",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08416026": {
+   "stopId": "de:08416:2103",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08416031": {
+   "stopId": "de:08416:4429",
+   "stopName": "Birkenstraße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08416036": {
+   "stopId": "de:08416:1005",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08416041": {
+   "stopId": "de:08416:11000",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08416048": {
+   "stopId": "de:08416:5212",
+   "stopName": "Bahnhof",
+   "qualitaet": 967,
+   "art": "bahnhof"
+  },
+  "08416049": {
+   "stopId": "de:08416:3037",
+   "stopName": "Rathaus",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08416050": {
+   "stopId": "de:08416:3062",
+   "stopName": "Rathaus",
+   "qualitaet": 933,
+   "art": "ort"
+  },
+  "08417002": {
+   "stopId": "de:08417:32109",
+   "stopName": "Bahnhof/Busbahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08417008": {
+   "stopId": "de:08417:30104",
+   "stopName": "Bisingen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08417010": {
+   "stopId": "de:08417:30121",
+   "stopName": "Bank",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08417013": {
+   "stopId": "de:08417:30132",
+   "stopName": "Bhf",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08417014": {
+   "stopId": "de:08417:37606",
+   "stopName": "Rößle",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08417015": {
+   "stopId": "de:08417:37538",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08417016": {
+   "stopId": "de:08417:37541",
+   "stopName": "Rathaus",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08417022": {
+   "stopId": "de:08136:5700",
+   "stopName": "Rathaus",
+   "qualitaet": 944,
+   "art": "ort"
+  },
+  "08417023": {
+   "stopId": "de:08417:30902",
+   "stopName": "Rathaus",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08417025": {
+   "stopId": "de:08417:33089",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08417029": {
+   "stopId": "de:08417:37549",
+   "stopName": "Rathaus",
+   "qualitaet": 968,
+   "art": "ort"
+  },
+  "08417031": {
+   "stopId": "de:08417:32107",
+   "stopName": "Hechingen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08417036": {
+   "stopId": "de:08417:30363",
+   "stopName": "Bahnhof",
+   "qualitaet": 971,
+   "art": "bahnhof"
+  },
+  "08417044": {
+   "stopId": "de:08417:37633",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08417045": {
+   "stopId": "de:08417:37641",
+   "stopName": "Dietstaig",
+   "qualitaet": 939,
+   "art": "ort"
+  },
+  "08417047": {
+   "stopId": "de:08417:37596",
+   "stopName": "Kirche",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08417051": {
+   "stopId": "de:08417:33093",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08417052": {
+   "stopId": "de:08417:37547",
+   "stopName": "Honau",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08417057": {
+   "stopId": "de:08417:30477",
+   "stopName": "Sportplatz",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08417063": {
+   "stopId": "de:08417:32117",
+   "stopName": "Bahnhof",
+   "qualitaet": 972,
+   "art": "bahnhof"
+  },
+  "08417075": {
+   "stopId": "de:08417:30591",
+   "stopName": "Rathaus",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08417079": {
+   "stopId": "de:08417:32110",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08421000": {
+   "stopId": "de:08421:1008",
+   "stopName": "Hauptbahnhof",
+   "qualitaet": 967,
+   "art": "bahnhof"
+  },
+  "08425002": {
+   "stopId": "de:08425:3005",
+   "stopName": "Bahnhof",
+   "qualitaet": 974,
+   "art": "bahnhof"
+  },
+  "08425005": {
+   "stopId": "de:08425:2302",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08425008": {
+   "stopId": "de:08425:2551",
+   "stopName": "Bahnhof",
+   "qualitaet": 971,
+   "art": "bahnhof"
+  },
+  "08425011": {
+   "stopId": "de:08425:2271",
+   "stopName": "Asselfingen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425013": {
+   "stopId": "de:08425:2202",
+   "stopName": "Grundschule",
+   "qualitaet": 937,
+   "art": "ort"
+  },
+  "08425014": {
+   "stopId": "de:08425:2460",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08425017": {
+   "stopId": "de:08425:2883",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08425019": {
+   "stopId": "de:08425:2381",
+   "stopName": "Lehmgrube",
+   "qualitaet": 937,
+   "art": "ort"
+  },
+  "08425020": {
+   "stopId": "de:08425:2811",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08425022": {
+   "stopId": "de:08425:2211",
+   "stopName": "Börslingen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425024": {
+   "stopId": "de:08425:2361",
+   "stopName": "Breitingen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425028": {
+   "stopId": "de:08425:3842",
+   "stopName": "Bauhof",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08425031": {
+   "stopId": "de:08425:2409",
+   "stopName": "Ortsmitte",
+   "qualitaet": 937,
+   "art": "ort"
+  },
+  "08425033": {
+   "stopId": "de:08425:3140",
+   "stopName": "Ehingen (Donau)",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425035": {
+   "stopId": "de:08425:3401",
+   "stopName": "Emeringen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425036": {
+   "stopId": "de:08425:3574",
+   "stopName": "Bussenblick",
+   "qualitaet": 949,
+   "art": "ort"
+  },
+  "08425039": {
+   "stopId": "de:08425:3601",
+   "stopName": "Bahnhof",
+   "qualitaet": 971,
+   "art": "bahnhof"
+  },
+  "08425050": {
+   "stopId": "de:08425:3302",
+   "stopName": "Adler",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08425052": {
+   "stopId": "de:08425:3561",
+   "stopName": "Grundsheim",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425055": {
+   "stopId": "de:08425:3591",
+   "stopName": "Hausen am Bussen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425062": {
+   "stopId": "de:08425:2351",
+   "stopName": "Holzkirch",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425064": {
+   "stopId": "de:08425:3771",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08425066": {
+   "stopId": "de:08425:3812",
+   "stopName": "Altes Rathaus",
+   "qualitaet": 944,
+   "art": "ort"
+  },
+  "08425071": {
+   "stopId": "de:08425:2653",
+   "stopName": "Schulzentrum",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08425072": {
+   "stopId": "de:08425:2102",
+   "stopName": "Bahnhof",
+   "qualitaet": 970,
+   "art": "bahnhof"
+  },
+  "08425073": {
+   "stopId": "de:08425:3469",
+   "stopName": "Neuburg",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08425075": {
+   "stopId": "de:08425:2510",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08425079": {
+   "stopId": "de:08425:2626",
+   "stopName": "Bahnhof",
+   "qualitaet": 980,
+   "art": "bahnhof"
+  },
+  "08425081": {
+   "stopId": "de:08425:3481",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08425083": {
+   "stopId": "de:08425:2331",
+   "stopName": "Eisental",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08425084": {
+   "stopId": "de:08425:2613",
+   "stopName": "Rathaus",
+   "qualitaet": 943,
+   "art": "ort"
+  },
+  "08425085": {
+   "stopId": "de:08425:2221",
+   "stopName": "Nerenstetten",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425088": {
+   "stopId": "de:08425:3361",
+   "stopName": "Kirchplatz",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08425090": {
+   "stopId": "de:08425:3443",
+   "stopName": "Schule",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08425091": {
+   "stopId": "de:08425:3523",
+   "stopName": "Schule",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08425092": {
+   "stopId": "de:08425:2251",
+   "stopName": "Hirsch",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08425093": {
+   "stopId": "de:08425:3336",
+   "stopName": "Seniorenzentrum",
+   "qualitaet": 940,
+   "art": "ort"
+  },
+  "08425097": {
+   "stopId": "de:08425:2261",
+   "stopName": "Bahnhof",
+   "qualitaet": 971,
+   "art": "bahnhof"
+  },
+  "08425098": {
+   "stopId": "de:08425:3412",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08425104": {
+   "stopId": "de:08425:3501",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08425108": {
+   "stopId": "de:08425:2901",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08425110": {
+   "stopId": "de:08425:3784",
+   "stopName": "Rathaus",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08425112": {
+   "stopId": "de:08425:2241",
+   "stopName": "Ortsmitte",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08425123": {
+   "stopId": "de:08425:3474",
+   "stopName": "Info-Zentrum",
+   "qualitaet": 949,
+   "art": "ort"
+  },
+  "08425124": {
+   "stopId": "de:08425:3510",
+   "stopName": "Neue Straße",
+   "qualitaet": 952,
+   "art": "ort"
+  },
+  "08425125": {
+   "stopId": "de:08425:3581",
+   "stopName": "Unterwachingen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08425130": {
+   "stopId": "de:08425:2322",
+   "stopName": "Schule",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08425134": {
+   "stopId": "de:08425:2672",
+   "stopName": "Rathaus",
+   "qualitaet": 941,
+   "art": "ort"
+  },
+  "08425135": {
+   "stopId": "de:08425:2470",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08425137": {
+   "stopId": "de:08425:3727",
+   "stopName": "Buch",
+   "qualitaet": 971,
+   "art": "ort"
+  },
+  "08425139": {
+   "stopId": "de:08425:2692",
+   "stopName": "Schule",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08425140": {
+   "stopId": "de:08425:3881",
+   "stopName": "Ortsmitte",
+   "qualitaet": 929,
+   "art": "ort"
+  },
+  "08425141": {
+   "stopId": "de:08425:2728",
+   "stopName": "Bahnhof",
+   "qualitaet": 963,
+   "art": "bahnhof"
+  },
+  "08426001": {
+   "stopId": "de:08426:6811",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08426005": {
+   "stopId": "de:08426:6014",
+   "stopName": "Engel",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08426006": {
+   "stopId": "de:08426:6754",
+   "stopName": "Rathaus",
+   "qualitaet": 946,
+   "art": "ort"
+  },
+  "08426011": {
+   "stopId": "de:08426:6706",
+   "stopName": "Hausen",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08426013": {
+   "stopId": "de:08426:6036",
+   "stopName": "GMS",
+   "qualitaet": 972,
+   "art": "ort"
+  },
+  "08426014": {
+   "stopId": "de:08426:6043",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08426019": {
+   "stopId": "de:08426:6064",
+   "stopName": "Rathaus",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08426020": {
+   "stopId": "de:08426:6069",
+   "stopName": "Rathaus",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08426021": {
+   "stopId": "de:08426:6076",
+   "stopName": "An der Steige",
+   "qualitaet": 977,
+   "art": "ort"
+  },
+  "08426028": {
+   "stopId": "de:08426:6171",
+   "stopName": "Ortsmitte",
+   "qualitaet": 952,
+   "art": "ort"
+  },
+  "08426031": {
+   "stopId": "de:08426:6657",
+   "stopName": "Buchau",
+   "qualitaet": 795,
+   "art": "ort"
+  },
+  "08426035": {
+   "stopId": "de:08426:6215",
+   "stopName": "Rathaus",
+   "qualitaet": 932,
+   "art": "ort"
+  },
+  "08426036": {
+   "stopId": "at:44:47053",
+   "stopName": "Dürnau Mitte",
+   "qualitaet": 931,
+   "art": "ort"
+  },
+  "08426038": {
+   "stopId": "de:08426:6833",
+   "stopName": "Ritzenweiler",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08426043": {
+   "stopId": "de:08426:6236",
+   "stopName": "Post",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08426044": {
+   "stopId": "de:08426:6726",
+   "stopName": "Einkaufszentrum",
+   "qualitaet": 940,
+   "art": "ort"
+  },
+  "08426045": {
+   "stopId": "de:08426:6256",
+   "stopName": "Schulzentrum",
+   "qualitaet": 943,
+   "art": "ort"
+  },
+  "08426062": {
+   "stopId": "de:08426:6279",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08426064": {
+   "stopId": "de:08426:6287",
+   "stopName": "Krone",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08426065": {
+   "stopId": "de:08127:30221",
+   "stopName": "Haller Straße",
+   "qualitaet": 745,
+   "art": "ort"
+  },
+  "08426066": {
+   "stopId": "de:08426:6737",
+   "stopName": "Dettinger Straße",
+   "qualitaet": 807,
+   "art": "ort"
+  },
+  "08426067": {
+   "stopId": "de:08426:6301",
+   "stopName": "Rathaus",
+   "qualitaet": 937,
+   "art": "ort"
+  },
+  "08426070": {
+   "stopId": "de:08426:6327",
+   "stopName": "Rathaus",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08426071": {
+   "stopId": "de:08426:6389",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08426073": {
+   "stopId": "de:08426:6401",
+   "stopName": "Rathaus",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08426074": {
+   "stopId": "de:08426:6406",
+   "stopName": "Adler",
+   "qualitaet": 968,
+   "art": "ort"
+  },
+  "08426078": {
+   "stopId": "de:08426:6417",
+   "stopName": "Klocker",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08426087": {
+   "stopId": "de:08426:6432",
+   "stopName": "Dr.-Hans-Liebherr-Str. 39",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08426090": {
+   "stopId": "de:08426:6454",
+   "stopName": "Oggelshausen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08426097": {
+   "stopId": "de:08426:6483",
+   "stopName": "Zell",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08426100": {
+   "stopId": "de:08426:6509",
+   "stopName": "Rathaus",
+   "qualitaet": 970,
+   "art": "ort"
+  },
+  "08426109": {
+   "stopId": "de:08426:6580",
+   "stopName": "Rose",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08426113": {
+   "stopId": "de:08426:6675",
+   "stopName": "St. Anna Kapelle",
+   "qualitaet": 740,
+   "art": "ort"
+  },
+  "08426117": {
+   "stopId": "de:08426:6587",
+   "stopName": "Tannheim (Württ)",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08426120": {
+   "stopId": "de:08426:6682",
+   "stopName": "Häusern",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08426121": {
+   "stopId": "de:08426:6611",
+   "stopName": "Sonne",
+   "qualitaet": 958,
+   "art": "ort"
+  },
+  "08426124": {
+   "stopId": "de:08426:6629",
+   "stopName": "Riedlinger Straße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08426125": {
+   "stopId": "de:08426:6634",
+   "stopName": "Raiba",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08426128": {
+   "stopId": "de:08426:6650",
+   "stopName": "Bahnhof",
+   "qualitaet": 977,
+   "art": "bahnhof"
+  },
+  "08426134": {
+   "stopId": "de:08426:6536",
+   "stopName": "Bahnhof",
+   "qualitaet": 964,
+   "art": "bahnhof"
+  },
+  "08426135": {
+   "stopId": "de:08426:6674",
+   "stopName": "Mitte",
+   "qualitaet": 974,
+   "art": "ort"
+  },
+  "08435005": {
+   "stopId": "de:08435:14623",
+   "stopName": "Bahnhof-Ahausen",
+   "qualitaet": 971,
+   "art": "bahnhof"
+  },
+  "08435010": {
+   "stopId": "de:08435:4629",
+   "stopName": "Gemeindezentrum",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08435013": {
+   "stopId": "de:08435:32002",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08435015": {
+   "stopId": "de:08435:4905",
+   "stopName": "Bruckfelden",
+   "qualitaet": 949,
+   "art": "ort"
+  },
+  "08435016": {
+   "stopId": "de:08435:44002",
+   "stopName": "FN-Stadtbahnhof",
+   "qualitaet": 978,
+   "art": "bahnhof"
+  },
+  "08435018": {
+   "stopId": "de:08435:4522",
+   "stopName": "Rathaus",
+   "qualitaet": 972,
+   "art": "ort"
+  },
+  "08435024": {
+   "stopId": "de:08435:4514",
+   "stopName": "Rathaus",
+   "qualitaet": 843,
+   "art": "ort"
+  },
+  "08435030": {
+   "stopId": "de:08435:44160",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08435034": {
+   "stopId": "de:08435:4646",
+   "stopName": "Bahnhof",
+   "qualitaet": 973,
+   "art": "bahnhof"
+  },
+  "08435035": {
+   "stopId": "de:08435:4203",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08435036": {
+   "stopId": "de:08435:9",
+   "stopName": "Norma",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08435042": {
+   "stopId": "de:08435:44614",
+   "stopName": "Oberrussenried",
+   "qualitaet": 940,
+   "art": "ort"
+  },
+  "08435045": {
+   "stopId": "de:08435:8363",
+   "stopName": "Kirche",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08435047": {
+   "stopId": "de:08435:4846",
+   "stopName": "Hohenbodman",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08435052": {
+   "stopId": "de:08435:4580",
+   "stopName": "Salem Bahnhof",
+   "qualitaet": 953,
+   "art": "bahnhof"
+  },
+  "08435053": {
+   "stopId": "de:08435:4547",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08435054": {
+   "stopId": "de:08425:3275",
+   "stopName": "Stetten",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08435057": {
+   "stopId": "de:08435:44076",
+   "stopName": "Moos",
+   "qualitaet": 962,
+   "art": "ort"
+  },
+  "08435059": {
+   "stopId": "de:08435:4543",
+   "stopName": "Bahnhof Therme",
+   "qualitaet": 958,
+   "art": "bahnhof"
+  },
+  "08435066": {
+   "stopId": "de:08435:4594",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08435067": {
+   "stopId": "de:08435:4686",
+   "stopName": "Burg",
+   "qualitaet": 972,
+   "art": "ort"
+  },
+  "08436001": {
+   "stopId": "de:08436:8901",
+   "stopName": "Baindt",
+   "qualitaet": 953,
+   "art": "ort"
+  },
+  "08436003": {
+   "stopId": "de:08436:1230",
+   "stopName": "Schule",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08436004": {
+   "stopId": "de:08436:1235",
+   "stopName": "Bahnhof",
+   "qualitaet": 958,
+   "art": "bahnhof"
+  },
+  "08436005": {
+   "stopId": "de:08436:8246",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08436006": {
+   "stopId": "de:08436:8560",
+   "stopName": "Korb",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08436008": {
+   "stopId": "de:08436:1000",
+   "stopName": "Bahnhof",
+   "qualitaet": 971,
+   "art": "bahnhof"
+  },
+  "08436009": {
+   "stopId": "de:08436:1145",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08436010": {
+   "stopId": "de:08436:8333",
+   "stopName": "Grundschule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08436011": {
+   "stopId": "de:08436:8317",
+   "stopName": "Bahnhof Niederbiegen",
+   "qualitaet": 960,
+   "art": "bahnhof"
+  },
+  "08436012": {
+   "stopId": "de:08436:8901",
+   "stopName": "Baindt",
+   "qualitaet": 948,
+   "art": "ort"
+  },
+  "08436013": {
+   "stopId": "ch:23021:19778",
+   "stopName": "Berg",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08436014": {
+   "stopId": "de:08436:48185",
+   "stopName": "Rathaus",
+   "qualitaet": 959,
+   "art": "ort"
+  },
+  "08436018": {
+   "stopId": "de:08436:8692",
+   "stopName": "Tobel",
+   "qualitaet": 956,
+   "art": "ort"
+  },
+  "08436019": {
+   "stopId": "de:08436:8297",
+   "stopName": "Schwarzenbach Ortsmitte",
+   "qualitaet": 920,
+   "art": "ort"
+  },
+  "08436024": {
+   "stopId": "de:08436:1768",
+   "stopName": "Rathaus",
+   "qualitaet": 957,
+   "art": "ort"
+  },
+  "08436027": {
+   "stopId": "de:08436:1045",
+   "stopName": "Eichstegen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08436039": {
+   "stopId": "de:08436:8132",
+   "stopName": "Ort",
+   "qualitaet": 969,
+   "art": "ort"
+  },
+  "08436040": {
+   "stopId": "de:08436:1805",
+   "stopName": "Guggenhausen",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08436047": {
+   "stopId": "de:08436:1048",
+   "stopName": "Ort",
+   "qualitaet": 967,
+   "art": "ort"
+  },
+  "08436049": {
+   "stopId": "de:09780:750",
+   "stopName": "Immenstadt",
+   "qualitaet": 767,
+   "art": "ort"
+  },
+  "08436052": {
+   "stopId": "de:08436:1159",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08436053": {
+   "stopId": "de:08436:48312",
+   "stopName": "Rathaus",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08436055": {
+   "stopId": "de:08436:1052",
+   "stopName": "Haselburg Allgäuallee",
+   "qualitaet": 719,
+   "art": "ort"
+  },
+  "08436064": {
+   "stopId": "de:08436:8000",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08436067": {
+   "stopId": "de:08436:1666",
+   "stopName": "Adler",
+   "qualitaet": 944,
+   "art": "ort"
+  },
+  "08436069": {
+   "stopId": "de:08436:8255",
+   "stopName": "Ort",
+   "qualitaet": 963,
+   "art": "ort"
+  },
+  "08436077": {
+   "stopId": "de:08436:1769",
+   "stopName": "Unterwaldhausen",
+   "qualitaet": 1000,
+   "art": "ort"
+  },
+  "08436078": {
+   "stopId": "de:08436:8283",
+   "stopName": "Moser",
+   "qualitaet": 947,
+   "art": "ort"
+  },
+  "08436079": {
+   "stopId": "de:08436:8260",
+   "stopName": "Waldburg",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08436081": {
+   "stopId": "de:08436:48803",
+   "stopName": "Immelmannstr./Tiefgarage",
+   "qualitaet": 874,
+   "art": "ort"
+  },
+  "08436085": {
+   "stopId": "de:08436:8208",
+   "stopName": "Schule",
+   "qualitaet": 929,
+   "art": "ort"
+  },
+  "08436087": {
+   "stopId": "de:08436:9001",
+   "stopName": "Bahnhof Mochenwangen",
+   "qualitaet": 964,
+   "art": "bahnhof"
+  },
+  "08436093": {
+   "stopId": "de:08436:1067",
+   "stopName": "Mitte",
+   "qualitaet": 955,
+   "art": "ort"
+  },
+  "08436094": {
+   "stopId": "de:08436:48785",
+   "stopName": "Ried",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08436095": {
+   "stopId": "de:08436:8803",
+   "stopName": "Luft",
+   "qualitaet": 965,
+   "art": "ort"
+  },
+  "08436096": {
+   "stopId": "de:08436:8227",
+   "stopName": "Staig",
+   "qualitaet": 960,
+   "art": "ort"
+  },
+  "08437005": {
+   "stopId": "de:08437:44000",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437008": {
+   "stopId": "de:07339:34009",
+   "stopName": "Mitte",
+   "qualitaet": 935,
+   "art": "ort"
+  },
+  "08437031": {
+   "stopId": "de:08437:48834",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437044": {
+   "stopId": "de:08437:44001",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437047": {
+   "stopId": "de:08437:40019",
+   "stopName": "Bahnhof",
+   "qualitaet": 965,
+   "art": "bahnhof"
+  },
+  "08437053": {
+   "stopId": "de:08437:41393",
+   "stopName": "Beizkofen",
+   "qualitaet": 954,
+   "art": "ort"
+  },
+  "08437056": {
+   "stopId": "de:08437:48881",
+   "stopName": "Kern",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08437059": {
+   "stopId": "de:08437:44004",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437065": {
+   "stopId": "de:08437:41013",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437072": {
+   "stopId": "de:08437:41266",
+   "stopName": "Höfe",
+   "qualitaet": 966,
+   "art": "ort"
+  },
+  "08437076": {
+   "stopId": "de:08437:44003",
+   "stopName": "Bahnhof",
+   "qualitaet": 958,
+   "art": "bahnhof"
+  },
+  "08437078": {
+   "stopId": "de:08437:41243",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437082": {
+   "stopId": "de:08437:40016",
+   "stopName": "Bahnhof",
+   "qualitaet": 968,
+   "art": "bahnhof"
+  },
+  "08437086": {
+   "stopId": "de:08437:41510",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437088": {
+   "stopId": "de:08437:41043",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437100": {
+   "stopId": "de:08437:49508",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437102": {
+   "stopId": "de:08437:44002",
+   "stopName": "Horn",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08437104": {
+   "stopId": "de:08437:42111",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437105": {
+   "stopId": "de:08437:47641",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437114": {
+   "stopId": "de:08437:40014",
+   "stopName": "Bahnhof",
+   "qualitaet": 1000,
+   "art": "bahnhof"
+  },
+  "08437118": {
+   "stopId": "de:09777:1308",
+   "stopName": "Wies",
+   "qualitaet": 950,
+   "art": "ort"
+  },
+  "08437123": {
+   "stopId": "de:08437:41625",
+   "stopName": "Reute",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08437124": {
+   "stopId": "de:08437:41318",
+   "stopName": "Rathaus Hdw.",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08115002": {
+   "stopId": "de:08115:4185",
+   "stopName": "Schaichhofsiedlung",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08115054": {
+   "stopId": "de:08115:4771",
+   "stopName": "Seeger",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08116005": {
+   "stopId": "de:08116:61092",
+   "stopName": "Schatzkiste",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08116016": {
+   "stopId": "de:08116:4278",
+   "stopName": "Goldmorgen",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08116027": {
+   "stopId": "de:08116:3941",
+   "stopName": "K 1206 (Bahnhof)",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08116033": {
+   "stopId": "de:08116:4332",
+   "stopName": "Bismarckstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08116036": {
+   "stopId": "de:08116:3820",
+   "stopName": "Tischardter Straße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08116047": {
+   "stopId": "de:08116:2901",
+   "stopName": "Bahnhofstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08116058": {
+   "stopId": "de:08116:3901",
+   "stopName": "Weinberg-/Teckstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08116070": {
+   "stopId": "de:08116:4398",
+   "stopName": "Neidlinger Straße",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08117018": {
+   "stopId": "de:08117:65018",
+   "stopName": "Sport Held",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08117020": {
+   "stopId": "de:08117:3318",
+   "stopName": "Feuerwehrhaus",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08117031": {
+   "stopId": "de:08117:3501",
+   "stopName": "Kirche",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08117044": {
+   "stopId": "de:08117:7802",
+   "stopName": "Hattenhofer Straße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08117058": {
+   "stopId": "de:08117:64",
+   "stopName": "Rathaus",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08117060": {
+   "stopId": "de:08117:2113",
+   "stopName": "Schillerstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08118016": {
+   "stopId": "de:08118:5708",
+   "stopName": "Gewerbegebiet",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08119004": {
+   "stopId": "de:08119:4987",
+   "stopName": "Waldenweiler",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08119006": {
+   "stopId": "de:08119:5382",
+   "stopName": "Traube",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08119069": {
+   "stopId": "de:08119:4960",
+   "stopName": "Gieshof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08119075": {
+   "stopId": "de:08119:4910",
+   "stopName": "Murrhardter Straße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08119087": {
+   "stopId": "de:08119:5360",
+   "stopName": "Allmersbach am Weinberg",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08125008": {
+   "stopId": "de:08125:4680",
+   "stopName": "Ort",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08125081": {
+   "stopId": "de:08125:4433",
+   "stopName": "Abzweig Bahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08125094": {
+   "stopId": "de:08125:538",
+   "stopName": "Rathausplatz",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08125107": {
+   "stopId": "de:08125:1016",
+   "stopName": "Ort",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08126086": {
+   "stopId": "de:08126:11089",
+   "stopName": "Siedlungsweg",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08127012": {
+   "stopId": "de:08127:20363",
+   "stopName": "Schule",
+   "qualitaet": 961,
+   "art": "ort"
+  },
+  "08127059": {
+   "stopId": "de:08127:21311",
+   "stopName": "Abzw.",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08127100": {
+   "stopId": "de:08127:35002",
+   "stopName": "Holdergarten",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08128039": {
+   "stopId": "de:08128:12415",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08135015": {
+   "stopId": "de:08135:1115",
+   "stopName": "Wasserturm",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08135031": {
+   "stopId": "de:08135:1579",
+   "stopName": "Bahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08136009": {
+   "stopId": "de:08136:6100",
+   "stopName": "Bahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08136018": {
+   "stopId": "de:08136:4310",
+   "stopName": "Siedlung",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08136020": {
+   "stopId": "de:08136:6307",
+   "stopName": "Kemnaten",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08136027": {
+   "stopId": "de:08136:6534",
+   "stopName": "Schlechtbacher Straße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08136028": {
+   "stopId": "de:08136:6617",
+   "stopName": "Triumph",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08136060": {
+   "stopId": "de:08136:5420",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08215039": {
+   "stopId": "de:08215:32582",
+   "stopName": "Bahnhofstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08225052": {
+   "stopId": "de:08225:1434",
+   "stopName": "Hirschberg",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08225068": {
+   "stopId": "de:08225:6949",
+   "stopName": "Seniorenheim",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08225116": {
+   "stopId": "de:08225:4789",
+   "stopName": "Schwarzacher-Hof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08226041": {
+   "stopId": "de:08226:1888",
+   "stopName": "Jägerpfad",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08226054": {
+   "stopId": "de:08226:2925",
+   "stopName": "Rathaus",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08226081": {
+   "stopId": "de:08226:3463",
+   "stopName": "Unterschönbrunn",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08226097": {
+   "stopId": "de:08226:4225",
+   "stopName": "Langenzell",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08235050": {
+   "stopId": "de:08235:7390",
+   "stopName": "Teinachweg",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08235055": {
+   "stopId": "de:08235:3330",
+   "stopName": "Ortseing./Calwer Str",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08237073": {
+   "stopId": "de:08237:1751",
+   "stopName": "Allmandle",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08315033": {
+   "stopId": "de:08315:613",
+   "stopName": "Bahnhofstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08315056": {
+   "stopId": "de:08315:30040",
+   "stopName": "Horben Rathaus",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08315084": {
+   "stopId": "de:08315:919",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08315109": {
+   "stopId": "de:08315:540",
+   "stopName": "Engel",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08315133": {
+   "stopId": "de:08315:6703",
+   "stopName": "Bahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317046": {
+   "stopId": "de:08317:18542",
+   "stopName": "Georg-Gießler-Straße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317047": {
+   "stopId": "de:08317:15632",
+   "stopName": "Bahnhofstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317078": {
+   "stopId": "de:08317:18552",
+   "stopName": "Abzweig Dietental",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317102": {
+   "stopId": "de:08317:13751",
+   "stopName": "Bahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317126": {
+   "stopId": "de:08317:32903",
+   "stopName": "Hinterseebach",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317127": {
+   "stopId": "de:08317:11702",
+   "stopName": "Dautenstein",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317151": {
+   "stopId": "de:08317:12601",
+   "stopName": "Bahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317153": {
+   "stopId": "de:08317:34700",
+   "stopName": "Busbahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08317971": {
+   "stopId": "de:08317:6479",
+   "stopName": "Silver Lake City",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08325036": {
+   "stopId": "de:08325:1435",
+   "stopName": "Käppeleshof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08325061": {
+   "stopId": "de:08325:27105",
+   "stopName": "Schule",
+   "qualitaet": 942,
+   "art": "ort"
+  },
+  "08327008": {
+   "stopId": "de:08327:1090",
+   "stopName": "Molkestraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08327016": {
+   "stopId": "de:08327:1172",
+   "stopName": "Bahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08327036": {
+   "stopId": "de:08327:1554",
+   "stopName": "Bahnhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08327040": {
+   "stopId": "de:08327:1428",
+   "stopName": "Hauptstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08327048": {
+   "stopId": "de:08327:1683",
+   "stopName": "Schmiedeplatz",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08335026": {
+   "stopId": "de:08335:2024",
+   "stopName": "Feuerwehrgerätehaus",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08336080": {
+   "stopId": "de:08336:3922",
+   "stopName": "Niederböllen",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08336089": {
+   "stopId": "de:08336:3674",
+   "stopName": "Schönenbuchen",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08336096": {
+   "stopId": "de:08336:681",
+   "stopName": "Wieden Ungendwieden",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08337045": {
+   "stopId": "de:08337:5567",
+   "stopName": "B 500",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08337059": {
+   "stopId": "de:08337:5594",
+   "stopName": "Sonnenhalde",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08337118": {
+   "stopId": "de:08337:4250",
+   "stopName": "Oberbierbronnen",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08415014": {
+   "stopId": "de:08415:28234",
+   "stopName": "Schillerschule",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08415019": {
+   "stopId": "de:08415:28404",
+   "stopName": "Freibad",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08415029": {
+   "stopId": "de:08415:28280",
+   "stopName": "Ziegelwasenstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08415090": {
+   "stopId": "de:08415:28740",
+   "stopName": "Oberstetterstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08415092": {
+   "stopId": "de:08415:28742",
+   "stopName": "Bahnhofstr.",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08417054": {
+   "stopId": "de:08417:30756",
+   "stopName": "Sporthalle",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08417071": {
+   "stopId": "de:08417:30570",
+   "stopName": "Rathaus",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08417078": {
+   "stopId": "de:08417:37604",
+   "stopName": "Dorfplatz",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08425004": {
+   "stopId": "de:08425:3071",
+   "stopName": "Altheim",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08425138": {
+   "stopId": "de:08425:3762",
+   "stopName": "Jahnstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08426008": {
+   "stopId": "de:08426:6775",
+   "stopName": "Alter Dollhofweg",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08426058": {
+   "stopId": "de:08426:6707",
+   "stopName": "Schule",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08426108": {
+   "stopId": "de:08426:6551",
+   "stopName": "Gemeindehaus",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08426118": {
+   "stopId": "de:08426:6595",
+   "stopName": "Adler",
+   "qualitaet": null,
+   "art": "geprueft"
+  },
+  "08435020": {
+   "stopId": "de:08435:91397",
+   "stopName": "Buchhof",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08435029": {
+   "stopId": "de:08435:44689",
+   "stopName": "Fallenbach",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08436032": {
+   "stopId": "de:08436:8475",
+   "stopName": "Kirche",
+   "qualitaet": 964,
+   "art": "ort"
+  },
+  "08436082": {
+   "stopId": "de:08436:8011",
+   "stopName": "Charlottenplatz",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08436083": {
+   "stopId": "de:08436:139",
+   "stopName": "kath. Kirche",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08437101": {
+   "stopId": "de:08437:40060",
+   "stopName": "Wasserweg",
+   "qualitaet": null,
+   "art": "koordinate"
+  },
+  "08437107": {
+   "stopId": "de:08437:48850",
+   "stopName": "Lagerstraße",
+   "qualitaet": null,
+   "art": "koordinate"
+  }
+ }
+}

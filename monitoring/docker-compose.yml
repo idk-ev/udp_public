@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# CIVOS – Verfügbarkeits-Monitoring (Uptime Kuma)
+# Lizenz: EUPL-1.2
+#
+# EIGENSTÄNDIGES Deployment: Das Monitoring ist bewusst NICHT Teil des
+# Plattform-Stacks (platform/docker-compose.yml). Ein Monitoring, das mit der
+# überwachten Plattform gemeinsam startet, stoppt und neu ausgerollt wird, kann
+# deren Ausfall nicht melden — es fällt mit aus. Für die Außensicht (und damit
+# für den Verfügbarkeitsnachweis nach docs/betrieb.md) läuft es getrennt,
+# idealerweise auf einem anderen Host.
+#
+# Start:  cp .env.example .env && docker compose up -d
+# =============================================================================
+
+name: udp-monitoring
+
+services:
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: udp-uptime-kuma
+    volumes:
+      - kuma-data:/app/data
+    ports:
+      - "${KUMA_PORT:-3701}:3001"       # Zusatzport gem. PORTS.md (kein Subpath-Support)
+    restart: unless-stopped
+    networks: [monitoring]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  monitoring:
+    name: udp-monitoring
+
+volumes:
+  kuma-data:

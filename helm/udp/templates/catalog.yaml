@@ -1,0 +1,206 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+{{- if .Values.ckan.enabled }}
+# =============================================================================
+# Open-Data-Katalog: CKAN (DCAT-AP.de) + Solr (Suchindex) + Valkey (Jobs/Cache)
+# Erreichbar über das Gateway unter /catalog (files/apisix/apisix.yaml).
+# Die Datenbanken ckan / ckan_datastore und der Read-only-Benutzer ckan_ro
+# werden beim DB-Init angelegt (files/postgres/01-databases.sql, 00-auth.sh).
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ckan
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "ckan") | nindent 4 }}
+spec:
+  replicas: 1
+  # RWO-Volume: erst der alte Pod weg, dann der neue (sonst hängt der Rollout).
+  strategy: { type: Recreate }
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "ckan" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "ckan") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.ckan.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: ckan
+          image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.ckan.image) }}
+          {{ include "udp.ownImagePullPolicy" . }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.ckan.containerSecurityContext) | nindent 12 }}
+          env:
+            # POSTGRES_* zuerst: die URLs unten setzen sie per $(VAR) ein.
+            # Kubernetes expandiert nur BEREITS definierte Variablen.
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
+            - { name: CKAN_SQLALCHEMY_URL,     value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@timescale:5432/ckan" }
+            - { name: CKAN_DATASTORE_WRITE_URL, value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@timescale:5432/ckan_datastore" }
+            # Der Datastore verlangt einen SEPARATEN Read-only-Benutzer (00-auth.sh).
+            - { name: CKAN_DATASTORE_READ_URL, value: "postgresql://ckan_ro:$(POSTGRES_PASSWORD)@timescale:5432/ckan_datastore" }
+            - { name: CKAN_SOLR_URL,  value: "http://solr:8983/solr/ckan" }
+            - { name: CKAN_REDIS_URL, value: "redis://redis:6379/0" }
+            - { name: CKAN_SITE_URL,  value: {{ include "udp.ckanSiteUrl" . | quote }} }
+            - { name: CKAN__ROOT_PATH, value: "/catalog" }
+            - { name: CKAN_SITE_TITLE, value: {{ .Values.ckan.siteTitle | quote }} }
+            - { name: CKAN__PLUGINS,   value: {{ .Values.ckan.plugins | quote }} }
+            - { name: CKANEXT__DCAT__RDF_PROFILES, value: {{ .Values.ckan.dcatProfiles | quote }} }
+            - { name: CKAN_SYSADMIN_NAME,  value: {{ .Values.ckan.adminUser | quote }} }
+            - { name: CKAN_SYSADMIN_EMAIL, value: {{ .Values.ckan.adminEmail | quote }} }
+            - name: CKAN_SYSADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.ckanSecretName" . }}, key: CKAN_SYSADMIN_PASSWORD } }
+          ports: [{ containerPort: 5000 }]
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/ckan }
+          resources:
+            {{- toYaml .Values.ckan.resources | nindent 12 }}
+          # CKAN migriert beim ersten Start das Schema und legt den Sysadmin an –
+          # das dauert. startupProbe deckt bis zu 5 min ab, ohne die Liveness zu
+          # verschärfen.
+          startupProbe:
+            httpGet: { path: /api/3/action/status_show, port: 5000 }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /api/3/action/status_show, port: 5000 }
+            periodSeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ckan-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ckan-data
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "ckan") | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- include "udp.storageClass" (dict "ctx" . "override" .Values.ckan.persistence.storageClass) | nindent 2 }}
+  resources: { requests: { storage: {{ .Values.ckan.persistence.size }} } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ckan
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "ckan") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "ckan" | nindent 4 }}
+  ports: [{ port: 5000 }]
+---
+# Solr – Suchindex von CKAN. Das Image legt den Kern "ckan" beim ersten Start
+# selbst an (solr-precreate), deshalb kein Init-Container.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: solr
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "solr") | nindent 4 }}
+spec:
+  serviceName: solr
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "solr" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "solr") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.solr.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: solr
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.solr.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.solr.containerSecurityContext) | nindent 12 }}
+          ports: [{ containerPort: 8983 }]
+          volumeMounts:
+            - { name: data, mountPath: /var/solr }
+          resources:
+            {{- toYaml .Values.solr.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /solr/admin/info/system, port: 8983 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 12
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- include "udp.storageClass" (dict "ctx" . "override" .Values.solr.persistence.storageClass) | nindent 8 }}
+        resources: { requests: { storage: {{ .Values.solr.persistence.size }} } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: solr
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "solr") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "udp.selectorLabels" "solr" | nindent 4 }}
+  ports: [{ port: 8983 }]
+---
+# Valkey – Job-Queue und Cache von CKAN. Bewusst ohne Volume: der Inhalt ist
+# reproduzierbar, ein Neustart kostet nur einen kalten Cache.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "redis") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "redis" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "redis") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.redis.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: redis
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.redis.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.redis.containerSecurityContext) | nindent 12 }}
+          ports: [{ containerPort: 6379 }]
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket: { port: 6379 }
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "redis") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "redis" | nindent 4 }}
+  ports: [{ port: 6379 }]
+{{- end }}

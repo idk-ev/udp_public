@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+{{- if .Values.ingress.enabled }}
+# =============================================================================
+# Zentraler Ingress
+#
+# Die Plattform-APIs bekommen ihre EIGENEN Pfade direkt auf APISIX – exakt so,
+# wie APISIX sie kennt (/ngsi-ld/…, /catalog/…, /geoserver/…). Damit ist kein
+# Rewrite nötig, und die im Chart hinterlegten öffentlichen Adressen stimmen
+# ohne Sonderfall: frost.serviceRootUrl (…/FROST-Server), CKAN_SITE_URL
+# (…/catalog) und der native Kontextpfad von GeoServer.
+#
+# Der Pfad /gateway/… bleibt zusätzlich nutzbar: er läuft über den Catch-All
+# auf das Cockpit, dessen nginx das Präfix entfernt und die lesenden Routen
+# zwischenspeichert (Micro-Cache) – das ist der Weg, den die SPA nimmt.
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: udp
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "ingress") | nindent 4 }}
+  annotations:
+    {{- if .Values.ingress.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer | quote }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ .Values.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- range .Values.ingress.apiPaths }}
+          - path: {{ . | quote }}
+            pathType: Prefix
+            backend:
+              service: { name: apisix, port: { number: 9080 } }
+          {{- end }}
+          {{- if and .Values.ckan.enabled .Values.ingress.exposeComponentPaths }}
+          - path: /catalog
+            pathType: Prefix
+            backend:
+              service: { name: apisix, port: { number: 9080 } }
+          {{- end }}
+          {{- if and .Values.geoserver.enabled .Values.ingress.exposeComponentPaths }}
+          - path: /geoserver
+            pathType: Prefix
+            backend:
+              service: { name: apisix, port: { number: 9080 } }
+          {{- end }}
+          {{- if and .Values.masterportal.enabled .Values.ingress.exposeComponentPaths }}
+          - path: /portal
+            pathType: Prefix
+            backend:
+              service: { name: apisix, port: { number: 9080 } }
+          {{- end }}
+          {{- if .Values.cockpit.authEnabled }}
+          # Keycloak läuft selbst unter diesem Pfad (KC_HTTP_RELATIVE_PATH) –
+          # ein Rewrite würde Issuer und Redirect-URIs zerstören.
+          # Nur veröffentlicht, wenn die Anmeldung aktiv ist: sonst wäre die
+          # Admin-Konsole samt importierter Demo-Konten öffentlich erreichbar,
+          # ohne dass irgendein Dienst das Token auswertet.
+          - path: {{ .Values.keycloakApp.relativePath | quote }}
+            pathType: Prefix
+            backend:
+              service: { name: keycloak, port: { number: 8080 } }
+          {{- end }}
+          # Catch-All: SPA, generierte Kommunenseiten und /gateway/… (Cockpit-nginx)
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: cockpit, port: { number: 80 } }
+{{- end }}

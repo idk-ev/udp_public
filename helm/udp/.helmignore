@@ -1,0 +1,17 @@
+# Patterns to ignore when building/packaging the chart.
+.DS_Store
+.git/
+.gitignore
+*.tmproj
+*.bak
+*.orig
+*~
+# CI / editor
+.vscode/
+.idea/
+# Rendered output
+rendered/
+*.tgz
+# Lokale Prod-Overrides gehören nicht ins veröffentlichte Paket – nur die
+# Vorlage values-prod.example.yaml wird mitgeliefert.
+values-prod.yaml

@@ -1,0 +1,426 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# Baut die vier selbst gepflegten Images der Plattform und pusht sie in die
+# GitHub Container Registry (ghcr.io/<owner>/<repo>/<image>).
+#
+#   cockpit                 gui/Dockerfile            -> Helm: cockpit.image
+#   ckan-dcat               platform/config/ckan      -> Helm: ckan.image
+#   postgres-timescale-oss  platform/config/postgres  -> Helm: timescale.image
+#   node-red-udp            platform/config/nodered   -> Helm: nodeRed.image
+#
+# Alle übrigen Images (Orion-LD, Keycloak, APISIX, …) kommen unverändert von
+# Upstream und werden hier bewusst NICHT gespiegelt.
+#
+# Anschließend verpackt der Job „chart“ das Helm-Chart und pusht es als
+# OCI-Artefakt nach oci://ghcr.io/<owner>/<repo>/charts/udp. Er hängt per
+# „needs“ an den Images: nur so kann das Chart die Images GENAU dieses Laufs
+# per Digest pinnen. Als getrennter Workflow liefen beide parallel und das
+# Chart hätte auf Images gezeigt, die noch niemand gepusht hat.
+#
+# Trigger: Push auf main (Tag „main“ + SHA), Release (SemVer-Tags + „latest“),
+# PR (Tags „pr-<nr>“ + „pr-<nr>-<sha>“, damit sich der Stand eines PR im Cluster
+# testen lässt).
+#
+# Der paths-Filter ist die VEREINIGUNG aus Image- und Chart-Quellen. Ein Commit,
+# der nur helm/** anfasst, baut die Images also mit (aus dem Layer-Cache in
+# ~30 s) – dafür gibt es zu JEDEM Chart die passenden Images. Ohne das zeigte
+# ein Chart auf Image-Tags, die für diesen Commit nie gebaut wurden.
+#
+# Aufräumen: die pr-*-Tags bleiben nach dem Merge liegen. Gelegentlich unter
+# GitHub → Packages → <image> → Manage versions entfernen.
+name: Images & Chart
+
+on:
+  push:
+    branches: [main]
+    # (GitHub Actions unterstützt keine YAML-Anker – die Liste steht doppelt.)
+    paths:
+      - 'gui/**'
+      - 'platform/config/nginx/**'
+      - 'platform/config/ckan/**'
+      - 'platform/config/postgres/**'
+      - 'platform/config/nodered/**'
+      - 'helm/**'
+      - '.github/workflows/build-images.yml'
+  pull_request:
+    paths:
+      - 'gui/**'
+      - 'platform/config/nginx/**'
+      - 'platform/config/ckan/**'
+      - 'platform/config/postgres/**'
+      - 'platform/config/nodered/**'
+      - 'helm/**'
+      - '.github/workflows/build-images.yml'
+  # Releases haben absichtlich keinen paths-Filter: ein Release muss immer alle
+  # drei Images erzeugen, auch wenn der getaggte Commit nur Doku geändert hat.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # Push nach ghcr.io
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Build-Kontext ist das Repo-Root: gui/Dockerfile kopiert zusätzlich
+          # platform/config/nginx/cockpit.conf.template. `docker build gui/` schlägt fehl.
+          - name: cockpit
+            context: .
+            dockerfile: gui/Dockerfile
+            valueKey: cockpit          # helm/udp/values.yaml
+            description: UDP-Cockpit (SPA + nginx)
+          - name: ckan-dcat
+            context: platform/config/ckan
+            dockerfile: platform/config/ckan/Dockerfile
+            valueKey: ckan
+            description: CKAN 2.10 mit ckanext-dcat (DCAT-AP.de)
+          - name: postgres-timescale-oss
+            context: platform/config/postgres
+            dockerfile: platform/config/postgres/Dockerfile
+            valueKey: timescale
+            description: PostgreSQL 16 + PostGIS + TimescaleDB Apache Edition
+          # Build-Kontext ist das Repo-Root: das Dockerfile kopiert die
+          # generierten Flows aus platform/config/nodered/.
+          - name: node-red-udp
+            context: .
+            dockerfile: platform/config/nodered/Dockerfile
+            valueKey: nodeRed
+            description: Node-RED mit den generierten UDP-Datenflüssen
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Kontext bestimmen
+        id: ctx
+        env:
+          # Bei PRs aus demselben Repository identisch mit GITHUB_REPOSITORY.
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # ghcr.io akzeptiert nur kleingeschriebene Pfade; github.repository
+          # ist "idk-ev/UDP".
+          echo "path=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          # PRs aus einem Fork bekommen ein read-only GITHUB_TOKEN – ein Push
+          # nach ghcr.io würde mit 403 abbrechen. Dort nur bauen.
+          if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Fork-PR – Image wird gebaut, aber nicht gepusht."
+          else
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tags und Labels ableiten
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ steps.ctx.outputs.path }}/${{ matrix.name }}
+          # Bei PRs setzt die Action {{sha}} auf den HEAD-Commit des Branches,
+          # nicht auf den Merge-Commit – der Tag zeigt also auf das, was im PR
+          # steht. "pr-<nr>" wandert mit jedem Push, "pr-<nr>-<sha>" ist fest.
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=pr-${{ github.event.pull_request.number }}-{{sha}},enable=${{ github.event_name == 'pull_request' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.name }}
+            org.opencontainers.image.description=${{ matrix.description }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: An ghcr.io anmelden
+        if: steps.ctx.outputs.push == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bauen und pushen
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ steps.ctx.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Nur amd64: das Postgres-Image zieht TimescaleDB-Debian-Pakete, ein
+          # arm64-Build läuft dafür in QEMU-Emulation (>20 min). Bei Bedarf
+          # hier "linux/amd64,linux/arm64" setzen.
+          platforms: linux/amd64
+          # Layer-Cache pro Image – unveränderte Images sind so in ~30 s durch.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+          # Signierte Herkunft + SBOM als OCI-Attestation am Image (Supply-Chain).
+          provenance: mode=max
+          sbom: true
+
+      # Der Digest gehört nach helm/udp/values-prod.yaml (repo:tag@sha256:…),
+      # damit in Produktion kein beweglicher Tag deployt wird. Bei PRs steht
+      # hier zusätzlich der fertige --set-Aufruf zum Testen im Cluster.
+      - name: Digest in die Job-Zusammenfassung schreiben
+        if: steps.ctx.outputs.push == 'true'
+        env:
+          IMAGE: ghcr.io/${{ steps.ctx.outputs.path }}/${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### ${{ matrix.name }}"
+            echo
+            echo '```'
+            echo "${IMAGE}@${DIGEST}"
+            echo "${TAGS}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Der Chart-Job pinnt die Images auf genau diesen Digest. Ein Matrix-Job
+      # kann keine Outputs pro Matrix-Eintrag setzen (der letzte gewinnt),
+      # deshalb der Umweg über ein Artefakt je Image.
+      - name: Digest für den Chart-Job ablegen
+        if: steps.ctx.outputs.push == 'true'
+        run: |
+          mkdir -p digests
+          echo "${{ steps.build.outputs.digest }}" > "digests/${{ matrix.valueKey }}"
+
+      - name: Digest als Artefakt anhängen
+        if: steps.ctx.outputs.push == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.valueKey }}
+          path: digests/${{ matrix.valueKey }}
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Helm-Chart packen und nach ghcr.io/<owner>/<repo>/charts/udp pushen.
+  #
+  # Das Paket ist bei der ersten Veröffentlichung privat (es erbt die
+  # Sichtbarkeit des Repositories) – GitHub → Packages → udp/charts/udp.
+  #
+  # Chart-Versionen (alle Nicht-Release-Versionen sind SemVer-Prereleases und
+  # sortieren damit UNTER der Release-Version; ein "helm pull" ohne --version
+  # zieht also nie einen PR-Stand):
+  #
+  #   Release      1.0.0                  -> Images per Digest gepinnt
+  #   push main    1.0.0-main.g<sha>      -> Images per Digest gepinnt
+  #   PR           1.0.0-pr.<nr>          -> Tag pr-<nr>, wandert mit dem PR
+  #                1.0.0-pr.<nr>.g<sha>   -> Images per Digest gepinnt
+  #
+  # Eine FESTE Chart-Version pinnt also unveränderliche Images: dasselbe Chart
+  # deployt in einem Monat exakt dieselben Container. Nur 1.0.0-pr.<nr> folgt
+  # bewusst dem PR. --set <komponente>.image.tag ist nur noch zum Abweichen da.
+  #
+  # Ziehen (siehe helm/udp/DEPLOY.md):
+  #   echo $CR_PAT | helm registry login ghcr.io -u <user> --password-stdin
+  #   helm upgrade --install udp oci://ghcr.io/idk-ev/udp/charts/udp \
+  #     --version 1.0.0 -n udp -f values-prod.yaml
+  # ---------------------------------------------------------------------------
+  chart:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # Push nach ghcr.io
+    env:
+      CHART_DIR: helm/udp
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.16.3
+
+      - name: Chart prüfen
+        # Beide Wertesätze rendern: values.yaml ist der Default, die
+        # Prod-Overrides schalten Ingress/TLS/Ressourcen zusätzlich frei.
+        run: |
+          helm lint "$CHART_DIR"
+          helm template udp "$CHART_DIR" >/dev/null
+          helm template udp "$CHART_DIR" -f "$CHART_DIR/values-prod.example.yaml" >/dev/null
+
+      - name: Digests der Images holen
+        # Fehlen bei Fork-PRs: dort wird nicht gepusht, es gibt also keine
+        # Digests – das Chart wird dann nur mit beweglichem Tag gepackt.
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - name: Versionen bestimmen
+        id: ver
+        env:
+          EVENT: ${{ github.event_name }}
+          # Bei PRs aus einem Fork ungleich GITHUB_REPOSITORY.
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          # metadata-action taggt die Images mit dem HEAD-Commit des PR-Branches.
+          # actions/checkout wählt hier aber den MERGE-Commit aus, "git rev-parse
+          # HEAD" wäre also ein anderer SHA als am Image.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TAG: ${{ github.event.release.tag_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          CHART_VERSION=$(helm show chart "$CHART_DIR" | awk '/^version:/ {print $2}')
+          APP_VERSION=$(helm show chart "$CHART_DIR" | awk '/^appVersion:/ {gsub(/"/,"",$2); print $2}')
+
+          # Einträge "<Chart-Version>|<Modus>|<Image-Tag>":
+          #   pin   -> <komponente>.image.tag = <Tag>@<Digest aus DIESEM Lauf>
+          #   float -> global.udpTag = <Tag>, folgt künftigen Builds
+          # "g" wie bei git-describe: ein Prerelease-Bezeichner aus reinen Ziffern
+          # dürfte laut SemVer keine führende Null haben – ein Kurz-SHA wie
+          # "0123456" wäre ungültig und helm package bräche ab.
+          case "$EVENT" in
+            release)
+              # Ein Release ohne passende Chart.yaml wäre eine Version, die es in
+              # der Registry schon gibt – lieber hier abbrechen.
+              if [ "${TAG#v}" != "$CHART_VERSION" ]; then
+                echo "::error::Release-Tag $TAG passt nicht zu version: $CHART_VERSION in $CHART_DIR/Chart.yaml"
+                exit 1
+              fi
+              BUILDS="${CHART_VERSION}|pin|${CHART_VERSION}"
+              ;;
+            pull_request)
+              SHORT="${HEAD_SHA:0:7}"
+              BUILDS="${CHART_VERSION}-pr.${PR}|float|pr-${PR} ${CHART_VERSION}-pr.${PR}.g${SHORT}|pin|pr-${PR}-${SHORT}"
+              ;;
+            *)
+              BUILDS="${CHART_VERSION}-main.g$(git rev-parse --short=7 HEAD)|pin|sha-${GITHUB_SHA}"
+              ;;
+          esac
+
+          if [ -n "$HEAD_REPO" ] && [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            # Fork-PRs bekommen ein read-only GITHUB_TOKEN – der Push liefe auf 403.
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Fork-PR – Chart wird gepackt, aber nicht gepusht."
+          else
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "builds=$BUILDS" >> "$GITHUB_OUTPUT"
+          FIRST="${BUILDS%% *}"
+          echo "version=${FIRST%%|*}" >> "$GITHUB_OUTPUT"
+          echo "appVersion=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          # ghcr.io akzeptiert nur kleingeschriebene Pfade; github.repository ist "idk-ev/UDP".
+          echo "path=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Chart packen
+        # Geschrieben wird nur im Arbeitsverzeichnis des Runners – values.yaml im
+        # Repository behält udpTag "main", damit ein "helm install ./helm/udp"
+        # aus dem Checkout weiter den Stand von main zieht.
+        env:
+          BUILDS: ${{ steps.ver.outputs.builds }}
+          APP_VERSION: ${{ steps.ver.outputs.appVersion }}
+        run: |
+          set -euo pipefail
+          : > pins.txt
+          for build in $BUILDS; do
+            version="${build%%|*}"; rest="${build#*|}"
+            mode="${rest%%|*}"; tag="${rest##*|}"
+            # Jede Version startet auf dem Stand aus git – sonst schleppte das
+            # zweite Paket die Pins des ersten mit.
+            git checkout -- "$CHART_DIR/values.yaml"
+
+            pinned=""
+            if [ "$mode" = "pin" ]; then
+              for key in cockpit ckan timescale nodeRed; do
+                if [ ! -s "digests/$key" ]; then pinned=""; break; fi
+                TAGVAL="${tag}@$(cat "digests/$key")" \
+                  yq -i ".${key}.image.tag = strenv(TAGVAL)" "$CHART_DIR/values.yaml"
+                pinned="ja"
+              done
+            fi
+            if [ -n "$pinned" ]; then
+              # Ein Digest ist unveränderlich – erneutes Ziehen ist überflüssig.
+              yq -i '.global.udpPullPolicy = "IfNotPresent"' "$CHART_DIR/values.yaml"
+            elif [ "$mode" = "pin" ]; then
+              echo "::warning::Keine Digests vorhanden – $version bekommt den beweglichen Tag $tag."
+            fi
+            # Auch beim Pinnen gesetzt: greift für Komponenten ohne eigenen Tag.
+            IMAGE_TAG="$tag" yq -i '.global.udpTag = strenv(IMAGE_TAG)' "$CHART_DIR/values.yaml"
+
+            echo "::group::$version"
+            helm template udp "$CHART_DIR" | grep -E 'image: ghcr.io/' | sort -u | tee -a pins.txt
+            echo "::endgroup::"
+            helm package "$CHART_DIR" \
+              --version "$version" \
+              --app-version "$APP_VERSION" \
+              --destination dist
+          done
+          git checkout -- "$CHART_DIR/values.yaml"
+
+      - name: Chart als Artefakt anhängen
+        # Damit sich das Paket auch aus einem Fork-PR herunterladen und lokal
+        # installieren lässt, ohne dass es in der Registry landet.
+        uses: actions/upload-artifact@v4
+        with:
+          name: udp-chart-${{ steps.ver.outputs.version }}
+          path: dist/*.tgz
+          if-no-files-found: error
+
+      - name: An ghcr.io anmelden
+        if: steps.ver.outputs.push == 'true'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Chart pushen
+        if: steps.ver.outputs.push == 'true'
+        env:
+          BUILDS: ${{ steps.ver.outputs.builds }}
+        run: |
+          set -euo pipefail
+          for build in $BUILDS; do
+            helm push "dist/udp-${build%%|*}.tgz" \
+              "oci://ghcr.io/${{ steps.ver.outputs.path }}/charts"
+          done
+
+      - name: Zusammenfassung schreiben
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          BUILDS: ${{ steps.ver.outputs.builds }}
+          PUSH: ${{ steps.ver.outputs.push }}
+          REF: oci://ghcr.io/${{ steps.ver.outputs.path }}/charts/udp
+        run: |
+          {
+            echo "### Helm-Chart udp"
+            echo
+            if [ "$PUSH" != "true" ]; then
+              echo "Fork-PR – nicht gepusht. Das Paket hängt als Artefakt am Job."
+            else
+              for build in $BUILDS; do
+                version="${build%%|*}"; rest="${build#*|}"
+                if [ "${rest%%|*}" = "pin" ]; then
+                  echo "* \`$REF:$version\` – Images per Digest gepinnt"
+                else
+                  echo "* \`$REF:$version\` – Images am Tag \`${rest##*|}\`, wandert mit dem PR"
+                fi
+              done
+              echo
+              echo "Enthaltene eigene Images:"
+              echo '```'
+              sort -u pins.txt | sed 's/^ *image: //'
+              echo '```'
+              echo
+              echo "Im Cluster testen:"
+              echo '```bash'
+              echo "helm upgrade --install udp $REF \\"
+              echo "  --version $VERSION -n udp --create-namespace"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

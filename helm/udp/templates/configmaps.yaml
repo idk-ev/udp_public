@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# ConfigMaps aus gebündelten Konfigurationsdateien (files/).
+# APISIX-Konfiguration (Standalone-Modus)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apisix-config
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "apisix") | nindent 4 }}
+data:
+  # .tpl, weil die Datei Go-Template-Bedingungen enthält: abgeschaltete
+  # Komponenten (ckan/geoserver/masterportal) sollen keine Route hinterlassen,
+  # die auf einen nicht existierenden Service zeigt.
+  apisix.yaml: |
+{{ tpl (.Files.Get "files/apisix/apisix.yaml.tpl") . | indent 4 }}
+  config.yaml: |
+{{ .Files.Get "files/apisix/config.yaml" | indent 4 }}
+---
+# Keycloak-Realm-Import
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "keycloak") | nindent 4 }}
+data:
+  udp-realm.json: |
+{{ tpl (.Files.Get "files/keycloak/udp-realm.json.tpl") . | indent 4 }}
+---
+# Laufzeit-Konfiguration des Cockpits.
+#
+# Das Image bringt eine public/config.js mit, die auf Docker Compose vorbelegt
+# ist (http://localhost:8700 für Keycloak, 8780 für das Gateway). Im Cluster
+# ist das FALSCH: die SPA schickt den Browser des Anwenders dann zum Login auf
+# seinen EIGENEN Rechner. Die Datei wird deshalb hier aus den Chart-Werten neu
+# erzeugt und über die des Images gemountet (apps.yaml, subPath config.js).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cockpit-config
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "cockpit") | nindent 4 }}
+data:
+  config.js: |
+{{ include "udp.cockpitConfigJs" . | indent 4 }}
+---
+# Hinweis: Node-RED bekommt seine Datenflüsse und settings.js NICHT über eine
+# ConfigMap, sondern fest aus dem eigenen Image (platform/config/nodered/
+# Dockerfile). flows.json liegt bei ~420 KB und wächst mit jedem Konnektor —
+# die etcd-Grenze für ConfigMaps liegt bei 1 MiB.
+#
+# PostgreSQL-Initialisierung (Datenbanken, Auth-Kompatibilität)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "database") | nindent 4 }}
+data:
+  00-auth.sh: |
+{{ .Files.Get "files/postgres/00-auth.sh" | indent 4 }}
+  01-databases.sql: |
+{{ .Files.Get "files/postgres/01-databases.sql" | indent 4 }}

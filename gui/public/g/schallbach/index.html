@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart City Schallbach — Live-Dashboard</title>
+<meta name="description" content="Live-Dashboard für Schallbach: Wetter, Warnungen, Baustellen, Umwelt-, Mobilitäts- und Energiedaten aus offenen Quellen. Urbane Datenplattform.">
+<meta property="og:title" content="Smart City Schallbach">
+<meta property="og:description" content="Offene Live-Daten für Schallbach (832 Einwohner): Wetter, Luft, Mobilität, Energie.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script>window.STADT = {"ags": "08336075", "slug": "schallbach", "name": "Schallbach", "row": ["08336075", "Schallbach", 47.65753, 7.62612, "08336", "G", 832, null, "schallbach"], "website": "http://www.schallbach.de"};</script>
+<script>
+// Bundle-Loader: gemeinsames Template übernimmt ab hier (Skripte sequenziell!)
+fetch("/stadt.html").then(r => r.text()).then(async html => {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  document.body.innerHTML = doc.body.innerHTML;
+  for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
+  for (const s of doc.querySelectorAll("body script")) {
+    await new Promise((res, rej) => {
+      const n = document.createElement("script");
+      if (s.src) { n.src = s.src; n.onload = res; n.onerror = res; }
+      else { n.textContent = s.textContent; }
+      document.body.appendChild(n);
+      if (!s.src) res();
+    });
+  }
+});
+</script>
+</head>
+<body></body>
+</html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart City Mühlhausen im Täle — Live-Dashboard</title>
+<meta name="description" content="Live-Dashboard für Mühlhausen im Täle: Wetter, Warnungen, Baustellen, Umwelt-, Mobilitäts- und Energiedaten aus offenen Quellen. Urbane Datenplattform.">
+<meta property="og:title" content="Smart City Mühlhausen im Täle">
+<meta property="og:description" content="Offene Live-Daten für Mühlhausen im Täle (1.128 Einwohner): Wetter, Luft, Mobilität, Energie.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script>window.STADT = {"ags": "08117035", "slug": "muehlhausen-im-taele", "name": "Mühlhausen im Täle", "row": ["08117035", "Mühlhausen im Täle", 48.57484, 9.654, "08117", "G", 1128, null, "muehlhausen-im-taele"], "website": "https://www.muehlhausen-taele.de/"};</script>
+<script>
+// Bundle-Loader: gemeinsames Template übernimmt ab hier (Skripte sequenziell!)
+fetch("/stadt.html").then(r => r.text()).then(async html => {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  document.body.innerHTML = doc.body.innerHTML;
+  for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
+  for (const s of doc.querySelectorAll("body script")) {
+    await new Promise((res, rej) => {
+      const n = document.createElement("script");
+      if (s.src) { n.src = s.src; n.onload = res; n.onerror = res; }
+      else { n.textContent = s.textContent; }
+      document.body.appendChild(n);
+      if (!s.src) res();
+    });
+  }
+});
+</script>
+</head>
+<body></body>
+</html>

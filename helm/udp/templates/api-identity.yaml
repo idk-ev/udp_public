@@ -1,0 +1,129 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# API-Gateway (APISIX, deklarativ) + Identitätsmanagement (Keycloak)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apisix
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "apisix") | nindent 4 }}
+spec:
+  replicas: {{ .Values.apisix.replicas }}
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "apisix" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "apisix") | nindent 8 }}
+      annotations:
+        checksum/config: {{ (print (tpl (.Files.Get "files/apisix/apisix.yaml.tpl") .) (.Files.Get "files/apisix/config.yaml")) | sha256sum }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.apisix.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: apisix
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.apisix.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.apisix.containerSecurityContext) | nindent 12 }}
+          ports:
+            - { containerPort: 9080 }
+            - { containerPort: 9091 }
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/apisix/conf/apisix.yaml
+              subPath: apisix.yaml
+            - name: config
+              mountPath: /usr/local/apisix/conf/config.yaml
+              subPath: config.yaml
+          resources:
+            {{- toYaml .Values.apisix.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap: { name: apisix-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apisix
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "apisix") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "apisix" | nindent 4 }}
+  ports:
+    - { name: gateway, port: 9080 }
+    - { name: metrics, port: 9091 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "keycloak") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "keycloak" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "keycloak") | nindent 8 }}
+      annotations:
+        checksum/realm: {{ tpl (.Files.Get "files/keycloak/udp-realm.json.tpl") . | sha256sum }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.keycloakApp.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: keycloak
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.keycloakApp.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.keycloakApp.containerSecurityContext) | nindent 12 }}
+          args: ["start", "--import-realm", "--http-enabled=true", "--hostname-strict=false", "--proxy-headers=xforwarded"]
+          env:
+            # ab Keycloak 26: KC_BOOTSTRAP_ADMIN_* statt KEYCLOAK_ADMIN*
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ include "udp.keycloakSecretName" . }}, key: KEYCLOAK_ADMIN } }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.keycloakSecretName" . }}, key: KEYCLOAK_ADMIN_PASSWORD } }
+            # Keycloak muss selbst unter /auth laufen. Ein Rewrite am Ingress
+            # würde nicht reichen: Keycloak baut Redirect-URIs, Issuer und die
+            # Links der Admin-Konsole aus dem eigenen Kontextpfad.
+            - { name: KC_HTTP_RELATIVE_PATH, value: {{ .Values.keycloakApp.relativePath | quote }} }
+            - { name: KC_DB, value: postgres }
+            - { name: KC_DB_URL, value: "jdbc:postgresql://timescale:5432/keycloak" }
+            - name: KC_DB_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
+            - name: KC_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
+          ports: [{ containerPort: 8080 }]
+          volumeMounts:
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+          resources:
+            {{- toYaml .Values.keycloakApp.resources | nindent 12 }}
+      volumes:
+        - name: realm
+          configMap: { name: keycloak-realm }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "keycloak") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "keycloak" | nindent 4 }}
+  ports: [{ port: 8080 }]

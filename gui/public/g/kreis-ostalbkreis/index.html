@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ostalbkreis — Live-Dashboard</title>
+<meta name="description" content="Kreis-Dashboard Ostalbkreis: Warnungen, Baustellen, Energie- und Mobilitätsdaten aggregiert über alle 42 Gemeinden. Urbane Datenplattform.">
+<meta property="og:title" content="Ostalbkreis">
+<meta property="og:description" content="Offene Live-Daten für Ostalbkreis (320.436 Einwohner, 42 Gemeinden).">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script>window.KREIS = {"krs": "08136", "slug": "kreis-ostalbkreis", "name": "Ostalbkreis"};</script>
+<script>
+// Bundle-Loader: gemeinsames Kreis-Template übernimmt ab hier (Skripte sequenziell!)
+fetch("/kreis.html").then(r => r.text()).then(async html => {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  document.body.innerHTML = doc.body.innerHTML;
+  for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
+  for (const s of doc.querySelectorAll("body script")) {
+    await new Promise((res, rej) => {
+      const n = document.createElement("script");
+      if (s.src) { n.src = s.src; n.onload = res; n.onerror = res; }
+      else { n.textContent = s.textContent; }
+      document.body.appendChild(n);
+      if (!s.src) res();
+    });
+  }
+});
+</script>
+</head>
+<body></body>
+</html>

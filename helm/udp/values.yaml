@@ -1,0 +1,542 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# Urbane Datenplattform (UDP) – Helm Values
+# -----------------------------------------------------------------------------
+# Sicherheits-Standard ("secure by default"):
+#   * Keine Klartext-Secrets im Chart – Passwörter werden beim ersten Install
+#     zufällig erzeugt (persistiert via lookup) ODER aus einem vorhandenen
+#     Secret / External-Secrets-Operator bezogen.
+#   * Alle Container: drop ALL capabilities, allowPrivilegeEscalation=false,
+#     seccompProfile=RuntimeDefault. Wo das Upstream-Image es zulässt, laufen
+#     Pods als Non-Root mit definierter UID/fsGroup.
+#   * Default-deny NetworkPolicies + explizite Freigaben (segmentiertes Netz).
+#   * Dedizierte ServiceAccounts ohne automountServiceAccountToken.
+#   * Ingress mit erzwungenem TLS + Security-Headern.
+# Produktion: Werte in einer eigenen values-<env>.yaml überschreiben, niemals
+# Secrets in Git committen.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Globale Einstellungen
+# -----------------------------------------------------------------------------
+global:
+  # Optionaler Registry-Prefix, der allen UPSTREAM-Images vorangestellt wird
+  # (z. B. "harbor.example.org/mirror"). Leer = Images wie angegeben ziehen.
+  imageRegistry: ""
+
+  # --- Selbst gebaute Images -------------------------------------------------
+  # Vier Images baut .github/workflows/build-images.yml aus diesem Repository:
+  #   cockpit                 (gui/Dockerfile)
+  #   ckan-dcat               (platform/config/ckan)
+  #   postgres-timescale-oss  (platform/config/postgres)
+  #   node-red-udp            (platform/config/nodered)
+  # Registry und Tag stehen hier EINMAL für alle vier. Pro Komponente
+  # überschreibbar: <komponente>.image.registry / .image.tag.
+  # imageRegistry gilt hier nicht – udpRegistry ist bereits ein vollständiger
+  # Registry-Pfad. Für einen Mirror einfach diesen Wert umbiegen.
+  udpRegistry: "ghcr.io/idk-ev/udp"
+  # "main" = jeweiliger Stand von main, "1.0.0" = Release-Tag.
+  # ACHTUNG: Dieser Wert gilt nur für ein "helm install ./helm/udp" aus dem
+  # Checkout. Ein aus ghcr.io gezogenes Chart bringt seine Images schon mit:
+  # build-images.yml (Job "chart") trägt beim Paketieren den Stand des jeweiligen
+  # Laufs ein – bei fester Chart-Version die DIGESTS unter cockpit/ckan/
+  # timescale.image.tag, bei 1.0.0-pr.<nr> den beweglichen Tag "pr-<nr>".
+  udpTag: "main"
+  # Pull-Policy NUR für die vier eigenen Images. "main"/"pr-<nr>" sind
+  # bewegliche Tags – mit IfNotPresent startet ein Knoten, der den Tag schon
+  # kennt, weiter das alte Image, obwohl die Registry längst ein neues hat.
+  # Bei digest-gepinnten Images (values-prod.yaml) auf IfNotPresent stellen.
+  udpPullPolicy: "Always"
+  # imagePullSecrets für private Registries (Liste von {name: ...}).
+  imagePullSecrets: []
+  # StorageClass für alle PVCs. "" = Cluster-Default. Für Datenbanken eine
+  # Klasse mit garantiertem IOPS/Backups empfohlen.
+  storageClass: ""
+
+# -----------------------------------------------------------------------------
+# Sicherheits-Defaults (werden pro Komponente gemerged/überschrieben)
+# -----------------------------------------------------------------------------
+security:
+  # Pod-Level SecurityContext (Default für alle Workloads).
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  # Container-Level SecurityContext (Default für alle Container).
+  # readOnlyRootFilesystem ist bewusst false: mehrere Upstream-Images
+  # (Keycloak, APISIX, Orion, FROST) schreiben in ihr Root-FS. Pro Dienst,
+  # bei dem es getestet ist, kann es auf true gesetzt werden.
+  #
+  # "drop: ALL" nimmt auch CAP_CHOWN, CAP_SETUID/SETGID und
+  # CAP_NET_BIND_SERVICE. Images, deren Entrypoint Verzeichnisse chownt, per
+  # setpriv/gosu die Rechte abgibt oder einen Port < 1024 bindet, scheitern
+  # damit an "Operation not permitted". Das Chart loest das bei cockpit
+  # (nginx-unprivileged auf 8080) ohne Sonderrechte.
+  # Falls ein eigener Dienst sie doch braucht, pro Komponente
+  # nachruesten – JEDE Komponente kennt einen containerSecurityContext-Override,
+  # der auf diesen Default gemerged wird:
+  #
+  #   <komponente>:
+  #     containerSecurityContext:
+  #       capabilities:
+  #         drop: ["ALL"]
+  #         add:  ["CHOWN", "SETUID", "SETGID"]
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+
+# -----------------------------------------------------------------------------
+# Secrets
+# -----------------------------------------------------------------------------
+secrets:
+  # GRUNDSATZ: Zugangsdaten, die NICHT selbst festgelegt werden müssen (reine
+  # App-zu-App-Kommunikation im Cluster, z. B. das DB-Passwort), werden beim
+  # ERSTEN Install automatisch als starkes Zufallspasswort erzeugt und danach
+  # über 'lookup' stabil gehalten. Es muss also nichts eingetragen werden.
+  #
+  # true  -> Chart erzeugt/verwaltet die Secrets (Default, auch für Produktion).
+  # false -> Secrets müssen vorab existieren (SealedSecrets / External Secrets /
+  #          Vault). Nur nötig, wenn Compliance externe Verwaltung verlangt.
+  create: true
+  # Länge der automatisch erzeugten Passwörter (alphanumerisch).
+  # 32 Zeichen [A-Za-z0-9] entsprechen ca. 190 Bit Entropie.
+  # Alphanumerisch, weil das Postgres-Init-Skript (00-auth.sh) das Passwort in
+  # einfachen Anführungszeichen in SQL einsetzt -> keine Quotes/Sonderzeichen.
+  passwordLength: 32
+
+# Datenbank-Zugangsdaten (PostgreSQL/PostGIS – gemeinsam genutzt).
+# Rein intern: die DB ist über keinen Service/Ingress von außen erreichbar und
+# per NetworkPolicy nur für orion-ld/mintaka/frost/keycloak geöffnet.
+db:
+  # Vorhandenes Secret mit Schlüsseln POSTGRES_USER / POSTGRES_PASSWORD.
+  # Gesetzt -> secrets.create wird für die DB ignoriert.
+  existingSecret: ""
+  user: "udp"
+  # LEER LASSEN (empfohlen) -> starkes Zufallspasswort beim ersten Install.
+  # Nur setzen, wenn ein bestimmtes Passwort erzwungen werden muss.
+  password: ""
+
+# Keycloak-Bootstrap-Admin (Anmeldung an der Admin-Konsole).
+keycloak:
+  existingSecret: ""       # Schlüssel: KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD
+  adminUser: "admin"
+  # LEER LASSEN (empfohlen) -> starkes Zufallspasswort beim ersten Install.
+  # Auslesen: kubectl -n <ns> get secret udp-keycloak \
+  #   -o jsonpath='{.data.KEYCLOAK_ADMIN_PASSWORD}' | base64 -d
+  adminPassword: ""
+
+# -----------------------------------------------------------------------------
+# NetworkPolicies (setzt CNI mit Policy-Unterstützung voraus: Calico/Cilium…)
+# -----------------------------------------------------------------------------
+networkPolicies:
+  enabled: true
+  # Default-deny für eingehenden Verkehr + explizite Freigaben.
+  # strictEgress zusätzlich = Default-deny ausgehend (nur freigegebene Ziele
+  # + DNS). Kann externen Verkehr (Let's-Encrypt, Orion-Forwarding) blockieren
+  # – nur aktivieren, wenn bewusst gewünscht.
+  strictEgress: false
+  # Namespace-Selector-Label des Ingress-Controllers (für Freigabe → Gateway).
+  ingressControllerNamespaceLabel:
+    kubernetes.io/metadata.name: ingress-nginx
+
+# -----------------------------------------------------------------------------
+# Ingress
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: "nginx"
+  host: "udp.example.org"
+  tls:
+    enabled: true
+    secretName: "udp-tls"
+  # cert-manager ClusterIssuer; leer -> keine cert-manager-Annotation.
+  clusterIssuer: "letsencrypt"
+  # Plattform-APIs, die DIREKT (ohne /gateway-Präfix) auf APISIX geroutet werden.
+  # Die Pfade müssen den Routen in files/apisix/apisix.yaml.tpl entsprechen.
+  #
+  # LEER, solange die APISIX-Routen nicht per OIDC abgesichert sind: die bare
+  # Pfade wären sonst anonym schreibbar (POST/PATCH/DELETE direkt in den Context
+  # Broker). Öffentlich erreichbar ist die API stattdessen nur über den
+  # Catch-All → Cockpit-nginx unter /gateway/…, das dort auf GET/HEAD/OPTIONS
+  # begrenzt ist (platform/config/nginx/cockpit.conf.template).
+  #
+  # Zum Wieder-Öffnen nach Einführung von OIDC hier eintragen:
+  #   - /ngsi-ld
+  #   - /temporal
+  #   - /FROST-Server
+  # /iot (Geräte-Provisionierung, Admin) und /ingest zusätzlich über
+  # iotAgentJson.exposeRoutes freischalten.
+  apiPaths: []
+  # /catalog und /geoserver am Ingress veröffentlichen (zusätzlich zu
+  # ckan.enabled / geoserver.enabled, die nur das Deployment steuern).
+  # false = Komponenten laufen weiter, sind aber nur intern bzw. lesend über
+  # /gateway/… erreichbar.
+  exposeComponentPaths: false
+  # Zusätzliche Annotationen (Security-Header, Rate-Limit) – nginx-Beispiele.
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+
+# =============================================================================
+# Komponenten
+# Jede Komponente: image, replicas, resources, optional securityContext/
+# podSecurityContext-Overrides und persistence.
+# =============================================================================
+
+# ---------- Persistenz ----------
+mongo:
+  image: { repository: mongo, tag: "5.0" }
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1",  memory: 2Gi }
+  persistence:
+    size: 20Gi
+    storageClass: ""     # "" -> global.storageClass
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999        # mongodb
+    runAsGroup: 999
+    fsGroup: 999
+
+timescale:
+  # Eigenes Image (platform/config/postgres/Dockerfile): PostGIS **und**
+  # TimescaleDB Apache Edition. Ein reines postgis/postgis reicht NICHT —
+  # files/postgres/01-databases.sql legt `CREATE EXTENSION timescaledb` an und
+  # der Init würde abbrechen; Mintaka braucht last() für typ-skopierte
+  # Temporal-Abfragen.
+  # registry/tag leer -> global.udpRegistry / global.udpTag.
+  # PGDATA liegt bewusst in einem UNTERVERZEICHNIS des Volumes
+  # (/var/lib/postgresql/data/pgdata, s. templates/persistence.yaml): auf dem
+  # Mountpoint selbst liegt bei ext4 ein lost+found, und initdb verweigert ein
+  # nicht leeres Datenverzeichnis.
+  image: { name: postgres-timescale-oss, registry: "", tag: "" }
+  db: { name: orion }     # POSTGRES_DB (Bootstrap-DB des Context Brokers)
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits:   { cpu: "2",  memory: 4Gi }
+  persistence:
+    size: 50Gi
+    storageClass: ""
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999        # postgres
+    runAsGroup: 999
+    fsGroup: 999
+
+# ---------- Context Broker ----------
+orionLd:
+  image: { repository: fiware/orion-ld, tag: "1.6.0" }
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+  pdb: { minAvailable: 1 }
+  # Upstream-Image benötigt Root – Non-Root-Härtung als TODO dokumentiert.
+  podSecurityContext:
+    runAsNonRoot: false
+
+mintaka:
+  image: { repository: fiware/mintaka, tag: "0.7.0" }
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 768Mi }
+  podSecurityContext:
+    runAsNonRoot: false
+
+# ---------- IoT ----------
+mosquitto:
+  image: { repository: eclipse-mosquitto, tag: "2.0" }
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 250m, memory: 256Mi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1883
+    runAsGroup: 1883
+
+iotAgentJson:
+  image: { repository: fiware/iotagent-json, tag: "3.14.0-distroless" }
+  # Geraeteregister. iotagent-node-lib wertet nur noch eine vollstaendige URI
+  # aus (IOTA_MONGO_HOST/PORT/DB werden ignoriert). Leer -> mongo im
+  # Release-Namespace, Datenbank "iotagentjson".
+  mongoUri: ""
+  # Gateway-Routen /iot (Geräte-Provisionierung, Admin-API) und /ingest
+  # (schreibender Sensor-Pfad) veröffentlichen. Standardmäßig AUS: beide sind
+  # unauthentifiziert. Der IoT-Agent selbst läuft weiter und ist cluster-intern
+  # sowie über MQTT erreichbar — nur die öffentlichen Routen entfallen.
+  # Erst zusammen mit einer OIDC-Absicherung der Routen einschalten.
+  exposeRoutes: false
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  podSecurityContext:
+    runAsNonRoot: false
+
+frost:
+  image: { repository: fraunhoferiosb/frost-server, tag: "2.7.3" }
+  # Öffentliche Root-URL des SensorThings-Servers. Muss auf den WIRKLICH von
+  # außen erreichbaren Pfad zeigen — FROST schreibt sie in jeden @iot.selfLink.
+  # Solange ingress.apiPaths leer ist, ist das der lesende /gateway-Pfad.
+  serviceRootUrl: "https://udp.example.org/gateway/FROST-Server"
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1",  memory: 1536Mi }
+  podSecurityContext:
+    runAsNonRoot: false
+
+# ---------- Open Data & Geo ----------
+# CKAN veröffentlicht die offenen Daten als DCAT-AP.de. Das Gateway routet
+# /catalog dorthin (files/apisix/apisix.yaml). CKAN braucht Solr (Suchindex),
+# Valkey (Jobs/Cache) und die Datenbanken ckan/ckan_datastore, die
+# files/postgres/01-databases.sql beim DB-Init anlegt.
+# enabled: false -> Deployment UND Gateway-Route entfallen (keine toten Routen).
+ckan:
+  enabled: true
+  # Eigenes Image (platform/config/ckan/Dockerfile) – Basis-CKAN plus
+  # ckanext-dcat. registry/tag leer -> global.udpRegistry / global.udpTag.
+  image: { name: ckan-dcat, registry: "", tag: "" }
+  # Öffentliche Adresse des Katalogs. Leer -> aus ingress.host + /catalog
+  # abgeleitet. CKAN baut damit alle absoluten Links und die DCAT-URIs.
+  #
+  # HINWEIS: Solange ingress.exposeComponentPaths=false ist, ist /catalog von
+  # außen NICHT geroutet — die so erzeugten absoluten Links und DCAT-URIs zeigen
+  # dann ins Leere. Das ist bewusst in Kauf genommen (CKAN ist in dieser
+  # Auslieferung kein öffentlicher Dienst). Der Wert wird hier NICHT automatisch
+  # auf /gateway/catalog umgebogen: CKAN_SITE_URL und CKAN__ROOT_PATH müssen
+  # zusammenpassen, sonst bricht das interne Routing von CKAN.
+  # Vor einer öffentlichen Katalog-Freigabe: exposeComponentPaths=true setzen.
+  siteUrl: ""
+  siteTitle: "Offene Daten – Urbane Datenplattform"
+  adminUser: "ckan_admin"
+  adminEmail: "admin@example.org"
+  # LEER LASSEN (empfohlen) -> Zufallspasswort beim ersten Install, danach über
+  # 'lookup' stabil. Auslesen: kubectl -n <ns> get secret udp-ckan \
+  #   -o jsonpath='{.data.CKAN_SYSADMIN_PASSWORD}' | base64 -d
+  adminPassword: ""
+  existingSecret: ""      # Schlüssel: CKAN_SYSADMIN_PASSWORD
+  plugins: "envvars activity dcat dcat_json_interface structured_data"
+  dcatProfiles: "euro_dcat_ap_2"
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1",  memory: 2Gi }
+  persistence:
+    size: 20Gi            # /var/lib/ckan – hochgeladene Ressourcen
+    storageClass: ""
+  podSecurityContext:
+    # Der Entrypoint (start_ckan.sh) schreibt ckan.ini und trennt die Rechte
+    # selbst – er muss als Root starten (s. platform/config/ckan/Dockerfile).
+    runAsNonRoot: false
+
+solr:
+  image: { repository: ckan/ckan-solr, tag: "2.10-solr9" }
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits:   { cpu: "1",  memory: 2Gi }
+  persistence:
+    size: 10Gi
+    storageClass: ""
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 8983       # solr
+    runAsGroup: 8983
+    fsGroup: 8983
+
+redis:
+  # Valkey (BSD-3) statt Redis: redis:7-alpine zog als Floating-Tag 7.4 mit
+  # RSAL/SSPL nach (Lizenz-Audit 2026-07-20). Reiner Cache/Job-Broker für
+  # CKAN – bewusst ohne Persistenz.
+  image: { repository: valkey/valkey, tag: "8-alpine" }
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 250m, memory: 256Mi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999        # valkey
+    runAsGroup: 1000
+
+# OGC-Dienste (WMS/WFS/WPS). Gateway-Route /geoserver.
+geoserver:
+  enabled: true
+  image: { repository: docker.osgeo.org/geoserver, tag: "2.28.4" }
+  adminUser: "admin"
+  # LEER LASSEN (empfohlen) -> Zufallspasswort beim ersten Install. Ohne diese
+  # Vorgabe liefe GeoServer mit dem Werkskennwort admin/geoserver – und ist
+  # über den Ingress öffentlich erreichbar.
+  # Auslesen: kubectl -n <ns> get secret udp-geoserver \
+  #   -o jsonpath='{.data.GEOSERVER_ADMIN_PASSWORD}' | base64 -d
+  adminPassword: ""
+  existingSecret: ""      # Schlüssel: GEOSERVER_ADMIN_PASSWORD
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits:   { cpu: "1",  memory: 2Gi }
+  persistence:
+    size: 20Gi            # /opt/geoserver_data
+    storageClass: ""
+  podSecurityContext:
+    runAsNonRoot: false   # Upstream-Image startet als Root
+
+# Masterportal: statisches Geoportal, im Compose-Profil "viz-extra".
+# Standardmäßig AUS, weil der Portal-Build (platform/config/masterportal/) nicht
+# im Repository liegt (.gitignore). Zum Aktivieren ein eigenes Image mit dem
+# gebauten Portal unter image angeben.
+masterportal:
+  enabled: false
+  image: { repository: nginx, tag: "1.30-alpine" }
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 250m, memory: 256Mi }
+  podSecurityContext:
+    runAsNonRoot: false
+
+# ---------- API & Identität ----------
+apisix:
+  image: { repository: apache/apisix, tag: "3.17.0-debian" }
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+  pdb: { minAvailable: 1 }
+  # APISIX schreibt Logs ins Root-FS -> Non-Root-Härtung als TODO.
+  podSecurityContext:
+    runAsNonRoot: false
+
+keycloakApp:
+  image: { repository: quay.io/keycloak/keycloak, tag: "26.7" }
+  # Kontextpfad, unter dem Keycloak ausgeliefert wird. Er landet zugleich im
+  # Ingress (templates/ingress.yaml) und in der Cockpit-Konfiguration
+  # (keycloak.url = "<publicUrl>/auth") – eine Stelle, kein Abgleich nötig.
+  relativePath: "/auth"
+  # Zusätzliche Redirect-URIs des Clients "udp-cockpit" im importierten Realm.
+  # Die öffentliche Adresse der Plattform ist immer eingetragen; hier kommen nur
+  # Sonderfälle dazu, z. B. ein lokaler Vite-Dev-Server:
+  #   - "http://localhost:5173/*"
+  # ACHTUNG: Der Realm-Import greift nur beim ERSTEN Start (leere Keycloak-DB).
+  # Bei einer bestehenden Installation die URIs in der Admin-Konsole nachziehen
+  # (Clients -> udp-cockpit -> Valid redirect URIs).
+  extraRedirectUris: []
+  resources:
+    requests: { cpu: 250m, memory: 768Mi }
+    limits:   { cpu: "1",  memory: 2Gi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
+# ---------- Anwendungsdienste ----------
+nodeRed:
+  # Eigenes Image (platform/config/nodered/Dockerfile): Node-RED plus die
+  # GENERIERTEN Datenflüsse, die gehärtete settings.js und ein vorinstalliertes
+  # "pg". registry/tag leer -> global.udpRegistry / global.udpTag.
+  #
+  # Die Flows sind ein Build-Artefakt (scripts/generate-nodered-flows.py), kein
+  # im Editor gepflegter Zustand — deshalb Image statt ConfigMap/Volume:
+  #   * ~420 KB und wachsend sprengen absehbar die 1-MiB-Grenze für ConfigMaps,
+  #   * ein Volume auf /data würde die Flows aus dem Image verdecken,
+  #   * per Digest gepinnt läuft im Cluster exakt der gebaute Stand.
+  # Es gibt daher bewusst KEIN PVC: /data hält nur flüchtigen Laufzeitzustand.
+  image: { name: node-red-udp, registry: "", tag: "" }
+  timezone: "Europe/Berlin"
+  # Passantenfrequenz hystreet.com (kostenpflichtig/vertragsgebunden).
+  # Leer -> der Flow bleibt inaktiv, alles andere läuft normal weiter.
+  hystreetApiToken: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 768Mi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+# Uptime Kuma ist NICHT mehr Teil dieses Charts: ein Monitoring, das mit der
+# ueberwachten Plattform ausgerollt wird, meldet deren Ausfall nicht. Eigenes
+# Release unter monitoring/helm/uptime-kuma – Migration eines bestehenden PVC
+# kuma-data ist in monitoring/README.md beschrieben.
+
+cockpit:
+  # Eigenes Image (gui/Dockerfile) – die SPA plus nginx-Konfiguration.
+  # registry/tag leer -> global.udpRegistry / global.udpTag.
+  image: { name: cockpit, registry: "", tag: "" }
+  replicas: 2
+  # nginx im Cockpit proxyt /gateway/ und /abfahrten intern weiter und löst die
+  # Upstreams zur Laufzeit auf (Gateway-Neustart erzwingt so keinen
+  # Cockpit-Neustart). Diese Namen müssen VOLL QUALIFIZIERT sein: auf Namen, die
+  # nginx über den resolver auflöst, wendet es die search-Domains aus
+  # /etc/resolv.conf nicht an – "apisix" allein bliebe unauflösbar.
+  # Den Resolver selbst ermittelt der Container-Entrypoint aus /etc/resolv.conf.
+  gatewayUpstream: ""     # leer -> apisix.<Release-Namespace>.svc.cluster.local:9080
+  noderedUpstream: ""     # leer -> node-red.<Release-Namespace>.svc.cluster.local:1880
+  # Öffentliche Basis-Adresse der Plattform, wie sie im BROWSER steht. Daraus
+  # erzeugt das Chart die Laufzeit-Konfiguration der SPA (ConfigMap
+  # cockpit-config) und die Redirect-URIs im Keycloak-Realm. Leer (empfohlen)
+  # -> aus ingress.host + ingress.tls.enabled abgeleitet. Nur setzen, wenn der
+  # Chart-Ingress aus ist und ein eigener Proxy/Hostname davor steht.
+  publicUrl: ""
+  # Anmeldung (Keycloak/OIDC) in der Oberfläche. false = das Cockpit zeigt weder
+  # Anmelde-Schaltfläche noch Sitzungs-/Rollenanzeige, die Keycloak-Modulkachel
+  # und der Link auf die Admin-Konsole entfallen, und keycloak-js startet keinen
+  # check-sso-Versuch. Zusätzlich entfällt die /auth-Route am Ingress.
+  #
+  # Standard false für diese Auslieferung: die Plattform-APIs werten noch kein
+  # Token aus (keine OIDC-Plugins in APISIX, keine Mandantendurchsetzung), eine
+  # Anmeldung wäre also ohne Wirkung — und der Realm bringt Demo-Konten mit.
+  # Keycloak selbst bleibt deployt und im Cluster erreichbar.
+  # Für lokale Entwicklung (Compose/vite) bleibt die Anmeldung aktiv:
+  # gui/public/config.js und der Default in gui/src/config.ts stehen auf true.
+  authEnabled: false
+  # Zusätzliche/abweichende Ziele der Modul-Kacheln (Seite "Module").
+  # Node-RED hat bewusst KEINE Ingress-Route (Betriebswerkzeug), und Uptime
+  # Kuma wird gar nicht mehr von diesem Chart ausgerollt (eigenes Release,
+  # s. monitoring/). Wer sie veröffentlicht, trägt die Adressen hier ein:
+  #   nodered: "https://nodered.example.org"
+  #   uptimeKuma: "https://status.example.org"
+  extraModuleUrls: {}
+  # Auswahlliste der Mandanten (NGSI-LD-Tenant) im Cockpit; "" = Standard.
+  # Muss zu den Gruppen-Attributen im Keycloak-Realm passen
+  # (files/keycloak/udp-realm.json.tpl).
+  tenants:
+    - { id: "",      name: "Standard (kreisübergreifend)" }
+    - { id: "lkrt",  name: "Landkreis Reutlingen" }
+    - { id: "lktue", name: "Landkreis Tübingen" }
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 250m, memory: 128Mi }
+  pdb: { minAvailable: 1 }
+  # Basis ist nginx-unprivileged (s. gui/Dockerfile): der Master laeuft selbst
+  # als 101, laesst den "user"-Wechsel und damit das chown der Cache-Pfade
+  # bleiben und lauscht auf 8080. So braucht das Cockpit weder CAP_CHOWN,
+  # CAP_SETUID/SETGID noch CAP_NET_BIND_SERVICE.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101        # nginx
+    runAsGroup: 101
+
+# ---------- Betrieb ----------
+# Logische Dumps aller Plattform-Datenbanken (pg_dump, komprimiert).
+# Ergänzt Volume-Snapshots, ersetzt sie nicht.
+backup:
+  enabled: true
+  image: { repository: prodrigestivill/postgres-backup-local, tag: "16-alpine" }
+  databases: "orion,frost,ckan,ckan_datastore,keycloak"
+  schedule: "@daily"
+  keepDays: 14
+  keepWeeks: 8
+  keepMonths: 12
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  persistence:
+    size: 50Gi
+    storageClass: ""
+  podSecurityContext:
+    runAsNonRoot: false   # Image startet als Root (/init.sh, go-cron)

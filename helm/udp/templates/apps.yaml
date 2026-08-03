@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# Anwendungsdienste: Node-RED, UDP-Cockpit
+#
+# Das Verfuegbarkeits-Monitoring (Uptime Kuma) gehoert bewusst NICHT hierher:
+# es soll nicht mit der Plattform ausgerollt werden, die es ueberwacht. Eigenes
+# Chart unter monitoring/helm/uptime-kuma (Migration s. monitoring/README.md).
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-red
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "node-red") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "node-red" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "node-red") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.nodeRed.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: node-red
+          image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.nodeRed.image) }}
+          {{ include "udp.ownImagePullPolicy" . }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.nodeRed.containerSecurityContext) | nindent 12 }}
+          env:
+            - { name: TZ, value: {{ .Values.nodeRed.timezone | quote }} }
+            # Der TRoE-Statistik-Flow (PlatformStatus:udp-troe) und die
+            # Retention lesen TimescaleDB direkt — gleiche Zugangsdaten wie
+            # Orion-LD, gleiche Quelle wie in Compose.
+            - name: TROE_DB_USER
+              valueFrom:
+                secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER }
+            - name: TROE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD }
+            # Passantenfrequenz (hystreet): leer = Flow bleibt inaktiv.
+            - { name: HYSTREET_API_TOKEN, value: {{ .Values.nodeRed.hystreetApiToken | quote }} }
+          ports: [{ containerPort: 1880 }]
+          # KEIN Volume auf /data: Flows, settings.js und das npm-Modul "pg"
+          # liegen im Image (platform/config/nodered/Dockerfile) und würden von
+          # einem Volume-Mount verdeckt. Node-RED schreibt dort nur noch
+          # Laufzeitzustand (Kontext, .config.*.json) — der ist bewusst
+          # flüchtig, weil die Flows generiert und nicht im Editor gepflegt
+          # werden. Folge: nach einem Neustart fehlt die Signatur-Historie der
+          # Änderungserkennung, der erste Zyklus schreibt also einmalig alle
+          # Entitäten neu.
+          resources:
+            {{- toYaml .Values.nodeRed.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-red
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "node-red") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "node-red" | nindent 4 }}
+  ports: [{ port: 1880 }]
+---
+# UDP-Cockpit: Image wird aus gui/ gebaut und in die Registry des Betreibers gepusht.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cockpit
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "cockpit") | nindent 4 }}
+spec:
+  replicas: {{ .Values.cockpit.replicas }}
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "cockpit" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "cockpit") | nindent 8 }}
+      annotations:
+        # Neue Adressen in config.js sollen die Pods auch wirklich neu ausrollen.
+        checksum/config: {{ include "udp.cockpitConfigJs" . | sha256sum }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.cockpit.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: cockpit
+          image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.cockpit.image) }}
+          {{ include "udp.ownImagePullPolicy" . }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.cockpit.containerSecurityContext) | nindent 12 }}
+          env:
+            # Das Image ist auf Compose vorbelegt (kurze Servicenamen). nginx
+            # wendet auf Namen, die es über den resolver auflöst, die
+            # search-Domains aus /etc/resolv.conf NICHT an – im Cluster müssen
+            # die Upstreams deshalb voll qualifiziert sein. Den Resolver selbst
+            # ermittelt der Entrypoint aus /etc/resolv.conf.
+            - { name: UDP_GATEWAY_UPSTREAM, value: {{ .Values.cockpit.gatewayUpstream | default (printf "apisix.%s.svc.cluster.local:9080" .Release.Namespace) | quote }} }
+            - { name: UDP_NODERED_UPSTREAM, value: {{ .Values.cockpit.noderedUpstream | default (printf "node-red.%s.svc.cluster.local:1880" .Release.Namespace) | quote }} }
+          # nginx-unprivileged lauscht auf 8080 – Ports unter 1024 brauchen
+          # CAP_NET_BIND_SERVICE, das mit "drop: ALL" wegfaellt. Der Service
+          # bleibt auf 80, damit Ingress und Gateway-Routen unveraendert sind.
+          ports: [{ containerPort: 8080 }]
+          volumeMounts:
+            # Ersetzt die im Image vorbelegte (localhost-)Konfiguration durch die
+            # aus den Chart-Werten erzeugte. subPath, damit der Rest der SPA im
+            # Verzeichnis erhalten bleibt.
+            - name: config
+              mountPath: /usr/share/nginx/html/config.js
+              subPath: config.js
+              readOnly: true
+          resources:
+            {{- toYaml .Values.cockpit.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /index.html, port: 8080 }
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap: { name: cockpit-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cockpit
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "cockpit") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "cockpit" | nindent 4 }}
+  ports: [{ port: 80, targetPort: 8080 }]

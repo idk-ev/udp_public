@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+{{- if .Values.backup.enabled }}
+# =============================================================================
+# Logische Datenbank-Backups (pg_dump) – Gegenstück zum Dienst "backup" in
+# docker-compose.yml. Volume-Snapshots der StorageClass ersetzen das NICHT:
+# ein logischer Dump überlebt auch eine beschädigte Datei-Ebene und lässt sich
+# einzeln zurückspielen.
+# Wiederherstellen:
+#   kubectl -n <ns> exec deploy/db-backup -- ls /backups/daily
+#   kubectl -n <ns> exec -i deploy/db-backup -- \
+#     sh -c 'gunzip -c /backups/daily/<datei>.sql.gz | psql -h timescale -U $POSTGRES_USER -d <db>'
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-backup
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "db-backup") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "db-backup" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "db-backup") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.backup.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: backup
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.backup.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.backup.containerSecurityContext) | nindent 12 }}
+          env:
+            - { name: POSTGRES_HOST, value: timescale }
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
+            - { name: POSTGRES_DB,        value: {{ .Values.backup.databases | quote }} }
+            - { name: SCHEDULE,           value: {{ .Values.backup.schedule | quote }} }
+            - { name: BACKUP_KEEP_DAYS,   value: {{ .Values.backup.keepDays | quote }} }
+            - { name: BACKUP_KEEP_WEEKS,  value: {{ .Values.backup.keepWeeks | quote }} }
+            - { name: BACKUP_KEEP_MONTHS, value: {{ .Values.backup.keepMonths | quote }} }
+          volumeMounts:
+            - { name: backups, mountPath: /backups }
+          resources:
+            {{- toYaml .Values.backup.resources | nindent 12 }}
+      volumes:
+        - name: backups
+          persistentVolumeClaim: { claimName: db-backup-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-backup-data
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "db-backup") | nindent 4 }}
+  annotations:
+    # Dumps überleben ein "helm uninstall" – sonst ist die letzte Kopie mit dem
+    # Release weg.
+    "helm.sh/resource-policy": keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- include "udp.storageClass" (dict "ctx" . "override" .Values.backup.persistence.storageClass) | nindent 2 }}
+  resources: { requests: { storage: {{ .Values.backup.persistence.size }} } }
+{{- end }}

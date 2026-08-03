@@ -1,0 +1,49 @@
+Uptime Kuma {{ .Chart.AppVersion }} – Release "{{ .Release.Name }}" im Namespace {{ .Release.Namespace }}.
+
+1) Erster Aufruf (WICHTIG: das Administratorkonto wird beim ersten Aufruf im
+   Browser angelegt – wer zuerst kommt, bekommt es):
+
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "uptime-kuma.fullname" . }} 3701:{{ .Values.service.port }}
+   -> http://localhost:3701
+
+{{- if .Values.ingress.enabled }}
+
+   Der Ingress ist AKTIV: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}{{ .Values.ingress.path }}
+   Legen Sie das Konto sofort an – bis dahin ist die Einrichtung offen.
+{{- else }}
+
+   Ingress ist aus (ingress.enabled=false). Zum Veroeffentlichen der Statusseite
+   ingress.enabled=true und ingress.host setzen – erst NACH dem Anlegen des Kontos.
+{{- end }}
+
+2) Monitore anlegen (Aussensicht auf die Plattform, 60-s-Intervall, s. docs/betrieb.md):
+
+   HTTP(s)  https://<udp-host>/ngsi-ld/v1/types          Context Broker
+   HTTP(s)  https://<udp-host>/temporal/                 Temporal API (Mintaka)
+   HTTP(s)  https://<udp-host>/FROST-Server/v1.1/        OGC SensorThings
+   HTTP(s)  https://<udp-host>/catalog                   CKAN
+   HTTP(s)  https://<udp-host>/geoserver/web/            GeoServer
+   HTTP(s)  https://<udp-host>/                          Cockpit
+   HTTP(s)  https://<keycloak-host>/realms/udp/.well-known/openid-configuration
+   HTTP(s)  https://<udp-host>/dashboard.html                Dashboard
+
+   Danach Benachrichtigungen einrichten (E-Mail/Webhook/MS Teams) und je
+   Endpunkt zuweisen – ohne Notification meldet kein Monitor etwas.
+
+3) Betrieb:
+   - Daten liegen im PVC {{ include "uptime-kuma.claimName" . }}{{ if .Values.persistence.keepOnDelete }} (bleibt bei `helm uninstall` erhalten){{ end }}.
+   - Sicherung: /app/data (SQLite) in die Backup-Routine aufnehmen.
+   - Genau 1 Replikat, Strategie {{ .Values.strategy }} – SQLite auf RWO vertraegt kein zweites.
+{{- if not .Values.persistence.enabled }}
+
+   ACHTUNG: persistence.enabled=false – Monitore und Historie sind nach jedem
+   Pod-Neustart weg. Nur fuer Tests.
+{{- end }}
+
+4) Warum eigenes Release?
+   Das Monitoring liegt bewusst NICHT im Chart der Plattform (helm/udp). Sonst
+   wuerde jedes Plattform-Rollout die Aussensicht mit ausrollen – und ein
+   Ausfall der Plattform faende keinen Beobachter mehr. Empfehlung: eigener
+   Namespace, wo moeglich eigener Node-Pool oder Cluster.
+
+Deinstallation:  helm -n {{ .Release.Namespace }} uninstall {{ .Release.Name }}

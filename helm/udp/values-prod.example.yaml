@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# Beispiel-Overrides für Produktion.
+# Kopieren nach z. B. values-prod.yaml, anpassen, NICHT mit echten Secrets
+# committen. Aufruf: helm upgrade --install ... -f values-prod.yaml
+# =============================================================================
+
+global:
+  # Registry-Prefix für die UPSTREAM-Images (Orion-LD, Keycloak, APISIX, …).
+  # Leer = direkt von Docker Hub/quay ziehen. Für einen Mirror (Supply-Chain:
+  # keine direkten Docker-Hub-Pulls) hier z. B. "harbor.example.org/udp-mirror".
+  imageRegistry: ""
+  # Registry der vier selbst gebauten Images – EINE Stelle für cockpit,
+  # ckan-dcat, postgres-timescale-oss und node-red-udp. Beim Spiegeln nur
+  # diesen Wert ändern.
+  udpRegistry: "ghcr.io/idk-ev/udp"
+  # Nur nötig, wenn die GHCR-Pakete privat sind (siehe DEPLOY.md, Abschnitt 6).
+  imagePullSecrets: []
+  #  - name: ghcr-cred
+  # Storage-Klasse mit Snapshots/Backups für die Datenbanken.
+  storageClass: "csi-ssd-retain"
+
+# -----------------------------------------------------------------------------
+# Secrets: NICHTS eintragen.
+# Das DB-Passwort ist eine reine App-zu-App-Zugangsdatei (die DB ist von außen
+# nicht erreichbar und per NetworkPolicy nur für orion-ld/mintaka/frost/keycloak
+# geöffnet). Es wird beim ERSTEN Install als starkes Zufallspasswort erzeugt und
+# danach stabil gehalten – auch in Produktion. Gleiches gilt für den Keycloak-
+# Admin (Passwort danach per kubectl auslesen, siehe DEPLOY.md).
+# -----------------------------------------------------------------------------
+secrets:
+  create: true
+  passwordLength: 32
+
+# Nur bei Compliance-Vorgabe „Secrets ausschließlich extern verwalten“
+# (SealedSecrets / External-Secrets-Operator / Vault) auskommentieren und
+# vorher ./scripts/create-secrets.sh --context <ctx> ausführen:
+#
+# secrets:
+#   create: false
+# db:
+#   existingSecret: "udp-db"          # POSTGRES_USER / POSTGRES_PASSWORD
+# keycloak:
+#   existingSecret: "udp-keycloak"    # KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD
+
+ingress:
+  enabled: true
+  className: "nginx"
+  host: "udp.meine-stadt.de"
+  tls:
+    enabled: true
+    secretName: "udp-tls"
+  clusterIssuer: "letsencrypt-prod"
+
+networkPolicies:
+  enabled: true
+  strictEgress: false               # erst nach Egress-Test aktivieren
+  ingressControllerNamespaceLabel:
+    kubernetes.io/metadata.name: ingress-nginx
+
+# Selbst gebaute Images: in Produktion auf den Digest pinnen statt auf einen
+# beweglichen Tag. Die Digests gibt die GitHub Action (build-images.yml) in der
+# Job-Zusammenfassung aus – je Image einen eigenen.
+# Die Registry steht oben unter global.udpRegistry.
+cockpit:
+  image:
+    tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+ckan:
+  image:
+    tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+
+# FROST-Root-URL an den echten Host anpassen.
+frost:
+  serviceRootUrl: "https://udp.meine-stadt.de/FROST-Server"
+
+# Beispiel: größere DB-Volumes für Produktion.
+mongo:
+  persistence: { size: 50Gi }
+timescale:
+  image:
+    tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+  persistence: { size: 200Gi }

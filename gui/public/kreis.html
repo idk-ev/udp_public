@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kreis-Dashboard</title>
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<link rel="stylesheet" href="/smartcity-theme.css">
+<style>
+  /* Seitenspezifisch (Basis kommt aus smartcity-theme.css) */
+  #map { height: 460px; }
+  .disclaimer { font-size: .78rem; color: var(--text-muted); margin: -8px 0 14px; }
+  td a { color: var(--text-primary); text-decoration: none; font-weight: 600; }
+  td a:hover { color: var(--accent); }
+</style>
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body>
+<header>
+  <h1 id="title">Kreis</h1>
+  <span class="sub" id="subtitle"></span>
+  <span class="stand" id="stand">lädt…</span>
+  <span id="thememount"></span>
+</header>
+<div id="err"></div>
+<div class="disclaimer">Kreissicht aus offenen Daten — aggregiert über alle Gemeinden des Kreises. Jede Gemeinde hat ein eigenes Dashboard.</div>
+<div class="wbanner" id="wbanner"></div>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="grid">
+  <div class="card span-6">
+    <h2 id="gem-title">Gemeinden</h2>
+    <div class="desc">Klick öffnet das Gemeinde-Dashboard</div>
+    <div style="max-height:460px;overflow-y:auto">
+      <table id="gems"><thead><tr><th>Gemeinde</th><th class="num">Einwohner</th><th class="num">Puls</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <div class="card span-6">
+    <h2>Karte</h2>
+    <div class="desc">Gemeinden des Kreises — Popup verlinkt aufs Dashboard</div>
+    <div id="map"></div>
+  </div>
+</div>
+
+<footer id="footer"></footer>
+
+<script src="/vendor/leaflet.js"></script>
+<script src="/smartcity-lib.js"></script>
+<script>
+"use strict";
+const { $, css, esc, val, asArray, jget, entity, tile, fmtN } = SC;
+
+let KREIS = window.KREIS || null;
+
+// Regex-Query: alle Entitäten eines Typs, deren ags mit dem Kreisschlüssel beginnt
+const byKreis = (type, krs) =>
+  jget(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&q=ags~%3D%5E${krs}&limit=200&options=keyValues`).catch(() => []);
+const sum = (list, attr) => list.reduce((s, e) => s + (e[attr] || 0), 0);
+
+async function render(krow, members) {
+  const [krs, name, lat, lon, typ, gemCount, ew] = krow;
+  const anzeigeName = typ === "SK" ? "Stadtkreis " + name : /kreis$/i.test(name) ? name : "Landkreis " + name;
+  document.title = `${anzeigeName} — Live-Dashboard`;
+  $("#title").textContent = anzeigeName;
+  $("#subtitle").textContent = `${gemCount} ${gemCount === 1 ? "Gemeinde" : "Gemeinden"} · ${fmtN(ew)} Einwohner`;
+  $("#gem-title").textContent = gemCount === 1 ? "Gemeinde" : `Gemeinden (${gemCount})`;
+
+  const [alertDwd, alertNina, rwSum, pulse, pv, laden, parken, sharing, rad] = await Promise.all([
+    entity("urn:ngsi-ld:Alert:bw-kreis-" + krs + "-dwd"),
+    entity("urn:ngsi-ld:Alert:bw-kreis-" + krs + "-nina"),
+    entity("urn:ngsi-ld:RoadWork:bw-kreis-" + krs + "-summary"),
+    byKreis("CityPulse", krs), byKreis("EnergyMonitor", krs), byKreis("ChargingSummary", krs),
+    byKreis("ParkingSummary", krs), byKreis("SharingSummary", krs), byKreis("TrafficFlowObserved", krs),
+  ]);
+
+  const warnCount = (val(alertDwd, "activeCount") || 0) + (val(alertNina, "activeCount") || 0);
+  const maxSev = Math.max(val(alertDwd, "maxSeverity") || 0, val(alertNina, "maxSeverity") || 0);
+  const pulsVals = pulse.filter(e => e.pulseIndex != null);
+  const pulsAvg = pulsVals.length ? Math.round(sum(pulsVals, "pulseIndex") / pulsVals.length) : null;
+  const radSums = rad.filter(e => String(e.id).endsWith("-summary"));
+
+  // Farbstufen des Puls-Tachos (wie in der Gemeindeansicht: rot < 50 < gelb < 75 < grün);
+  // flip:true dreht die Skala, damit wie überall Grün links und Rot rechts steht.
+  const PULS_STOPS = [[0, 50, "var(--status-serious)"], [50, 75, "var(--status-warn)"], [75, 100, "var(--status-good)"]];
+  let tiles = "";
+  if (pulsAvg != null)
+    tiles += tile("Puls Ø", pulsAvg, "/100", { status: pulsAvg >= 75 ? css("--status-good") : pulsAvg >= 50 ? css("--status-warn") : css("--status-serious"),
+      mini: { v: pulsAvg, min: 0, max: 100, stops: PULS_STOPS, flip: true },
+      hint: pulsVals.length + " Gemeinden", explain: "Mittelwert des Zustandsindex (0–100, höher = besser) über alle Gemeinden mit Puls-Daten." });
+  tiles += tile("Warnungen", warnCount, "", { status: warnCount === 0 ? css("--status-good") : maxSev >= 3 ? css("--status-serious") : css("--status-warn"),
+    hint: "DWD + NINA, kreisweit", explain: "Amtliche Warnungen gelten auf Kreisebene (DWD-Wetterwarnungen und NINA-Bevölkerungsschutz)." });
+  if (val(rwSum, "activeCount") != null)
+    tiles += tile("Baustellen", val(rwSum, "activeCount"), "", { hint: "im Kreisgebiet (SVZ-BW)",
+      explain: "Aktive Baustellen im gesamten Kreisgebiet laut Straßenverkehrszentrale BW." });
+  if (pv.length)
+    tiles += tile("PV installiert", (sum(pv, "installedCapacityKw") / 1000).toFixed(1).replace(".", ","), "MW",
+      { hint: fmtN(sum(pv, "plantCount")) + " Anlagen (MaStR)", explain: "Photovoltaik-Gesamtleistung aller Gemeinden laut Marktstammdatenregister." });
+  if (laden.length)
+    tiles += tile("Ladepunkte", fmtN(sum(laden, "evseCount")), "", { hint: fmtN(sum(laden, "locationCount")) + " Standorte",
+      explain: "E-Ladepunkte im Kreis laut BNetzA-Register." });
+  if (parken.length)
+    tiles += tile("Parken", fmtN(sum(parken, "totalCapacity")), "", { hint: fmtN(sum(parken, "siteCount")) + " Anlagen",
+      explain: "Stellplätze aller in MobiData BW erfassten Anlagen im Kreis." });
+  if (sharing.length)
+    tiles += tile("Sharing", fmtN(sum(sharing, "availableVehicles")), "", { hint: "verfügbare Leihfahrzeuge",
+      explain: "Aktuell verfügbare Leihfahrzeuge frei flottierender Anbieter (GBFS) im Kreis." });
+  if (radSums.length)
+    tiles += tile("Radverkehr", fmtN(sum(radSums, "dailyTotal")), "", { hint: fmtN(sum(radSums, "siteCount")) + " Zählstellen",
+      explain: "Radfahrten am letzten verfügbaren Tag über alle Zählstellen im Kreis (Eco-Counter)." });
+  $("#tiles").innerHTML = tiles;
+
+  // Warn-Banner
+  const heads = [];
+  for (const [q, a] of [["DWD", alertDwd], ["NINA", alertNina]])
+    for (const h of asArray(val(a, "headlines"))) heads.push(`<b>${q}</b>: ${esc(h.h || h)}`);
+  const wb = $("#wbanner");
+  wb.className = "wbanner" + (heads.length ? (maxSev >= 3 ? " serious" : " warn") : "");
+  wb.innerHTML = heads.join("<br>");
+
+  // Gemeinde-Tabelle (Puls je Gemeinde, sofern vorhanden)
+  const pulsByAgs = {};
+  pulse.forEach(e => { if (e.ags) pulsByAgs[e.ags] = e.pulseIndex; });
+  $("#gems tbody").innerHTML = members
+    .slice().sort((a, b) => (b[6] || 0) - (a[6] || 0))
+    .map(g => `<tr><td><a href="/${encodeURIComponent(g[8])}">${esc(g[1])}</a></td><td class="num">${fmtN(g[6])}</td>
+      <td class="num">${Number.isFinite(Number(pulsByAgs[g[0]])) ? Number(pulsByAgs[g[0]]) : "–"}</td></tr>`).join("");
+
+  // Karte
+  if (!window._map) {
+    window._map = L.map("map", { scrollWheelZoom: true }).setView([lat, lon], 10);
+    SC.baseLayer(window._map);
+    window._layers = L.layerGroup().addTo(window._map);
+  }
+  window._layers.clearLayers();
+  members.forEach(g =>
+    L.circleMarker([g[2], g[3]], { radius: 6, weight: 1.5, color: css("--surface-1"), fillColor: css("--series-1"), fillOpacity: 1 })
+      .bindPopup(`<b>${esc(g[1])}</b><br>${fmtN(g[6])} Einwohner<br><a href="/${encodeURIComponent(g[8])}">Dashboard öffnen →</a>`)
+      .addTo(window._layers));
+
+  $("#footer").innerHTML = "Kreissicht der Urbanen Datenplattform · Datenquellen siehe Gemeinde-Dashboards · " +
+    "Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0) · <a href='/dashboard.html'>Kommunen-Suche & Betrieb</a>";
+  $("#stand").textContent = "Stand: " + new Date().toLocaleTimeString("de-DE") + " · Auto-Refresh 120 s";
+}
+
+(async () => {
+  try {
+    const gdata = await jget("/bw-gemeinden.json");
+    const slug = (KREIS && KREIS.slug) || location.pathname.replace(/^\/|\/$/g, "");
+    const krow = (gdata.kreise || []).find(k => k[7] === slug || (KREIS && k[0] === KREIS.krs));
+    if (!krow) throw new Error("Kreis nicht gefunden");
+    const members = gdata.gemeinden.filter(g => g[4] === krow[0]);
+    SC.themeSelector("#thememount");
+    document.addEventListener("sc-theme-changed", () => { window._layers && render(krow, members).catch(() => {}); });
+    await render(krow, members);
+    setInterval(() => render(krow, members).catch(() => {}), 120e3);
+  } catch (e) {
+    const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
+  }
+})();
+</script>
+</body>
+</html>

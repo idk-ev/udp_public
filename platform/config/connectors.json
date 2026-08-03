@@ -1,0 +1,742 @@
+{
+  "_doc": "Konnektor-Registry (Masterplan §5 F1). Eine Quelle für Takt, Scope, Aktivierung, Monitoring und Frontend-Fähigkeiten aller Ingestion-Konnektoren. Der Flow-Generator (scripts/generate-nodered-flows.py) interpretiert diese Datei: Takt/Cron werden auf die Inject-Nodes angewandt, inaktive Konnektoren werden aus flows.json entfernt, und gui/public/connectors-status.json wird für Hauptdashboard/Monitoring exportiert. Transform-Logik bleibt Code (nodePrefixes verweisen auf die Bausteine im Generator). supersededBy ist die Ablöse-Markierung (Migrationsmatrix); die Reutlingen-Migration ist abgeschlossen, aktuell setzt kein Konnektor das Feld.",
+  "connectors": [
+    {
+      "id": "ops-host",
+      "name": "Host-Metriken (/proc)",
+      "scope": "betrieb",
+      "enabledFor": null,
+      "intervalSeconds": 120,
+      "cron": null,
+      "sollMinutes": 6,
+      "sampleEntity": "urn:ngsi-ld:PlatformStatus:udp",
+      "provides": [],
+      "attribution": null,
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-op-"
+      ]
+    },
+    {
+      "id": "troe-stats",
+      "name": "TRoE-Statistiken (TimescaleDB)",
+      "scope": "betrieb",
+      "enabledFor": null,
+      "intervalSeconds": 600,
+      "cron": null,
+      "sollMinutes": 30,
+      "sampleEntity": "urn:ngsi-ld:PlatformStatus:udp-troe",
+      "provides": [],
+      "attribution": null,
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-db-"
+      ]
+    },
+    {
+      "id": "troe-retention",
+      "name": "TRoE-Retention (12 Monate, Einzelstandorte 3 Monate)",
+      "scope": "betrieb",
+      "enabledFor": null,
+      "intervalSeconds": null,
+      "cron": "40 03 * * *",
+      "sollMinutes": null,
+      "sampleEntity": null,
+      "provides": [],
+      "attribution": null,
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-rt-"
+      ]
+    },
+    {
+      "id": "stammdaten-bw",
+      "name": "Gemeinde-Stammdaten (georef/Wikidata)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": null,
+      "cron": "30 04 * * 1",
+      "sollMinutes": 11520,
+      "sampleEntity": "urn:ngsi-ld:Municipality:bw-08111000",
+      "provides": [],
+      "attribution": "© EuroGeographics/BKG via opendatasoft · Wikidata",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bm-"
+      ]
+    },
+    {
+      "id": "grenzen-bw",
+      "name": "Gemeindegrenzen-Cache (Punkt-in-Polygon)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 999999,
+      "sampleEntity": null,
+      "provides": [],
+      "attribution": "© EuroGeographics/BKG via opendatasoft",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bgr-"
+      ],
+      "healthUrl": "http://localhost:3700/bw-grenzen.json"
+    },
+    {
+      "id": "wetter-bw",
+      "name": "Wetter alle Gemeinden (Open-Meteo)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 14400,
+      "cron": null,
+      "sollMinutes": 260,
+      "sampleEntity": "urn:ngsi-ld:WeatherObserved:bw-08111000",
+      "provides": [
+        "wetter"
+      ],
+      "attribution": "Open-Meteo (CC-BY 4.0)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bw-"
+      ],
+      "refireOnRestart": false
+    },
+    {
+      "id": "vorhersage-bw",
+      "name": "Vorhersage landesweit (Open-Meteo, 2-h-Takt)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 7200,
+      "cron": null,
+      "sollMinutes": 180,
+      "sampleEntity": "urn:ngsi-ld:WeatherForecast:bw-08111000",
+      "provides": [
+        "vorhersage-basis",
+        "vorhersage"
+      ],
+      "attribution": "Open-Meteo (CC-BY 4.0)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bv-"
+      ],
+      "refireOnRestart": false
+    },
+    {
+      "id": "pollen-bw",
+      "name": "Pollenflug-Gefahrenindex (DWD, 3 BW-Teilregionen)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": null,
+      "cron": "15 07,12 * * *",
+      "sollMinutes": 1560,
+      "sampleEntity": "urn:ngsi-ld:PollenForecast:bw-region-112",
+      "provides": [
+        "pollen"
+      ],
+      "attribution": "DWD (GeoNutzV)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-po-"
+      ]
+    },
+    {
+      "id": "hitze-bw",
+      "name": "Hitzebelastung (DWD Thermischer Gefahrenindex)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": null,
+      "cron": "5 6,11 * * *",
+      "sollMinutes": 1560,
+      "sampleEntity": "urn:ngsi-ld:HeatHealthWarning:bw-stuttgart",
+      "provides": [
+        "hitze"
+      ],
+      "attribution": "DWD Thermischer Gefahrenindex (GeoNutzV)",
+      "requiresSecret": null,
+      "active": true,
+      "refireOnRestart": true,
+      "nodePrefixes": [
+        "udp-rt-hz-"
+      ]
+    },
+    {
+      "id": "pegel-bw",
+      "name": "Pegelstände Bundeswasserstraßen (PEGELONLINE)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 75,
+      "sampleEntity": "urn:ngsi-ld:WaterLevelObserved:bw-pegel-23800900",
+      "provides": [
+        "pegel"
+      ],
+      "attribution": "WSV/PEGELONLINE (dl-de/by-2-0)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-pe-"
+      ]
+    },
+    {
+      "id": "pegel-lubw",
+      "name": "Pegelstände Landesgewässer (LUBW/HVZ)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 75,
+      "sampleEntity": "urn:ngsi-ld:WaterLevelObserved:bw-hvz-00092",
+      "provides": [
+        "pegel"
+      ],
+      "attribution": "LUBW / Hochwasservorhersagezentrale BW",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-pl-"
+      ]
+    },
+    {
+      "id": "rathaus-bw",
+      "name": "Rathaus-Öffnungszeiten (OSM/Overpass)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": null,
+      "cron": "40 04 * * 0",
+      "sollMinutes": 12960,
+      "sampleEntity": "urn:ngsi-ld:CivicStructure:bw-08415061-rathaus",
+      "provides": [
+        "rathaus"
+      ],
+      "attribution": "© OpenStreetMap contributors (ODbL)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-rh-"
+      ],
+      "refireOnRestart": false
+    },
+    {
+      "id": "ausflug-bw",
+      "name": "Ausflugsziele (OSM/Overpass: Sehenswürdigkeiten, Aussichtspunkte, Museen, Burgen)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": null,
+      "cron": "10 05 * * 0",
+      "sollMinutes": 12960,
+      "sampleEntity": "urn:ngsi-ld:TouristDestination:bw-08415061",
+      "provides": [
+        "ausflug"
+      ],
+      "attribution": "© OpenStreetMap contributors (ODbL)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-az-"
+      ],
+      "refireOnRestart": false
+    },
+    {
+      "id": "poi-bw",
+      "name": "Familie & Versorgung (OSM: Apotheke, Arzt, Kita, Spielplatz, AED, Trinkwasser)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": null,
+      "cron": "40 02 * * 0",
+      "sollMinutes": 12960,
+      "sampleEntity": "urn:ngsi-ld:PublicAmenity:bw-08212000",
+      "provides": [
+        "versorgung"
+      ],
+      "attribution": "© OpenStreetMap-Mitwirkende (ODbL)",
+      "requiresSecret": null,
+      "active": true,
+      "refireOnRestart": false,
+      "nodePrefixes": [
+        "udp-rt-poi-"
+      ]
+    },
+    {
+      "id": "warnungen-bw",
+      "name": "Warnungen je Kreis (DWD + NINA)",
+      "scope": "kreis",
+      "enabledFor": "*",
+      "intervalSeconds": 1800,
+      "cron": null,
+      "sollMinutes": 45,
+      "sampleEntity": "urn:ngsi-ld:Alert:bw-kreis-08111-dwd",
+      "provides": [
+        "warnungen"
+      ],
+      "attribution": "DWD via BrightSky (GeoNutzV) · BBK/NINA",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bk-",
+        "udp-rt-wf-"
+      ],
+      "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415"
+    },
+    {
+      "id": "baustellen-bw",
+      "name": "Baustellen landesweit (SVZ-BW)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 21600,
+      "cron": null,
+      "sollMinutes": 400,
+      "sampleEntity": "urn:ngsi-ld:RoadWork:bw-kreis-08111-summary",
+      "provides": [
+        "baustellen"
+      ],
+      "attribution": "MobiData BW / SVZ-BW",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-br-",
+        "udp-rt-brx-"
+      ]
+    },
+    {
+      "id": "uba-bw",
+      "name": "Luftqualität UBA (alle BW-Stationen)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 75,
+      "sampleEntity": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW249",
+      "provides": [
+        "luft-uba"
+      ],
+      "attribution": "Umweltbundesamt",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bu-"
+      ]
+    },
+    {
+      "id": "feinstaub-bw",
+      "name": "Feinstaub-Median je Gemeinde (sensor.community)",
+      "scope": "land",
+      "enabledFor": "*",
+      "sensorDetailFor": "*",
+      "intervalSeconds": 900,
+      "cron": null,
+      "sollMinutes": 20,
+      "sampleEntity": "urn:ngsi-ld:AirQualityObserved:bw-sc-08111000",
+      "provides": [
+        "feinstaub"
+      ],
+      "attribution": "sensor.community",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bs-"
+      ]
+    },
+    {
+      "id": "parken-bw",
+      "name": "Parken und B+R-Fahrradparken landesweit (ParkAPI)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 10800,
+      "cron": null,
+      "sollMinutes": 200,
+      "sampleEntity": "urn:ngsi-ld:ParkingSummary:bw-08111000",
+      "provides": [
+        "parken",
+        "br"
+      ],
+      "attribution": "MobiData BW ParkAPI",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bp-"
+      ]
+    },
+    {
+      "id": "sharing-bw",
+      "name": "Sharing-Aggregate (GBFS, frei flottierend)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 75,
+      "sampleEntity": "urn:ngsi-ld:SharingSummary:bw-08111000-ff-stella",
+      "provides": [
+        "sharing"
+      ],
+      "attribution": "MobiData BW GBFS",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bg-"
+      ]
+    },
+    {
+      "id": "carsharing-bw",
+      "name": "Carsharing landesweit (GBFS, stationsgebunden)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 150,
+      "sampleEntity": "urn:ngsi-ld:FleetStatus:stuttgart-stadtmobil_stuttgart",
+      "provides": [
+        "carsharing-detail"
+      ],
+      "attribution": "MobiData BW GBFS (Anbieter-Feeds)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-cs-",
+        "udp-rt-cz-"
+      ]
+    },
+    {
+      "id": "ladesaeulen-bw",
+      "name": "Ladesäulen landesweit (OCPDB): Aggregat, Standorte, Livestatus",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 150,
+      "sampleEntity": "urn:ngsi-ld:ChargingSummary:bw-08111000",
+      "provides": [
+        "laden",
+        "laden-detail",
+        "laden-live"
+      ],
+      "attribution": "MobiData BW OCPDB / Bundesnetzagentur (DATEX II)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bo-"
+      ]
+    },
+    {
+      "id": "eco-bw",
+      "name": "Radzähler alle Kommunen (Eco-Counter)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": null,
+      "cron": "10 06 * * *",
+      "sollMinutes": 1560,
+      "sampleEntity": "urn:ngsi-ld:TrafficFlowObserved:bw-08111000-summary",
+      "provides": [
+        "radverkehr"
+      ],
+      "attribution": "MobiData BW / Eco-Counter",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-be-"
+      ]
+    },
+    {
+      "id": "mastr-bw",
+      "name": "PV-Rotation (MaStR, 150 Gemeinden/Nacht)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": null,
+      "cron": "20 02 * * *",
+      "sollMinutes": 12960,
+      "sampleEntity": "urn:ngsi-ld:EnergyMonitor:bw-08111000",
+      "provides": [
+        "pv"
+      ],
+      "attribution": "Marktstammdatenregister (dl-de/by-2-0)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bx-"
+      ]
+    },
+    {
+      "id": "puls-bw",
+      "name": "Gemeinde-Puls (Aggregat)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 75,
+      "sampleEntity": "urn:ngsi-ld:CityPulse:bw-08111000",
+      "provides": [
+        "puls"
+      ],
+      "attribution": null,
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-bz-"
+      ]
+    },
+    {
+      "id": "wetter-dwd-station",
+      "name": "Amtliche DWD-Stationen landesweit (BrightSky)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 150,
+      "sampleEntity": "urn:ngsi-ld:WeatherObserved:bw-dwd-04928",
+      "provides": [
+        "amtliche-station"
+      ],
+      "attribution": "Deutscher Wetterdienst über BrightSky (CC BY 4.0)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-w-"
+      ],
+      "refireOnRestart": false
+    },
+    {
+      "id": "efa-abfahrten",
+      "name": "ÖPNV-Abfahrten (EFA-BW)",
+      "scope": "kommune",
+      "enabledFor": [
+        "08415061",
+        "08416041",
+        "08111000",
+        "08221000",
+        "08212000",
+        "08222000",
+        "08121000",
+        "08231000",
+        "08211000",
+        "08118048",
+        "08336050",
+        "08317096",
+        "08436064",
+        "08335075",
+        "08337096",
+        "08116033",
+        "08421000",
+        "08136088",
+        "08311000",
+        "08335043",
+        "08135019",
+        "08115021",
+        "08317008"
+      ],
+      "params": {
+        "stopId": {
+          "08415061": "de:08415:22006",
+          "08416041": "de:08416:11000",
+          "08111000": "de:08111:6115",
+          "08221000": "de:08221:1160",
+          "08212000": "de:08212:90",
+          "08222000": "de:08222:2417",
+          "08121000": "de:08121:26",
+          "08231000": "de:08231:50",
+          "08211000": "de:08211:1847",
+          "08118048": "de:08118:7402",
+          "08336050": "de:08336:6600",
+          "08317096": "de:08317:14506",
+          "08436064": "de:08436:8000",
+          "08335075": "de:08335:2049",
+          "08337096": "de:08337:6566",
+          "08116033": "de:08116:4211",
+          "08421000": "de:08421:1008",
+          "08136088": "de:08136:1000",
+          "08311000": "de:08311:6508",
+          "08335043": "de:08335:6554",
+          "08135019": "de:08135:600",
+          "08115021": "de:08115:4512",
+          "08317008": "de:08317:14450"
+        },
+        "stopName": {
+          "08415061": "Reutlingen Hauptbahnhof",
+          "08416041": "Tübingen Hauptbahnhof",
+          "08111000": "Stuttgart, Hauptbahnhof",
+          "08221000": "Heidelberg, Hauptbahnhof",
+          "08212000": "Karlsruhe, Karlsruhe Hauptbahnhof",
+          "08222000": "Mannheim, Hauptbahnhof",
+          "08121000": "Heilbronn, Heilbronn Hauptbahnhof",
+          "08231000": "Pforzheim, Hauptbahnhof",
+          "08211000": "Baden-Baden, Bahnhof",
+          "08118048": "Ludwigsburg, Bahnhof",
+          "08336050": "Lörrach, Hauptbahnhof",
+          "08317096": "Offenburg, Bahnhof",
+          "08436064": "Ravensburg, Bahnhof",
+          "08335075": "Singen (Hohentwiel), ZOB",
+          "08337096": "Bad Säckingen, Bahnhof",
+          "08116033": "Kirchheim (Teck) Bahnhof",
+          "08421000": "Ulm, Hauptbahnhof",
+          "08136088": "Aalen, Hauptbahnhof",
+          "08311000": "Freiburg im Breisgau, Hauptbahnhof",
+          "08335043": "Konstanz, Bahnhof",
+          "08135019": "Heidenheim (Brenz), Bahnhof",
+          "08115021": "Herrenberg (Württ), Bahnhof",
+          "08317008": "Bad Peterstal, Bahnhof"
+        },
+        "coords": {
+          "08415061": [
+            9.2109,
+            48.4959
+          ],
+          "08416041": [
+            9.0593,
+            48.5158
+          ],
+          "08111000": [
+            9.17201,
+            48.77458
+          ],
+          "08221000": [
+            8.69421,
+            49.40552
+          ],
+          "08212000": [
+            8.41267,
+            49.01132
+          ],
+          "08222000": [
+            8.50041,
+            49.49953
+          ],
+          "08121000": [
+            9.18232,
+            49.15271
+          ],
+          "08231000": [
+            8.71259,
+            48.87642
+          ],
+          "08211000": [
+            8.23191,
+            48.74847
+          ],
+          "08118048": [
+            9.21724,
+            48.90377
+          ],
+          "08336050": [
+            7.68382,
+            47.62805
+          ],
+          "08317096": [
+            7.94381,
+            48.47776
+          ],
+          "08436064": [
+            9.57609,
+            47.76381
+          ],
+          "08335075": [
+            8.87023,
+            47.76064
+          ],
+          "08337096": [
+            7.95666,
+            47.56813
+          ],
+          "08116033": [
+            9.45649,
+            48.6426
+          ],
+          "08421000": [
+            9.95002,
+            48.3909
+          ],
+          "08136088": [
+            10.12177,
+            48.83612
+          ],
+          "08311000": [
+            7.81805,
+            47.99265
+          ],
+          "08335043": [
+            9.15034,
+            47.70673
+          ],
+          "08135019": [
+            10.18694,
+            48.70821
+          ],
+          "08115021": [
+            8.87004,
+            48.59746
+          ],
+          "08317008": [
+            8.22875,
+            48.44044
+          ]
+        },
+        "entityId": {
+          "08415061": "urn:ngsi-ld:PublicTransportStop:reutlingen-hbf"
+        }
+      },
+      "intervalSeconds": 300,
+      "cron": null,
+      "sollMinutes": 10,
+      "sampleEntity": "urn:ngsi-ld:PublicTransportStop:reutlingen-hbf",
+      "provides": [
+        "departures"
+      ],
+      "attribution": "EFA-BW (naldo/bwegt)",
+      "requiresSecret": null,
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-o-"
+      ]
+    },
+    {
+      "id": "abfahrten-on-demand",
+      "name": "ÖPNV-Abfahrten auf Anfrage (EFA-BW, alle Kommunen)",
+      "scope": "land",
+      "enabledFor": "*",
+      "intervalSeconds": 86400,
+      "cron": null,
+      "sollMinutes": 1560,
+      "sampleEntity": null,
+      "provides": [
+        "abfahrten-live"
+      ],
+      "attribution": "EFA-BW (naldo/bwegt)",
+      "requiresSecret": null,
+      "active": true,
+      "refireOnRestart": true,
+      "nodePrefixes": [
+        "udp-rt-ab-",
+        "udp-rt-ah-"
+      ],
+      "healthUrl": "http://localhost:3700/abfahrten?ags=08111000"
+    },
+    {
+      "id": "hystreet",
+      "name": "Passantenfrequenz (hystreet)",
+      "pending": true,
+      "scope": "kommune",
+      "enabledFor": [
+        "08415061"
+      ],
+      "intervalSeconds": 3600,
+      "cron": null,
+      "sollMinutes": 1500,
+      "sampleEntity": "urn:ngsi-ld:PedestrianFlowObserved:reutlingen-wilhelmstrasse",
+      "provides": [
+        "passanten"
+      ],
+      "attribution": "hystreet.com",
+      "requiresSecret": "HYSTREET_API_TOKEN",
+      "active": true,
+      "nodePrefixes": [
+        "udp-rt-hy-"
+      ]
+    }
+  ]
+}

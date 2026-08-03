@@ -1,0 +1,15 @@
+{
+  "name": "Urbane Datenplattform — Smart City Baden-Württemberg",
+  "short_name": "UDP Smart City",
+  "description": "Live-Dashboards mit offenen Daten für alle Gemeinden Baden-Württembergs.",
+  "start_url": "/dashboard.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "lang": "de",
+  "background_color": "#0b1b26",
+  "theme_color": "#0074e8",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

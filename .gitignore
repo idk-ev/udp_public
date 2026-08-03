@@ -1,0 +1,10 @@
+node_modules/
+gui/dist/
+platform/.env
+*.log
+.DS_Store
+platform/config/masterportal/mastercode/
+platform/config/masterportal/Basic/
+__pycache__/
+gui/tsconfig.tsbuildinfo
+helm/udp/values-prod.yaml

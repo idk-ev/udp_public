@@ -1,0 +1,254 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+{{- if .Values.networkPolicies.enabled }}
+# =============================================================================
+# NetworkPolicies – segmentiertes Plattform-Netz
+# Voraussetzung: CNI mit Policy-Unterstützung (Calico, Cilium, …).
+#
+# Modell:
+#   1. default-deny-ingress: niemand erreicht einen Pod, außer explizit erlaubt.
+#   2. allow-intra-namespace: Dienste dürfen sich untereinander erreichen,
+#      AUSSER den Datenspeichern (mongo/timescale/mosquitto/solr/redis).
+#   3. Datenspeicher: nur ihre benannten Clients dürfen zugreifen.
+#   4. Ingress-Controller darf apisix/keycloak/cockpit und den ACME-Solver
+#      erreichen.
+#   5. optional strictEgress: Default-deny ausgehend (nur Namespace + DNS).
+#      Ohne strictEgress entsteht bewusst KEINE Egress-Policy – s. Kommentar
+#      unten: schon eine einzige wuerde allen ausgehenden Verkehr sperren.
+# =============================================================================
+
+# 1. Default-Deny für allen eingehenden Verkehr im Namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# 2. Intra-Namespace-Verkehr erlauben – außer für Datenspeicher.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: NotIn, values: [mongo, timescale, mosquitto, solr, redis] }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+# 3a. MongoDB nur für Orion-LD und IoT-Agent.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mongo-clients
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app: mongo }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchExpressions: [ { key: app, operator: In, values: [orion-ld, iot-agent-json] } ] }
+      ports:
+        - { protocol: TCP, port: 27017 }
+---
+# 3b. PostGIS/Timescale nur für Orion-LD, Mintaka, FROST, Keycloak – und, falls
+#     aktiviert, CKAN (Katalog + Datastore) sowie den Backup-Dienst (pg_dump).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-timescale-clients
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app: timescale }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - orion-ld
+                  - mintaka
+                  - frost
+                  - keycloak
+                  # TRoE-Statistik (PlatformStatus:udp-troe) und die
+                  # TRoE-Retention sprechen als einzige Flows direkt SQL.
+                  - node-red
+                  {{- if .Values.ckan.enabled }}
+                  - ckan
+                  {{- end }}
+                  {{- if .Values.backup.enabled }}
+                  - db-backup
+                  {{- end }}
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+# 3c. Mosquitto nur für den IoT-Agent.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mosquitto-clients
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app: mosquitto }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchExpressions: [ { key: app, operator: In, values: [iot-agent-json] } ] }
+      ports:
+        - { protocol: TCP, port: 1883 }
+        - { protocol: TCP, port: 9001 }
+{{- if .Values.ckan.enabled }}
+---
+# 3d. Solr und Valkey enthalten Katalogdaten bzw. Sitzungs-/Job-Zustand –
+#     ausschließlich CKAN darf sie erreichen.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-catalog-store-clients
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [solr, redis] }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: ckan } }
+      ports:
+        - { protocol: TCP, port: 8983 }
+        - { protocol: TCP, port: 6379 }
+{{- end }}
+---
+# 4. Ingress-Controller darf die öffentlich erreichbaren Frontends bedienen.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [apisix, keycloak, cockpit] }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicies.ingressControllerNamespaceLabel | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 9080 }
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 80 }
+{{- if .Values.ingress.clusterIssuer }}
+---
+# 4b. HTTP-01-Solver von cert-manager. Die Pods legt cert-manager waehrend der
+#     Zertifikatsausstellung selbst an – sie tragen KEIN app-Label und fallen
+#     damit unter default-deny-ingress, waehrend allow-ingress-controller nur
+#     apisix/keycloak/cockpit oeffnet. Ohne diese Regel erreicht der Ingress-
+#     Controller den Solver nicht, die Challenge bleibt "pending"
+#     ("failed to perform self check ... context deadline exceeded") und es gibt
+#     nie ein Zertifikat. Der acmesolver lauscht auf 8089.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-acme-http01-solver
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicies.ingressControllerNamespaceLabel | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 8089 }
+{{- end }}
+{{- if .Values.networkPolicies.strictEgress }}
+---
+# 5. strictEgress: Default-deny ausgehend – erlaubt bleiben DNS und der
+#    Namespace-interne Verkehr.
+#
+#    WICHTIG: Diese drei Policies gehoeren ZUSAMMEN und duerfen nur gemeinsam
+#    existieren. Eine Egress-Policy mit podSelector {} macht Egress fuer JEDEN
+#    Pod des Namespace zu "default deny" – erlaubt ist dann ausschliesslich, was
+#    die Egress-Regeln aufzaehlen. Stand allow-dns-egress frueher allein (also
+#    auch bei strictEgress=false), war damit der gesamte ausgehende Verkehr
+#    ausser DNS gesperrt: mintaka/orion-ld/ckan/keycloak liefen in
+#    "Connect timed out" zu timescale bzw. mongo, ohne dass eine Ingress-Regel
+#    fehlte. Ohne strictEgress darf es deshalb GAR KEINE Egress-Policy geben;
+#    die Segmentierung uebernehmen die Ingress-Regeln der Datenspeicher oben.
+#
+#    ACHTUNG: blockiert externen Verkehr (Let's-Encrypt-Validierung laeuft ueber
+#    den Ingress-Controller, Orion-Forwarding, JSON-LD-@context-Abruf des
+#    IoT-Agent). Nur bewusst aktivieren.
+#
+#    ACHTUNG 2: podSelector {} trifft JEDEN Pod des Namespace – auch die aus
+#    ANDEREN Releases. Wer das Monitoring (monitoring/helm/uptime-kuma) in
+#    diesen Namespace legt, sperrt ihm mit strictEgress saemtliche Checks aus.
+#    Das Monitoring gehoert ohnehin in einen eigenen Namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace-egress
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress: []
+{{- end }}
+{{- end }}

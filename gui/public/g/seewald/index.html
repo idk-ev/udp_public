@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart City Seewald — Live-Dashboard</title>
+<meta name="description" content="Live-Dashboard für Seewald: Wetter, Warnungen, Baustellen, Umwelt-, Mobilitäts- und Energiedaten aus offenen Quellen. Urbane Datenplattform.">
+<meta property="og:title" content="Smart City Seewald">
+<meta property="og:description" content="Offene Live-Daten für Seewald (2.164 Einwohner): Wetter, Luft, Mobilität, Energie.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script>window.STADT = {"ags": "08237073", "slug": "seewald", "name": "Seewald", "row": ["08237073", "Seewald", 48.58585, 8.456, "08237", "G", 2164, null, "seewald"], "website": "http://www.seewald.eu"};</script>
+<script>
+// Bundle-Loader: gemeinsames Template übernimmt ab hier (Skripte sequenziell!)
+fetch("/stadt.html").then(r => r.text()).then(async html => {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  document.body.innerHTML = doc.body.innerHTML;
+  for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
+  for (const s of doc.querySelectorAll("body script")) {
+    await new Promise((res, rej) => {
+      const n = document.createElement("script");
+      if (s.src) { n.src = s.src; n.onload = res; n.onerror = res; }
+      else { n.textContent = s.textContent; }
+      document.body.appendChild(n);
+      if (!s.src) res();
+    });
+  }
+});
+</script>
+</head>
+<body></body>
+</html>

@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+apiVersion: v2
+name: udp
+description: >-
+  Urbane Datenplattform (UDP) – FIWARE-basierte Smart-City-Plattform:
+  Context Broker (Orion-LD/Mintaka), IoT (Mosquitto/IoT-Agent/FROST),
+  API-Gateway (APISIX), Identität (Keycloak), Persistenz (MongoDB, PostGIS)
+  sowie Anwendungsdienste (Node-RED, Cockpit). Das Verfügbarkeits-Monitoring
+  wird bewusst getrennt ausgerollt: monitoring/helm/uptime-kuma.
+type: application
+
+# Chart-Version (SemVer) – bei jeder Chart-Änderung erhöhen.
+# 2.0.0: Uptime Kuma ist aus dem Chart entfernt (eigenes Release unter
+# monitoring/). Breaking – ein Upgrade raeumt PVC kuma-data ab, s. DEPLOY.md §11.
+version: 2.0.0
+
+# Version der ausgelieferten Plattform (informativ, erscheint in kubectl).
+appVersion: "1.0.0"
+
+keywords:
+  - fiware
+  - smart-city
+  - ngsi-ld
+  - iot
+  - urban-data-platform
+home: https://github.com/idk-ev/udp
+
+# Deutschsprachige Annotation für Artifact Hub o. Ä.
+annotations:
+  category: IoT

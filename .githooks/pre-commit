@@ -1,0 +1,8 @@
+#!/bin/sh
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# Pre-Commit (Sprint 2.8, dependency-frei statt husky): statische Tests + Lint
+set -e
+node tests/run.js
+npm --prefix gui run -s lint

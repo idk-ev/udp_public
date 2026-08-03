@@ -1,0 +1,3305 @@
+{
+ "_doc": "Amtliche Gemeinde-Website je AGS (Wikidata P856, verknüpft über P439). Erzeugt von scripts/generate-gemeinde-services.py. Kuratierte Einzel-Links in dashboards.json haben im Dashboard Vorrang.",
+ "dienste": {
+  "08111000": {
+   "website": "https://www.stuttgart.de/"
+  },
+  "08115001": {
+   "website": "https://www.aidlingen.de/"
+  },
+  "08115002": {
+   "website": "https://www.altdorf-boeblingen.de"
+  },
+  "08115003": {
+   "website": "https://www.boeblingen.de/"
+  },
+  "08115004": {
+   "website": "https://www.bondorf.de/"
+  },
+  "08115010": {
+   "website": "https://www.deckenpfronn.de/"
+  },
+  "08115013": {
+   "website": "http://www.ehningen.de/"
+  },
+  "08115015": {
+   "website": "http://www.gaertringen.de"
+  },
+  "08115016": {
+   "website": "https://www.gaeufelden.de/"
+  },
+  "08115021": {
+   "website": "https://herrenberg.de/"
+  },
+  "08115022": {
+   "website": "http://www.hildrizhausen.de"
+  },
+  "08115024": {
+   "website": "https://www.holzgerlingen.de/"
+  },
+  "08115028": {
+   "website": "https://www.leonberg.de/"
+  },
+  "08115029": {
+   "website": "https://www.magstadt.de/"
+  },
+  "08115034": {
+   "website": "https://www.moetzingen.de/"
+  },
+  "08115037": {
+   "website": "http://www.nufringen.de"
+  },
+  "08115041": {
+   "website": "https://www.renningen.de/"
+  },
+  "08115042": {
+   "website": "http://www.rutesheim.de"
+  },
+  "08115044": {
+   "website": "https://schoenaich.de"
+  },
+  "08115045": {
+   "website": "https://www.sindelfingen.de/"
+  },
+  "08115046": {
+   "website": "http://www.steinenbronn.de"
+  },
+  "08115048": {
+   "website": "http://www.waldenbuch.de"
+  },
+  "08115050": {
+   "website": "https://www.weil-der-stadt.de/"
+  },
+  "08115051": {
+   "website": "https://www.weil-im-schoenbuch.de/"
+  },
+  "08115052": {
+   "website": "http://www.weissach.de"
+  },
+  "08115053": {
+   "website": "https://www.jettingen.de/"
+  },
+  "08115054": {
+   "website": "https://www.gemeindegrafenau.de/"
+  },
+  "08116004": {
+   "website": "https://www.altbach.de/"
+  },
+  "08116005": {
+   "website": "https://altdorf-es.de/"
+  },
+  "08116006": {
+   "website": "http://www.altenriet.de/"
+  },
+  "08116007": {
+   "website": "https://www.baltmannsweiler.de/"
+  },
+  "08116008": {
+   "website": "http://www.bempflingen.de/"
+  },
+  "08116011": {
+   "website": "https://www.beuren.de/"
+  },
+  "08116012": {
+   "website": "http://www.bissingen-teck.de/"
+  },
+  "08116014": {
+   "website": "http://www.deizisau.de/"
+  },
+  "08116015": {
+   "website": "http://www.denkendorf.de/"
+  },
+  "08116016": {
+   "website": "https://www.dettingen-teck.de/"
+  },
+  "08116018": {
+   "website": "https://erkenbrechtsweiler.de"
+  },
+  "08116019": {
+   "website": "https://www.esslingen.de/"
+  },
+  "08116020": {
+   "website": "http://www.frickenhausen.de"
+  },
+  "08116022": {
+   "website": "http://www.grossbettlingen.de"
+  },
+  "08116027": {
+   "website": "http://www.hochdorf.de"
+  },
+  "08116029": {
+   "website": "http://www.holzmaden.de"
+  },
+  "08116033": {
+   "website": "https://www.kirchheim-teck.de/"
+  },
+  "08116035": {
+   "website": "http://www.koengen.de"
+  },
+  "08116036": {
+   "website": "http://www.kohlberg.de"
+  },
+  "08116037": {
+   "website": "https://www.lichtenwald.de/"
+  },
+  "08116041": {
+   "website": "http://www.neckartailfingen.de"
+  },
+  "08116042": {
+   "website": "https://www.neckartenzlingen.de/"
+  },
+  "08116043": {
+   "website": "https://www.neidlingen.de"
+  },
+  "08116046": {
+   "website": "http://www.neuffen.de"
+  },
+  "08116047": {
+   "website": "https://neuhausen-fildern.de"
+  },
+  "08116048": {
+   "website": "https://www.notzingen.de"
+  },
+  "08116049": {
+   "website": "https://nuertingen.de"
+  },
+  "08116050": {
+   "website": "http://www.oberboihingen.de"
+  },
+  "08116053": {
+   "website": "http://www.ohmden.de"
+  },
+  "08116054": {
+   "website": "https://www.owen.de"
+  },
+  "08116056": {
+   "website": "http://www.plochingen.de"
+  },
+  "08116058": {
+   "website": "http://www.reichenbach-fils.de"
+  },
+  "08116063": {
+   "website": "https://www.schlaitdorf.de"
+  },
+  "08116068": {
+   "website": "https://unterensingen.de"
+  },
+  "08116070": {
+   "website": "http://www.weilheim-teck.de"
+  },
+  "08116071": {
+   "website": "https://www.wendlingen.de/"
+  },
+  "08116072": {
+   "website": "https://www.wernau.de/"
+  },
+  "08116073": {
+   "website": "https://www.wolfschlugen.de/"
+  },
+  "08116076": {
+   "website": "http://www.gemeinde-aichwald.de/"
+  },
+  "08116077": {
+   "website": "http://www.filderstadt.de/"
+  },
+  "08116078": {
+   "website": "https://www.leinfelden-echterdingen.de"
+  },
+  "08116079": {
+   "website": "http://www.lenningen.de"
+  },
+  "08116080": {
+   "website": "https://www.ostfildern.de/"
+  },
+  "08116081": {
+   "website": "https://www.aichtal.de/"
+  },
+  "08117001": {
+   "website": "https://www.adelberg.de/"
+  },
+  "08117002": {
+   "website": "http://www.aichelberg.de/"
+  },
+  "08117003": {
+   "website": "http://www.albershausen.de/"
+  },
+  "08117006": {
+   "website": "http://www.bad-ditzenbach.de/"
+  },
+  "08117007": {
+   "website": "http://www.bad-ueberkingen.de/"
+  },
+  "08117009": {
+   "website": "http://www.birenbach.de/"
+  },
+  "08117010": {
+   "website": "http://www.boehmenkirch.de/"
+  },
+  "08117011": {
+   "website": "https://www.boertlingen.de/"
+  },
+  "08117012": {
+   "website": "http://www.bad-boll.de/"
+  },
+  "08117014": {
+   "website": "https://www.deggingen.de/"
+  },
+  "08117015": {
+   "website": "http://www.donzdorf.de/"
+  },
+  "08117016": {
+   "website": "http://www.drackenstein.de/"
+  },
+  "08117017": {
+   "website": "http://www.duernau.de/"
+  },
+  "08117018": {
+   "website": "https://www.ebersbach.de/"
+  },
+  "08117019": {
+   "website": "https://www.eislingen.de/"
+  },
+  "08117020": {
+   "website": "http://www.gemeinde-eschenbach.de/"
+  },
+  "08117023": {
+   "website": "http://www.gammelshausen.net"
+  },
+  "08117024": {
+   "website": "https://www.geislingen.de"
+  },
+  "08117025": {
+   "website": "https://www.gingen.de/"
+  },
+  "08117026": {
+   "website": "https://www.goeppingen.de/"
+  },
+  "08117028": {
+   "website": "http://www.gruibingen.de"
+  },
+  "08117029": {
+   "website": "http://www.hattenhofen.de"
+  },
+  "08117030": {
+   "website": "https://www.heiningen-online.de/"
+  },
+  "08117031": {
+   "website": "http://www.hohenstadt-alb.de"
+  },
+  "08117033": {
+   "website": "https://www.kuchen.de/"
+  },
+  "08117035": {
+   "website": "https://www.muehlhausen-taele.de/"
+  },
+  "08117037": {
+   "website": "http://www.ottenbach.de"
+  },
+  "08117038": {
+   "website": "http://www.rechberghausen.de"
+  },
+  "08117042": {
+   "website": "https://www.salach.de/"
+  },
+  "08117043": {
+   "website": "https://www.schlat.de/"
+  },
+  "08117044": {
+   "website": "http://www.schlierbach.de"
+  },
+  "08117049": {
+   "website": "http://www.suessen.de"
+  },
+  "08117051": {
+   "website": "https://www.uhingen.de/"
+  },
+  "08117053": {
+   "website": "http://www.waeschenbeuren.de"
+  },
+  "08117055": {
+   "website": "http://www.gemeinde-wangen.de"
+  },
+  "08117058": {
+   "website": "http://www.wiesensteig.de"
+  },
+  "08117060": {
+   "website": "http://www.zell-u-a.de"
+  },
+  "08117061": {
+   "website": "http://www.lauterstein.de"
+  },
+  "08118001": {
+   "website": "http://www.affalterbach.de/"
+  },
+  "08118003": {
+   "website": "http://www.asperg.de/"
+  },
+  "08118006": {
+   "website": "http://www.benningen.de/"
+  },
+  "08118007": {
+   "website": "http://www.besigheim.de/"
+  },
+  "08118010": {
+   "website": "http://www.boennigheim.de/"
+  },
+  "08118011": {
+   "website": "https://www.ditzingen.de/"
+  },
+  "08118012": {
+   "website": "https://www.eberdingen.de/"
+  },
+  "08118014": {
+   "website": "https://www.erdmannhausen.de/"
+  },
+  "08118015": {
+   "website": "http://www.erligheim.de/"
+  },
+  "08118016": {
+   "website": "https://www.freudental.de"
+  },
+  "08118018": {
+   "website": "http://www.gemmrigheim.de"
+  },
+  "08118019": {
+   "website": "https://www.gerlingen.de/"
+  },
+  "08118021": {
+   "website": "https://www.grossbottwar.de/"
+  },
+  "08118027": {
+   "website": "https://www.hemmingen.de/"
+  },
+  "08118028": {
+   "website": "http://www.hessigheim.de"
+  },
+  "08118040": {
+   "website": "http://www.kirchheim-am-neckar.de"
+  },
+  "08118046": {
+   "website": "http://www.kornwestheim.de"
+  },
+  "08118047": {
+   "website": "http://www.loechgau.de"
+  },
+  "08118048": {
+   "website": "https://www.ludwigsburg.de"
+  },
+  "08118049": {
+   "website": "http://www.schillerstadt-marbach.de"
+  },
+  "08118050": {
+   "website": "http://www.markgroeningen.de"
+  },
+  "08118051": {
+   "website": "http://www.moeglingen.de"
+  },
+  "08118053": {
+   "website": "http://www.mundelsheim.de"
+  },
+  "08118054": {
+   "website": "http://www.gemeinde-murr.de"
+  },
+  "08118059": {
+   "website": "https://www.oberriexingen.de/"
+  },
+  "08118060": {
+   "website": "https://www.oberstenfeld.de"
+  },
+  "08118063": {
+   "website": "http://www.pleidelsheim.de"
+  },
+  "08118067": {
+   "website": "http://www.schwieberdingen.de"
+  },
+  "08118068": {
+   "website": "http://www.sersheim.de"
+  },
+  "08118070": {
+   "website": "http://www.stadt-steinheim.de"
+  },
+  "08118071": {
+   "website": "http://www.tamm.org/"
+  },
+  "08118073": {
+   "website": "https://www.vaihingen.de"
+  },
+  "08118074": {
+   "website": "http://www.walheim.de"
+  },
+  "08118076": {
+   "website": "https://www.sachsenheim.de/"
+  },
+  "08118077": {
+   "website": "http://www.ingersheim.de"
+  },
+  "08118078": {
+   "website": "https://www.freiberg-an.de"
+  },
+  "08118079": {
+   "website": "https://www.bietigheim-bissingen.de/"
+  },
+  "08118080": {
+   "website": "https://www.korntal-muenchingen.de/"
+  },
+  "08118081": {
+   "website": "https://www.stadt-remseck.de"
+  },
+  "08119001": {
+   "website": "https://www.alfdorf.de/"
+  },
+  "08119003": {
+   "website": "https://www.allmersbach.de/"
+  },
+  "08119004": {
+   "website": "http://www.althuette.de/"
+  },
+  "08119006": {
+   "website": "http://www.auenwald.de/"
+  },
+  "08119008": {
+   "website": "https://www.backnang.de/"
+  },
+  "08119018": {
+   "website": "http://www.burgstetten.de/"
+  },
+  "08119020": {
+   "website": "https://www.fellbach.de/"
+  },
+  "08119024": {
+   "website": "http://www.grosserlach.de"
+  },
+  "08119037": {
+   "website": "http://www.kaisersbach.de"
+  },
+  "08119038": {
+   "website": "https://www.kirchberg-murr.de/"
+  },
+  "08119041": {
+   "website": "https://www.korb.de/"
+  },
+  "08119042": {
+   "website": "http://www.leutenbach.de"
+  },
+  "08119044": {
+   "website": "https://www.murrhardt.de/"
+  },
+  "08119053": {
+   "website": "https://www.oppenweiler.de"
+  },
+  "08119055": {
+   "website": "https://www.pluederhausen.de/"
+  },
+  "08119061": {
+   "website": "http://www.rudersberg.de"
+  },
+  "08119067": {
+   "website": "https://www.schorndorf.de/"
+  },
+  "08119068": {
+   "website": "http://www.schwaikheim.de"
+  },
+  "08119069": {
+   "website": "http://www.gemeinde-spiegelberg.de"
+  },
+  "08119075": {
+   "website": "http://www.sulzbach-murr.de"
+  },
+  "08119076": {
+   "website": "https://www.urbach.de/"
+  },
+  "08119079": {
+   "website": "https://www.waiblingen.de/"
+  },
+  "08119083": {
+   "website": "https://www.weissach-im-tal.de/"
+  },
+  "08119084": {
+   "website": "https://www.welzheim.de"
+  },
+  "08119085": {
+   "website": "https://www.winnenden.de"
+  },
+  "08119086": {
+   "website": "https://www.winterbach.de/"
+  },
+  "08119087": {
+   "website": "http://www.aspach.de/"
+  },
+  "08119089": {
+   "website": "https://www.berglen.de/"
+  },
+  "08119090": {
+   "website": "http://www.remshalden.de"
+  },
+  "08119091": {
+   "website": "https://www.weinstadt.de/"
+  },
+  "08119093": {
+   "website": "http://www.kernen.de"
+  },
+  "08121000": {
+   "website": "https://www.heilbronn.de/"
+  },
+  "08125001": {
+   "website": "https://www.abstatt.de/"
+  },
+  "08125005": {
+   "website": "http://www.friedrichshall.de/"
+  },
+  "08125006": {
+   "website": "https://www.badrappenau.de/"
+  },
+  "08125007": {
+   "website": "https://www.badwimpfen.de/"
+  },
+  "08125008": {
+   "website": "http://www.beilstein.de/"
+  },
+  "08125013": {
+   "website": "https://www.brackenheim.de/"
+  },
+  "08125017": {
+   "website": "http://www.cleebronn.de/"
+  },
+  "08125021": {
+   "website": "https://www.eberstadt.de/"
+  },
+  "08125024": {
+   "website": "https://www.ellhofen.de/"
+  },
+  "08125026": {
+   "website": "http://www.eppingen.de/"
+  },
+  "08125027": {
+   "website": "https://www.erlenbach-hn.de/"
+  },
+  "08125030": {
+   "website": "http://www.flein.de"
+  },
+  "08125034": {
+   "website": "http://www.gemmingen.eu/"
+  },
+  "08125038": {
+   "website": "http://www.gueglingen.de"
+  },
+  "08125039": {
+   "website": "https://www.gundelsheim.de/"
+  },
+  "08125046": {
+   "website": "https://www.ilsfeld.de/"
+  },
+  "08125047": {
+   "website": "http://www.ittlingen.de"
+  },
+  "08125048": {
+   "website": "https://www.jagsthausen.de/"
+  },
+  "08125049": {
+   "website": "http://www.kirchardt.de"
+  },
+  "08125056": {
+   "website": "https://www.lauffen.de/"
+  },
+  "08125057": {
+   "website": "http://www.lehrensteinsfeld.de"
+  },
+  "08125058": {
+   "website": "http://www.leingarten.de"
+  },
+  "08125059": {
+   "website": "https://www.stadt-loewenstein.de/"
+  },
+  "08125061": {
+   "website": "http://www.massenbachhausen.de"
+  },
+  "08125063": {
+   "website": "http://www.moeckmuehl.de"
+  },
+  "08125065": {
+   "website": "http://www.neckarsulm.de"
+  },
+  "08125066": {
+   "website": "https://www.neckarwestheim.de/"
+  },
+  "08125068": {
+   "website": "http://www.neudenau.de"
+  },
+  "08125069": {
+   "website": "http://www.neuenstadt.de"
+  },
+  "08125074": {
+   "website": "https://www.nordheim.de/"
+  },
+  "08125078": {
+   "website": "http://www.oedheim.de"
+  },
+  "08125079": {
+   "website": "http://www.offenau.de"
+  },
+  "08125081": {
+   "website": "https://www.pfaffenhofen-wuertt.de/"
+  },
+  "08125084": {
+   "website": "http://www.roigheim.de"
+  },
+  "08125086": {
+   "website": "https://www.schwaigern.de/"
+  },
+  "08125087": {
+   "website": "http://www.siegelsbach.de"
+  },
+  "08125094": {
+   "website": "https://www.talheim.de/"
+  },
+  "08125096": {
+   "website": "http://www.untereisesheim.de"
+  },
+  "08125098": {
+   "website": "https://www.untergruppenbach.de/"
+  },
+  "08125102": {
+   "website": "http://www.weinsberg.de"
+  },
+  "08125103": {
+   "website": "http://www.widdern.de"
+  },
+  "08125107": {
+   "website": "http://www.gemeinde-wuestenrot.de"
+  },
+  "08125108": {
+   "website": "https://www.zaberfeld.de/"
+  },
+  "08125110": {
+   "website": "http://www.obersulm.de"
+  },
+  "08125111": {
+   "website": "http://www.hardthausen.de"
+  },
+  "08125113": {
+   "website": "https://www.langenbrettach.de/"
+  },
+  "08126011": {
+   "website": "https://www.bretzfeld.de/"
+  },
+  "08126020": {
+   "website": "https://www.doerzbach.de/"
+  },
+  "08126028": {
+   "website": "http://www.forchtenberg.de"
+  },
+  "08126039": {
+   "website": "https://www.ingelfingen.de"
+  },
+  "08126045": {
+   "website": "http://www.krautheim.de"
+  },
+  "08126046": {
+   "website": "https://www.kuenzelsau.de/"
+  },
+  "08126047": {
+   "website": "https://www.kupferzell.de/"
+  },
+  "08126056": {
+   "website": "http://www.mulfingen.de"
+  },
+  "08126058": {
+   "website": "https://www.neuenstein.de/"
+  },
+  "08126060": {
+   "website": "http://www.niedernhall.de"
+  },
+  "08126066": {
+   "website": "http://www.oehringen.de"
+  },
+  "08126069": {
+   "website": "http://www.pfedelbach.de"
+  },
+  "08126072": {
+   "website": "http://www.schoental.de"
+  },
+  "08126085": {
+   "website": "https://www.waldenburg-hohenlohe.de/"
+  },
+  "08126086": {
+   "website": "http://www.gemeinde-weissbach.de"
+  },
+  "08126094": {
+   "website": "https://www.zweiflingen.de/"
+  },
+  "08127008": {
+   "website": "http://www.blaufelden.de"
+  },
+  "08127009": {
+   "website": "http://www.braunsbach.de/"
+  },
+  "08127012": {
+   "website": "http://www.buehlertann.de/"
+  },
+  "08127013": {
+   "website": "https://www.buehlerzell.de/"
+  },
+  "08127014": {
+   "website": "https://www.crailsheim.de/"
+  },
+  "08127023": {
+   "website": "http://www.fichtenberg.de"
+  },
+  "08127025": {
+   "website": "https://www.gaildorf.de/"
+  },
+  "08127032": {
+   "website": "http://www.gerabronn.de"
+  },
+  "08127043": {
+   "website": "http://www.ilshofen.de"
+  },
+  "08127046": {
+   "website": "http://www.kirchberg-jagst.de"
+  },
+  "08127047": {
+   "website": "http://www.langenburg.de"
+  },
+  "08127052": {
+   "website": "https://www.mainhardt.de/"
+  },
+  "08127056": {
+   "website": "https://www.michelbach-bilz.de/"
+  },
+  "08127059": {
+   "website": "https://www.michelfeld.de/"
+  },
+  "08127062": {
+   "website": "http://www.oberrot.de"
+  },
+  "08127063": {
+   "website": "https://www.obersontheim.de/"
+  },
+  "08127071": {
+   "website": "https://www.rotamsee.de"
+  },
+  "08127073": {
+   "website": "https://www.satteldorf.de/"
+  },
+  "08127075": {
+   "website": "https://www.stadt-schrozberg.de/"
+  },
+  "08127076": {
+   "website": "http://www.schwaebischhall.de"
+  },
+  "08127079": {
+   "website": "http://www.sulzbach-laufen.de"
+  },
+  "08127086": {
+   "website": "https://www.untermuenkheim.de/"
+  },
+  "08127089": {
+   "website": "http://www.vellberg.de"
+  },
+  "08127091": {
+   "website": "http://www.gemeinde-wallhausen.de"
+  },
+  "08127099": {
+   "website": "https://www.wolpertshausen.de/"
+  },
+  "08127100": {
+   "website": "https://www.rosengarten.de/"
+  },
+  "08127101": {
+   "website": "http://www.kressberg.de"
+  },
+  "08127102": {
+   "website": "http://www.fichtenau.de"
+  },
+  "08127103": {
+   "website": "https://www.frankenhardt.de/"
+  },
+  "08127104": {
+   "website": "http://www.stimpfach.de"
+  },
+  "08128006": {
+   "website": "http://www.assamstadt.de/"
+  },
+  "08128007": {
+   "website": "https://www.bad-mergentheim.de/"
+  },
+  "08128014": {
+   "website": "http://www.boxberg.de/"
+  },
+  "08128020": {
+   "website": "https://www.creglingen.de/"
+  },
+  "08128039": {
+   "website": "https://www.freudenberg-main.de/"
+  },
+  "08128045": {
+   "website": "http://www.grossrinderfeld.de"
+  },
+  "08128047": {
+   "website": "http://www.gruensfeld.de"
+  },
+  "08128058": {
+   "website": "https://www.igersheim.de/"
+  },
+  "08128061": {
+   "website": "http://www.koenigheim.de"
+  },
+  "08128064": {
+   "website": "http://www.kuelsheim.de"
+  },
+  "08128082": {
+   "website": "https://www.niederstetten.de/"
+  },
+  "08128115": {
+   "website": "https://www.tauberbischofsheim.de"
+  },
+  "08128126": {
+   "website": "https://www.weikersheim.de/"
+  },
+  "08128128": {
+   "website": "http://www.werbach.de"
+  },
+  "08128131": {
+   "website": "https://www.wertheim.de/"
+  },
+  "08128137": {
+   "website": "http://www.wittighausen.de"
+  },
+  "08128138": {
+   "website": "http://www.gemeindeahorn.de"
+  },
+  "08128139": {
+   "website": "https://www.lauda-koenigshofen.de/"
+  },
+  "08135010": {
+   "website": "https://www.dischingen.de/"
+  },
+  "08135015": {
+   "website": "https://www.gerstetten.de/"
+  },
+  "08135016": {
+   "website": "http://www.giengen.de"
+  },
+  "08135019": {
+   "website": "http://www.heidenheim.de"
+  },
+  "08135020": {
+   "website": "http://www.herbrechtingen.de"
+  },
+  "08135021": {
+   "website": "https://www.hermaringen.de"
+  },
+  "08135025": {
+   "website": "https://www.koenigsbronn.de/"
+  },
+  "08135026": {
+   "website": "https://www.nattheim.de/"
+  },
+  "08135027": {
+   "website": "http://www.niederstotzingen.de"
+  },
+  "08135031": {
+   "website": "http://www.sontheim-brenz.de"
+  },
+  "08135032": {
+   "website": "http://www.steinheim.com"
+  },
+  "08136002": {
+   "website": "http://www.abtsgmuend.de/"
+  },
+  "08136003": {
+   "website": "http://www.adelmannsfelden.de/"
+  },
+  "08136007": {
+   "website": "http://www.bartholomae.de/"
+  },
+  "08136009": {
+   "website": "https://www.boebingen.de/"
+  },
+  "08136010": {
+   "website": "http://www.bopfingen.de/"
+  },
+  "08136015": {
+   "website": "http://www.durlangen.de/"
+  },
+  "08136018": {
+   "website": "http://www.ellenberg.de/"
+  },
+  "08136019": {
+   "website": "http://www.ellwangen.de/"
+  },
+  "08136020": {
+   "website": "http://www.eschach.de/"
+  },
+  "08136021": {
+   "website": "http://www.essingen.de/"
+  },
+  "08136024": {
+   "website": "http://www.gemeinde-goeggingen.de"
+  },
+  "08136027": {
+   "website": "http://www.gschwend.de"
+  },
+  "08136028": {
+   "website": "http://www.heubach.de"
+  },
+  "08136029": {
+   "website": "http://www.heuchlingen.de"
+  },
+  "08136033": {
+   "website": "http://www.huettlingen.de"
+  },
+  "08136034": {
+   "website": "https://www.iggingen.de/"
+  },
+  "08136035": {
+   "website": "https://www.jagstzell.de/"
+  },
+  "08136037": {
+   "website": "http://www.kirchheim-am-ries.de"
+  },
+  "08136038": {
+   "website": "https://www.lauchheim.de/"
+  },
+  "08136040": {
+   "website": "https://www.leinzell.de/"
+  },
+  "08136042": {
+   "website": "http://www.stadt-lorch.de"
+  },
+  "08136043": {
+   "website": "http://www.moegglingen.de"
+  },
+  "08136044": {
+   "website": "http://www.mutlangen.de"
+  },
+  "08136045": {
+   "website": "https://www.neresheim.de/"
+  },
+  "08136046": {
+   "website": "http://www.neuler.de"
+  },
+  "08136049": {
+   "website": "https://www.obergroeningen.de/"
+  },
+  "08136050": {
+   "website": "http://www.oberkochen.de"
+  },
+  "08136060": {
+   "website": "http://www.gemeinde-rosenberg.de"
+  },
+  "08136061": {
+   "website": "http://www.ruppertshofen.de"
+  },
+  "08136062": {
+   "website": "http://www.schechingen.de"
+  },
+  "08136065": {
+   "website": "https://www.schwaebisch-gmuend.de/"
+  },
+  "08136066": {
+   "website": "http://www.spraitbach.de"
+  },
+  "08136068": {
+   "website": "https://www.stoedtlen.de/"
+  },
+  "08136070": {
+   "website": "http://www.taeferrot.de"
+  },
+  "08136071": {
+   "website": "http://www.tannhausen.de"
+  },
+  "08136075": {
+   "website": "http://www.unterschneidheim.de"
+  },
+  "08136079": {
+   "website": "https://www.waldstetten.de/"
+  },
+  "08136082": {
+   "website": "http://www.westhausen.de/"
+  },
+  "08136084": {
+   "website": "http://www.gemeinde-woert.de"
+  },
+  "08136087": {
+   "website": "http://www.riesbuerg.de"
+  },
+  "08136088": {
+   "website": "https://www.aalen.de/"
+  },
+  "08136089": {
+   "website": "https://www.rainau.de/"
+  },
+  "08211000": {
+   "website": "https://www.baden-baden.de/"
+  },
+  "08212000": {
+   "website": "https://www.karlsruhe.de/"
+  },
+  "08215007": {
+   "website": "https://www.bretten.de/"
+  },
+  "08215009": {
+   "website": "https://www.bruchsal.de/"
+  },
+  "08215017": {
+   "website": "https://ettlingen.de"
+  },
+  "08215021": {
+   "website": "http://www.forst-baden.de"
+  },
+  "08215025": {
+   "website": "https://www.gondelsheim.de/"
+  },
+  "08215029": {
+   "website": "http://www.hambruecken.de"
+  },
+  "08215039": {
+   "website": "http://www.kronau.de"
+  },
+  "08215040": {
+   "website": "http://www.kuernbach.de"
+  },
+  "08215046": {
+   "website": "http://www.malsch.de"
+  },
+  "08215047": {
+   "website": "http://www.marxzell.de"
+  },
+  "08215059": {
+   "website": "http://www.oberderdingen.de"
+  },
+  "08215064": {
+   "website": "https://www.oestringen.de/"
+  },
+  "08215066": {
+   "website": "https://www.philippsburg.de"
+  },
+  "08215082": {
+   "website": "http://www.sulzfeld.de"
+  },
+  "08215084": {
+   "website": "https://www.ubstadt-weiher.de"
+  },
+  "08215089": {
+   "website": "http://www.walzbachtal.de"
+  },
+  "08215090": {
+   "website": "https://www.weingarten-baden.de/"
+  },
+  "08215094": {
+   "website": "http://www.zaisenhausen.de"
+  },
+  "08215096": {
+   "website": "https://www.karlsbad.de/"
+  },
+  "08215097": {
+   "website": "https://www.kraichtal.de/"
+  },
+  "08215099": {
+   "website": "https://www.graben-neudorf.de/"
+  },
+  "08215100": {
+   "website": "https://www.bad-schoenborn.de/"
+  },
+  "08215101": {
+   "website": "http://www.pfinztal.de"
+  },
+  "08215102": {
+   "website": "http://www.egg-leo.de"
+  },
+  "08215103": {
+   "website": "https://www.karlsdorf-neuthard.de"
+  },
+  "08215105": {
+   "website": "http://www.linkenheim-hochstetten.de"
+  },
+  "08215106": {
+   "website": "https://www.waghaeusel.de/"
+  },
+  "08215107": {
+   "website": "http://www.oberhausen-rheinhausen.de"
+  },
+  "08215108": {
+   "website": "https://www.rheinstetten.de/"
+  },
+  "08215109": {
+   "website": "https://www.stutensee.de/"
+  },
+  "08215110": {
+   "website": "https://www.waldbronn.de/"
+  },
+  "08215111": {
+   "website": "https://www.dettenheim.de/"
+  },
+  "08216002": {
+   "website": "http://www.auamrhein.de/"
+  },
+  "08216005": {
+   "website": "http://www.bietigheim.de/"
+  },
+  "08216006": {
+   "website": "http://www.bischweier.de"
+  },
+  "08216007": {
+   "website": "https://buehl.de"
+  },
+  "08216008": {
+   "website": "https://www.buehlertal.de/"
+  },
+  "08216009": {
+   "website": "http://www.durmersheim.de/"
+  },
+  "08216012": {
+   "website": "http://www.elchesheim-illingen.de/"
+  },
+  "08216013": {
+   "website": "https://www.forbach.de/"
+  },
+  "08216015": {
+   "website": "https://www.gaggenau.de/"
+  },
+  "08216017": {
+   "website": "https://gernsbach.de"
+  },
+  "08216022": {
+   "website": "https://www.huegelsheim.de"
+  },
+  "08216023": {
+   "website": "http://www.iffezheim.de"
+  },
+  "08216024": {
+   "website": "http://www.kuppenheim.de"
+  },
+  "08216028": {
+   "website": "http://www.lichtenau-baden.de"
+  },
+  "08216029": {
+   "website": "http://www.loffenau.de"
+  },
+  "08216033": {
+   "website": "https://www.muggensturm.de/"
+  },
+  "08216039": {
+   "website": "http://www.oetigheim.de"
+  },
+  "08216041": {
+   "website": "http://www.ottersweier.de"
+  },
+  "08216043": {
+   "website": "https://www.rastatt.de"
+  },
+  "08216049": {
+   "website": "https://www.sinzheim.de/"
+  },
+  "08216052": {
+   "website": "https://www.steinmauern.de/"
+  },
+  "08216059": {
+   "website": "http://www.weisenbach.de"
+  },
+  "08216063": {
+   "website": "http://www.rheinmuenster.de"
+  },
+  "08221000": {
+   "website": "https://www.heidelberg.de/"
+  },
+  "08222000": {
+   "website": "https://www.mannheim.de/"
+  },
+  "08225001": {
+   "website": "http://www.adelsheim.de/"
+  },
+  "08225002": {
+   "website": "http://www.aglasterhausen.de/"
+  },
+  "08225009": {
+   "website": "http://www.billigheim.de/"
+  },
+  "08225010": {
+   "website": "https://www.binau.de"
+  },
+  "08225014": {
+   "website": "https://www.buchen.de/"
+  },
+  "08225024": {
+   "website": "https://www.fahrenbach.de/"
+  },
+  "08225032": {
+   "website": "https://www.hardheim.de/"
+  },
+  "08225033": {
+   "website": "http://www.hassmersheim.de"
+  },
+  "08225039": {
+   "website": "http://www.hoepfingen.de"
+  },
+  "08225042": {
+   "website": "http://www.hueffenhardt.de"
+  },
+  "08225052": {
+   "website": "https://www.limbach.de/"
+  },
+  "08225058": {
+   "website": "https://www.mosbach.de"
+  },
+  "08225060": {
+   "website": "https://www.mudau.de/"
+  },
+  "08225064": {
+   "website": "http://www.neckargerach.de"
+  },
+  "08225067": {
+   "website": "http://www.neckarzimmern.de"
+  },
+  "08225068": {
+   "website": "http://www.neunkirchen-baden.de"
+  },
+  "08225074": {
+   "website": "http://www.obrigheim.de"
+  },
+  "08225075": {
+   "website": "http://www.osterburken.de"
+  },
+  "08225082": {
+   "website": "http://www.rosenberg-baden.de"
+  },
+  "08225091": {
+   "website": "http://www.seckach.de"
+  },
+  "08225109": {
+   "website": "https://www.wallduern.de/"
+  },
+  "08225113": {
+   "website": "http://www.zwingenberg-neckar.de"
+  },
+  "08225114": {
+   "website": "http://www.ravenstein.de"
+  },
+  "08225115": {
+   "website": "http://www.schefflenz.de"
+  },
+  "08225116": {
+   "website": "http://www.schwarzach-online.de"
+  },
+  "08225117": {
+   "website": "http://www.elztal.de/"
+  },
+  "08225118": {
+   "website": "http://www.waldbrunn-odenwald.de"
+  },
+  "08226003": {
+   "website": "http://www.altlussheim.de/"
+  },
+  "08226006": {
+   "website": "https://www.bammental.de/"
+  },
+  "08226009": {
+   "website": "https://www.bruehl-baden.de/"
+  },
+  "08226010": {
+   "website": "https://www.dielheim.de/"
+  },
+  "08226012": {
+   "website": "http://www.dossenheim.de/"
+  },
+  "08226013": {
+   "website": "http://www.eberbach.de/"
+  },
+  "08226017": {
+   "website": "http://www.epfenbach.de/"
+  },
+  "08226018": {
+   "website": "https://www.eppelheim.de/"
+  },
+  "08226020": {
+   "website": "http://www.eschelbronn.de/"
+  },
+  "08226022": {
+   "website": "http://www.gaiberg.de"
+  },
+  "08226027": {
+   "website": "https://www.heddesbach.de/"
+  },
+  "08226028": {
+   "website": "https://www.heddesheim.de/"
+  },
+  "08226029": {
+   "website": "http://www.heiligkreuzsteinach.de"
+  },
+  "08226031": {
+   "website": "http://www.hemsbach.de"
+  },
+  "08226032": {
+   "website": "https://www.hockenheim.de/"
+  },
+  "08226036": {
+   "website": "http://www.ilvesheim.de"
+  },
+  "08226037": {
+   "website": "http://www.ketsch.de"
+  },
+  "08226038": {
+   "website": "https://www.ladenburg.de/"
+  },
+  "08226040": {
+   "website": "http://www.gemeinde-laudenbach.de"
+  },
+  "08226041": {
+   "website": "https://www.leimen.de/"
+  },
+  "08226046": {
+   "website": "http://www.malsch-weinort.de"
+  },
+  "08226048": {
+   "website": "http://www.gemeinde-mauer.de"
+  },
+  "08226049": {
+   "website": "https://www.meckesheim.de/"
+  },
+  "08226054": {
+   "website": "https://www.muehlhausen-kraichgau.de"
+  },
+  "08226055": {
+   "website": "http://www.neckarbischofsheim.de"
+  },
+  "08226056": {
+   "website": "http://www.neckargemuend.de"
+  },
+  "08226058": {
+   "website": "http://www.neidenstein.de"
+  },
+  "08226059": {
+   "website": "http://www.neulussheim.de"
+  },
+  "08226060": {
+   "website": "http://www.nussloch.de"
+  },
+  "08226062": {
+   "website": "https://www.oftersheim.de/"
+  },
+  "08226063": {
+   "website": "https://www.plankstadt.de/"
+  },
+  "08226065": {
+   "website": "http://www.rauenberg.de"
+  },
+  "08226066": {
+   "website": "https://www.reichartshausen.de/"
+  },
+  "08226068": {
+   "website": "https://www.reilingen.de/"
+  },
+  "08226076": {
+   "website": "https://www.sandhausen.de/"
+  },
+  "08226080": {
+   "website": "https://www.stadt-schoenau.de/"
+  },
+  "08226081": {
+   "website": "https://www.gemeinde-schoenbrunn.de"
+  },
+  "08226082": {
+   "website": "https://www.schriesheim.de/"
+  },
+  "08226084": {
+   "website": "https://www.schwetzingen.de"
+  },
+  "08226085": {
+   "website": "https://www.sinsheim.de/"
+  },
+  "08226086": {
+   "website": "http://www.spechbach.de"
+  },
+  "08226091": {
+   "website": "https://www.waibstadt.de"
+  },
+  "08226095": {
+   "website": "https://www.walldorf.de/"
+  },
+  "08226096": {
+   "website": "http://www.weinheim.de"
+  },
+  "08226097": {
+   "website": "http://www.wiesenbach.eu"
+  },
+  "08226098": {
+   "website": "http://www.wiesloch.de"
+  },
+  "08226099": {
+   "website": "https://www.wilhelmsfeld.de/"
+  },
+  "08226101": {
+   "website": "https://www.zuzenhausen.de/"
+  },
+  "08226102": {
+   "website": "https://www.angelbachtal.de/"
+  },
+  "08226103": {
+   "website": "http://www.st-leon-rot.de"
+  },
+  "08226104": {
+   "website": "http://www.lobbach.de"
+  },
+  "08226105": {
+   "website": "http://www.edingen-neckarhausen.de/"
+  },
+  "08226106": {
+   "website": "http://www.helmstadt-bargen.de"
+  },
+  "08226107": {
+   "website": "http://www.hirschberg-bergstrasse.de"
+  },
+  "08231000": {
+   "website": "https://www.pforzheim.de/"
+  },
+  "08235006": {
+   "website": "https://www.altensteig.de/"
+  },
+  "08235007": {
+   "website": "http://www.althengstett.de/"
+  },
+  "08235008": {
+   "website": "http://www.bad-liebenzell.de/"
+  },
+  "08235018": {
+   "website": "https://www.dobel.de/"
+  },
+  "08235020": {
+   "website": "http://www.ebhausen.de/"
+  },
+  "08235022": {
+   "website": "http://www.egenhausen.de/"
+  },
+  "08235025": {
+   "website": "http://www.enzkloesterle.eu/"
+  },
+  "08235029": {
+   "website": "https://www.gechingen.de/"
+  },
+  "08235032": {
+   "website": "https://www.haiterbach.de/"
+  },
+  "08235033": {
+   "website": "https://www.badherrenalb.de/"
+  },
+  "08235035": {
+   "website": "http://www.hoefen-enz.de"
+  },
+  "08235046": {
+   "website": "https://www.nagold.de/"
+  },
+  "08235047": {
+   "website": "http://www.neubulach.de"
+  },
+  "08235050": {
+   "website": "https://www.neuweiler.de/"
+  },
+  "08235055": {
+   "website": "http://www.oberreichenbach.de"
+  },
+  "08235057": {
+   "website": "http://www.ostelsheim.de"
+  },
+  "08235060": {
+   "website": "http://www.gemeinde-rohrdorf.de"
+  },
+  "08235065": {
+   "website": "https://www.schoemberg.de/"
+  },
+  "08235066": {
+   "website": "http://www.simmersfeld.de"
+  },
+  "08235067": {
+   "website": "https://simmozheim.de"
+  },
+  "08235073": {
+   "website": "https://www.unterreichenbach.de/"
+  },
+  "08235079": {
+   "website": "https://www.bad-wildbad.de/"
+  },
+  "08235080": {
+   "website": "https://www.wildberg.de/"
+  },
+  "08235084": {
+   "website": "http://www.bad-teinach-zavelstein.de/"
+  },
+  "08235085": {
+   "website": "https://www.calw.de/"
+  },
+  "08236004": {
+   "website": "http://www.birkenfeld-enzkreis.de/"
+  },
+  "08236011": {
+   "website": "https://www.eisingen-enzkreis.de/"
+  },
+  "08236013": {
+   "website": "https://www.engelsbrand.de/"
+  },
+  "08236019": {
+   "website": "https://www.friolzheim.de/"
+  },
+  "08236025": {
+   "website": "https://www.heimsheim.de/"
+  },
+  "08236028": {
+   "website": "https://www.illingen-online.de/"
+  },
+  "08236030": {
+   "website": "https://www.ispringen.de/"
+  },
+  "08236031": {
+   "website": "https://www.kieselbronn.de/"
+  },
+  "08236033": {
+   "website": "http://www.knittlingen.de"
+  },
+  "08236038": {
+   "website": "https://www.maulbronn.de/"
+  },
+  "08236039": {
+   "website": "https://www.moensheim.de/"
+  },
+  "08236040": {
+   "website": "https://www.muehlacker.de/"
+  },
+  "08236043": {
+   "website": "https://www.neuenbuerg.de"
+  },
+  "08236044": {
+   "website": "http://www.neuhausen-enzkreis.de"
+  },
+  "08236046": {
+   "website": "https://www.niefern-oeschelbronn.de/"
+  },
+  "08236050": {
+   "website": "https://www.oetisheim.de/"
+  },
+  "08236061": {
+   "website": "http://www.sternenfels.de"
+  },
+  "08236062": {
+   "website": "https://www.tiefenbronn.de"
+  },
+  "08236065": {
+   "website": "http://www.wiernsheim.de"
+  },
+  "08236067": {
+   "website": "http://www.wimsheim.de"
+  },
+  "08236068": {
+   "website": "http://www.wurmberg.de"
+  },
+  "08236070": {
+   "website": "https://www.keltern.de/"
+  },
+  "08236071": {
+   "website": "https://www.remchingen.de/"
+  },
+  "08236072": {
+   "website": "https://www.straubenhardt.de/"
+  },
+  "08236073": {
+   "website": "https://www.neulingen.de/"
+  },
+  "08236074": {
+   "website": "https://www.kaempfelbach.de/"
+  },
+  "08236075": {
+   "website": "https://oelbronn-duerrn.de"
+  },
+  "08236076": {
+   "website": "https://www.koenigsbach-stein.de/"
+  },
+  "08237002": {
+   "website": "https://www.alpirsbach.de/"
+  },
+  "08237004": {
+   "website": "https://www.gemeinde-baiersbronn.de"
+  },
+  "08237019": {
+   "website": "https://www.dornstetten.de/"
+  },
+  "08237024": {
+   "website": "https://www.empfingen.de/"
+  },
+  "08237027": {
+   "website": "http://www.eutingen-im-gaeu.de/"
+  },
+  "08237028": {
+   "website": "https://www.freudenstadt.de/"
+  },
+  "08237030": {
+   "website": "https://www.glatten.de"
+  },
+  "08237032": {
+   "website": "https://www.groembach.de"
+  },
+  "08237040": {
+   "website": "https://horb.de"
+  },
+  "08237045": {
+   "website": "https://www.lossburg.de/"
+  },
+  "08237054": {
+   "website": "http://www.pfalzgrafenweiler.de"
+  },
+  "08237061": {
+   "website": "https://www.schopfloch.de/"
+  },
+  "08237072": {
+   "website": "https://www.woernersberg.de"
+  },
+  "08237073": {
+   "website": "http://www.seewald.eu"
+  },
+  "08237074": {
+   "website": "http://www.waldachtal.de"
+  },
+  "08237075": {
+   "website": "https://www.bad-rippoldsau-schapbach.de/"
+  },
+  "08311000": {
+   "website": "https://www.freiburg.de/"
+  },
+  "08315003": {
+   "website": "https://www.au-hexental.de"
+  },
+  "08315004": {
+   "website": "http://www.auggen.de/"
+  },
+  "08315006": {
+   "website": "https://www.bad-krozingen.de/"
+  },
+  "08315007": {
+   "website": "http://www.gemeinde-badenweiler.de/"
+  },
+  "08315008": {
+   "website": "https://www.ballrechten-dottingen.de/"
+  },
+  "08315013": {
+   "website": "https://boetzingen.de"
+  },
+  "08315014": {
+   "website": "https://www.bollschweil.de/"
+  },
+  "08315015": {
+   "website": "https://www.breisach.de/"
+  },
+  "08315016": {
+   "website": "http://www.breitnau.de/"
+  },
+  "08315020": {
+   "website": "https://www.buchenbach.de/"
+  },
+  "08315022": {
+   "website": "https://buggingen.de/"
+  },
+  "08315028": {
+   "website": "https://www.ebringen.de/"
+  },
+  "08315030": {
+   "website": "http://www.eichstetten.de/"
+  },
+  "08315031": {
+   "website": "http://www.eisenbach.de/"
+  },
+  "08315033": {
+   "website": "http://www.gemeinde-eschbach.de/"
+  },
+  "08315037": {
+   "website": "https://www.feldberg.org"
+  },
+  "08315039": {
+   "website": "http://www.friedenweiler.de"
+  },
+  "08315041": {
+   "website": "https://www.glottertal.de/"
+  },
+  "08315043": {
+   "website": "https://www.gottenheim.de/"
+  },
+  "08315047": {
+   "website": "http://www.gundelfingen.de"
+  },
+  "08315048": {
+   "website": "http://www.hartheim.de"
+  },
+  "08315050": {
+   "website": "https://www.heitersheim.de/"
+  },
+  "08315051": {
+   "website": "https://heuweiler.de"
+  },
+  "08315052": {
+   "website": "http://www.hinterzarten.de"
+  },
+  "08315056": {
+   "website": "https://gemeinde.horben.de/"
+  },
+  "08315059": {
+   "website": "https://www.ihringen.de/"
+  },
+  "08315064": {
+   "website": "https://www.kirchzarten.de/"
+  },
+  "08315068": {
+   "website": "https://www.lenzkirch.de/"
+  },
+  "08315070": {
+   "website": "http://www.loeffingen.de"
+  },
+  "08315072": {
+   "website": "https://www.merdingen.de"
+  },
+  "08315073": {
+   "website": "https://www.merzhausen.de/"
+  },
+  "08315074": {
+   "website": "https://www.muellheim.de/"
+  },
+  "08315076": {
+   "website": "http://www.neuenburg.de"
+  },
+  "08315084": {
+   "website": "https://www.oberried.de/"
+  },
+  "08315089": {
+   "website": "https://www.pfaffenweiler.de/"
+  },
+  "08315094": {
+   "website": "http://www.sankt-maergen.de"
+  },
+  "08315095": {
+   "website": "http://www.st-peter-schwarzwald.de"
+  },
+  "08315098": {
+   "website": "https://www.schallstadt.de/"
+  },
+  "08315102": {
+   "website": "http://www.gemeinde-schluchsee.de"
+  },
+  "08315107": {
+   "website": "http://www.soelden.de"
+  },
+  "08315108": {
+   "website": "http://www.staufen.de"
+  },
+  "08315109": {
+   "website": "https://www.stegen.de/"
+  },
+  "08315111": {
+   "website": "https://www.sulzburg.de/"
+  },
+  "08315113": {
+   "website": "https://www.titisee-neustadt.de/"
+  },
+  "08315115": {
+   "website": "https://www.umkirch.de/"
+  },
+  "08315125": {
+   "website": "https://wittnau.de"
+  },
+  "08315130": {
+   "website": "http://www.muenstertal.de"
+  },
+  "08315131": {
+   "website": "http://www.ehrenkirchen.de/"
+  },
+  "08315132": {
+   "website": "https://www.march.de/"
+  },
+  "08315133": {
+   "website": "https://www.vogtsburg.de/"
+  },
+  "08316002": {
+   "website": "https://www.bahlingen.de/"
+  },
+  "08316003": {
+   "website": "http://www.biederbach.de/"
+  },
+  "08316009": {
+   "website": "https://www.denzlingen.de/"
+  },
+  "08316010": {
+   "website": "https://elzach.de"
+  },
+  "08316011": {
+   "website": "https://www.emmendingen.de/"
+  },
+  "08316012": {
+   "website": "https://www.endingen.de/"
+  },
+  "08316013": {
+   "website": "https://www.forchheim-am-kaiserstuhl.de/"
+  },
+  "08316014": {
+   "website": "http://www.gutach.de"
+  },
+  "08316017": {
+   "website": "https://www.stadt-herbolzheim.de/"
+  },
+  "08316020": {
+   "website": "https://www.kenzingen.de/"
+  },
+  "08316024": {
+   "website": "https://www.malterdingen.de/"
+  },
+  "08316036": {
+   "website": "https://www.reute.de/"
+  },
+  "08316037": {
+   "website": "https://gemeinde-riegel.de"
+  },
+  "08316038": {
+   "website": "https://www.gemeinde-sasbach.de"
+  },
+  "08316039": {
+   "website": "http://www.sexau.de"
+  },
+  "08316042": {
+   "website": "https://www.simonswald.de/"
+  },
+  "08316043": {
+   "website": "http://www.teningen.de"
+  },
+  "08316045": {
+   "website": "https://voerstetten.de"
+  },
+  "08316049": {
+   "website": "http://www.weisweil.de"
+  },
+  "08316051": {
+   "website": "http://www.wyhl.de"
+  },
+  "08316053": {
+   "website": "http://www.rheinhausen.de"
+  },
+  "08316054": {
+   "website": "http://www.freiamt.de"
+  },
+  "08316055": {
+   "website": "http://www.winden-im-elztal.de"
+  },
+  "08316056": {
+   "website": "http://www.stadt-waldkirch.de"
+  },
+  "08317001": {
+   "website": "https://www.achern.de/"
+  },
+  "08317005": {
+   "website": "https://www.appenweier.de/"
+  },
+  "08317008": {
+   "website": "https://www.bad-peterstal-griesbach.de/"
+  },
+  "08317009": {
+   "website": "http://www.berghaupten.de"
+  },
+  "08317011": {
+   "website": "http://www.biberach-baden.de"
+  },
+  "08317021": {
+   "website": "https://www.durbach.de/"
+  },
+  "08317026": {
+   "website": "https://www.ettenheim.de/"
+  },
+  "08317029": {
+   "website": "https://www.fischerbach.de/"
+  },
+  "08317031": {
+   "website": "http://www.friesenheim.de"
+  },
+  "08317034": {
+   "website": "https://www.stadt-gengenbach.de/"
+  },
+  "08317039": {
+   "website": "https://www.gutach-schwarzwald.de/"
+  },
+  "08317040": {
+   "website": "https://www.haslach.de/"
+  },
+  "08317041": {
+   "website": "http://www.hausach.de"
+  },
+  "08317046": {
+   "website": "http://www.hofstetten-schwarzwald.de"
+  },
+  "08317047": {
+   "website": "https://www.hohberg.de/"
+  },
+  "08317051": {
+   "website": "http://www.hornberg.de"
+  },
+  "08317056": {
+   "website": "http://www.kappelrodeck.de"
+  },
+  "08317057": {
+   "website": "https://www.kehl.de"
+  },
+  "08317059": {
+   "website": "http://www.kippenheim.de"
+  },
+  "08317065": {
+   "website": "https://www.lahr.de/"
+  },
+  "08317067": {
+   "website": "http://www.lautenbach-renchtal.de"
+  },
+  "08317068": {
+   "website": "https://www.lauf-schwarzwald.de/"
+  },
+  "08317073": {
+   "website": "https://www.mahlberg.de/"
+  },
+  "08317075": {
+   "website": "http://www.meissenheim.de"
+  },
+  "08317078": {
+   "website": "http://www.muehlenbach.de"
+  },
+  "08317085": {
+   "website": "http://www.nordrach.de"
+  },
+  "08317088": {
+   "website": "https://www.oberharmersbach.de/"
+  },
+  "08317089": {
+   "website": "https://www.oberkirch.de/"
+  },
+  "08317093": {
+   "website": "https://www.oberwolfach.de"
+  },
+  "08317096": {
+   "website": "https://www.offenburg.de/"
+  },
+  "08317097": {
+   "website": "https://www.ohlsbach.de/"
+  },
+  "08317098": {
+   "website": "http://www.oppenau.de"
+  },
+  "08317100": {
+   "website": "http://www.ortenberg.de/de"
+  },
+  "08317102": {
+   "website": "http://www.ottenhoefen.de"
+  },
+  "08317110": {
+   "website": "http://www.stadt-renchen.de"
+  },
+  "08317113": {
+   "website": "http://www.ringsheim.de"
+  },
+  "08317114": {
+   "website": "https://www.rust.de/"
+  },
+  "08317116": {
+   "website": "http://www.sasbach-ortenau.de"
+  },
+  "08317118": {
+   "website": "http://www.gemeinde-sasbachwalden.de"
+  },
+  "08317121": {
+   "website": "http://www.schuttertal.de"
+  },
+  "08317122": {
+   "website": "https://www.schutterwald.de/"
+  },
+  "08317126": {
+   "website": "http://www.seebach.de"
+  },
+  "08317127": {
+   "website": "https://seelbach-online.de/"
+  },
+  "08317129": {
+   "website": "http://www.steinach.de"
+  },
+  "08317141": {
+   "website": "http://www.willstaett.de"
+  },
+  "08317145": {
+   "website": "https://www.wolfach.de/"
+  },
+  "08317146": {
+   "website": "http://www.zell.de"
+  },
+  "08317150": {
+   "website": "https://www.schwanau.de/"
+  },
+  "08317151": {
+   "website": "https://www.neuried.net/"
+  },
+  "08317152": {
+   "website": "https://www.kappel-grafenhausen.de/"
+  },
+  "08317153": {
+   "website": "https://www.rheinau.de/"
+  },
+  "08325001": {
+   "website": "https://www.aichhalden.de/"
+  },
+  "08325009": {
+   "website": "https://www.boesingen.de/"
+  },
+  "08325011": {
+   "website": "http://www.dietingen.de"
+  },
+  "08325012": {
+   "website": "https://dornhan.de"
+  },
+  "08325014": {
+   "website": "https://www.dunningen.de/"
+  },
+  "08325015": {
+   "website": "http://www.epfendorf.de"
+  },
+  "08325024": {
+   "website": "https://www.hardt-online.de/"
+  },
+  "08325036": {
+   "website": "https://www.lauterbach-schwarzwald.de/"
+  },
+  "08325045": {
+   "website": "https://www.oberndorf.de"
+  },
+  "08325049": {
+   "website": "https://www.rottweil.de/"
+  },
+  "08325050": {
+   "website": "https://www.schenkenzell.de/"
+  },
+  "08325051": {
+   "website": "https://www.schiltach.de/"
+  },
+  "08325053": {
+   "website": "https://www.schramberg.de/"
+  },
+  "08325057": {
+   "website": "https://www.sulz.de"
+  },
+  "08325060": {
+   "website": "http://www.villingendorf.de"
+  },
+  "08325061": {
+   "website": "http://www.voehringen-bw.de"
+  },
+  "08325064": {
+   "website": "http://www.wellendingen.de"
+  },
+  "08325069": {
+   "website": "http://www.zimmern-or.de"
+  },
+  "08325070": {
+   "website": "https://www.fluorn-winzeln.de/"
+  },
+  "08325071": {
+   "website": "http://www.eschbronn.de/"
+  },
+  "08325072": {
+   "website": "https://www.deisslingen.de/"
+  },
+  "08326003": {
+   "website": "https://badduerrheim.de/"
+  },
+  "08326005": {
+   "website": "https://www.stadt-blumberg.de/"
+  },
+  "08326006": {
+   "website": "https://www.braeunlingen.de/"
+  },
+  "08326010": {
+   "website": "http://www.dauchingen.de/"
+  },
+  "08326012": {
+   "website": "https://www.donaueschingen.de/"
+  },
+  "08326017": {
+   "website": "http://www.furtwangen.de"
+  },
+  "08326020": {
+   "website": "https://www.guetenbach.de"
+  },
+  "08326027": {
+   "website": "https://www.huefingen.de/"
+  },
+  "08326031": {
+   "website": "http://www.koenigsfeld.de"
+  },
+  "08326037": {
+   "website": "https://moenchweiler.de/"
+  },
+  "08326041": {
+   "website": "http://www.niedereschach.de"
+  },
+  "08326052": {
+   "website": "https://www.st-georgen.de/"
+  },
+  "08326054": {
+   "website": "http://www.schoenwald.net/"
+  },
+  "08326055": {
+   "website": "http://www.schonach.de"
+  },
+  "08326060": {
+   "website": "https://www.triberg.de/"
+  },
+  "08326061": {
+   "website": "http://www.tuningen.de"
+  },
+  "08326065": {
+   "website": "https://www.unterkirnach.de/"
+  },
+  "08326068": {
+   "website": "http://www.voehrenbach.de"
+  },
+  "08326074": {
+   "website": "https://www.villingen-schwenningen.de/"
+  },
+  "08326075": {
+   "website": "http://www.brigachtal.de/"
+  },
+  "08327002": {
+   "website": "http://www.aldingen.de/"
+  },
+  "08327004": {
+   "website": "http://www.baerenthal.de/"
+  },
+  "08327005": {
+   "website": "http://www.balgheim.de"
+  },
+  "08327006": {
+   "website": "https://www.boettingen.de/"
+  },
+  "08327007": {
+   "website": "http://www.bubsheim.de/"
+  },
+  "08327008": {
+   "website": "http://www.gemeindebuchheim.de/"
+  },
+  "08327009": {
+   "website": "https://www.deilingen.de/"
+  },
+  "08327010": {
+   "website": "http://www.denkingen.de/"
+  },
+  "08327011": {
+   "website": "http://www.duerbheim.de/"
+  },
+  "08327012": {
+   "website": "http://www.durchhausen.de/"
+  },
+  "08327013": {
+   "website": "http://www.egesheim.de/"
+  },
+  "08327016": {
+   "website": "http://www.fridingen.de"
+  },
+  "08327017": {
+   "website": "http://www.frittlingen.de"
+  },
+  "08327018": {
+   "website": "https://www.geisingen.de/"
+  },
+  "08327019": {
+   "website": "http://www.gosheim.de"
+  },
+  "08327020": {
+   "website": "http://www.gunningen.de"
+  },
+  "08327023": {
+   "website": "http://www.hausen-ob-verena.de"
+  },
+  "08327025": {
+   "website": "http://www.immendingen.de"
+  },
+  "08327027": {
+   "website": "http://www.irndorf.de"
+  },
+  "08327029": {
+   "website": "http://www.gemeinde-koenigsheim.de"
+  },
+  "08327030": {
+   "website": "http://www.kolbingen.de"
+  },
+  "08327033": {
+   "website": "http://www.mahlstetten.de"
+  },
+  "08327036": {
+   "website": "http://www.muehlheim-donau.de"
+  },
+  "08327038": {
+   "website": "http://www.neuhausen-ob-eck.de"
+  },
+  "08327040": {
+   "website": "http://www.reichenbach-heuberg.de/"
+  },
+  "08327041": {
+   "website": "http://www.renquishausen.de"
+  },
+  "08327046": {
+   "website": "https://www.spaichingen.de/"
+  },
+  "08327048": {
+   "website": "http://www.gemeinde-talheim.de"
+  },
+  "08327049": {
+   "website": "http://www.trossingen.de"
+  },
+  "08327050": {
+   "website": "https://www.tuttlingen.de/"
+  },
+  "08327051": {
+   "website": "http://www.wehingen.de"
+  },
+  "08327054": {
+   "website": "http://www.wurmlingen.de"
+  },
+  "08327055": {
+   "website": "https://www.seitingen-oberflacht.de/"
+  },
+  "08327056": {
+   "website": "http://www.rietheim-weilheim.de"
+  },
+  "08327057": {
+   "website": "http://www.emmingen-liptingen.de/"
+  },
+  "08335001": {
+   "website": "http://www.aach.de/"
+  },
+  "08335002": {
+   "website": "http://www.allensbach.de/"
+  },
+  "08335015": {
+   "website": "http://www.buesingen.de/"
+  },
+  "08335021": {
+   "website": "https://www.eigeltingen.de/"
+  },
+  "08335022": {
+   "website": "https://www.engen.de/"
+  },
+  "08335025": {
+   "website": "https://www.gaienhofen.de/"
+  },
+  "08335026": {
+   "website": "http://www.gailingen.de"
+  },
+  "08335028": {
+   "website": "https://www.gottmadingen.de"
+  },
+  "08335035": {
+   "website": "https://www.hilzingen.de/"
+  },
+  "08335043": {
+   "website": "http://www.konstanz.de/"
+  },
+  "08335055": {
+   "website": "http://www.moos.de"
+  },
+  "08335057": {
+   "website": "http://www.muehlingen.de"
+  },
+  "08335061": {
+   "website": "http://www.oehningen.de"
+  },
+  "08335063": {
+   "website": "https://www.radolfzell.de/"
+  },
+  "08335066": {
+   "website": "https://www.reichenau.de/"
+  },
+  "08335075": {
+   "website": "https://www.singen.de/"
+  },
+  "08335077": {
+   "website": "https://www.steisslingen.de/"
+  },
+  "08335079": {
+   "website": "https://www.stockach.de/"
+  },
+  "08335080": {
+   "website": "http://www.tengen.de"
+  },
+  "08335081": {
+   "website": "http://www.volkertshausen.de"
+  },
+  "08335096": {
+   "website": "http://www.hohenfels.de"
+  },
+  "08335097": {
+   "website": "http://www.muehlhausen-ehingen.de"
+  },
+  "08335098": {
+   "website": "https://www.bodman-ludwigshafen.de/"
+  },
+  "08335099": {
+   "website": "http://www.orsingen-nenzingen.de"
+  },
+  "08335100": {
+   "website": "https://www.rielasingen-worblingen.de/"
+  },
+  "08336004": {
+   "website": "https://www.aitern.de/"
+  },
+  "08336006": {
+   "website": "https://www.gemeinde-bad-bellingen.de/"
+  },
+  "08336008": {
+   "website": "https://www.binzen.de/"
+  },
+  "08336010": {
+   "website": "http://www.boellen.de"
+  },
+  "08336014": {
+   "website": "http://www.efringen-kirchen.de/"
+  },
+  "08336024": {
+   "website": "http://www.fischingen.de"
+  },
+  "08336025": {
+   "website": "http://www.froehnd.de"
+  },
+  "08336034": {
+   "website": "http://www.gemeinde-hasel.de"
+  },
+  "08336036": {
+   "website": "https://www.hausen-im-wiesental.de"
+  },
+  "08336043": {
+   "website": "https://www.inzlingen.de/"
+  },
+  "08336045": {
+   "website": "https://www.kandern.de/"
+  },
+  "08336050": {
+   "website": "https://www.loerrach.de/"
+  },
+  "08336057": {
+   "website": "http://www.maulburg.de"
+  },
+  "08336069": {
+   "website": "https://www.rheinfelden.de"
+  },
+  "08336073": {
+   "website": "http://www.ruemmingen.de"
+  },
+  "08336075": {
+   "website": "http://www.schallbach.de"
+  },
+  "08336078": {
+   "website": "http://www.schliengen.de"
+  },
+  "08336079": {
+   "website": "https://www.schoenau-im-schwarzwald.de/"
+  },
+  "08336080": {
+   "website": "http://www.gemeinde-schoenenberg.de"
+  },
+  "08336081": {
+   "website": "https://www.schopfheim.de/"
+  },
+  "08336082": {
+   "website": "http://www.schwoerstadt.de"
+  },
+  "08336084": {
+   "website": "https://www.steinen.de/"
+  },
+  "08336087": {
+   "website": "http://www.todtnau.de"
+  },
+  "08336089": {
+   "website": "http://www.gemeinde-tunau.de"
+  },
+  "08336090": {
+   "website": "http://www.utzenfeld.de"
+  },
+  "08336091": {
+   "website": "https://www.weil-am-rhein.de/"
+  },
+  "08336094": {
+   "website": "https://www.wembach.de"
+  },
+  "08336096": {
+   "website": "http://www.gemeinde-wieden.de"
+  },
+  "08336100": {
+   "website": "https://www.wittlingen.de/"
+  },
+  "08336103": {
+   "website": "http://www.zell-im-wiesental.de"
+  },
+  "08336104": {
+   "website": "http://www.malsburg-marzell.de"
+  },
+  "08336105": {
+   "website": "https://www.grenzach-wyhlen.de/"
+  },
+  "08336106": {
+   "website": "http://www.hinterhag.de"
+  },
+  "08336107": {
+   "website": "https://www.kleines-wiesental.eu/"
+  },
+  "08337002": {
+   "website": "http://www.albbruck.de/"
+  },
+  "08337013": {
+   "website": "https://gemeinde.bernau-schwarzwald.de/"
+  },
+  "08337022": {
+   "website": "https://www.bonndorf.de/"
+  },
+  "08337027": {
+   "website": "http://www.dachsberg.de/"
+  },
+  "08337030": {
+   "website": "http://www.dettighofen.de"
+  },
+  "08337032": {
+   "website": "http://www.dogern.de/"
+  },
+  "08337038": {
+   "website": "http://www.goerwihl.de"
+  },
+  "08337039": {
+   "website": "http://www.grafenhausen.de"
+  },
+  "08337045": {
+   "website": "http://www.haeusern.de"
+  },
+  "08337049": {
+   "website": "https://www.herrischried.de/"
+  },
+  "08337051": {
+   "website": "http://hoechenschwand.de"
+  },
+  "08337053": {
+   "website": "http://www.hohentengen.de"
+  },
+  "08337059": {
+   "website": "http://www.ibach-schwarzwald.de"
+  },
+  "08337060": {
+   "website": "http://www.jestetten.de"
+  },
+  "08337062": {
+   "website": "http://www.klettgau.de"
+  },
+  "08337065": {
+   "website": "https://www.lauchringen.de/"
+  },
+  "08337066": {
+   "website": "https://www.laufenburg.de/"
+  },
+  "08337070": {
+   "website": "http://www.lottstetten.de"
+  },
+  "08337076": {
+   "website": "https://www.murg.de/"
+  },
+  "08337090": {
+   "website": "http://www.rickenbach.de"
+  },
+  "08337096": {
+   "website": "http://www.bad-saeckingen.de/"
+  },
+  "08337097": {
+   "website": "https://www.stblasien.de/"
+  },
+  "08337106": {
+   "website": "https://www.stuehlingen.de"
+  },
+  "08337108": {
+   "website": "http://www.todtmoos.de"
+  },
+  "08337116": {
+   "website": "http://www.wehr.de"
+  },
+  "08337118": {
+   "website": "https://www.weilheim-baden.de/"
+  },
+  "08337123": {
+   "website": "https://www.wutoeschingen.de/"
+  },
+  "08337124": {
+   "website": "http://www.eggingen.de/"
+  },
+  "08337125": {
+   "website": "http://www.kuessaberg.info"
+  },
+  "08337126": {
+   "website": "https://www.waldshut-tiengen.de/"
+  },
+  "08337127": {
+   "website": "http://www.wutach.de"
+  },
+  "08337128": {
+   "website": "https://www.uehlingen-birkendorf.de/"
+  },
+  "08415014": {
+   "website": "http://www.dettingen-erms.de/"
+  },
+  "08415019": {
+   "website": "https://www.eningen.de/"
+  },
+  "08415027": {
+   "website": "http://www.gomadingen.de"
+  },
+  "08415028": {
+   "website": "http://www.grabenstetten.de"
+  },
+  "08415029": {
+   "website": "http://www.grafenberg.de"
+  },
+  "08415034": {
+   "website": "http://www.hayingen.de"
+  },
+  "08415039": {
+   "website": "http://www.huelben.de"
+  },
+  "08415048": {
+   "website": "http://www.mehrstetten.de"
+  },
+  "08415050": {
+   "website": "https://www.metzingen.de/"
+  },
+  "08415053": {
+   "website": "http://www.muensingen.de"
+  },
+  "08415058": {
+   "website": "http://www.pfronstetten.de"
+  },
+  "08415059": {
+   "website": "https://www.pfullingen.de/"
+  },
+  "08415060": {
+   "website": "https://www.gemeinde-pliezhausen.de/"
+  },
+  "08415061": {
+   "website": "https://www.reutlingen.de/"
+  },
+  "08415062": {
+   "website": "http://www.riederich.de"
+  },
+  "08415073": {
+   "website": "http://www.trochtelfingen.de"
+  },
+  "08415078": {
+   "website": "http://www.bad-urach.de/"
+  },
+  "08415080": {
+   "website": "http://www.wannweil.de"
+  },
+  "08415085": {
+   "website": "http://www.zwiefalten.de"
+  },
+  "08415087": {
+   "website": "https://www.walddorfhaeslach.com/"
+  },
+  "08415088": {
+   "website": "https://www.roemerstein.de/"
+  },
+  "08415089": {
+   "website": "https://www.engstingen.de/"
+  },
+  "08415090": {
+   "website": "http://www.gemeinde-hohenstein.de"
+  },
+  "08415091": {
+   "website": "http://www.sonnenbuehl.de"
+  },
+  "08415092": {
+   "website": "http://www.gemeinde-lichtenstein.de"
+  },
+  "08415093": {
+   "website": "https://www.st-johann.de"
+  },
+  "08416006": {
+   "website": "http://www.bodelshausen.de/"
+  },
+  "08416009": {
+   "website": "http://www.dettenhausen.de/"
+  },
+  "08416011": {
+   "website": "http://www.dusslingen.de/"
+  },
+  "08416015": {
+   "website": "http://www.gomaringen.de"
+  },
+  "08416018": {
+   "website": "https://www.hirrlingen.de"
+  },
+  "08416022": {
+   "website": "https://www.kirchentellinsfurt.de/"
+  },
+  "08416023": {
+   "website": "https://www.kusterdingen.de/"
+  },
+  "08416025": {
+   "website": "http://www.moessingen.de"
+  },
+  "08416026": {
+   "website": "https://www.nehren.de/"
+  },
+  "08416031": {
+   "website": "http://www.ofterdingen.de"
+  },
+  "08416036": {
+   "website": "https://www.rottenburg.de/"
+  },
+  "08416041": {
+   "website": "https://tuebingen.de/"
+  },
+  "08416048": {
+   "website": "http://www.ammerbuch.de/"
+  },
+  "08416049": {
+   "website": "http://www.neustetten.de"
+  },
+  "08416050": {
+   "website": "https://www.starzach.de"
+  },
+  "08417002": {
+   "website": "https://www.balingen.de/"
+  },
+  "08417008": {
+   "website": "https://www.gemeinde-bisingen.de/"
+  },
+  "08417010": {
+   "website": "https://www.bitz.de/"
+  },
+  "08417013": {
+   "website": "http://www.burladingen.de/"
+  },
+  "08417014": {
+   "website": "https://www.gemeinde-dautmergen.de/"
+  },
+  "08417015": {
+   "website": "http://www.dormettingen.de/"
+  },
+  "08417016": {
+   "website": "http://www.dotternhausen.de/"
+  },
+  "08417022": {
+   "website": "http://www.stadt-geislingen.de"
+  },
+  "08417023": {
+   "website": "http://www.grosselfingen.de"
+  },
+  "08417025": {
+   "website": "https://www.haigerloch.de/"
+  },
+  "08417029": {
+   "website": "http://www.hausen-am-tann.de/hausen/"
+  },
+  "08417031": {
+   "website": "http://www.hechingen.de"
+  },
+  "08417036": {
+   "website": "http://www.gemeinde-jungingen.de"
+  },
+  "08417044": {
+   "website": "https://www.stadt-messstetten.de/"
+  },
+  "08417045": {
+   "website": "http://www.nusplingen.de"
+  },
+  "08417047": {
+   "website": "http://www.obernheim.de"
+  },
+  "08417051": {
+   "website": "https://www.rangendingen.eu/"
+  },
+  "08417052": {
+   "website": "http://www.ratshausen.de"
+  },
+  "08417054": {
+   "website": "https://www.rosenfeld.de/"
+  },
+  "08417057": {
+   "website": "http://www.stadt-schoemberg.de"
+  },
+  "08417063": {
+   "website": "http://www.strassberg.de"
+  },
+  "08417071": {
+   "website": "https://www.weilen-udr.de/"
+  },
+  "08417075": {
+   "website": "http://www.winterlingen.de"
+  },
+  "08417078": {
+   "website": "http://www.zimmern-udb.de"
+  },
+  "08417079": {
+   "website": "https://www.albstadt.de/"
+  },
+  "08421000": {
+   "website": "https://www.ulm.de/"
+  },
+  "08425002": {
+   "website": "http://www.allmendingen.de/"
+  },
+  "08425004": {
+   "website": "https://altheim-info.de/"
+  },
+  "08425005": {
+   "website": "http://www.altheim-alb.de/"
+  },
+  "08425008": {
+   "website": "http://www.amstetten.de/"
+  },
+  "08425011": {
+   "website": "https://www.asselfingen.de/"
+  },
+  "08425013": {
+   "website": "http://www.ballendorf.de/"
+  },
+  "08425014": {
+   "website": "http://www.beimerstetten.de/"
+  },
+  "08425017": {
+   "website": "http://www.berghuelen.de/"
+  },
+  "08425019": {
+   "website": "http://www.bernstadt-wuertt.de/"
+  },
+  "08425020": {
+   "website": "https://www.blaubeuren.de/"
+  },
+  "08425022": {
+   "website": "https://www.verwaltungsverband-langenau.de/verwaltungsverband/verbandsgemeinden/gemeinde-boerslingen/"
+  },
+  "08425024": {
+   "website": "https://www.breitingen.de"
+  },
+  "08425028": {
+   "website": "http://www.dietenheim.de"
+  },
+  "08425031": {
+   "website": "http://www.dornstadt.de/"
+  },
+  "08425033": {
+   "website": "https://www.ehingen.de/"
+  },
+  "08425035": {
+   "website": "http://www.emeringen.eu/"
+  },
+  "08425036": {
+   "website": "http://www.emerkingen.de/"
+  },
+  "08425039": {
+   "website": "http://www.erbach-donau.de/"
+  },
+  "08425050": {
+   "website": "http://www.griesingen.de"
+  },
+  "08425052": {
+   "website": "https://www.grundsheim.de/"
+  },
+  "08425055": {
+   "website": "https://www.hausen-am-bussen.de/"
+  },
+  "08425062": {
+   "website": "http://www.holzkirch.de"
+  },
+  "08425064": {
+   "website": "http://www.huettisheim.de"
+  },
+  "08425066": {
+   "website": "http://www.illerrieden.de"
+  },
+  "08425071": {
+   "website": "https://www.laichingen.de/"
+  },
+  "08425072": {
+   "website": "https://www.langenau.de/"
+  },
+  "08425073": {
+   "website": "http://www.gemeinde-lauterach.de"
+  },
+  "08425075": {
+   "website": "https://www.lonsee.de/"
+  },
+  "08425079": {
+   "website": "http://www.merklingen.de"
+  },
+  "08425081": {
+   "website": "https://munderkingen.de"
+  },
+  "08425083": {
+   "website": "https://www.neenstetten.info/"
+  },
+  "08425084": {
+   "website": "http://www.nellingen.de"
+  },
+  "08425085": {
+   "website": "http://www.nerenstetten.de"
+  },
+  "08425088": {
+   "website": "https://www.oberdischingen.de/"
+  },
+  "08425090": {
+   "website": "https://www.obermarchtal.de/"
+  },
+  "08425091": {
+   "website": "https://www.oberstadion.de/"
+  },
+  "08425092": {
+   "website": "https://oellingen.de/"
+  },
+  "08425093": {
+   "website": "http://www.oepfingen.de"
+  },
+  "08425097": {
+   "website": "http://www.rammingen-bw.de"
+  },
+  "08425098": {
+   "website": "http://www.rechtenstein.de"
+  },
+  "08425104": {
+   "website": "http://www.rottenacker.de"
+  },
+  "08425108": {
+   "website": "http://www.schelklingen.de"
+  },
+  "08425110": {
+   "website": "http://www.schnuerpflingen.de"
+  },
+  "08425112": {
+   "website": "http://www.setzingen.de"
+  },
+  "08425123": {
+   "website": "http://www.gemeinde-untermarchtal.de/"
+  },
+  "08425124": {
+   "website": "https://www.unterstadion.de/"
+  },
+  "08425125": {
+   "website": "http://www.unterwachingen.de"
+  },
+  "08425130": {
+   "website": "http://www.weidenstetten.de"
+  },
+  "08425134": {
+   "website": "https://westerheim.de"
+  },
+  "08425135": {
+   "website": "http://www.westerstetten.de"
+  },
+  "08425137": {
+   "website": "http://www.illerkirchberg.de"
+  },
+  "08425138": {
+   "website": "https://www.staig.de/"
+  },
+  "08425139": {
+   "website": "http://www.heroldstatt.de"
+  },
+  "08425140": {
+   "website": "http://www.balzheim.de/"
+  },
+  "08425141": {
+   "website": "https://www.blaustein.de/"
+  },
+  "08426001": {
+   "website": "http://www.achstetten.de/"
+  },
+  "08426005": {
+   "website": "http://www.alleshausen.de"
+  },
+  "08426006": {
+   "website": "http://www.allmannsweiler-bc.de/"
+  },
+  "08426008": {
+   "website": "http://www.gemeinde-altheim.de/"
+  },
+  "08426011": {
+   "website": "http://www.attenweiler.de/"
+  },
+  "08426013": {
+   "website": "https://www.badbuchau.de/"
+  },
+  "08426014": {
+   "website": "https://www.bad-schussenried.de/"
+  },
+  "08426019": {
+   "website": "http://www.gemeinde-berkheim.de/"
+  },
+  "08426020": {
+   "website": "http://www.betzenweiler.de/"
+  },
+  "08426021": {
+   "website": "https://biberach-riss.de/"
+  },
+  "08426028": {
+   "website": "https://www.burgrieden.de/"
+  },
+  "08426031": {
+   "website": "http://www.dettingen-iller.de/"
+  },
+  "08426035": {
+   "website": "http://www.duermentingen.de/"
+  },
+  "08426036": {
+   "website": "https://www.duernau-bc.de/"
+  },
+  "08426038": {
+   "website": "http://www.eberhardzell.de/"
+  },
+  "08426043": {
+   "website": "https://www.erlenmoos.de/"
+  },
+  "08426044": {
+   "website": "https://www.erolzheim.de/"
+  },
+  "08426045": {
+   "website": "http://www.ertingen.de"
+  },
+  "08426058": {
+   "website": "http://www.gemeinde-hochdorf.de"
+  },
+  "08426062": {
+   "website": "http://www.ingoldingen.de"
+  },
+  "08426064": {
+   "website": "http://www.gemeinde-kanzach.de"
+  },
+  "08426065": {
+   "website": "http://www.kirchberg-iller.de"
+  },
+  "08426066": {
+   "website": "http://www.kirchdorf-iller.de"
+  },
+  "08426067": {
+   "website": "http://www.langenenslingen.de"
+  },
+  "08426070": {
+   "website": "https://www.laupheim.de/"
+  },
+  "08426071": {
+   "website": "http://www.maselheim.de"
+  },
+  "08426073": {
+   "website": "https://mietingen.de"
+  },
+  "08426074": {
+   "website": "http://www.mittelbiberach.de"
+  },
+  "08426078": {
+   "website": "https://www.moosburg-am-federsee.de/"
+  },
+  "08426087": {
+   "website": "http://www.ochsenhausen.de"
+  },
+  "08426090": {
+   "website": "http://www.oggelshausen.de"
+  },
+  "08426097": {
+   "website": "http://www.riedlingen.de/"
+  },
+  "08426100": {
+   "website": "http://www.rot.de"
+  },
+  "08426108": {
+   "website": "http://www.schwendi.de"
+  },
+  "08426109": {
+   "website": "http://www.seekirch.de"
+  },
+  "08426113": {
+   "website": "https://www.steinhausen-rottum.de/"
+  },
+  "08426117": {
+   "website": "http://www.gemeinde-tannheim.de"
+  },
+  "08426118": {
+   "website": "http://www.tiefenbach-federsee.de"
+  },
+  "08426120": {
+   "website": "https://www.ummendorf.de/"
+  },
+  "08426121": {
+   "website": "http://www.unlingen.de"
+  },
+  "08426124": {
+   "website": "https://www.uttenweiler.de/"
+  },
+  "08426125": {
+   "website": "https://www.wain.de/"
+  },
+  "08426128": {
+   "website": "http://www.warthausen.de"
+  },
+  "08426134": {
+   "website": "http://www.schemmerhofen.de"
+  },
+  "08426135": {
+   "website": "http://www.gutenzell-huerbel.de"
+  },
+  "08435005": {
+   "website": "http://www.bermatingen.de/"
+  },
+  "08435010": {
+   "website": "http://www.daisendorf.de/"
+  },
+  "08435013": {
+   "website": "https://eriskirch.de"
+  },
+  "08435015": {
+   "website": "https://www.frickingen.de"
+  },
+  "08435016": {
+   "website": "https://www.friedrichshafen.de/"
+  },
+  "08435018": {
+   "website": "http://www.hagnau.de"
+  },
+  "08435020": {
+   "website": "https://www.heiligenberg.de/"
+  },
+  "08435024": {
+   "website": "https://www.immenstaad.de/"
+  },
+  "08435029": {
+   "website": "https://www.kressbronn.de/"
+  },
+  "08435030": {
+   "website": "https://www.langenargen.de/"
+  },
+  "08435034": {
+   "website": "https://www.markdorf.de/"
+  },
+  "08435035": {
+   "website": "https://www.meckenbeuren.de/"
+  },
+  "08435036": {
+   "website": "https://www.meersburg.de/"
+  },
+  "08435042": {
+   "website": "http://www.neukirch-gemeinde.de"
+  },
+  "08435045": {
+   "website": "https://oberteuringen.de"
+  },
+  "08435047": {
+   "website": "http://www.owingen.de"
+  },
+  "08435052": {
+   "website": "http://www.salem-baden.de"
+  },
+  "08435053": {
+   "website": "http://www.sipplingen.de"
+  },
+  "08435054": {
+   "website": "http://www.gemeinde-stetten.de"
+  },
+  "08435057": {
+   "website": "https://www.tettnang.de/"
+  },
+  "08435059": {
+   "website": "https://www.ueberlingen.de/"
+  },
+  "08435066": {
+   "website": "https://www.uhldingen-muehlhofen.de/"
+  },
+  "08435067": {
+   "website": "https://www.deggenhausertal.de/"
+  },
+  "08436001": {
+   "website": "http://www.achberg.de/"
+  },
+  "08436003": {
+   "website": "http://www.aichstetten.de/"
+  },
+  "08436004": {
+   "website": "http://www.aitrach.de"
+  },
+  "08436005": {
+   "website": "https://www.altshausen.de/"
+  },
+  "08436006": {
+   "website": "https://www.amtzell.de/"
+  },
+  "08436008": {
+   "website": "https://www.aulendorf.de/"
+  },
+  "08436009": {
+   "website": "https://www.bad-waldsee.de/"
+  },
+  "08436010": {
+   "website": "https://www.bad-wurzach.de/"
+  },
+  "08436011": {
+   "website": "http://www.baienfurt.de/"
+  },
+  "08436012": {
+   "website": "http://www.baindt.de/"
+  },
+  "08436013": {
+   "website": "http://www.berg-schussental.de"
+  },
+  "08436014": {
+   "website": "http://www.bergatreute.de"
+  },
+  "08436018": {
+   "website": "http://www.bodnegg.de"
+  },
+  "08436019": {
+   "website": "https://www.boms.de/"
+  },
+  "08436024": {
+   "website": "http://www.ebenweiler.de"
+  },
+  "08436027": {
+   "website": "http://www.eichstegen.de"
+  },
+  "08436032": {
+   "website": "http://www.fleischwangen.de"
+  },
+  "08436039": {
+   "website": "https://www.gruenkraut.de"
+  },
+  "08436040": {
+   "website": "https://www.guggenhausen.online/"
+  },
+  "08436047": {
+   "website": "http://www.gemeinde-hosskirch.de/index.html"
+  },
+  "08436049": {
+   "website": "https://www.isny.de/"
+  },
+  "08436052": {
+   "website": "http://www.kisslegg.de"
+  },
+  "08436053": {
+   "website": "http://www.koenigseggwald.de"
+  },
+  "08436055": {
+   "website": "https://www.leutkirch.de/"
+  },
+  "08436064": {
+   "website": "https://www.ravensburg.de/"
+  },
+  "08436067": {
+   "website": "http://www.riedhausen.de"
+  },
+  "08436069": {
+   "website": "http://www.schlier.de"
+  },
+  "08436077": {
+   "website": "https://www.unterwaldhausen.online/"
+  },
+  "08436078": {
+   "website": "https://www.gemeinde-vogt.de"
+  },
+  "08436079": {
+   "website": "https://www.gemeinde-waldburg.de/"
+  },
+  "08436081": {
+   "website": "https://www.wangen.de/"
+  },
+  "08436082": {
+   "website": "https://www.weingarten-online.de/"
+  },
+  "08436083": {
+   "website": "http://www.gemeinde-wilhelmsdorf.de"
+  },
+  "08436085": {
+   "website": "https://www.wolfegg.de/"
+  },
+  "08436087": {
+   "website": "http://www.wolpertswende.de"
+  },
+  "08436093": {
+   "website": "http://www.ebersbach-musbach.de"
+  },
+  "08436094": {
+   "website": "https://www.argenbuehl.de/"
+  },
+  "08436095": {
+   "website": "http://www.horgenzell.de"
+  },
+  "08436096": {
+   "website": "https://www.fronreute.de/"
+  },
+  "08437005": {
+   "website": "http://www.beuron.de/"
+  },
+  "08437008": {
+   "website": "http://www.bingen-hohenzollern.de/"
+  },
+  "08437031": {
+   "website": "http://www.gammertingen.de"
+  },
+  "08437044": {
+   "website": "https://www.herbertingen.de"
+  },
+  "08437047": {
+   "website": "https://www.hettingen.de/"
+  },
+  "08437053": {
+   "website": "http://www.hohentengen-online.de"
+  },
+  "08437056": {
+   "website": "http://www.illmensee.de"
+  },
+  "08437059": {
+   "website": "http://www.inzigkofen.de"
+  },
+  "08437065": {
+   "website": "http://www.krauchenwies.de"
+  },
+  "08437072": {
+   "website": "http://www.leibertingen.de"
+  },
+  "08437076": {
+   "website": "https://www.mengen.de/"
+  },
+  "08437078": {
+   "website": "https://www.messkirch.de/"
+  },
+  "08437082": {
+   "website": "http://www.neufra.de"
+  },
+  "08437086": {
+   "website": "https://www.ostrach.de/"
+  },
+  "08437088": {
+   "website": "https://www.pfullendorf.de"
+  },
+  "08437100": {
+   "website": "https://www.bad-saulgau.de/de/index.php"
+  },
+  "08437101": {
+   "website": "http://www.stadtscheer.de"
+  },
+  "08437102": {
+   "website": "http://www.schwenningen.de"
+  },
+  "08437104": {
+   "website": "http://www.sigmaringen.de"
+  },
+  "08437105": {
+   "website": "https://www.sigmaringendorf.de/"
+  },
+  "08437107": {
+   "website": "http://www.stetten-akm.de"
+  },
+  "08437114": {
+   "website": "https://www.veringenstadt.de/"
+  },
+  "08437118": {
+   "website": "http://www.wald-hohenzollern.de"
+  },
+  "08437123": {
+   "website": "http://www.sauldorf.de"
+  },
+  "08437124": {
+   "website": "https://www.herdwangen-schoenach.de/"
+  }
+ }
+}

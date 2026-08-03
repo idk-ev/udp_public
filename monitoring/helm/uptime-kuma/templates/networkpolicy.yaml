@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+{{- if .Values.networkPolicies.enabled }}
+# =============================================================================
+# Netzsegmentierung
+#
+# Nur INGRESS wird gefiltert: Default-deny plus Freigabe fuer den
+# Ingress-Controller (und optionale Extra-Quellen).
+#
+# ACHTUNG: Die Default-deny-Policy hat podSelector {} und trifft damit JEDEN Pod
+# des Namespace – auch die aus anderen Releases. Sie gehoert deshalb in einen
+# Namespace, in dem nur dieses Monitoring liegt (Empfehlung des Charts).
+#
+# Egress bleibt BEWUSST offen – es gibt hier keine Egress-Policy. Ein Monitoring
+# darf jede Adresse erreichen, die es pruefen soll; eine Egress-Allowlist macht
+# aus jedem neuen Monitor einen Fehlalarm und aus der Policy eine zweite,
+# stillschweigend veraltende Liste der Endpunkte.
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}-default-deny-ingress
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}-allow-ui
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "uptime-kuma.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicies.ingressControllerNamespaceLabel | nindent 14 }}
+        {{- with .Values.networkPolicies.extraIngressFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: 3001 }
+{{- end }}

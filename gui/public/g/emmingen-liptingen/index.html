@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart City Emmingen-Liptingen — Live-Dashboard</title>
+<meta name="description" content="Live-Dashboard für Emmingen-Liptingen: Wetter, Warnungen, Baustellen, Umwelt-, Mobilitäts- und Energiedaten aus offenen Quellen. Urbane Datenplattform.">
+<meta property="og:title" content="Smart City Emmingen-Liptingen">
+<meta property="og:description" content="Offene Live-Daten für Emmingen-Liptingen (4.881 Einwohner): Wetter, Luft, Mobilität, Energie.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script>window.STADT = {"ags": "08327057", "slug": "emmingen-liptingen", "name": "Emmingen-Liptingen", "row": ["08327057", "Emmingen-Liptingen", 47.92966, 8.87587, "08327", "G", 4881, null, "emmingen-liptingen"], "website": "http://www.emmingen-liptingen.de/"};</script>
+<script>
+// Bundle-Loader: gemeinsames Template übernimmt ab hier (Skripte sequenziell!)
+fetch("/stadt.html").then(r => r.text()).then(async html => {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  document.body.innerHTML = doc.body.innerHTML;
+  for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
+  for (const s of doc.querySelectorAll("body script")) {
+    await new Promise((res, rej) => {
+      const n = document.createElement("script");
+      if (s.src) { n.src = s.src; n.onload = res; n.onerror = res; }
+      else { n.textContent = s.textContent; }
+      document.body.appendChild(n);
+      if (!s.src) res();
+    });
+  }
+});
+</script>
+</head>
+<body></body>
+</html>

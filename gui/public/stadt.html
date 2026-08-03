@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart City Dashboard</title>
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<link rel="stylesheet" href="/smartcity-theme.css">
+<style>
+  /* Seitenspezifisch (Basis kommt aus smartcity-theme.css) */
+  #map { height: 460px; }
+  .stagebadge { font-size: .72rem; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border);
+                color: var(--text-muted); vertical-align: 3px; }
+  .disclaimer { font-size: .78rem; color: var(--text-muted); margin: -8px 0 14px; }
+  .fc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .fc .day { text-align: center; background: linear-gradient(180deg, var(--surface-1), var(--surface-0));
+             border: 1px solid var(--border); border-radius: 14px; padding: 12px 8px; }
+  .fc .d-name { font-size: .82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 2px; }
+  .fc .d-ico { display: flex; justify-content: center; margin: 2px 0; }
+  .fc .d-temp { font-size: 1.35rem; font-weight: 700; letter-spacing: -.02em; }
+  .fc .d-temp .lo { color: var(--text-muted); font-weight: 500; font-size: .95rem; }
+  .fc .d-bar { position: relative; height: 6px; border-radius: 999px; background: var(--surface-0);
+               margin: 7px 4px 8px; overflow: hidden; }
+  .fc .d-bar span { position: absolute; top: 0; height: 100%; border-radius: 999px; min-width: 6px; }
+  .fc .d-meta { font-size: .72rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 2px; align-items: center; }
+  .fc .d-uv { color: #fff; border-radius: 999px; padding: 0 7px; font-size: .68rem; font-weight: 600; }
+  @media (max-width: 560px) { .fc { grid-template-columns: repeat(2, 1fr); } }
+  .line-badge { display: inline-block; min-width: 30px; text-align: center; padding: 1px 7px; border-radius: 6px;
+                background: color-mix(in srgb, var(--series-1) 18%, var(--surface-1));
+                border: 1px solid color-mix(in srgb, var(--series-1) 40%, var(--surface-1)); font-weight: 600; font-size: .8rem; }
+  .delay-0 { color: var(--text-muted); } .delay-w { color: var(--status-warn); font-weight: 600; }
+  .delay-s { color: var(--status-serious); font-weight: 600; }
+  body.embed header, body.embed footer, body.embed .searchlink { display: none; }
+  body.embed { padding: 8px; }
+  /* Service-Link-Kacheln: dezente, klar als „führt zu externem Angebot“ lesbare Optik */
+  a.tile.tile-link { background: color-mix(in srgb, var(--accent) 14%, var(--surface-1));
+                     border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--surface-1)); color: var(--text-primary); }
+  a.tile.tile-link .label { color: var(--accent); }
+  a.tile.tile-link .value { color: var(--text-primary); }
+  a.tile.tile-link .hint { color: var(--text-muted); }
+  /* Einwort-Domains (heiligkreuzsteinach.de) haben keine Umbruchstelle und liefen
+     sonst über den abgerundeten Rand — kappen statt überlaufen, voller Wert im title. */
+  a.tile.tile-link .value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Sicherheitsnetz für lange Einzelwörter in Kachelwerten (»sehr schlecht« u. a.) */
+  .tile .value { overflow-wrap: anywhere; }
+  /* Leere „Potenzial“-Kachel: gedämpft, gestrichelt — signalisiert Ausbaumöglichkeit,
+     nicht Fehler. Klick führt zur Mitmach-Seite. */
+  a.tile.tile-empty { background: var(--surface-1); border: 1px dashed var(--border); color: var(--text-secondary); }
+  a.tile.tile-empty .label { color: var(--text-muted); }
+  a.tile.tile-empty .value { font-size: 1rem; font-weight: 600; color: var(--text-secondary); line-height: 1.3; padding-top: 4px; }
+  a.tile.tile-empty .hint { color: var(--text-muted); }
+  a.tile.tile-empty:hover { border-color: var(--accent); }
+  /* Dienst-Kacheln (Mängel, Müllabfuhr, Veranstaltungen) sollen wie die Datenkacheln
+     wirken: voller --tile-Hintergrund statt Akzent-Tönung/gestrichelt. */
+  a.tile.tile-plain { background: var(--tile);
+                      border: 1px solid color-mix(in srgb, var(--tile) 80%, #000); color: rgba(255,255,255,.92); }
+  a.tile.tile-plain .label { color: rgba(255,255,255,.88); }
+  a.tile.tile-plain .value { color: #fff; }
+  a.tile.tile-plain .hint { color: rgba(255,255,255,.72); }
+  /* Pollen-Symbole in der Detailtabelle */
+  .pollen-ico svg { width: 18px; height: 18px; vertical-align: -4px; margin-right: 7px; color: var(--accent); }
+</style>
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body>
+<header>
+  <h1 id="title">Smart City</h1>
+  <span class="sub" id="subtitle"></span>
+  <span class="stand" id="stand">lädt…</span>
+  <span id="thememount"></span>
+</header>
+<div id="err"></div>
+<div class="disclaimer" id="disclaimer"></div>
+<div class="wbanner" id="wbanner"></div>
+<div id="dq" style="display:none"></div>
+
+<div class="chips" id="chips">
+  <button class="chip-btn active" data-filter="">Alle</button>
+  <button class="chip-btn" data-filter="wetter">Wetter</button>
+  <button class="chip-btn" data-filter="umwelt">Umwelt</button>
+  <button class="chip-btn" data-filter="mobilitaet">Mobilität</button>
+  <button class="chip-btn" data-filter="energie">Energie</button>
+  <button class="chip-btn" data-filter="service">Service</button>
+  <button class="chip-btn" data-filter="freizeit">Freizeit</button>
+</div>
+
+<div class="tiles" id="tiles"></div>
+
+<!-- Interaktive Verläufe: sichtbar auf der Seite, Klick öffnet 24h/48h/7d-Detail -->
+<div class="grid" id="charts" style="margin-bottom:14px"></div>
+
+<div class="grid">
+  <div class="card span-4" data-topic="wetter" id="fc-card" style="display:none">
+    <h2>Vorhersage</h2>
+    <div class="desc">Open-Meteo (CC-BY 4.0)</div>
+    <div class="fc" id="fc"></div>
+  </div>
+  <div class="card span-4" data-topic="mobilitaet" id="dep-card" style="display:none">
+    <h2 id="dep-title">Abfahrten</h2>
+    <div class="desc" id="dep-desc">Echtzeit (naldo/bwegt via EFA-BW)</div>
+    <div style="max-height:380px;overflow-y:auto">
+      <table id="deps"><thead><tr><th>Linie</th><th>Ziel</th><th>Abfahrt</th><th style="text-align:right">+min</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <div class="card span-4" data-topic="mobilitaet" id="rw-card">
+    <h2 id="rw-title">Baustellen</h2>
+    <div class="desc" id="rw-desc"></div>
+    <div style="max-height:380px;overflow-y:auto"><table id="rwtable"><tbody></tbody></table></div>
+  </div>
+  <div class="card span-12">
+    <h2>Karte</h2>
+    <div class="desc" id="mapdesc"></div>
+    <div id="map"></div>
+    <div class="map-legend" id="map-legend"></div>
+  </div>
+</div>
+
+<footer id="footer"></footer>
+
+<script src="/vendor/leaflet.js"></script>
+<script src="/smartcity-lib.js"></script>
+<script>
+"use strict";
+const { $, css, esc, safeUrl, val, asArray, asRows, jget, entity, byAgs, tile, grade, fmtN, fmtDay, pos, popupHtml, groupColor, hist, series, chart, barSvg } = SC;
+
+let GEM = [], BY_AGS = {}, BY_SLUG = {}, CONN = [], DASH = {}, SERVICES = {}, STADT = window.STADT || null;
+
+// opening_hours-Mini-Parser: gängige Muster (Mo-Fr 08:00-12:00; Sa …);
+// unbekannte Syntax -> null (dann Rohtext anzeigen)
+function ohToday(oh) {
+  try {
+    const days = ["Su","Mo","Tu","We","Th","Fr","Sa"], today = days[new Date().getDay()], idx = d => days.indexOf(d);
+    const spans = [];
+    // Viele Rathäuser trennen Regeln mit »,« statt »;« (OSM-Fehlschreibweise),
+    // z. B. »Mo,Tu,Th,Fr 08:00-12:00, Th 15:30-18:00«. Ein Komma, das auf eine
+    // Uhrzeit folgt und vor einem Wochentag steht, ist ein Regeltrenner — in »;«
+    // normalisieren (Komma innerhalb von Tag-/Zeitlisten bleibt unberührt).
+    const norm = String(oh).replace(/(\d{2}:\d{2})\s*,\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/g, "$1; ");
+    for (const rule of norm.split(";")) {
+      const r = rule.trim(); if (!r) continue;
+      if (/off|closed/i.test(r)) continue;
+      const m = r.match(/^([A-Za-z ,-]+?)?\s*(\d{2}:\d{2}-\d{2}:\d{2}(?:,\s*\d{2}:\d{2}-\d{2}:\d{2})*)$/);
+      if (!m) return null;
+      let applies = false;
+      for (const seg of (m[1] || "Mo-Su").trim().split(",")) {
+        const mm = seg.trim().match(/^([A-Z][a-z])(?:-([A-Z][a-z]))?$/);
+        if (!mm) return null;
+        if (mm[2]) { const a = idx(mm[1]), b = idx(mm[2]), t = idx(today);
+          if (a <= b ? (t >= a && t <= b) : (t >= a || t <= b)) applies = true; }
+        else if (mm[1] === today) applies = true;
+      }
+      if (applies) spans.push(...m[2].split(",").map(x => x.trim()));
+    }
+    if (!spans.length) return { open: false, next: null, text: "heute nicht geöffnet" };
+    const n = new Date(), cur = n.getHours() * 60 + n.getMinutes();
+    let open = false, next = null;
+    for (const sp of spans) {
+      const [a, b] = sp.split("-"), [h1, m1] = a.split(":").map(Number), [h2, m2] = b.split(":").map(Number);
+      const von = h1 * 60 + m1;
+      if (cur >= von && cur < h2 * 60 + m2) open = true;
+      else if (cur < von && (next === null || von < next)) next = von;
+    }
+    return { open, next, text: "heute " + spans.join(" und ") + " Uhr" };
+  } catch (e) { return null; }
+}
+
+// WMO-Wettercode -> SVG-Symbol + Kurztext. Reine Inline-SVGs (CSP-konform).
+function wmoIcon(code) {
+  const c = Number(code);
+  const S = (inner, label) => ({ svg: `<svg viewBox="0 0 48 48" width="42" height="42" aria-label="${label}" role="img">${inner}</svg>`, label });
+  const sun = `<circle cx="24" cy="22" r="10" fill="#f6b73c"/><g stroke="#f6b73c" stroke-width="2.5" stroke-linecap="round">${[0,45,90,135,180,225,270,315].map(a=>{const r=a*Math.PI/180,x=24+Math.cos(r)*16,y=22+Math.sin(r)*16,x2=24+Math.cos(r)*20,y2=22+Math.sin(r)*20;return `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;}).join("")}</g>`;
+  const cloud = (x=24,y=26,f="#c7d0d8") => `<path d="M${x-13} ${y+4} a8 8 0 0 1 3-15 a10 10 0 0 1 19 2 a7 7 0 0 1 -1 13 Z" fill="${f}"/>`;
+  const drops = (f="#4aa3e0") => `<g fill="${f}">${[16,24,32].map(x=>`<path d="M${x} 34 q-2 4 0 5 q2 -1 0 -5"/>`).join("")}</g>`;
+  const flakes = (f="#9cc7e8") => `<g fill="${f}">${[16,24,32].map(x=>`<circle cx="${x}" cy="37" r="1.8"/>`).join("")}</g>`;
+  if (c === 0) return S(sun, "sonnig");
+  if (c === 1 || c === 2) return S(sun.replace('cx="24"','cx="18"').replace('cy="22" r="10"','cy="18" r="8"') + cloud(28,28), "heiter bis wolkig");
+  if (c === 3 || c === 45 || c === 48) return S(cloud(24,24), c>=45?"neblig":"bewölkt");
+  if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) return S(cloud(24,22) + drops(), "Regen");
+  if ((c >= 71 && c <= 77) || c === 85 || c === 86) return S(cloud(24,22) + flakes(), "Schnee");
+  if (c >= 95) return S(cloud(24,22,"#8a94a0") + `<path d="M22 33 l-4 7 h5 l-3 6" fill="none" stroke="#f6b73c" stroke-width="2.5" stroke-linecap="round"/>`, "Gewitter");
+  return S(cloud(24,24), "bewölkt");
+}
+
+// Pollen-Belastungsstufen (DWD-Skala 0–3 mit Zwischenstufen)
+const POLLEN_WORT = { "0": "keine", "0-1": "keine–gering", "1": "gering", "1-2": "gering–mittel",
+                      "2": "mittel", "2-3": "mittel–hoch", "3": "hoch" };
+const pollenNum = v => { const m = String(v).split("-"); return (parseFloat(m[0]) + parseFloat(m[m.length-1])) / 2; };
+// Symbole je Pollenart (Inline-SVG, CSP-fest): Gräser/Roggen als Halm, Bäume als
+// Baumsilhouette, Kräuter (Beifuß/Ambrosia) als Blütentrieb. Farbe = currentColor.
+const POLLEN_ICON = {
+  Graeser: '<path d="M12 21V9"/><path d="M12 14c-2.5-1-4-3.5-4-6.5 3 .5 4.5 3 4 6.5"/><path d="M12 14c2.5-1 4-3.5 4-6.5-3 .5-4.5 3-4 6.5"/>',
+  Roggen: '<path d="M12 21V7"/><path d="M12 9c1.5 0 2.5-1 2.5-2.5C13 6.5 12 7.5 12 9M12 9c-1.5 0-2.5-1-2.5-2.5C11 6.5 12 7.5 12 9M12 12.5c1.5 0 2.5-1 2.5-2.5C13 9.5 12 10.5 12 12.5M12 12.5c-1.5 0-2.5-1-2.5-2.5C11 9.5 12 10.5 12 12.5"/>',
+  Birke: '<path d="M12 21v-6"/><circle cx="12" cy="9" r="6"/>',
+  Erle: '<path d="M12 21v-4"/><path d="M6 17 12 4l6 13z"/>',
+  Hasel: '<path d="M12 21v-7"/><path d="M9 6c0 3 1 5 3 8 2-3 3-5 3-8"/><path d="M10 5v2M14 5v2"/>',
+  Esche: '<path d="M12 21V4"/><path d="M12 7l4-1M12 7 8 6M12 11l4-1M12 11 8 10M12 15l4-1M12 15 8 14"/>',
+  Beifuss: '<path d="M12 21V6"/><path d="M12 10 8 7M12 10l4-3M12 15l-4-3M12 15l4-3"/>',
+  Ambrosia: '<path d="M12 21v-8"/><circle cx="12" cy="6" r="1.4"/><circle cx="8.5" cy="9" r="1.4"/><circle cx="15.5" cy="9" r="1.4"/><path d="M12 13V8M12 13l-3.2-2.6M12 13l3.2-2.6"/>',
+};
+const pollenGlyph = name => POLLEN_ICON[name]
+  ? `<span class="pollen-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${POLLEN_ICON[name]}</svg></span>`
+  : "";
+
+// Kartenebenen-Farben: kräftige, klar unterscheidbare kategoriale Palette (über
+// den Farbkreis verteilt), damit sich auch überlappende Pins verschiedener
+// Ebenen deutlich abheben. Die Ladestationen tragen ihren Status als
+// Markerfarbe (grün/gelb/rot/grau); ihre Legende bleibt neutral. Umland-
+// Baustellen sind Nebeninfo und deshalb bewusst zurückhaltendes Warmgrau.
+const MAP_C = { stadt: "#2563eb", stationen: "#06b6d4", carsharing: "#9333ea",
+                br: "#db2777", sensoren: "#b45309", rad: "#0d9488",
+                pegel: "#1e3a8a", ausflug: "#16a34a", baustellen: "#eab308",
+                umland: "#78716c", laden: "#64748b", parken: "#0ea5e9" };
+
+// Kartensymbole: einheitliches Linien-Icon-Set (Lucide/Feather-Stil) in der
+// jeweiligen Ebenenfarbe, als Inline-SVG neu gezeichnet (CSP-fest, offline).
+// Die weiße Kontur/Glow liefert die .mkr-Umrandung bzw. der Legenden-Chip.
+const glyphA = (color, path) => `<svg viewBox="0 0 24 24" fill="none" stroke="${color || "#64748b"}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+// Ladepunkte tragen den Status in der Farbe (grün = online, grau = offline).
+const boltGlyph = c => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 L4 14 h6 l-1 8 l9-12 h-6 z" fill="${c || "#64748b"}" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+// E-Scooter-Silhouette (Tretroller) in der Anbieter-Markenfarbe — als „Markensymbol"
+// ohne echte Anbieterlogos (die sind geschützte Marken). Die Farbe stammt aus
+// brandColor() und ist damit repo-eigen, nicht aus Fremddaten — trotzdem
+// maskiert, weil sie in einem Attribut landet.
+const scooterGlyph = c => `<svg viewBox="0 0 24 24" fill="none" stroke="${esc(c || "#64748b")}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="18" r="2.5"/><circle cx="18.5" cy="18" r="2.5"/><path d="M8 18h7l3.6-11H21"/><path d="M16.6 18 15.2 13"/></svg>`;
+// Linien-Pfade je Ebene (24er-Raster).
+const ICON = {
+  "Stationen (ÖPNV/Wetter/UBA)": '<path d="M8 6v6M15 6v6M2 12h19.6M18 18h.01M6 18h.01"/><rect x="4" y="4" width="16" height="14" rx="2"/><path d="M4 18v2M20 18v2"/>',
+  "Carsharing": '<path d="M5 11l1.5-4.3A2 2 0 0 1 8.4 5.3h7.2a2 2 0 0 1 1.9 1.4L19 11M5 11h14a2 2 0 0 1 2 2v3h-2M5 11a2 2 0 0 0-2 2v3h2M7 16h10"/><circle cx="7.5" cy="16.5" r="1.6"/><circle cx="16.5" cy="16.5" r="1.6"/>',
+  "B+R Fahrradparken": '<circle cx="6" cy="17" r="3.2"/><circle cx="18" cy="17" r="3.2"/><path d="M6 17l4-6h5M10 11l2.5-4H15M14.5 7 18 17"/>',
+  "Pegel": '<path d="M2 7c1 .8 2 .8 3 0s2-.8 3 0 2 .8 3 0 2-.8 3 0 2 .8 3 0 2-.8 3 0M2 12c1 .8 2 .8 3 0s2-.8 3 0 2 .8 3 0 2-.8 3 0 2 .8 3 0 2-.8 3 0M2 17c1 .8 2 .8 3 0s2-.8 3 0 2 .8 3 0 2-.8 3 0 2 .8 3 0 2-.8 3 0"/>',
+  "Ausflugsziele": '<path d="M9 4 7.5 6.5H4.5A1.5 1.5 0 0 0 3 8v10.5A1.5 1.5 0 0 0 4.5 20h15a1.5 1.5 0 0 0 1.5-1.5V8a1.5 1.5 0 0 0-1.5-1.5h-3L15 4z"/><circle cx="12" cy="13" r="3.4"/>',
+  "Familie & Versorgung": '<path d="M19 13.5c1.4-1.4 2.6-2.9 2.6-5A4.6 4.6 0 0 0 17 4c-1.6 0-2.8.6-4 2-1.2-1.4-2.4-2-4-2A4.6 4.6 0 0 0 4.4 8.5c0 2.1 1.2 3.6 2.6 5L12 19z"/><path d="M4.5 11.5H9l1-2 2 4 1.5-3 .8 1.5h4.2"/>',
+  "Feinstaubsensoren": '<path d="M3 8h10.5a2.5 2.5 0 1 0-2.4-3.2M3 12h15a2.5 2.5 0 1 1-2.4 3.2M3 16h9.5a2.2 2.2 0 1 1-2.1 2.9"/>',
+  "Baustellen": '<path d="M12 3 6 20M12 3l6 17M8.2 11h7.6M6.6 15.5h10.8"/><path d="M3.5 20h17"/>',
+  "Radzählstellen": '<path d="M3 12h4l2.5 7 5-15L17 12h4"/>',
+  "Container-Füllstände": '<path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13M10 11v5M14 11v5"/>',
+  "Parken": '<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M9 17V8h3.6a2.7 2.7 0 0 1 0 5.4H9"/>'
+};
+ICON["Versorgung"] = ICON["Familie & Versorgung"];
+ICON["Baustellen Umland (Kreis)"] = ICON["Baustellen"];
+// Einzelsymbole der Ebene »Familie & Versorgung«. Apotheke: neutrales Mörser-
+// Symbol — das rote »Apotheken-A« (mit Äskulapnatter) ist eine geschützte
+// Kollektivmarke der ABDA und nur für echte Apotheken zulässig.
+const AMEN_ICON = {
+  Apotheke: '<rect x="3.5" y="8.5" width="17" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M9 9l6 6"/>',
+  Arztpraxis: '<path d="M4 3v6a4 4 0 0 0 8 0V3M4 3H2.5M4 3h1.5M12 3h-1.5M12 3h1.5M8 13v2a5 5 0 0 0 10 0v-1"/><circle cx="18" cy="12" r="2"/>',
+  Kita: '<circle cx="12" cy="6" r="2.5"/><path d="M6 21v-4a6 6 0 0 1 12 0v4M9 21v-3M15 21v-3"/>',
+  Spielplatz: '<path d="M4 20v-8l8-5 8 5v8M4 20h16M9 20v-5h6v5M4 12l8 5 8-5"/>',
+  Defibrillator: '<circle cx="12" cy="12" r="8.5"/><path d="M7.5 12h2l1-2.5 2 5 1-2.5h2.5"/>',
+  Trinkwasser: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"/>',
+  Recyclinghof: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6"/>',
+  Altglas: '<path d="M10 3h4v2.5c0 .8.3 1.2.9 1.9.7.8 1.1 1.6 1.1 2.9V19a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10.3c0-1.3.4-2.1 1.1-2.9.6-.7.9-1.1.9-1.9V3z"/><path d="M9 13h6"/>'
+};
+AMEN_ICON["Wertstoff-Container"] = AMEN_ICON["Recyclinghof"];
+const FALLBACK_ICON = '<circle cx="12" cy="12" r="3"/>';
+const LADE_GRP = { Ladestationen: 1, Ladestandorte: 1, "Ladepunkte online": 1, "Ladepunkte offline": 1 };
+// Symbol einer ganzen Ebene (Legende/Gruppen-Fallback) in der Ebenenfarbe.
+const groupIcon = g => g.scooter ? scooterGlyph(g.color) : LADE_GRP[g.name] ? boltGlyph(g.color) : glyphA(g.color, ICON[g.name] || FALLBACK_ICON);
+// Symbol eines einzelnen Elements (Marker); Versorgung je Einrichtungsart,
+// E-Scooter je Anbieter (Roller-Silhouette in Markenfarbe).
+const symFor = (g, it) => g.scooter ? scooterGlyph(it.color || g.color)
+  : LADE_GRP[g.name] ? boltGlyph(it.color)
+  : AMEN_ICON[it.extra] ? glyphA(it.color || g.color, AMEN_ICON[it.extra])
+    : glyphA(it.color || g.color, ICON[g.name] || FALLBACK_ICON);
+// Symbole auf eine Gruppenliste anwenden (für Haupt- und Detailkarten).
+const applySymbols = groups => (groups || []).forEach(g => {
+  g.sym = groupIcon(g);
+  (g.items || []).forEach(it => { it.sym = symFor(g, it); });
+});
+
+// Farbstufen der Halbkreis-Tachos — von Kachel-Miniatur und Detailkarte geteilt.
+const UV_STOPS = [[0, 3, "var(--status-good)", "niedrig"], [3, 6, "var(--status-warn)", "mäßig"], [6, 8, "#f97316", "hoch"], [8, 11, "var(--status-serious)", "sehr hoch"]];
+const AQI_STOPS = [[1, 2, "var(--status-good)", "sehr gut"], [2, 3, "#65a30d", "gut"], [3, 4, "var(--status-warn)", "mäßig"], [4, 5, "#f97316", "schlecht"], [5, 5.9, "var(--status-serious)", "sehr schlecht"]];
+const NO2_STOPS = [[0, 40, "var(--status-good)", "unter Grenzwert"], [40, 60, "var(--status-warn)", "erhöht"], [60, 100, "var(--status-serious)", "hoch"]];
+// Konvention: grün links, rot rechts. Skalen mit „hoch = gut“ (Puls) werden dafür
+// per flip:true gedreht, sodass das Maximum links steht.
+const PULS_STOPS = [[0, 50, "var(--status-serious)", "schlecht"], [50, 75, "var(--status-warn)", "mäßig"], [75, 100, "var(--status-good)", "gut"]];
+const HUM_STOPS = [[0, 30, "var(--status-warn)", "trocken"], [30, 65, "var(--status-good)", "behaglich"], [65, 100, "var(--status-warn)", "feucht"]];
+
+// Service-Kachel, die auf ein externes kommunales Angebot verlinkt. Die Hauptinfo
+// ist eine klare Aktion (nicht die rohe URL); die Beschreibung steht als Hinweis,
+// die genaue Adresse im Tooltip.
+function linkTile(label, url, hintTxt, topic = "service", plain = false) {
+  let host = url; try { host = new URL(url).hostname.replace(/^www\./, ""); } catch (e) {}
+  return `<a class="tile tile-link${plain ? " tile-plain" : ""}" data-topic="${topic}" href="${esc(safeUrl(url))}" target="_blank" rel="noopener"
+    title="${esc(host)}" data-explain="Offizielles Angebot der Kommune — öffnet extern (${esc(host)}).">
+    <div class="label">${esc(label)}</div><div class="value">Öffnen →</div>
+    <div class="hint">${esc(hintTxt)}</div></a>`;
+}
+// Leere „Potenzial“-Kachel: die Kommune stellt diesen Dienst (noch) nicht als
+// Datenquelle bereit. Bewusst sichtbar statt weggelassen — als ehrlicher Hinweis
+// auf eine Ausbaumöglichkeit, Klick führt zur Mitmach-Seite.
+function emptyTile(label, potentialTxt, topic = "service", plain = false) {
+  return `<a class="tile tile-empty${plain ? " tile-plain" : ""}" data-topic="${topic}" href="/mitmachen.html"
+    data-explain="Diese Kommune stellt „${esc(label)}“ noch nicht bereit. Der Dienst lässt sich mit geringem Aufwand ergänzen — Klick: mehr erfahren.">
+    <div class="label">${esc(label)}</div><div class="value">Noch nicht verfügbar</div>
+    <div class="hint">${esc(potentialTxt)} — für diese Kommune ergänzbar →</div></a>`;
+}
+
+function applyFilter(f) {
+  document.querySelectorAll("#chips .chip-btn").forEach(b => b.classList.toggle("active", b.dataset.filter === f));
+  document.querySelectorAll("[data-topic]").forEach(el =>
+    el.classList.toggle("topic-hidden", !!f && el.dataset.topic !== f));
+}
+document.querySelectorAll("#chips .chip-btn").forEach(b => b.addEventListener("click", () => applyFilter(b.dataset.filter)));
+
+// Kiosk-Modus (?kiosk=1): für Bürgerbüro-Bildschirm/Schaufenster. Bedienleisten aus
+// (wie embed) und die Themenfilter automatisch durchrotieren — keine Bedienung nötig.
+function startKiosk() {
+  document.body.classList.add("embed");
+  const filters = ["", "wetter", "umwelt", "mobilitaet", "energie", "service"];
+  let i = 0;
+  setInterval(() => { i = (i + 1) % filters.length; applyFilter(filters[i]); }, 15000);
+}
+
+const kommuneConn = ags => CONN.filter(c => c.active !== false && Array.isArray(c.enabledFor) && c.enabledFor.includes(ags));
+const landProvides = () => new Set(CONN.filter(c => c.active !== false && c.enabledFor === "*").flatMap(c => c.provides || []));
+
+async function render() {
+  const [, name, lat, lon, krs, typ, ew, dashUrl, slug] = STADT.row;
+  const ags = STADT.row[0];
+  const cfg = DASH[slug] || {};
+  const stage = cfg.stage || 1;
+  document.title = `Smart City ${name} — Live-Dashboard`;
+  $("#title").textContent = name;
+  $("#subtitle").innerHTML = `${typ === "S" ? "Stadt" : typ === "F" ? "Gemeindefreies Gebiet" : "Gemeinde"} · ${fmtN(ew)} Einwohner · <span class="stagebadge">Stufe ${stage}</span> <a class="searchlink" href="/dashboard.html" style="color:var(--text-muted)">· Kommunen-Suche</a>`;
+  $("#disclaimer").textContent = stage >= 2
+    ? "In Kooperation mit der Kommune · Datenquellen siehe Fußzeile"
+    : "Inoffizielles Angebot aus offenen Daten — die Kommune kann dieses Dashboard kostenlos übernehmen und gestalten (Stufe 2).";
+  if (cfg.branding) {
+    for (const [k, v] of Object.entries(cfg.branding)) {
+      if (k === "primary") document.documentElement.style.setProperty("--tile", v);
+      if (k === "accent") document.documentElement.style.setProperty("--accent", v);
+      if (k === "theme") document.documentElement.dataset.theme = v;
+    }
+  }
+
+  const komm = kommuneConn(ags);
+  // Kommunenspezifische UND landesweite Bausteine: Seit dem Stufe-3-Ausbau
+  // liefern Landeskonnektoren (enabledFor "*") Dinge, die früher je Kommune
+  // eingerichtet werden mussten — B+R, Ladestatus, Carsharing, Abfahrten.
+  const provides = new Set([...komm.flatMap(c => c.provides || []), ...landProvides()]);
+  // Stufe-3-Konnektoren, die die Kachel-/Detaildaten bestimmen. Vorgezogen,
+  // damit ALLE Abrufe in EINEM Promise.all parallel laufen (früher zwei
+  // sequentielle Blöcke → unnötige Latenz).
+  const findC = p => komm.find(c => (c.provides || []).includes(p))
+    || CONN.find(c => c.active !== false && c.enabledFor === "*" && (c.provides || []).includes(p));
+  const amtlC = findC("amtliche-station"), carsharingC = findC("carsharing-detail"),
+        passantenC = findC("passanten"), ladenDetailC = findC("laden-detail");
+  // Geo-Abfrage statt landesweitem limit=1000: nur Entitäten im Umkreis holen und
+  // serverseitig auf die benötigten Attribute projizieren (spart je Aufruf
+  // hunderte KB — Pegel 198 KB → 1,7 KB, DWD 145 KB → 1,5 KB).
+  const near = (type, radiusM, attrs) =>
+    jget(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&georel=near%3BmaxDistance%3D%3D${radiusM}` +
+         `&geometry=Point&coordinates=%5B${lon}%2C${lat}%5D&limit=200&attrs=${attrs}`).catch(() => []);
+
+  const [wx, alertDwd, alertNina, luft, parken, sharing, laden, rad, pv, pulse, ptStops, abfahrten, bikeP, kreisRw, allePegel, pollenAll, rathaus, ausflug,
+         dwdSt, flotten, passant, chStations, fcEnt, csStations, hitzeAll, versorgung, wasteC, parkSites] = await Promise.all([
+    entity("urn:ngsi-ld:WeatherObserved:bw-" + ags),
+    entity("urn:ngsi-ld:Alert:bw-kreis-" + krs + "-dwd"),
+    entity("urn:ngsi-ld:Alert:bw-kreis-" + krs + "-nina"),
+    byAgs("AirQualityObserved", ags), byAgs("ParkingSummary", ags),
+    byAgs("SharingSummary", ags), byAgs("ChargingSummary", ags), byAgs("TrafficFlowObserved", ags),
+    entity("urn:ngsi-ld:EnergyMonitor:bw-" + ags),
+    entity("urn:ngsi-ld:CityPulse:bw-" + ags),
+    provides.has("departures") ? byAgs("PublicTransportStop", ags) : [],
+    // Abfahrten auf Anfrage: liefert für JEDE Gemeinde eine sekundenaktuelle Liste.
+    fetch("/abfahrten?ags=" + ags).then(r => r.ok ? r.json() : null).catch(() => null),
+    provides.has("br") ? byAgs("BikeParking", ags) : [],
+    // Baustellen im ganzen Kreis (enthält die eigenen bereits) — die separate
+    // ags-Abfrage entfällt, rw/rwUmland werden daraus abgeleitet.
+    jget(`${SC.GW}/ngsi-ld/v1/entities?type=RoadWork&q=ags~%3D%5E${krs}&limit=1000` +
+         `&attrs=name,ags,gemeindeName,endDate,description,location`).catch(() => []),
+    // Pegel im 20-km-Umkreis (Gewässer enden nicht an Gemeindegrenzen); der eigene
+    // Pegel wird per ags aus dieser Liste abgeleitet, keine zweite Abfrage.
+    near("WaterLevelObserved", 20000, "name,water,level,levelState,floodLevels,measuredAt,dataProvider,ags,location"),
+    jget(`${SC.GW}/ngsi-ld/v1/entities?type=PollenForecast&limit=5`).catch(() => []),
+    entity("urn:ngsi-ld:CivicStructure:bw-" + ags + "-rathaus"),
+    entity("urn:ngsi-ld:TouristDestination:bw-" + ags),
+    // Amtliche DWD-Stationen im 30-km-Umkreis (statt aller ~183 landesweit).
+    amtlC ? near("WeatherObserved", 30000, "stationName,temperature,relativeHumidity,dwdStationId,location") : [],
+    carsharingC ? byAgs("FleetStatus", ags).catch(() => []) : [],
+    passantenC && passantenC.sampleEntity ? entity(passantenC.sampleEntity) : null,
+    // Ladestandorte der Gemeinde, auf Kartenattribute projiziert (statt vollem NGSI-LD).
+    ladenDetailC ? byAgs("EVChargingStation", ags, "name,operator,socketNumber,availableEvse,chargingEvse,defectEvse,liveEvse,ags,location").catch(() => []) : [],
+    entity("urn:ngsi-ld:WeatherForecast:bw-" + ags),
+    carsharingC ? byAgs("CarSharingStation", ags, "name,operator,availableVehicles,capacity,ags,location").catch(() => []) : [],
+    // Hitzebelastung: 5 DWD-Vertreterstädte, nächstgelegene wird gewählt.
+    jget(`${SC.GW}/ngsi-ld/v1/entities?type=HeatHealthWarning&limit=10&options=keyValues`).catch(() => []),
+    // Familie & Versorgung (OSM): Apotheke, Arzt, Kita, Spielplatz, AED, Trinkwasser.
+    entity("urn:ngsi-ld:PublicAmenity:bw-" + ags),
+    // Container-/Behälter-Füllstände (FIWARE WasteContainer). Es gibt dafür derzeit
+    // keine offenen Landesdaten — die Ebene aktiviert sich automatisch, sobald eine
+    // Kommune ihren LoRaWAN-Sensor-Feed anbindet (Stufe-3-Baustein).
+    byAgs("WasteContainer", ags).catch(() => []),
+    // Parkanlagen je Standort mit Koordinaten (MobiData BW ParkAPI, Stufe-3-Baustein)
+    // für die Parken-Detailkarte und die Parken-Kartenebene. Die ParkingSummary oben
+    // bleibt der aggregierte Kachelwert.
+    byAgs("ParkingSite", ags, "name,totalSpotNumber,availableSpotNumber,category,ags,location").catch(() => []),
+  ]);
+  // Baustellen: eigene Gemeinde vs. Umland aus der einen Kreis-Abfrage ableiten.
+  const rw = kreisRw.filter(e => !e.id.endsWith("summary") && val(e, "ags") === ags);
+  const rwUmland = kreisRw.filter(e => !e.id.endsWith("summary") && val(e, "ags") !== ags && pos(e));
+  // Eigene Pegel = die im Gemeindegebiet (ags) aus der Umkreis-Liste.
+  const pegel = allePegel.filter(e => val(e, "ags") === ags);
+  const warnCount = (val(alertDwd, "activeCount") || 0) + (val(alertNina, "activeCount") || 0);
+  const maxSev = Math.max(val(alertDwd, "maxSeverity") || 0, val(alertNina, "maxSeverity") || 0);
+  // Bürgersensoren nur zeigen, wenn sie aktuell liefern. Der Konnektor läuft alle
+  // 15 min; ist der Wert älter als 2 h, sendet in dieser Gemeinde kein Sensor mehr
+  // (ausgefallen oder als unplausibel verworfen) — dann lieber nichts anzeigen als
+  // einen alten Wert als heutige Luftqualität auszugeben.
+  const dObs = e => { const v = e && e.dateObserved && e.dateObserved.value; return v ? (v["@value"] || v) : null; };
+  const scAlle = luft.find(e => e.id.includes("bw-sc-"));
+  const scZeit = Date.parse(dObs(scAlle) || "");
+  const sc = (scAlle && scZeit && Date.now() - scZeit < 2 * 3600e3) ? scAlle : null;
+  // UBA: Station mit gültigem Index (>=1) bevorzugen — Index 0 heißt "aktuell kein Messwert"
+  const ubaCands = luft.filter(e => e.id.includes("bw-uba-"));
+  const uba = ubaCands.find(e => val(e, "airQualityIndex") >= 1) || ubaCands[0];
+  const pk = parken[0], ch = laden[0];
+  const radSum = rad.find(e => e.id.endsWith("-summary"));
+  const shSum = sharing.reduce((s, e) => s + (val(e, "availableVehicles") || 0), 0);
+
+  const fcDays = asRows(val(fcEnt, "days"));
+  // Stations-Entitäten der eigenen Stadt (IDs tragen den Slug als Präfix)
+  const chList = (chStations || []).filter(e => !e.id.endsWith("status-summary"));
+  // Livesumme der Gemeinde: das Aggregat trägt sie seit dem landesweiten Ausbau
+  // selbst; die frühere kommunenspezifische Summen-Entität entfällt.
+  const l2 = (ch && val(ch, "liveEvse")) ? ch : null;
+  const csList = csStations || [];
+  // Mehrere Anbieter je Gemeinde möglich (stadtmobil, teilAuto, Ford-Carsharing …):
+  // Kachel zeigt die Summe, der Verlauf die stärkste Flotte.
+  // Die GBFS-Landesliste mischt Auto- und Radverleih. Nur Autos zählen als
+  // Carsharing; stationsgebundene Räder erscheinen als eigene Kachel.
+  // Nächstgelegene amtliche Station wählen; die Entfernung wird im Hinweis
+  // genannt, damit niemand einen 30 km entfernten Messwert für den eigenen hält.
+  const kmZu = e => {
+    const p = pos(e); if (!p) return Infinity;
+    const dy = (p.lat - lat) * 111, dx = (p.lon - lon) * 111 * Math.cos(lat * Math.PI / 180);
+    return Math.sqrt(dy * dy + dx * dx);
+  };
+  const w2 = (dwdSt || []).filter(e => pos(e) && val(e, "temperature") != null)
+    .sort((a, b) => kmZu(a) - kmZu(b))[0] || null;
+  const w2km = w2 ? Math.round(kmZu(w2) * 10) / 10 : null;
+  const w2Name = w2 ? (val(w2, "stationName") || "DWD") : "";
+
+  const bauform = e => val(e, "vehicleType") || "car";
+  const alleFlotten = (flotten || []).filter(e => val(e, "availableVehicles") != null);
+  const csFlotten = alleFlotten.filter(e => bauform(e) === "car");
+  // Nur echte Räder als Leihrad-Kachel. E-Scooter und Mopeds stecken bereits in
+  // der Sharing-Kachel (frei flottierend) — sie hier erneut zu zählen wäre
+  // doppelt und würde »Leihräder« falsch benennen.
+  const radFlotten = alleFlotten.filter(e => ["bicycle", "cargo_bicycle"].includes(bauform(e)));
+  const summe = (arr, a) => arr.reduce((n, e) => n + (val(e, a) || 0), 0);
+  const csFrei = summe(csFlotten, "availableVehicles"), csStationen = summe(csFlotten, "stationCount");
+  const csTop = csFlotten.slice().sort((a, b) => (val(b, "availableVehicles") || 0) - (val(a, "availableVehicles") || 0))[0];
+  // Ladepunkt-Anzeige: online = grün (Station liefert Livedaten), offline = grau
+  // (reiner Registereintrag ohne Live-Status). Die Feinaufschlüsselung
+  // frei/belegt/defekt bleibt im Popup-Text erhalten.
+  const evStatus = e => {
+    const live = val(e, "liveEvse") || 0;
+    if (!live) return { color: css("--text-muted"), online: false, txt: "offline · keine Livedaten (Registereintrag)" };
+    const frei = val(e, "availableEvse") || 0, laedt = val(e, "chargingEvse") || 0, defekt = val(e, "defectEvse") || 0;
+    return { color: css("--status-good"), online: true,
+             txt: "online · Live: " + frei + " frei · " + laedt + " belegt" + (defekt ? " · " + defekt + " defekt" : "") };
+  };
+
+  // DETAILS = Klick-Detailtiefe je Kachel (Zeitreihen / Balken / Stationskarten)
+  const D = {};
+  const bikes = bikeP.filter(Boolean);
+  const brFrei = bikes.reduce((s, b) => s + (val(b, "availableSpotNumber") || 0), 0);
+  let tiles = "";
+
+  if (val(pulse, "pulseIndex") != null) {
+    const p = val(pulse, "pulseIndex");
+    D.puls = { kind: "chart", title: "Puls-Verlauf", noSpark: true, explain: "Gewichteter Zustandsindex (0–100, höher = besser).",
+      head: { type: "gauge", label: "Puls", v: p, min: 0, max: 100, unit: "/100", state: p >= 75 ? "gut" : p >= 50 ? "mäßig" : "schlecht", stops: PULS_STOPS, flip: true },
+      series: [{ id: pulse.id, attr: "pulseIndex", name: "Puls" }] };
+    tiles += tile("Puls", p, "/100", { detail: "puls", status: p >= 75 ? css("--status-good") : p >= 50 ? css("--status-warn") : css("--status-serious"),
+      mini: { v: p, min: 0, max: 100, stops: PULS_STOPS, flip: true }, hint: "Gesamtzustand", explain: "Gewichteter Zustandsindex aus Luft, Verfügbarkeiten, Baustellen und Warnlage (0–100, höher = besser)." });
+  }
+  // 7-Tage-Vorhersagestreifen für die Temperatur-Detailkarte (aus der Stufe-3-Vorhersage).
+  const fcStrip = fcDays.slice(0, 7).map((d, i) =>
+    [i === 0 ? "Heute" : new Date(d[0] + "T12:00:00").toLocaleDateString("de-DE", { weekday: "short" }), d[1], d[2], d[3], d[4], d[5]]);
+  if (wx) {
+    // Temperatur-Detailkarte: Thermometer + 7-Tage-Vorhersage + Verlauf
+    D.temperatur = { kind: "chart", title: "Temperatur", explain: w2 ? "Open-Meteo-Modell und DWD-Stationsmessung im Vergleich." : "Aktuelle Temperatur und Verlauf (Open-Meteo).",
+      head: { type: "thermo", v: val(wx, "temperature"), min: -10, max: 40, unit: "°C", feels: val(fcEnt, "apparentTemperature") },
+      forecast: fcStrip.length ? fcStrip : null,
+      series: [{ id: wx.id, attr: "temperature", name: "Temperatur °C" },
+        ...(w2 ? [{ id: w2.id, attr: "temperature", name: "DWD-Station °C" }] : [])] };
+    // Wind-Detailkarte: Kompass (wenn Richtung vorliegt) + Verlauf
+    D.wetter = { kind: "chart", title: "Wind", explain: "Windgeschwindigkeit im Zeitverlauf (Open-Meteo).",
+      series: [{ id: wx.id, attr: "windSpeed", name: "Wind km/h" }] };
+    const wdir = val(wx, "windDirection");
+    if (wdir != null) D.wetter.head = { type: "compass", deg: wdir, speed: Math.round(val(wx, "windSpeed") || 0), unit: "km/h" };
+  }
+  const feelsV = val(fcEnt, "apparentTemperature");
+  if (wx && D.temperatur) D.temperatur.noSpark = true;   // Thermometer statt Sparkline
+  tiles +=
+    tile("Temperatur", val(wx, "temperature"), "°C", { topic: "wetter", detail: wx ? "temperatur" : null,
+      thermo: wx ? { v: val(wx, "temperature"), feels: feelsV, min: -10, max: 40 } : null,
+      hint: feelsV != null ? "gefühlt " + Math.round(feelsV) + " °C" : null,
+      explain: "Aktuelle Lufttemperatur am Gemeinde-Zentroid (Open-Meteo, 3-stündlich)" + (feelsV != null ? "; die weiße Markierung zeigt die gefühlte Temperatur" : "") + ". Klick: Thermometer, 7-Tage-Vorhersage und Verlauf." }) +
+    tile("Wind", val(wx, "windSpeed"), "km/h", { topic: "wetter", detail: wx ? "wetter" : null,
+      compass: (wx && val(wx, "windDirection") != null) ? { deg: val(wx, "windDirection"), speed: Math.round(val(wx, "windSpeed") || 0) } : null,
+      explain: "Aktuelle Windgeschwindigkeit und -richtung (Open-Meteo); die Windrose zeigt, aus welcher Richtung der Wind weht. Klick: Windkompass und Verlauf." });
+  // UV/Sonnenzeiten liefert seit dem landesweiten Ausbau die Vorhersage
+  // (Open-Meteo, 2-h-Takt). Die gefühlte Temperatur steht in der Temperatur-Kachel.
+  if (val(w2, "relativeHumidity") != null) {
+    // DWD liefert den Anteil (0-1), andere Quellen Prozent — beides normalisieren
+    const rh = val(w2, "relativeHumidity"), rhPct = Math.round(rh <= 1 ? rh * 100 : rh);
+    // Luftfeuchte-Detailkarte: Halbkreis-Tacho (0–100 %) über dem Verlauf.
+    D.luftfeuchte = { kind: "chart", title: "Luftfeuchte" + (w2Name ? " · " + w2Name : ""), noSpark: true,
+      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Station (behaglich ca. 30–65 %).",
+      head: { type: "gauge", label: "Luftfeuchte", v: rhPct, min: 0, max: 100, unit: "%",
+        state: rhPct < 30 ? "trocken" : rhPct > 65 ? "feucht" : "behaglich", stops: HUM_STOPS },
+      series: [{ id: w2.id, attr: "relativeHumidity", name: "Luftfeuchte %", factor: rh <= 1 ? 100 : 1 }] };
+    tiles += tile("Luftfeuchte", rhPct, "%", { topic: "wetter", detail: "luftfeuchte",
+      mini: { v: rhPct, min: 0, max: 100, stops: HUM_STOPS }, hint: esc(w2Name), explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Messstation (behaglich ca. 30–65 %). Klick: Feuchte-Tacho und Verlauf." });
+  }
+  if (val(fcEnt, "uvIndex") != null) {
+    const uvV = val(fcEnt, "uvIndex");
+    // UV-Detailkarte: Halbkreis-Gauge (0–11) über dem Verlauf
+    D.uv = { kind: "chart", title: "UV-Index", noSpark: true, explain: "Aktueller UV-Index und Verlauf (Open-Meteo). WHO-Stufen: 0–2 niedrig · 3–5 mäßig · 6–7 hoch · 8+ sehr hoch.",
+      head: { type: "gauge", label: "UV-Index", v: Math.round(uvV), min: 0, max: 11, unit: "", state: uvV >= 8 ? "sehr hoch — Schutz erforderlich" : uvV >= 6 ? "hoch — Schutz empfohlen" : uvV >= 3 ? "mäßig" : "niedrig",
+        stops: UV_STOPS },
+      series: [{ id: fcEnt.id, attr: "uvIndex", name: "UV-Index" }] };
+    tiles += tile("UV-Index", uvV, "", { topic: "wetter", detail: "uv",
+      status: grade(uvV, 6, 8), mini: { v: uvV, min: 0, max: 11, stops: UV_STOPS }, hint: "aktuell (Open-Meteo)",
+      explain: "Aktueller UV-Index; ab 6 Schutz empfohlen, ab 8 erforderlich. Klick: UV-Gauge und Verlauf." });
+  }
+  // Tagesspanne/Morgen sind in der 7-Tage-Vorhersage der Temperatur-Detailkarte enthalten.
+  // Warnungen-Detailkarte: die aktuellen amtlichen Warnungen (DWD + NINA) als Liste;
+  // liegt nichts vor, zeigt die Karte eine ruhige „keine Warnungen"-Stufenanzeige.
+  const SEV_WORT = { minor: "gering", moderate: "mittel", severe: "schwer", extreme: "extrem" };
+  const warnHeads = [];
+  for (const [q, a] of [["DWD", alertDwd], ["NINA", alertNina]])
+    for (const h of asArray(val(a, "headlines"))) warnHeads.push([q, h]);
+  D.warnungen = warnHeads.length
+    ? { kind: "table", title: "Amtliche Warnungen — Kreis " + krs,
+        header: ["Quelle", "Stufe", "Warnung"],
+        rows: warnHeads.map(([q, h]) => [q, SEV_WORT[h.sev] || esc(h.sev || "–"), esc(h.h || "Warnung")]),
+        note: "Amtliche Warnungen für den Landkreis (DWD-Wetterwarnungen und Bevölkerungswarnungen über NINA)." }
+    : { kind: "info",
+        head: { type: "steps", level: warnCount > 0 ? Math.min(4, maxSev) : 0,
+          labels: ["keine", "gering", "mittel", "hoch", "extrem"],
+          colors: ["var(--status-good)", "#a3b18a", "var(--status-warn)", "#f97316", "var(--status-serious)"],
+          caption: warnCount > 0 ? warnCount + " aktive Warnung(en)" : "Derzeit keine aktiven Warnungen" },
+        note: warnCount > 0
+          ? "Für den Landkreis liegen " + warnCount + " amtliche Warnungen vor; Kurztexte sind derzeit nicht abrufbar."
+          : "Zurzeit liegen keine amtlichen Warnungen (DWD/NINA) für den Landkreis vor." };
+  tiles += tile("Warnungen", warnCount === 0 ? "keine" : warnCount, "", { detail: "warnungen",
+    status: warnCount === 0 ? css("--status-good") : maxSev >= 3 ? css("--status-serious") : css("--status-warn"),
+    hint: "DWD + NINA, Kreis " + krs, explain: "Amtliche Warnungen gelten auf Kreisebene. Klick: aktuelle Warnungen." });
+  if (rw.length || rwUmland.length) D.baustellen = { kind: "stations", title: "Baustellen", explain: "Baustellen im Gemeindegebiet und im übrigen Kreis (SVZ-BW, Punkt-in-Polygon).", center: [lat, lon],
+    groups: [
+      { name: "Baustellen", color: MAP_C.baustellen, detail: D.baustellen ? "baustellen" : null, items: rw.map(e => ({ ...pos(e), name: val(e, "name"), extra: val(e, "endDate") ? "bis " + String(val(e, "endDate")).slice(0, 10) : "" })).filter(i => i.lat) },
+      { name: "Baustellen Umland (Kreis)", color: MAP_C.umland, items: rwUmland.map(e => ({ ...pos(e), name: val(e, "name"), extra: (val(e, "gemeindeName") || "") + (val(e, "endDate") ? " · bis " + String(val(e, "endDate")).slice(0, 10) : "") })).filter(i => i.lat) },
+    ] };
+  tiles += tile("Baustellen", rw.length, "", { topic: "mobilitaet", detail: (rw.length || rwUmland.length) ? "baustellen" : null,
+    hint: "im Gemeindegebiet · " + rwUmland.length + " im Umland (Kreis)",
+    explain: "Baustellen mit Punkt-in-Polygon-Zuordnung zum Gemeindegebiet; das Umland (übriger Kreis) erscheint auf der Karte als eigene Ebene." });
+  if (sc) {
+    D.feinstaub = { kind: "chart", title: uba ? "Feinstaub — amtlich vs. Bürgersensoren" : "Feinstaub-Verlauf", noSpark: true,
+      explain: uba ? "Median der sensor.community-Sensoren gegen die amtliche UBA-Messung (µg/m³)." : "Median der sensor.community-Sensoren (µg/m³).",
+      unit: " µg/m³", series: [
+      { id: sc.id, attr: "pm25", name: "PM2.5 Sensoren" }, { id: sc.id, attr: "pm10", name: "PM10 Sensoren" },
+      ...(uba && val(uba, "pm10") != null ? [{ id: uba.id, attr: "pm10", name: "PM10 amtlich (UBA)" }] : [])] };
+    // WHO-/EU-Schwellenband (Kopfgrafik + Kachel teilen dieselben Stufen)
+    const PM_STOPS = [[0, 10, "var(--status-good)", "WHO-Ziel"], [10, 25, "var(--status-warn)", "erhöht"], [25, 50, "#f97316", "hoch"], [50, 75, "var(--status-serious)", "sehr hoch"]];
+    const pmV = val(sc, "pm25") ?? val(sc, "pm10");
+    if (pmV != null) D.feinstaub.head = { type: "band", label: "PM2.5", v: pmV, unit: "µg/m³", max: 75, stops: PM_STOPS };
+    tiles += tile("Feinstaub PM2.5", pmV, "µg/m³",
+      { topic: "umwelt", detail: "feinstaub", status: (val(sc, "pm25") ?? 0) <= 10 ? css("--status-good") : (val(sc, "pm25") ?? 0) <= 25 ? css("--status-warn") : css("--status-serious"),
+        band: pmV != null ? { v: pmV, max: 75, stops: PM_STOPS } : null,
+        hint: (val(sc, "sensorCount") || "?") + (val(sc, "sensorCount") === 1 ? " Bürgersensor" : " Bürgersensoren"), explain: "Median der sensor.community-Sensoren in dieser Gemeinde (15 min). Klick: Schwellenband und Verlauf." });
+  }
+  if (uba) {
+    const AQI = { 1: "sehr gut", 2: "gut", 3: "mäßig", 4: "schlecht", 5: "sehr schlecht" };
+    const aqiV = val(uba, "airQualityIndex");
+    D.luft = { kind: "chart", title: "Luftqualitätsindex (UBA)", noSpark: true, explain: "Amtlicher UBA-Index (1 = sehr gut … 5 = sehr schlecht); 0 = aktuell kein Messwert.", series: [{ id: uba.id, attr: "airQualityIndex", name: "AQI" }] };
+    // Kopfgrafik: amtlicher UBA-Index als 5-Stufen-Gauge
+    if (aqiV >= 1) D.luft.head = { type: "gauge", label: "Luftqualität", v: aqiV, min: 1, max: 5, unit: "", state: AQI[aqiV] || String(aqiV), stops: AQI_STOPS };
+    tiles += tile("Luftqualität", aqiV >= 1 ? (AQI[aqiV] || aqiV) : "–", "",
+      { topic: "umwelt", detail: "luft",
+        status: aqiV >= 1 ? (aqiV <= 2 ? css("--status-good") : aqiV === 3 ? css("--status-warn") : css("--status-serious")) : null,
+        mini: aqiV >= 1 ? { v: aqiV, min: 1, max: 5, stops: AQI_STOPS } : null,
+        hint: esc(val(uba, "stationName")) + (aqiV >= 1 ? "" : " · aktuell kein Messwert (UBA)"),
+        explain: "Amtlicher UBA-Index (1 = sehr gut … 5 = sehr schlecht). Index 0 bedeutet: Station liefert gerade keinen Wert — das ist eine Datenlücke, kein Messwert." });
+  }
+  // NO₂/O₃ je UBA-Station (verkehrsnahe Station = höchster NO₂-Wert für die Kachel)
+  const noStations = ubaCands.filter(e => val(e, "no2") != null);
+  if (noStations.length) {
+    const short = e => String(val(e, "stationName") || e.id).replace(/^.*?\s/, "").slice(0, 18) || "Station";
+    D.no2o3 = { kind: "chart", title: "NO₂ / O₃ — UBA-Stationen", unit: " µg/m³", noSpark: true,
+      explain: "Stickstoffdioxid je Station; Ozon, wo gemessen (amtliche UBA-Werte, stündlich).", series: [
+      ...noStations.map(e => ({ id: e.id, attr: "no2", name: "NO₂ " + short(e) })),
+      ...ubaCands.filter(e => val(e, "o3") != null).map(e => ({ id: e.id, attr: "o3", name: "O₃ " + short(e) }))] };
+    const trafficUba = noStations.reduce((a, b) => (val(a, "no2") >= val(b, "no2") ? a : b));
+    // Kopfgrafik: NO₂ am EU-Jahresgrenzwert (40 µg/m³) markiert
+    const no2V = Math.round(val(trafficUba, "no2"));
+    D.no2o3.head = { type: "gauge", label: "NO₂", v: no2V, min: 0, max: 100, unit: "µg/m³", threshold: 40, state: no2V + " µg/m³ · Grenzwert 40", stops: NO2_STOPS };
+    tiles += tile("NO₂", val(trafficUba, "no2"), "µg/m³", { topic: "umwelt", detail: "no2o3",
+      status: grade(val(trafficUba, "no2"), 40, 100), mini: { v: no2V, min: 0, max: 100, stops: NO2_STOPS }, hint: esc(val(trafficUba, "stationName")),
+      explain: "Stickstoffdioxid an der höchstbelasteten UBA-Station (Grenzwert Jahresmittel: 40 µg/m³). Klick: Grenzwert-Gauge und Verlauf." });
+  }
+  // Hitzebelastung (DWD Thermischer Gefahrenindex): nächstgelegene Vertreterstadt,
+  // nur zeigen, wenn tatsächlich eine Belastung besteht (rank ≥ 1).
+  {
+    const hitze = (hitzeAll || []).filter(e => e.location)
+      .map(e => ({ e, km: (() => { const c = e.location.coordinates; const dy = (c[1] - lat) * 111, dx = (c[0] - lon) * 111 * Math.cos(lat * Math.PI / 180); return Math.sqrt(dy * dy + dx * dx); })() }))
+      .sort((a, b) => a.km - b.km)[0];
+    if (hitze && (hitze.e.maxRank || 0) >= 1) {
+      const h = hitze.e, heute = h.todayLevel, morgen = h.tomorrowLevel, rank = h.maxRank || 0;
+      // Detailkarte: 5-stufige Ampel-Skala des thermischen Gefahrenindex
+      const HITZE_LVL = ["keine", "gering", "mittel", "hoch", "extrem"];
+      const HITZE_COL = ["var(--status-good)", "#a3b18a", "var(--status-warn)", "#f97316", "var(--status-serious)"];
+      const lvIdx = Math.max(0, HITZE_LVL.indexOf(heute));
+      D.hitze = { kind: "info",
+        head: { type: "steps", level: lvIdx, labels: HITZE_LVL, colors: HITZE_COL, caption: "Heute: " + heute + " · morgen: " + morgen + " (" + (h.name || "") + ")" },
+        note: "Thermischer Gefahrenindex des DWD (gesundheitliche Hitzebelastung) an der nächstgelegenen Vertreterstadt. Bei Hitze: ausreichend trinken, Mittagssonne meiden, auf ältere Menschen achten." };
+      tiles += tile("Hitzebelastung", heute, "", { topic: "umwelt", detail: "hitze",
+        status: rank >= 3 ? css("--status-serious") : rank === 2 ? css("--status-warn") : css("--status-good"),
+        steps: { level: lvIdx, colors: HITZE_COL },
+        hint: esc(h.name || "") + " · morgen " + esc(morgen),
+        explain: "Thermischer Gefahrenindex des DWD (gesundheitliche Hitzebelastung) an der nächstgelegenen Vertreterstadt (" + (h.name || "") + "). Stufen: keine · gering · mittel · hoch · extrem. Klick: Stufenskala." });
+    }
+  }
+  // Pollenflug: Teilregion über den eigenen Kreisschlüssel wählen
+  const pollenReg = pollenAll.find(e => asArray(val(e, "kreise")).includes(krs));
+  if (pollenReg) {
+    const arten = asRows(val(pollenReg, "arten"));
+    const aktiv = arten.filter(a => pollenNum(a[1]) > 0).sort((a, b) => pollenNum(b[1]) - pollenNum(a[1]));
+    const top = aktiv[0];
+    D.pollen = { kind: "table", title: "Pollenflug — " + (val(pollenReg, "name") || ""),
+      header: ["Pollenart", "heute", "morgen"],
+      rows: arten.map(a => [pollenGlyph(a[0]) + esc(String(a[0]).replace("Graeser", "Gräser").replace("Beifuss", "Beifuß")), POLLEN_WORT[a[1]] || esc(a[1]), POLLEN_WORT[a[2]] || esc(a[2])]),
+      note: "DWD-Pollenflug-Gefahrenindex (GeoNutzV), Teilregion " + esc(val(pollenReg, "name") || "") + "." };
+    const POLLEN_COL = ["var(--status-good)", "#a3b18a", "var(--status-warn)", "var(--status-serious)"];
+    tiles += tile("Pollenflug", top ? top[0].replace("Graeser", "Gräser").replace("Beifuss", "Beifuß") : "keine Belastung",
+      "", { topic: "umwelt", detail: "pollen",
+        status: top ? (pollenNum(top[1]) >= 2 ? css("--status-serious") : pollenNum(top[1]) >= 1 ? css("--status-warn") : css("--status-good")) : css("--status-good"),
+        steps: { level: top ? Math.min(3, Math.round(pollenNum(top[1]))) : 0, colors: POLLEN_COL },
+        hint: top ? POLLEN_WORT[top[1]] || esc(top[1]) : "alle 8 Arten", explain: "Stärkst belastende Pollenart heute (DWD-Gefahrenindex je Teilregion). Klick: alle 8 Arten heute und morgen." });
+  }
+  // Pegelstände: eigene Messstellen bevorzugt; sonst die nächstgelegene im Kreis
+  // (Gewässer kennen keine Gemeindegrenzen — für die Hochwasserlage zählt der
+  // nächste Pegel am selben Fluss, auch wenn er im Nachbarort steht).
+  const kmVon = e => {
+    const p = pos(e); if (!p) return Infinity;
+    const dy = (p.lat - lat) * 111, dx = (p.lon - lon) * 111 * Math.cos(lat * Math.PI / 180);
+    return Math.sqrt(dy * dy + dx * dx);
+  };
+  // WSV/PEGELONLINE und LUBW/HVZ betreiben an Rhein und Neckar teils dieselbe
+  // Messstelle. Die Plattform hält bewusst beide Quellen vor; im Dashboard wäre
+  // ein Ort mit zwei Pegeln gleichen Namens aber nur verwirrend. Deshalb hier
+  // zusammenführen — Vorrang hat die LUBW als zuständiger Landesdienst mit den
+  // Hochwasser-Meldestufen.
+  const entdoppeln = liste => {
+    const norm = e => String(val(e, "name") || "").toLowerCase().replace(/[^a-zäöüß]+/g, "");
+    const raus = new Set();
+    for (const a of liste) {
+      if (!String(a.id).includes("bw-pegel-")) continue; // nur PEGELONLINE kann weichen
+      const na = norm(a), pa = pos(a);
+      for (const b of liste) {
+        if (a === b || !String(b.id).includes("bw-hvz-")) continue;
+        const nb = norm(b), pb = pos(b);
+        if (!na || !nb || !pa || !pb) continue;
+        const dy = (pa.lat - pb.lat) * 111, dx = (pa.lon - pb.lon) * 111 * Math.cos(pa.lat * Math.PI / 180);
+        const km = Math.sqrt(dy * dy + dx * dx);
+        // Gleiche Stelle nur, wenn Name und Ort zusammenpassen — Ober- und
+        // Unterpegel einer Schleuse bleiben getrennt, sie messen Verschiedenes.
+        if (km <= 0.5 && (na === nb || na.includes(nb) || nb.includes(na))) { raus.add(a.id); break; }
+      }
+    }
+    return liste.filter(e => !raus.has(e.id));
+  };
+  const eigene = entdoppeln(pegel.filter(e => pos(e)));
+  const nahe = entdoppeln(allePegel.filter(e => pos(e) && kmVon(e) <= 20)).sort((a, b) => kmVon(a) - kmVon(b));
+  const pegelListe = eigene.length ? eigene : nahe.slice(0, 3);
+  if (pegelListe.length) {
+    const pg = pegelListe[0];
+    const fremd = !eigene.length;
+    const dist = fremd ? Math.round(kmVon(pg) * 10) / 10 : null;
+    const stufen = asArray(val(pg, "floodLevels"));
+    D.pegel = { kind: "chart", title: "Pegel " + (val(pg, "name") || ""), unit: " cm",
+      explain: "Wasserstand" + (stufen.length ? " · erste Hochwasser-Meldestufe bei " + stufen[0] + " cm" : "") +
+        " (" + (String(pg.id).includes("hvz") ? "LUBW/HVZ" : "WSV/PEGELONLINE") + ").",
+      series: pegelListe.map(e => ({ id: e.id, attr: "level", name: (val(e, "name") || "") + " (" + (val(e, "water") || "") + ")" })) };
+    // Pegel-Kachel entfernt; die Pegel-Kartenebene bleibt (Popup öffnet den Verlauf).
+  }
+  // === Verwaltung & Bürgerservice: die vier Pflicht-Kacheln IMMER rendern ===
+  // Wo die Kommune nichts bereitstellt, bleibt die Kachel als sichtbares
+  // Ausbaupotenzial stehen (emptyTile) statt zu verschwinden.
+  const amtWeb = (SERVICES[ags] || {}).website;
+  // 1) Rathaus & Bürgerbüro: OSM-Öffnungszeiten bevorzugt, sonst amtliche Website,
+  //    sonst Potenzial-Hinweis.
+  const oh = rathaus ? val(rathaus, "openingHours") : null;
+  if (oh) {
+    const t = ohToday(oh);
+    D.rathaus = { kind: "table", title: val(rathaus, "name") || "Rathaus",
+      header: ["", ""], rows: [["Öffnungszeiten", esc(oh)],
+        ...(val(rathaus, "telephone") ? [["Telefon", esc(val(rathaus, "telephone"))]] : []),
+        ...(val(rathaus, "url") || amtWeb ? [["Web", `<a href="${esc(safeUrl(val(rathaus, "url") || amtWeb))}" target="_blank" rel="noopener">${esc(val(rathaus, "url") || amtWeb)}</a>`]] : [])],
+      note: "Öffnungszeiten aus OpenStreetMap (ODbL) — ohne Gewähr." };
+    // Kurzform statt „geschlossen“: öffnet es heute noch, steht die Uhrzeit da.
+    const wert = !t ? "Zeiten ansehen"
+      : t.open ? "geöffnet"
+      : t.next != null ? "ab " + String(Math.floor(t.next / 60)).padStart(2, "0") + ":" + String(t.next % 60).padStart(2, "0")
+      : "geschlossen";
+    tiles += tile("Rathaus & Bürgerbüro", wert, "",
+      { topic: "service", detail: "rathaus", status: t ? (t.open ? css("--status-good") : css("--text-muted")) : null,
+        hint: esc(t ? t.text : String(oh).slice(0, 34)),
+        explain: "Öffnungszeiten laut OpenStreetMap — ohne Gewähr. Klick: Details und Kontakt." });
+  } else if (amtWeb) {
+    tiles += linkTile("Rathaus & Bürgerbüro", amtWeb, "Amtliche Website: Öffnungszeiten, Kontakt, Formulare");
+  } else {
+    tiles += emptyTile("Rathaus & Bürgerbüro", "Öffnungszeiten & Kontakt");
+  }
+  // 2) Mängelmelder + 3) Müllabfuhr gehören zum Bürgerservice (Filter »Service«),
+  //    Veranstaltungen zur Freizeit — kuratierter Link oder Potenzial-Kachel.
+  const svcLinks = [
+    ["maengelmelder", "Mängel melden", "Schäden & Anliegen online melden", "service"],
+    ["abfall", "Müllabfuhr", "Abfuhrtermine je Straße", "service"],
+    ["veranstaltungen", "Veranstaltungen", "Städtischer Veranstaltungskalender", "freizeit"],
+  ];
+  // Diese drei Bürgerservice-Kacheln tragen denselben vollen Kachel-Hintergrund
+  // wie die Datenkacheln (plain), statt der Akzent-/Potenzial-Sonderoptik.
+  for (const [key, label, potential, topic] of svcLinks) {
+    const url = cfg.links && cfg.links[key];
+    tiles += url ? linkTile(label, url, potential, topic, true) : emptyTile(label, potential, topic, true);
+  }
+  // Bäder: optionaler Freizeit-Zusatz, nur wo kuratiert.
+  if (cfg.links && cfg.links.baeder) tiles += linkTile("Bäder", cfg.links.baeder, "Öffnungszeiten & Auslastung", "freizeit");
+  // Familie & Versorgung (OSM): Apotheke, Arzt, Kita, Spielplatz, AED, Trinkwasser.
+  const versorgItems = versorgung ? asRows(val(versorgung, "amenities")) : [];
+  if (versorgItems.length) {
+    const counts = (versorgung && val(versorgung, "counts")) || {};
+    const FARBE = { Apotheke: "#e11d48", Arztpraxis: "#0891b2", Kita: "#7c3aed",
+      Spielplatz: "#16a34a", Defibrillator: "#dc2626", Trinkwasser: "#2563eb",
+      Recyclinghof: "#65a30d", Altglas: "#0d9488", "Wertstoff-Container": "#a16207" };
+    const summ = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    D.versorgung = { kind: "stations", title: "Familie & Versorgung", center: [lat, lon],
+      explain: "Apotheken, Arztpraxen, Kitas, Spielplätze, Defibrillatoren und Trinkwasser laut OpenStreetMap (ODbL): "
+        + summ.map(([a, n]) => n + "× " + a).join(", ") + ".",
+      groups: [{ name: "Versorgung", items: versorgItems.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1], color: FARBE[z[1]] || "#64748b" })) }],
+      list: versorgItems.slice(0, 60).map(z => `<b>${esc(z[0])}</b> · <span style="color:var(--text-muted)">${esc(z[1])}</span>`) };
+    tiles += tile("Familie & Versorgung", val(versorgung, "totalCount") || versorgItems.length, "", { topic: "service", detail: "versorgung",
+      hint: esc(summ.slice(0, 3).map(([a, n]) => n + "× " + a).join(" · ")) || "OSM",
+      explain: "Einrichtungen der Daseinsvorsorge im Gemeindegebiet laut OpenStreetMap. Klick: Karte + Liste nach Art." });
+  }
+  // === Container-/Behälter-Füllstände (FIWARE WasteContainer.fillingLevel) ===
+  // Altglas-/Wertstoffcontainer und Abfallbehälter mit Sensor-Füllstand. Für BW gibt
+  // es dafür keine offenen Daten (die LoRaWAN-Werte liegen beim Entsorger) — die
+  // Ebene bleibt leer, bis eine Kommune ihren Feed anbindet, und erscheint dann von
+  // selbst. Ampel: grün < 60 % · gelb 60–85 % · rot ≥ 85 %.
+  const fillPct = e => { const f = val(e, "fillingLevel"); return f == null ? null : Math.round(f <= 1 ? f * 100 : f); };
+  const fillCol = p => p >= 85 ? css("--status-serious") : p >= 60 ? css("--status-warn") : css("--status-good");
+  const fillArt = e => val(e, "category") || val(e, "wasteType") || val(e, "refWasteType") || "Behälter";
+  const fuellVoll = (wasteC || []).filter(e => fillPct(e) != null && e.location);
+  if (fuellVoll.length) {
+    const fMarks = fuellVoll.map(e => { const p = fillPct(e); return { ...pos(e), name: val(e, "name") || fillArt(e),
+      extra: fillArt(e) + " · Füllstand " + p + " %", color: fillCol(p), fill: p }; }).filter(i => i.lat);
+    const nahVoll = fuellVoll.filter(e => fillPct(e) >= 85).length;
+    const avgFill = Math.round(fuellVoll.reduce((s, e) => s + fillPct(e), 0) / fuellVoll.length);
+    const FILL_STOPS = [[0, 60, "var(--status-good)"], [60, 85, "var(--status-warn)"], [85, 100, "var(--status-serious)"]];
+    D.fuellstand = { kind: "stations", title: "Container-Füllstände", center: [lat, lon],
+      explain: "Füllstände von Altglas-/Wertstoffcontainern und Abfallbehältern (FIWARE WasteContainer, LoRaWAN-Sensorik). Ampel: grün < 60 % · gelb 60–85 % · rot ≥ 85 %.",
+      groups: [{ name: "Container-Füllstände", color: css("--status-warn"), items: fMarks }],
+      list: fuellVoll.slice().sort((a, b) => fillPct(b) - fillPct(a)).slice(0, 60)
+        .map(e => `<b>${esc(val(e, "name") || fillArt(e))}</b> · <span style="color:${fillCol(fillPct(e))}">${fillPct(e)} % voll</span>`) };
+    tiles += tile("Container-Füllstände", avgFill, "%", { topic: "umwelt", detail: "fuellstand",
+      status: nahVoll > 0 ? css("--status-serious") : css("--status-good"),
+      mini: { v: avgFill, min: 0, max: 100, stops: FILL_STOPS },
+      hint: fuellVoll.length + " Behälter · " + nahVoll + " fast voll (≥ 85 %)",
+      explain: "Durchschnittlicher Füllstand von Altglas-/Wertstoffcontainern und Abfallbehältern; Tacho = Ø, Zahl »fast voll« = ≥ 85 %. Klick: Karte + Liste nach Füllstand." });
+  }
+  // Ausflugsziele (OSM) — Freizeit. Detailansicht mit Aufschlüsselung nach Art.
+  const ziele = ausflug ? asRows(val(ausflug, "ziele")) : [];
+  if (ziele.length) {
+    // Nach Art aufschlüsseln (Sehenswürdigkeit, Museum, Aussichtspunkt, …).
+    const nachArt = {};
+    ziele.forEach(z => { const a = z[1] || "Ziel"; nachArt[a] = (nachArt[a] || 0) + 1; });
+    const artTop = Object.entries(nachArt).sort((a, b) => b[1] - a[1]);
+    const artHint = artTop.slice(0, 3).map(([a, n]) => n + "× " + a).join(" · ");
+    const zielGesamt = val(ausflug, "zielCount") || ziele.length;
+    D.ausflug = { kind: "stations", title: "Ausflugsziele (" + ziele.length + ")", center: [lat, lon],
+      explain: "Benannte Ausflugsziele laut OpenStreetMap (ODbL): " + artTop.map(([a, n]) => n + "× " + a).join(", ") + "."
+        + (zielGesamt > ziele.length ? " Angezeigt: die " + ziele.length + " meistgenannten von " + fmtN(zielGesamt) + "." : ""),
+      groups: [{ name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) }],
+      // Zusätzlich zur Karte eine benannte Liste (Name · Art) im Detail.
+      list: ziele.slice(0, 60).map(z => `<b>${esc(z[0])}</b> · <span style="color:var(--text-muted)">${esc(z[1])}</span>`) };
+    tiles += tile("Ausflugsziele", ziele.length, "", { topic: "freizeit", detail: "ausflug",
+      hint: esc(artHint) || "OSM",
+      explain: "Benannte Ausflugsziele im Gemeindegebiet laut OpenStreetMap"
+        + (zielGesamt > ziele.length ? "; angezeigt werden " + ziele.length + " von " + fmtN(zielGesamt) + "." : ".") + " Klick: Karte + Liste nach Art." });
+  }
+  // Parken-Kartenpunkte: je Anlage ein Standort mit Kapazität und — wo gemeldet —
+  // freien Plätzen. Für die Detailkarte und die Parken-Kartenebene.
+  const parkPts = (parkSites || []).map(e => ({ ...pos(e), name: val(e, "name") || "Parkplatz",
+    frei: val(e, "availableSpotNumber"),
+    extra: (val(e, "totalSpotNumber") != null ? fmtN(val(e, "totalSpotNumber")) + " Stellplätze" : "Parkplatz")
+      + (val(e, "availableSpotNumber") != null ? " · " + fmtN(val(e, "availableSpotNumber")) + " frei" : "") })).filter(i => i.lat);
+  if (pk) {
+    if (parkPts.length) {
+      // Bevorzugt: Standortkarte der Parkanlagen (Stufe-3-Baustein mit Koordinaten).
+      D.parken = { kind: "stations", title: "Parken", center: [lat, lon],
+        explain: "Parkanlagen mit Standort und — wo gemeldet — freien Plätzen in Echtzeit (MobiData BW ParkAPI).",
+        groups: [{ name: "Parken", color: MAP_C.parken, items: parkPts }],
+        list: parkPts.slice(0, 60).map(p => `<b>${esc(p.name)}</b> · <span style="color:var(--text-muted)">${esc(p.extra)}</span>`) };
+    } else if (val(pk, "realtimeFree") != null) {
+      // Ohne Anlagen-Koordinaten ersatzweise der Belegungsverlauf.
+      D.parken = { kind: "chart", title: "Freie Parkplätze", explain: "Echtzeit-Belegung (MobiData BW).", zero: true, series: [{ id: pk.id, attr: "realtimeFree", name: "frei" }] };
+    }
+    tiles += tile("Parken", fmtN(val(pk, "totalCapacity")), "", { topic: "mobilitaet", detail: D.parken ? "parken" : null,
+      hint: fmtN(val(pk, "siteCount")) + (val(pk, "siteCount") === 1 ? " Anlage" : " Anlagen") + (val(pk, "realtimeFree") != null ? " · " + fmtN(val(pk, "realtimeFree")) + " frei" : ""),
+      explain: "Stellplätze aller in MobiData BW erfassten Anlagen." + (parkPts.length ? " Klick: Standortkarte der Parkanlagen." : "") });
+  }
+  // E-Scooter-Standorte je Anbieter (aus SharingSummary.vehiclePositions) — für die
+  // Detailkarte und die Karten-Ebene unten. Außerhalb des Blocks sichtbar.
+  let scooterGroups = [];
+  if (shSum) {
+    // Anbietername säubern (System-/Operatorfeld, ohne technische Suffixe).
+    const provName = e => String(val(e, "operator") || val(e, "system") || e.id.split("-ff-").pop() || "Anbieter").split("_")[0];
+    // Wiedererkennbare Markenfarbe je Anbieter als nominatives Erkennungsmerkmal —
+    // KEINE Logo-Reproduktion (Anbieterlogos sind geschützte Marken). Unbekannte
+    // Anbieter erhalten eine deterministisch aus dem Namen abgeleitete Farbe.
+    const BRAND = { bolt: "#34d186", voi: "#f5654f", dott: "#1f6feb", tier: "#00c9a7", lime: "#32d74b",
+      zeus: "#7c3aed", bird: "#1f2937", nextbike: "#005ca9", lidl: "#0050aa" };
+    const brandColor = nm => { const k = String(nm).toLowerCase(); if (BRAND[k]) return BRAND[k];
+      let h = 0; for (const c of k) h = (h * 31 + c.charCodeAt(0)) >>> 0; return "hsl(" + (h % 360) + ",60%,45%)"; };
+    // Standorte je Anbieter als eigene, in Markenfarbe symbolisierte Ebene (scooter:true).
+    scooterGroups = sharing.map(e => {
+      const nm = provName(e);
+      const pts = asRows(val(e, "vehiclePositions"))
+        .filter(p => Array.isArray(p) && p[0] != null && p[1] != null)
+        .map(p => ({ lat: +p[0], lon: +p[1], name: nm, extra: "E-Scooter · frei flottierend" }));
+      return { name: nm, scooter: true, color: brandColor(nm), items: pts };
+    }).filter(g => g.items.length);
+    if (scooterGroups.length) {
+      // Bevorzugt: Standortkarte der E-Scooter je Anbieter.
+      D.sharing = { kind: "stations", title: "E-Scooter-Standorte", center: [lat, lon],
+        explain: "Aktuelle Standorte frei flottierender E-Scooter/Leihfahrzeuge je Anbieter (GBFS, stündlich); Marker in der Anbieter-Markenfarbe.",
+        groups: scooterGroups };
+    } else {
+      // Ohne Positionsdaten ersatzweise der Verfügbarkeits-Verlauf.
+      D.sharing = { kind: "chart", noSpark: true, title: "E-Scooter-Verfügbarkeit", explain: "Verfügbare E-Scooter/Leihfahrzeuge je Anbieter im Zeitverlauf.", zero: true,
+        series: sharing.map(e => ({ id: e.id, attr: "availableVehicles", name: provName(e) })) };
+    }
+    // Anbieter mit Markenfarbe (absteigend nach Verfügbarkeit); Gesamtsumme als Hauptwert.
+    const chips = sharing.slice()
+      .sort((a, b) => (val(b, "availableVehicles") || 0) - (val(a, "availableVehicles") || 0))
+      .map(e => { const nm = provName(e); return `<span class="brand" style="background:${brandColor(nm)}">${esc(nm)} ${fmtN(val(e, "availableVehicles") || 0)}</span>`; });
+    tiles += tile("E-Scooter", shSum, "", { topic: "mobilitaet", detail: "sharing",
+      hint: chips.join(""),
+      explain: "Aktuell verfügbare frei flottierende E-Scooter/Leihfahrzeuge (GBFS), je Anbieter mit Markenfarbe. Klick: "
+        + (scooterGroups.length ? "Standortkarte je Anbieter." : "Zeitverlauf je Anbieter.") });
+  }
+  if (ch) {
+    const live = l2 ? val(l2, "availableEvse") : null;
+    const pts = chList.map(e => { const st = evStatus(e); return { ...pos(e), color: st.color, name: val(e, "name"), online: st.online, legend: st.online ? "online" : "offline",
+      extra: esc(String(val(e, "socketNumber") ?? "?") + " Ladepunkte · " + (val(e, "operator") || "")) + "<br>" + st.txt }; }).filter(i => i.lat);
+    // Online/Offline als getrennte, ein-/ausblendbare Ebenen
+    if (pts.length) D.laden = { kind: "stations", title: "Ladestandorte", center: [lat, lon],
+      explain: "Ladestandorte mit Live-Status (MobiData BW/OCPDB) — grün = online (liefert Livedaten), grau = offline (reiner Registereintrag). Ebenen einzeln ein-/ausblendbar. Die Feinaufteilung frei/belegt/defekt steht im Popup. Die Kachel »Ladepunkte« zählt dagegen das vollständige BNetzA-Register.",
+      groups: [
+        { name: "Ladepunkte online", color: css("--status-good"), items: pts.filter(p => p.online) },
+        { name: "Ladepunkte offline", color: css("--text-muted"), items: pts.filter(p => !p.online) },
+      ].filter(g => g.items.length) };
+    else if (l2) D.laden = { kind: "chart", title: "Ladepunkte frei (live)", explain: "Freie Ladepunkte im Zeitverlauf.", zero: true, series: [{ id: l2.id, attr: "availableEvse", name: "frei" }] };
+    tiles += tile("Ladepunkte", fmtN(val(ch, "evseCount")), "", { topic: "energie", detail: D.laden ? "laden" : null,
+      status: live != null ? (live > 0 ? css("--status-good") : css("--status-warn")) : null,
+      hint: fmtN(val(ch, "locationCount")) + (val(ch, "locationCount") === 1 ? " Standort" : " Standorte") + (live != null ? " · " + live + " frei (live)" : ""),
+      explain: "E-Ladepunkte laut BNetzA-Register; Live-Status (frei/belegt/defekt), wo Betreiber melden." });
+  }
+  if (radSum) {
+    const last7 = asRows(val(radSum, "last7Days"));
+    D.radverkehr = { kind: "stations", title: "Radverkehr", explain: "Zählstellen-Standorte und Tagesverlauf der letzten Woche.", center: [lat, lon],
+      groups: [{ name: "Radzählstellen", color: MAP_C.rad, detail: D.radverkehr ? "radverkehr" : null, items: rad.filter(e => !e.id.endsWith("summary")).map(e => ({ ...pos(e), name: val(e, "name"), extra: fmtN(val(e, "dailyTotal")) + " Fahrten" })).filter(i => i.lat) }],
+      bars: last7.length ? { rows: last7.map(([d, v]) => [String(d).slice(5), v]), unit: " Fahrten" } : null };
+    tiles += tile("Radverkehr", fmtN(val(radSum, "dailyTotal")), "", { topic: "mobilitaet", detail: "radverkehr",
+      hint: fmtN(val(radSum, "siteCount")) + (val(radSum, "siteCount") === 1 ? " Zählstelle" : " Zählstellen"), explain: "Radfahrten am letzten verfügbaren Tag (Eco-Counter)." });
+  }
+  if (val(pv, "installedCapacityKw") > 0) {
+    const adds = asRows(val(pv, "additionsByYear"));
+    if (adds.length) D.pv = { kind: "bars", title: "PV-Zubau nach Jahr", explain: "Neu in Betrieb genommene PV-Leistung je Jahr (MaStR).", unit: " kW", rows: adds.map(([y, cnt, kw]) => [String(y), kw]) };
+    tiles += tile("PV installiert", (val(pv, "installedCapacityKw") / 1000).toFixed(1).replace(".", ","), "MW",
+      { topic: "energie", detail: adds.length ? "pv" : null, hint: fmtN(val(pv, "plantCount")) + " Anlagen (MaStR)", explain: "Photovoltaik-Gesamtleistung laut Marktstammdatenregister." });
+    // CO₂-Kennzahl (berechnet): kWp × 950 kWh/kWp·a (Ertrag Süddeutschland) × 0,4 kg CO₂/kWh (verdrängter Strommix)
+    const co2t = Math.round(val(pv, "installedCapacityKw") * 950 * 0.4 / 1000);
+    tiles += tile("CO₂ vermieden", fmtN(co2t), "t/Jahr", { topic: "energie",
+      hint: "rechnerisch, durch PV", status: css("--status-good"),
+      explain: "Rechenweg: installierte PV-Leistung × 950 kWh je kWp und Jahr (typischer Ertrag in Süddeutschland) × 0,4 kg CO₂ je kWh verdrängtem Strommix. Eine Näherung — keine Messung." });
+  }
+
+  // Stufe-3-Kacheln (kommune-spezifische Konnektoren)
+  if (bikes.length) {
+    // Detailkarte: Standortkarte der überwachten Fahrradparkplätze (frei/gesamt im Popup).
+    D.br = { kind: "stations", title: "B+R Fahrradparken", center: [lat, lon],
+      explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — Standorte mit freien Plätzen in Echtzeit (Stufe 3).",
+      groups: [{ name: "B+R Fahrradparken", color: MAP_C.br, items: bikes.map(b => ({ ...pos(b), name: val(b, "name"),
+        extra: "frei: " + (val(b, "availableSpotNumber") ?? "?") + " / " + (val(b, "totalSpotNumber") ?? "?") + " Plätze" })).filter(i => i.lat) }] };
+    tiles += tile("B+R Fahrradparken", brFrei, "", { topic: "mobilitaet", detail: D.br.groups[0].items.length ? "br" : null, status: css("--status-good"),
+      hint: "freie Plätze, Echtzeit", explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — kommune-spezifischer Echtzeitkonnektor (Stufe 3). Klick: Standortkarte." });
+  }
+  if (csFlotten.length) {
+    const anbieter = csFlotten.map(e => val(e, "operator")).filter(Boolean);
+    // Detailkarte: ausschliesslich die Standortkarte der Carsharing-Stationen
+    // (verfügbar/Kapazität im Popup). Ohne Stationsstandorte (frei flottierend)
+    // bleibt die Kachel ohne Detailansicht — der frühere Zeitverlauf-Graph
+    // zeigte dort nur eine Linie ohne Ortsbezug und ist bewusst entfallen.
+    const csPts = csList.map(e => ({ ...pos(e), name: val(e, "name"),
+      extra: "verfügbar: " + (val(e, "availableVehicles") ?? "?") + " / " + (val(e, "capacity") ?? "?") + " · " + (val(e, "operator") || "") })).filter(i => i.lat);
+    if (csPts.length) {
+      D.carsharing = { kind: "stations", title: "Carsharing" + (csTop ? " (" + val(csTop, "operator") + ")" : ""), center: [lat, lon],
+        explain: "Stationsbasiertes Carsharing" + (anbieter.length ? " (" + anbieter.join(", ") + ")" : "") + " — Standorte mit verfügbaren Fahrzeugen (GBFS).",
+        groups: [{ name: "Carsharing", color: MAP_C.carsharing, items: csPts }] };
+    }
+    tiles += tile("Carsharing", csFrei, "", { topic: "mobilitaet", detail: csPts.length ? "carsharing" : null,
+      hint: csStationen + (csStationen === 1 ? " Station" : " Stationen")
+            + (anbieter.length > 1 ? " · " + anbieter.length + " Anbieter" : ""),
+      explain: "Stationsbasiertes Carsharing" + (anbieter.length ? " (" + anbieter.join(", ") + ")" : "")
+               + " — verfügbare Fahrzeuge laut GBFS-Feed der Anbieter." + (csPts.length ? " Klick: Standortkarte." : "") });
+  }
+  if (radFlotten.length) {
+    const radFrei = summe(radFlotten, "availableVehicles"), radSt = summe(radFlotten, "stationCount");
+    D.radverleih = { kind: "chart", title: "Leihräder an Stationen", zero: true,
+      explain: "Verfügbare Leihräder im Zeitverlauf.",
+      series: radFlotten.slice(0, 4).map(e => ({ id: e.id, attr: "availableVehicles", name: val(e, "operator") || "verfügbar" })) };
+    tiles += tile("Leihräder", radFrei, "", { topic: "mobilitaet", detail: "radverleih",
+      hint: radSt + (radSt === 1 ? " Station" : " Stationen") + " · "
+            + esc(radFlotten.map(e => val(e, "operator")).filter(Boolean).join(", ")),
+      explain: "Stationsgebundener Radverleih (GBFS) — verfügbare Räder je Station." });
+  }
+  if (w2) {
+    // Amtliche-Station-Kachel entfernt; die Station bleibt als Vergleichsreihe in
+    // der Temperatur-Detailkarte (D.temperatur) erhalten.
+    D.amtlich = { kind: "chart", title: "Amtliche Station " + w2Name, explain: "Direkt gemessene Stationstemperatur.", unit: " °C", series: [{ id: w2.id, attr: "temperature", name: "Temperatur" }] };
+  }
+  if (passant && val(passant, "pedestrianCount") != null) {
+    D.passanten = { kind: "chart", title: "Passantenfrequenz", explain: "Fußverkehr an der Zählstelle (hystreet).", zero: true, series: [{ id: passant.id, attr: "pedestrianCount", name: "Personen/h" }] };
+    tiles += tile("Passanten", fmtN(val(passant, "pedestrianCount")), "/h", { topic: "mobilitaet", detail: "passanten",
+      hint: esc(val(passant, "name")) || "Innenstadt", explain: "Passantenfrequenz der letzten Stunde (hystreet) — Stufe-3-Konnektor." });
+  }
+  const deps0 = asArray(val(ptStops[0], "departures"));
+  const abfList = (abfahrten && Array.isArray(abfahrten.abfahrten)) ? abfahrten.abfahrten : [];
+  const medDelay = abfahrten && abfahrten.medianVerspaetung != null
+    ? abfahrten.medianVerspaetung : val(ptStops[0], "avgDelayMinutes");
+  const haltName = (abfahrten && abfahrten.halt) || val(ptStops[0], "name") || "";
+  // Die Kachel erscheint nur, wenn tatsächlich Echtzeitmeldungen vorliegen.
+  // Ein Halt ohne Echtzeitanbindung hat keine Verspätung von 0 — er hat keine
+  // bekannte Verspätung, und das ist etwas anderes.
+  const rtZahl = abfahrten && abfahrten.echtzeitAbfahrten != null
+    ? abfahrten.echtzeitAbfahrten : (deps0.filter(d => d.delayMinutes != null).length);
+  // Abfahrten-Zeilen (Echtzeit bevorzugt) — dienen sowohl der Fahrplan-Detailkarte
+  // als auch der Abfahrtstafel weiter unten.
+  const zeilen = abfList.length
+    ? abfList.map(d => ({ linie: d.linie, ziel: d.ziel, zeit: d.zeit, min: d.verspaetung }))
+    : deps0.map(d => ({ linie: d.line, ziel: d.destination, zeit: d.estimated, min: d.delayMinutes }));
+  if (zeilen.length) {
+    const delayCls = m => m == null ? "delay-0" : m >= 5 ? "delay-s" : m >= 1 ? "delay-w" : "delay-0";
+    D.oepnv = { kind: "table", title: "Abfahrten " + haltName,
+      header: ["Linie", "Ziel", "Abfahrt", "+min"],
+      rows: zeilen.slice(0, 30).map(d => [
+        `<span class="line-badge">${esc(d.linie)}</span>`, esc(d.ziel), esc(d.zeit),
+        `<span class="${delayCls(d.min)}">${d.min == null ? "?" : Number(d.min) > 0 ? "+" + Number(d.min) : "±0"}</span>`]),
+      note: "Nächste Abfahrten am zentralen Halt (EFA-BW), beim Seitenaufruf abgerufen. „?“ = keine plausible Echtzeitmeldung." };
+  }
+  if (medDelay != null && rtZahl > 0) {
+    tiles += tile("ÖPNV-Verspätung", String(Number(medDelay)).replace(".", ","), "min",
+      { topic: "mobilitaet", detail: D.oepnv ? "oepnv" : null, status: grade(medDelay, 2, 5),
+        hint: esc(haltName) + " · " + rtZahl + " mit Echtzeit",
+        explain: "Median der Verspätungen der nächsten Abfahrten am zentralen Halt (EFA-BW, beim Seitenaufruf abgerufen). Nur Abfahrten mit echter Echtzeitmeldung fließen ein — bei den übrigen ist die Verspätung unbekannt, nicht null. Unplausible Meldungen (über 60 min) werden als Datenartefakt ausgeschlossen. Klick: Fahrplan der nächsten Abfahrten." });
+  } else if (D.oepnv) {
+    // Kein Echtzeit-Verspätungswert, aber Abfahrten vorhanden: dennoch als
+    // klickbare ÖPNV-Kachel mit Fahrplan-Detail zeigen.
+    tiles += tile("ÖPNV", zeilen.length, "", { topic: "mobilitaet", detail: "oepnv",
+      hint: esc(haltName) + " · nächste Abfahrten",
+      explain: "Nächste Abfahrten am zentralen Halt (EFA-BW), beim Seitenaufruf abgerufen. Klick: Fahrplan." });
+  }
+  $("#tiles").innerHTML = tiles;
+  // Kacheln nach Relevanz für Bürgerinnen und Bürger ordnen („Sicherheit & Alltag
+  // zuerst"): Warnungen und Gesamt-Puls führen als Überblick, dann der tägliche
+  // Weg (ÖPNV, Baustellen, Parken), Bürgerservice (Müll, Mängel, Rathaus), Wetter,
+  // Umwelt/Gesundheit, Freizeit/Versorgung und zuletzt Energie. Stabiler Sort nach
+  // Kachel-Titel; unbekannte Titel behalten ihre Code-Reihenfolge dahinter.
+  const REL_ORDER = ["Warnungen", "Puls",
+    "ÖPNV-Verspätung", "ÖPNV", "Baustellen", "Parken",
+    "Müllabfuhr", "Mängel melden", "Rathaus & Bürgerbüro",
+    "Temperatur", "Wind", "Luftfeuchte", "UV-Index",
+    "Luftqualität", "Feinstaub PM2.5", "NO₂", "Pollenflug", "Hitzebelastung", "Container-Füllstände",
+    "E-Scooter", "Carsharing", "Leihräder", "B+R Fahrradparken", "Passanten",
+    "Veranstaltungen", "Ausflugsziele", "Bäder", "Familie & Versorgung",
+    "Ladepunkte", "PV installiert", "CO₂ vermieden"];
+  const relRank = el => {
+    const lblEl = el.querySelector(".label");
+    const i = REL_ORDER.indexOf(((lblEl && lblEl.textContent) || "").trim());
+    return i === -1 ? REL_ORDER.length : i;
+  };
+  const host = $("#tiles");
+  [...host.children]
+    .map((el, i) => [el, relRank(el), i])
+    .sort((a, b) => a[1] - b[1] || a[2] - b[2])
+    .forEach(([el]) => host.appendChild(el));
+  // Detailkarten hinter den Kacheln bekommen dieselben Emoji-Marker wie die Hauptkarte.
+  Object.values(D).forEach(def => { if (def && def.kind === "stations") applySymbols(def.groups); });
+  SC.wireTileDetails(D);
+  // Progressive Enhancement: 24-h-Sparkline in alle Messwert-Kacheln mit Zeitreihe.
+  SC.sparkTiles(D);
+
+  // Datenqualitäts-Panel für Rathausmitarbeiter (?daten=1): welche Datenarten
+  // liefern für DIESE Gemeinde und wie frisch. Bewusst nicht in der Bürgeransicht.
+  if (new URLSearchParams(location.search).get("daten") === "1") {
+    const freshMin = e => { const d = e && dObs(e); const t = d && Date.parse(d); return t ? Math.round((Date.now() - t) / 60000) : null; };
+    const first = x => Array.isArray(x) ? x[0] : x;
+    const rows = [
+      ["Wetter (Open-Meteo)", wx], ["Vorhersage", fcEnt], ["Gemeinde-Puls", pulse],
+      ["Feinstaub (Bürgersensoren)", scAlle], ["Luftqualität (UBA)", uba],
+      ["Hitzebelastung (DWD)", first(hitzeAll)], ["Pegel", first(pegelListe)], ["Pollenflug", pollenReg],
+      ["Parken", pk], ["Sharing", first(sharing)], ["Carsharing", first(csFlotten)],
+      ["Ladepunkte", ch], ["Radverkehr", radSum], ["PV/Energie", pv],
+      ["Rathaus (OSM)", rathaus], ["Ausflugsziele (OSM)", ausflug],
+      ["ÖPNV-Abfahrten", abfahrten && abfahrten.abfahrten ? { dateObserved: { value: abfahrten.stand } } : null],
+    ];
+    const zeile = ([label, e]) => {
+      if (!e) return `<tr><td>${label}</td><td style="color:var(--text-muted)">– keine Daten</td><td></td></tr>`;
+      const m = freshMin(e);
+      const alt = m == null ? "vorhanden" : m < 60 ? m + " min" : m < 1440 ? Math.round(m / 60) + " h" : Math.round(m / 1440) + " d";
+      const farbe = m == null ? "var(--text-secondary)" : m < 180 ? "var(--status-good)" : m < 1440 ? "var(--status-warn)" : "var(--status-serious)";
+      return `<tr><td>${label}</td><td style="color:var(--status-good)">✓ vorhanden</td><td style="color:${farbe}">${alt}</td></tr>`;
+    };
+    $("#dq").style.display = "block";
+    $("#dq").innerHTML = `<div class="card"><h2>Datenqualität — ${name} (Rathaus-Ansicht)</h2>
+      <div class="desc">Frische je Datenart für diese Gemeinde. Grün &lt; 3 h · gelb &lt; 1 Tag · rot älter. Diese Ansicht ist nicht Teil der öffentlichen Bürgerseite (?daten=1).</div>
+      <table><thead><tr><th>Datenart</th><th>Status</th><th>Alter</th></tr></thead>
+      <tbody>${rows.map(zeile).join("")}</tbody></table></div>`;
+  }
+
+  // Interaktive Verläufe direkt auf der Seite (die Detailtiefe der Referenz-
+  // seite): jede verfügbare Zeitreihe als sichtbare 24h-Karte, Klick öffnet
+  // das Modal mit 24h/48h/7d. Datenarme Städte zeigen automatisch weniger.
+  const CHART_TOPIC = { wetter: "wetter", amtlich: "wetter", feinstaub: "umwelt", no2o3: "umwelt", luft: "umwelt",
+    sharing: "mobilitaet", br: "mobilitaet", carsharing: "mobilitaet", passanten: "mobilitaet", parken: "mobilitaet",
+    radverkehr: "mobilitaet", pv: "energie" };
+  // Auf Wunsch von der Seite genommen: Wind (wetter), Feinstaub, NO₂, E-Scooter
+  // (sharing), Radverkehr, PV-Zubau (pv) — sie bleiben als Klick-Detail der Kachel
+  // erhalten, erscheinen aber nicht mehr als eigener Verlaufsblock unter den Kacheln.
+  const CHART_ORDER = ["br", "carsharing", "passanten", "parken"];
+  const inline = CHART_ORDER.filter(k => D[k] && (D[k].kind === "chart" || D[k].kind === "bars" ||
+    (D[k].kind === "stations" && (D[k].bars || k === "radverkehr"))));
+  $("#charts").innerHTML = inline.map(k =>
+    `<div class="card span-4" data-detail="${k}" data-title="${esc(D[k].title)}" data-topic="${CHART_TOPIC[k] || ""}" style="cursor:pointer">
+       <h2>${esc(D[k].title)}</h2>
+       <div class="desc">${esc(D[k].explain || "")} · Klick: 24 h / 48 h / 7 Tage</div>
+       <div class="chart" id="ch-${k}"></div>
+     </div>`).join("");
+  SC.wireTileDetails(D, "#charts");
+  const slot = [css("--series-1"), css("--series-2"), css("--series-3"), css("--series-4"), css("--series-5")];
+  await Promise.all(inline.map(async k => {
+    const def = D[k];
+    if (def.kind === "bars") { barSvg("#ch-" + k, def.rows, { unit: def.unit }); return; }
+    if (def.kind === "stations") {
+      // Radverkehr: Tagessummen notfalls aus der TRoE-Historie ableiten,
+      // wenn der Konnektor last7Days (noch) nicht mitliefert
+      if (!def.bars && k === "radverkehr" && radSum) {
+        const byDay = {};
+        for (const [x, v] of series(await hist(radSum.id, "dailyTotal", 168), "dailyTotal"))
+          byDay[new Date(x).toISOString().slice(5, 10).replace("-", ".")] = v;
+        const rows = Object.entries(byDay);
+        if (rows.length) def.bars = { rows, unit: " Fahrten" };
+      }
+      barSvg("#ch-" + k, def.bars ? def.bars.rows : [], { unit: def.bars ? def.bars.unit : "" });
+      return;
+    }
+    const ts = await Promise.all(def.series.map(s => hist(s.id, s.attr, 24)));
+    chart("#ch-" + k, def.series.map((s, i) => ({ name: s.name, color: slot[i % slot.length], data: series(ts[i], s.attr) })),
+      { unit: def.unit, hours: 24, zero: def.zero });
+  }));
+
+  // (Der gestapelte »Ladepunkte-Status (live)«-Balken wurde auf Wunsch von der
+  //  Seite genommen; die Frei/Belegt/Defekt-Aufteilung steht weiter im Popup der
+  //  Ladepunkte-Kartenebene bzw. im Ladepunkte-Detail.)
+
+  // Warn-Banner
+  const heads = [];
+  for (const [q, a] of [["DWD", alertDwd], ["NINA", alertNina]])
+    for (const h of asArray(val(a, "headlines"))) heads.push(`<b>${q}</b>: ${esc(h.h)}`);
+  const wb = $("#wbanner");
+  // Nur bei tatsächlichen Warnungen sichtbar; ohne Warnlage bleibt der Banner leer.
+  wb.className = "wbanner " + (heads.length ? (maxSev >= 3 ? "serious" : "warn") : "info");
+  wb.style.display = heads.length ? "" : "none";
+  wb.innerHTML = heads.length ? heads.join("<br>") : "";
+
+  // Vorhersage-Karte (nur wenn Stufe-3-Vorhersage vorhanden; Entität oben geladen)
+  {
+    const days = fcDays;
+    if (days.length) {
+      $("#fc-card").style.display = "block";
+      // Temperatur-Balken relativ zur Wochenspanne: min/max über alle Tage
+      const allHi = days.map(x => x[2]), allLo = days.map(x => x[1]);
+      const wMin = Math.min(...allLo), wMax = Math.max(...allHi), wSpan = (wMax - wMin) || 1;
+      const tempCol = t => `hsl(${Math.round(210 - Math.max(0, Math.min(1, (t - 0) / 32)) * 210)}, 75%, 52%)`;
+      $("#fc").innerHTML = days.map(([d, lo, hi, rain, wind, uv, code], i) => {
+        const ic = wmoIcon(code);
+        const left = ((lo - wMin) / wSpan) * 100, width = Math.max(6, ((hi - lo) / wSpan) * 100);
+        return `<div class="day">
+          <div class="d-name">${i === 0 ? "Heute" : new Date(d + "T12:00:00").toLocaleDateString("de-DE", { weekday: "short" })}</div>
+          <div class="d-ico" title="${ic.label}">${ic.svg}</div>
+          <div class="d-temp">${Math.round(hi)}°<span class="lo"> ${Math.round(lo)}°</span></div>
+          <div class="d-bar"><span style="left:${left}%;width:${width}%;background:linear-gradient(90deg,${tempCol(lo)},${tempCol(hi)})"></span></div>
+          <div class="d-meta">
+            <span title="Niederschlag">💧 ${(+rain).toLocaleString("de-DE", { maximumFractionDigits: 1 })} mm</span>
+            <span title="Wind">🌬 ${Math.round(wind)}</span>
+            <span class="d-uv" style="background:${uv >= 6 ? "var(--status-serious)" : uv >= 3 ? "var(--status-warn)" : "var(--status-good)"}">UV ${Math.round(uv)}</span>
+          </div></div>`;
+      }).join("");
+    }
+  }
+
+  // Abfahrtstafel: nutzt dieselbe »zeilen«-Liste wie das ÖPNV-Fahrplan-Detail
+  // (weiter oben aus Echtzeit-/Entitätsdaten aufgebaut).
+  if (zeilen.length) {
+    $("#dep-card").style.display = "block";
+    $("#dep-title").textContent = "Abfahrten " + haltName;
+    $("#dep-desc").textContent = "Echtzeit (EFA-BW)" + (abfList.length ? " · beim Aufruf abgefragt" : "");
+    $("#deps tbody").innerHTML = zeilen.map(d => {
+      const dm = d.min;
+      const cls = dm == null ? "delay-0" : dm >= 5 ? "delay-s" : dm >= 1 ? "delay-w" : "delay-0";
+      return `<tr><td><span class="line-badge">${esc(d.linie)}</span></td><td>${esc(d.ziel)}</td><td>${esc(d.zeit)}</td><td class="num ${cls}" ${dm == null ? 'title="Echtzeitmeldung unplausibel — als unbekannt geführt"' : ""}>${dm == null ? "?" : Number(dm) > 0 ? "+" + Number(dm) : "±0"}</td></tr>`;
+    }).join("");
+  }
+
+  // Baustellen-Liste + Karte
+  $("#rw-desc").textContent = rw.length ? "SVZ-BW, Punkt-in-Polygon" : "Keine Baustellen im Gemeindegebiet.";
+  $("#rwtable tbody").innerHTML = rw.slice(0, 25).map(e =>
+    `<tr><td>${esc(val(e, "name"))}</td><td style="color:var(--text-muted)">${val(e, "endDate") ? "bis " + esc(String(val(e, "endDate")).slice(0, 10)) : ""}</td></tr>`).join("");
+
+  // Karte: eine Gruppe je Datenquelle, per Legende ein-/ausblendbar; Ladestationen
+  // tragen ihren Livestatus als Markerfarbe (Detailtiefe der Referenzseite).
+  if (!window._map) {
+    window._map = L.map("map", { scrollWheelZoom: true }).setView([lat, lon], 12);
+    SC.baseLayer(window._map);
+    window._groupLayers = {}; window._groupOff = {};
+    const toggleGroup = el => {
+      const g = el.dataset.group;
+      window._groupOff[g] = !window._groupOff[g];
+      el.classList.toggle("off", window._groupOff[g]);
+      el.setAttribute("aria-pressed", String(!window._groupOff[g]));
+      const lg = window._groupLayers[g];
+      if (lg) window._groupOff[g] ? window._map.removeLayer(lg) : lg.addTo(window._map);
+    };
+    $("#map-legend").addEventListener("click", ev => {
+      const el = ev.target.closest("[data-group]"); if (el) toggleGroup(el);
+    });
+    // Karte↔Kachel: „Verlauf/Details ansehen“ in einem Marker-Popup öffnet die
+    // zugehörige Detailansicht (Zeitreihe/Karte) — verbindet den räumlichen mit
+    // dem zeitlichen Blick.
+    $("#map").addEventListener("click", ev => {
+      const a = ev.target.closest("a.pop-detail");
+      if (a) { ev.preventDefault(); SC.openDetailByKey(a.dataset.detail); }
+    });
+    // Tastaturbedienung der Ebenen-Umschalter (BITV).
+    $("#map-legend").addEventListener("keydown", ev => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      const el = ev.target.closest("[data-group]");
+      if (el) { ev.preventDefault(); toggleGroup(el); }
+    });
+  }
+  const map = window._map;
+  // Zentraler ÖPNV-Halt für die Karte: die Deklaration ging beim Umbau auf den
+  // On-Demand-Abruf verloren, wodurch »stop« auf window.stop zeigte und der
+  // Halt-Marker still verschwand.
+  const stop = (ptStops && ptStops[0]) || null;
+  const stationPts = [
+    stop ? { ...pos(stop), name: val(stop, "name") || "ÖPNV-Knoten" } : null,
+    w2 ? { ...pos(w2), name: "DWD-Wetterstation" } : null,
+    ...ubaCands.map(e => ({ ...pos(e), name: "UBA " + (val(e, "stationName") || "Station"), extra: "Luftqualitätsindex: " + (val(e, "airQualityIndex") ?? "–") })),
+    rathaus ? { ...pos(rathaus), name: val(rathaus, "name") || "Rathaus", extra: val(rathaus, "openingHours") || "" } : null,
+  ].filter(i => i && i.lat);
+  // Ladepunkte als zwei getrennte, ein-/ausblendbare Ebenen (online/offline).
+  const chLadeItems = chList.map(e => { const st = evStatus(e); return { ...pos(e), color: st.color, name: val(e, "name"), online: st.online, legend: st.online ? "online" : "offline",
+      extra: esc(String(val(e, "socketNumber") ?? "?") + " Ladepunkte · " + (val(e, "operator") || "")) + "<br>" + st.txt }; }).filter(i => i.lat);
+  const groups = [
+    // Der Gemeinde-Mittelpunkt ist nur in der Kreisübersicht sinnvoll (dort
+    // markiert er die Gemeinden); in der Einzelstadt-Ansicht ist er redundant.
+    { name: "Stationen (ÖPNV/Wetter/UBA)", color: MAP_C.stationen, big: true, items: stationPts },
+    { name: "Ladepunkte online", color: css("--status-good"), detail: D.laden ? "laden" : null, items: chLadeItems.filter(i => i.online) },
+    { name: "Ladepunkte offline", color: css("--text-muted"), detail: D.laden ? "laden" : null, items: chLadeItems.filter(i => !i.online) },
+    // E-Scooter je Anbieter (Roller-Symbol in Markenfarbe); dichte Ebenen starten
+    // eingeklappt (DICHT-Schwelle greift wie bei den Ladesäulen).
+    ...scooterGroups.map(g => ({ ...g, detail: D.sharing && D.sharing.kind === "stations" ? "sharing" : null })),
+    { name: "Carsharing", color: MAP_C.carsharing, detail: D.carsharing ? "carsharing" : null, items: csList.map(e => ({ ...pos(e), name: val(e, "name"),
+        extra: "verfügbar: " + (val(e, "availableVehicles") ?? "?") + " / " + (val(e, "capacity") ?? "?") + " · " + (val(e, "operator") || "") })).filter(i => i.lat) },
+    { name: "B+R Fahrradparken", color: MAP_C.br, detail: D.br ? "br" : null, items: bikes.map(e => ({ ...pos(e), name: val(e, "name"),
+        extra: "frei: " + (val(e, "availableSpotNumber") ?? "?") + " / " + (val(e, "totalSpotNumber") ?? "?") + " Plätze" })).filter(i => i.lat) },
+    { name: "Parken", color: MAP_C.parken, detail: D.parken && D.parken.kind === "stations" ? "parken" : null,
+      items: parkPts.map(p => ({ lat: p.lat, lon: p.lon, name: p.name, extra: p.extra })) },
+    { name: "Pegel", color: MAP_C.pegel, detail: D.pegel ? "pegel" : null, items: pegelListe.map(e => ({ ...pos(e), name: "Pegel " + (val(e, "name") || ""),
+        extra: (val(e, "water") || "") + ": " + (val(e, "level") ?? "?") + " cm · " + (val(e, "measuredAt") || "") })).filter(i => i.lat) },
+    { name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) },
+    { name: "Familie & Versorgung", color: "#e11d48", detail: D.versorgung ? "versorgung" : null,
+      items: versorgItems.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) },
+    { name: "Container-Füllstände", color: css("--status-warn"), detail: D.fuellstand ? "fuellstand" : null,
+      items: (D.fuellstand && D.fuellstand.groups[0].items) || [] },
+    { name: "Feinstaubsensoren", color: MAP_C.sensoren, detail: D.feinstaub ? "feinstaub" : null, items: luft.filter(e => e.id.includes("bw-sensor-")).map(e => ({ ...pos(e), name: val(e, "name") || "Sensor",
+        extra: "PM2.5: " + (val(e, "pm25") ?? "–") + " · PM10: " + (val(e, "pm10") ?? "–") + " µg/m³ (sensor.community)" })).filter(i => i.lat) },
+    { name: "Baustellen", color: MAP_C.baustellen, items: rw.map(e => ({ ...pos(e), name: val(e, "name"),
+        extra: esc(val(e, "description") || "") + (val(e, "endDate") ? "<br>bis " + esc(String(val(e, "endDate")).slice(0, 10)) : "") })).filter(i => i.lat) },
+    { name: "Baustellen Umland (Kreis)", color: MAP_C.umland, items: rwUmland.map(e => ({ ...pos(e), name: val(e, "name"),
+        extra: esc(val(e, "gemeindeName") || "") + (val(e, "endDate") ? "<br>bis " + esc(String(val(e, "endDate")).slice(0, 10)) : "") })).filter(i => i.lat) },
+    { name: "Radzählstellen", color: MAP_C.rad, items: rad.filter(e => !e.id.endsWith("summary")).map(e => ({ ...pos(e), name: val(e, "name"),
+        extra: fmtN(val(e, "dailyTotal")) + " Fahrten" + (dObs(e) ? " am " + fmtDay(dObs(e)) : "") })).filter(i => i.lat) },
+  ].filter(g => g.items.length);
+  Object.values(window._groupLayers).forEach(l => map.removeLayer(l));
+  window._groupLayers = {};
+  // Sehr dichte Ebenen (z. B. hunderte Ladesäulen in der Großstadt) beim ersten
+  // Laden eingeklappt zeigen, damit die Karte nicht zugedeckt startet — Anzahl
+  // steht in der Legende, ein Klick blendet sie ein. Kleine Orte bleiben
+  // unberührt (unter der Schwelle). Nur einmalig, danach entscheidet der Nutzer.
+  const DICHT = 80;
+  if (!window._legendSeeded) {
+    groups.forEach(g => { if (!g.big && g.items.length > DICHT) window._groupOff[g.name] = true; });
+    window._legendSeeded = true;
+  }
+  const eingeklappt = groups.filter(g => window._groupOff[g.name]);
+  // Legende = Symbol-Filter: das jeweilige Symbol vorweg, klickbar zum Ein-/Ausblenden.
+  $("#map-legend").innerHTML = groups.map((g, i) =>
+    `<span data-group="${g.name}" role="button" tabindex="0" aria-pressed="${!window._groupOff[g.name]}" class="leg-item ${window._groupOff[g.name] ? "off" : ""}" title="Ein-/Ausblenden">` +
+    `<span class="leg-sym">${groupIcon(g)}</span>${g.name} (${g.items.length})</span>`).join("");
+  // Deckungsgleiche Marker entzerren: An einem Sammelpunkt (≈11 m Raster) werden
+  // mehrere Pins im Kreis aufgefächert — nach dem goldenen Winkel, damit auch
+  // dichte Stapel (Ladesäulen/Sensoren in der Innenstadt) gleichmäßig streuen
+  // statt sich zu überdecken. Der Längengrad-Versatz wird um 1/cos(lat)
+  // gestreckt, damit der Fächer rund bleibt statt oval.
+  const seenPos = {};
+  const lonStretch = 1 / Math.cos(lat * Math.PI / 180);
+  const spread = it => {
+    const k = it.lat.toFixed(4) + "/" + it.lon.toFixed(4);
+    const n = seenPos[k] = (seenPos[k] || 0) + 1;
+    if (n === 1) return [it.lat, it.lon];
+    const ring = Math.ceil(Math.sqrt(n));            // wachsender Radius je Ring
+    const ang = n * 2.399963;                        // goldener Winkel ≈ 137,5°
+    const r = 0.00055 * ring;
+    return [it.lat + r * Math.cos(ang), it.lon + r * lonStretch * Math.sin(ang)];
+  };
+  applySymbols(groups);
+  groups.forEach((g, i) => {
+    const lg = L.layerGroup();
+    g.items.forEach(it =>
+      L.marker(spread(it), { icon: SC.markerIcon(it.color || groupColor(g, i), symFor(g, it), g.big), keyboard: false })
+        .bindPopup(popupHtml(g, it)).addTo(lg));
+    window._groupLayers[g.name] = lg;
+    if (!window._groupOff[g.name]) lg.addTo(map);
+  });
+  $("#mapdesc").textContent = "Standorte aller eingebundenen Datenquellen — Legende klickbar zum Ein-/Ausblenden."
+    + (eingeklappt.length ? " Dichte Ebenen (" + eingeklappt.map(g => g.name).join(", ") + ") sind zunächst ausgeblendet." : "");
+
+  // Footer: Attribution aus der Registry
+  // Attributionen an » · « zerlegen, damit zusammengesetzte Angaben
+  // (»A · B«) keine Doppelnennungen mit ihren Einzelteilen erzeugen
+  const attrib = [...new Set(CONN.filter(c => c.active !== false && c.attribution)
+    .flatMap(c => String(c.attribution).split(" · ").map(x => x.trim())))];
+  $("#footer").innerHTML = "Datenquellen: " + esc(attrib.join(" · ")) +
+    " · Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0) · <a href='/dashboard.html'>Kommunen-Suche & UDP-Hauptdashboard</a>" +
+    (dashUrl && dashUrl.startsWith("http") ? ` · <a href="${esc(safeUrl(dashUrl))}" target="_blank" rel="noopener">Eigenes Angebot der Kommune</a>` : "");
+
+  $("#stand").textContent = "Stand: " + new Date().toLocaleTimeString("de-DE") + " · Auto-Refresh 120 s";
+}
+
+(async () => {
+  try {
+    const qp = new URLSearchParams(location.search);
+    if (qp.get("embed") === "1") document.body.classList.add("embed");
+    if (qp.get("kiosk") === "1") startKiosk();
+    // Die generierten Seiten inlinen die Gemeindezeile + amtliche Website in
+    // window.STADT — dann entfallen die großen Kataloge (162 KB) je Aufruf.
+    // Nur beim manuellen Zugriff (?ags=/Slug ohne Inline-Zeile) nachladen.
+    const inlineRow = STADT && Array.isArray(STADT.row) ? STADT.row : null;
+    const [conn, dash] = await Promise.all([
+      jget("/connectors-status.json").catch(() => ({ connectors: [] })),
+      jget("/dashboards.json").catch(() => ({})),
+    ]);
+    CONN = conn.connectors || []; DASH = dash.kommunen || dash || {};
+    let row = inlineRow;
+    if (inlineRow && STADT.website != null) SERVICES = { [inlineRow[0]]: { website: STADT.website } };
+    if (!row) {
+      // Fallback ohne Inline-Zeile: Kataloge laden und Zeile auflösen.
+      const [gdata, services] = await Promise.all([
+        jget("/bw-gemeinden.json"),
+        jget("/gemeinde-services.json").catch(() => ({ dienste: {} })),
+      ]);
+      GEM = gdata.gemeinden; SERVICES = services.dienste || {};
+      GEM.forEach(g => { BY_AGS[g[0]] = g; BY_SLUG[g[8]] = g; });
+      const p = new URLSearchParams(location.search);
+      row = (STADT && STADT.ags && BY_AGS[STADT.ags]) ||
+            BY_AGS[p.get("ags")] || BY_SLUG[location.pathname.replace(/^\/|\/$/g, "")];
+    }
+    if (!row) throw new Error("Kommune nicht gefunden");
+    STADT = { ags: row[0], row, website: STADT && STADT.website };
+    const cfg0 = (DASH[row[8]] || {});
+    SC.themeSelector("#thememount", cfg0.branding && cfg0.branding.theme);
+    document.addEventListener("sc-theme-changed", () => { window._map && render().catch(() => {}); });
+    await render();
+    setInterval(() => { if (!SC.modalOpen()) render().catch(() => {}); }, 120e3);
+  } catch (e) {
+    const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
+  }
+})();
+</script>
+</body>
+</html>

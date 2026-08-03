@@ -1,0 +1,177 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# IoT-Anbindung: MQTT-Broker, IoT-Agent (JSON), FROST-Server (SensorThings)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mosquitto") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "mosquitto" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "mosquitto") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.mosquitto.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: mosquitto
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.mosquitto.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.mosquitto.containerSecurityContext) | nindent 12 }}
+          ports:
+            - { containerPort: 1883 }
+            - { containerPort: 9001 }
+          resources:
+            {{- toYaml .Values.mosquitto.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mosquitto") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "mosquitto" | nindent 4 }}
+  ports:
+    - { name: mqtt, port: 1883 }
+    - { name: ws, port: 9001 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iot-agent-json
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "iot-agent-json") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "iot-agent-json" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "iot-agent-json") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.iotAgentJson.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: iot-agent-json
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.iotAgentJson.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.iotAgentJson.containerSecurityContext) | nindent 12 }}
+          env:
+            - { name: IOTA_CB_HOST, value: orion-ld }
+            - { name: IOTA_CB_PORT, value: "1026" }
+            - { name: IOTA_CB_NGSI_VERSION, value: ld }
+            - { name: IOTA_JSON_LD_CONTEXT, value: "https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld" }
+            - { name: IOTA_NORTH_PORT, value: "4041" }
+            - { name: IOTA_REGISTRY_TYPE, value: mongodb }
+            # Die iotagent-node-lib dieses Images wertet NUR NOCH
+            # IOTA_MONGO_URI aus – IOTA_MONGO_HOST/PORT/DB werden ignoriert und
+            # configureDb() bricht mit "MONGODB-003: No URI found for MongoDB
+            # driver" ab (verifiziert an 3.14.0-distroless).
+            - { name: IOTA_MONGO_URI, value: {{ .Values.iotAgentJson.mongoUri | default (printf "mongodb://mongo.%s.svc.cluster.local:27017/iotagentjson" .Release.Namespace) | quote }} }
+            - { name: IOTA_HTTP_PORT, value: "7896" }
+            - { name: IOTA_PROVIDER_URL, value: "http://iot-agent-json:4041" }
+            - { name: IOTA_MQTT_HOST, value: mosquitto }
+            - { name: IOTA_MQTT_PORT, value: "1883" }
+            - { name: IOTA_AUTOCAST, value: "true" }
+            - { name: IOTA_TIMESTAMP, value: "true" }
+          ports:
+            - { containerPort: 4041 }
+            - { containerPort: 7896 }
+          resources:
+            {{- toYaml .Values.iotAgentJson.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iot-agent-json
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "iot-agent-json") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "iot-agent-json" | nindent 4 }}
+  ports:
+    - { name: north, port: 4041 }
+    - { name: http, port: 7896 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frost
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "frost") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "frost" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "frost") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.frost.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: frost
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.frost.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.frost.containerSecurityContext) | nindent 12 }}
+          env:
+            - { name: serviceRootUrl, value: {{ .Values.frost.serviceRootUrl | quote }} }
+            - { name: http_cors_enable, value: "true" }
+            - { name: persistence_db_driver, value: org.postgresql.Driver }
+            - { name: persistence_db_url, value: "jdbc:postgresql://timescale:5432/frost" }
+            - name: persistence_db_username
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
+            - name: persistence_db_password
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
+            - { name: persistence_autoUpdateDatabase, value: "true" }
+          ports: [{ containerPort: 8080 }]
+          resources:
+            {{- toYaml .Values.frost.resources | nindent 12 }}
+          # Ohne Probe galt FROST als "Ready", sobald der Prozess lief – auch
+          # wenn er beim Verbindungsaufbau zur Datenbank haengen blieb und den
+          # Port nie oeffnete. Das Release lief damit sauber durch, waehrend der
+          # Dienst tot war. Der Port wird erst nach dem DB-Start gebunden,
+          # deshalb genuegt tcpSocket; startupProbe deckt die Schema-Migration
+          # (persistence_autoUpdateDatabase) mit bis zu 5 min ab.
+          startupProbe:
+            tcpSocket: { port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frost
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "frost") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "frost" | nindent 4 }}
+  ports: [{ port: 8080 }]

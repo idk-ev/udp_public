@@ -1,0 +1,427 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# CIVOS – Urbane Datenplattform (UDP) auf FIWARE-Basis
+# Referenzstack gemäß Leistungsbeschreibung 60982-25, Abschnitt B.II
+# Lizenz: EUPL-1.2
+#
+# Start:            docker compose up -d
+# Mit Zusatzmodulen: docker compose --profile viz-extra --profile analytics up -d
+# =============================================================================
+
+name: udp
+
+x-logging: &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # KONTEXTVERWALTUNG (DIN SPEC 91357: Daten- & Kontextmanagement-Schicht)
+  # ---------------------------------------------------------------------------
+
+  mongo:
+    image: mongo:5.0
+    container_name: udp-mongo
+    command: --nojournal --quiet
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  orion-ld:
+    image: fiware/orion-ld:1.6.0
+    container_name: udp-orion-ld
+    depends_on:
+      mongo:
+        condition: service_healthy
+      timescale:
+        condition: service_healthy
+    command: >
+      -dbhost mongo
+      -logLevel WARN
+      -forwarding
+      -troe
+      -troeHost timescale
+      -troePort 5432
+      -troeUser ${POSTGRES_USER:-udp}
+      -troePwd ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+    expose: ["1026"]       # NGSI-LD API nur intern; extern über Gateway /ngsi-ld
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:1026/ngsi-ld/ex/v1/version || exit 1"]
+      interval: 10s
+      retries: 10
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  mintaka:
+    image: fiware/mintaka:0.7.0
+    container_name: udp-mintaka
+    depends_on:
+      timescale:
+        condition: service_healthy
+    environment:
+      DATASOURCES_DEFAULT_HOST: timescale
+      DATASOURCES_DEFAULT_PORT: 5432
+      DATASOURCES_DEFAULT_USERNAME: ${POSTGRES_USER:-udp}
+      DATASOURCES_DEFAULT_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+      DATASOURCES_DEFAULT_DATABASE: orion
+      ENDPOINTS_ALL_PORT: 8080
+      # Workaround JDK-cgroup-Bug (NPE in CgroupInfo.getMountPoint) auf neuen Kerneln
+      MICRONAUT_METRICS_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: "-XX:-UseContainerSupport"
+    expose: ["8080"]       # Temporal API nur intern; extern über Gateway /temporal
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # PERSISTENZ: PostgreSQL + TimescaleDB + PostGIS (gem. LB B.II.4)
+  # ---------------------------------------------------------------------------
+
+  # DB-Slot der Plattform: PostgreSQL 16 + PostGIS + TimescaleDB **Apache
+  # Edition** (eigenes Image, s. config/postgres/Dockerfile). Das frühere
+  # Fertigimage timescale/timescaledb-ha steht unter der Timescale License
+  # (nicht OSI); die Apache-Edition enthält nur Apache-2.0-Code und liefert
+  # first()/last(), die Mintaka für typ-skopierte Temporal-Abfragen braucht.
+  timescale:
+    build:
+      context: ./config/postgres
+    image: udp/postgres-timescale-oss:16
+    command: postgres -c shared_preload_libraries=timescaledb
+    container_name: udp-timescale
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-udp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+      POSTGRES_DB: orion
+      POSTGRES_HOST_AUTH_METHOD: md5   # Orion-LD-libpq beherrscht kein SCRAM (s. config/postgres/init/00-auth.sh)
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./config/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${DB_PORT:-5439}:5432"   # DB-Slot Projekt-Index 7 gem. ~/projects/PORTS.md
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-udp} -d orion"]
+      interval: 10s
+      retries: 10
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # IoT-ANBINDUNG (LoRaWAN/NB-IoT/LTE-M/Mioty landen via MQTT/HTTP im IoT-Agent)
+  # ---------------------------------------------------------------------------
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: udp-mosquitto
+    volumes:
+      - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    expose: ["1883", "9001"]    # MQTT nur intern (IoT-Agent/Node-RED); Host-Zugriff s. README
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  iot-agent-json:
+    image: fiware/iotagent-json:3.14.0-distroless
+    container_name: udp-iot-agent
+    depends_on:
+      mongo:
+        condition: service_healthy
+      orion-ld:
+        condition: service_healthy
+    environment:
+      IOTA_CB_HOST: orion-ld
+      IOTA_CB_PORT: 1026
+      IOTA_CB_NGSI_VERSION: ld
+      IOTA_JSON_LD_CONTEXT: https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld
+      IOTA_NORTH_PORT: 4041
+      IOTA_REGISTRY_TYPE: mongodb
+      # Die iotagent-node-lib dieses Images (3.14) wertet NUR NOCH IOTA_MONGO_URI
+      # aus — IOTA_MONGO_HOST/PORT/DB werden ignoriert und der Start bricht mit
+      # "MONGODB-003: No URI found for MongoDB driver" ab. Das Helm-Chart zieht
+      # das bereits nach (helm/udp/templates/iot.yaml), die Compose-Datei nicht.
+      IOTA_MONGO_URI: mongodb://mongo:27017/iotagentjson
+      IOTA_MONGO_HOST: mongo
+      IOTA_MONGO_PORT: 27017
+      IOTA_MONGO_DB: iotagentjson
+      IOTA_HTTP_PORT: 7896
+      IOTA_PROVIDER_URL: http://iot-agent-json:4041
+      IOTA_MQTT_HOST: mosquitto
+      IOTA_MQTT_PORT: 1883
+      IOTA_AUTOCAST: "true"
+      IOTA_TIMESTAMP: "true"
+      IOTA_LOG_LEVEL: WARN
+    expose: ["4041", "7896"]    # extern über Gateway /iot (Admin) und /ingest (Sensoren)
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # SensorThings API (OGC) – FROST-Server, gefordert in LB B.II.3
+  frost:
+    image: fraunhoferiosb/frost-server:2.7.3
+    container_name: udp-frost
+    depends_on:
+      timescale:
+        condition: service_healthy
+    environment:
+      serviceRootUrl: http://localhost:${PROXY_PORT:-8780}/FROST-Server
+      http_cors_enable: "true"
+      http_cors_allowed_origins: "*"
+      persistence_db_driver: org.postgresql.Driver
+      persistence_db_url: jdbc:postgresql://timescale:5432/frost
+      persistence_db_username: ${POSTGRES_USER:-udp}
+      persistence_db_password: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+      persistence_autoUpdateDatabase: "true"
+    expose: ["8080"]       # extern über Gateway /FROST-Server
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # DATENMANAGEMENT: Low-Code-ETL + Open-Data-Katalog (LB B.II.4)
+  # ---------------------------------------------------------------------------
+
+  node-red:
+    image: nodered/node-red:4.1
+    container_name: udp-node-red
+    environment:
+      TZ: Europe/Berlin
+      # Passantenfrequenz Wilhelmstraße (hystreet.com): Flow bleibt inaktiv, bis
+      # ein kostenloser API-Token in .env hinterlegt ist.
+      HYSTREET_API_TOKEN: ${HYSTREET_API_TOKEN:-}
+      # TRoE-Statistik-Flow (PlatformStatus:udp-troe) liest TimescaleDB direkt
+      TROE_DB_USER: ${POSTGRES_USER:-udp}
+      TROE_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+    volumes:
+      - nodered-data:/data
+      - ./config/nodered/flows.json:/data/flows.json
+      # settings.js versioniert (contextStorage-Härtung reproduzierbar, Sprint 1.8)
+      - ./config/nodered/settings.js:/data/settings.js
+    ports:
+      - "${WORKFLOW_PORT:-4900}:1880"   # Workflow-Slot gem. PORTS.md
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  ckan:
+    build:
+      context: ./config/ckan
+    image: udp/ckan-dcat:2.10
+    container_name: udp-ckan
+    depends_on:
+      timescale:
+        condition: service_healthy
+      solr:
+        condition: service_started
+      redis:
+        condition: service_started
+    environment:
+      CKAN_SQLALCHEMY_URL: postgresql://${POSTGRES_USER:-udp}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}@timescale:5432/ckan
+      CKAN_DATASTORE_WRITE_URL: postgresql://${POSTGRES_USER:-udp}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}@timescale:5432/ckan_datastore
+      CKAN_DATASTORE_READ_URL: postgresql://ckan_ro:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}@timescale:5432/ckan_datastore
+      CKAN_SOLR_URL: http://solr:8983/solr/ckan
+      CKAN_REDIS_URL: redis://redis:6379/0
+      CKAN_SITE_URL: http://localhost:${PROXY_PORT:-8780}
+      CKAN__ROOT_PATH: /catalog
+      CKAN_SITE_TITLE: "Offene Daten – Urbane Datenplattform"
+      CKAN__PLUGINS: "envvars activity dcat dcat_json_interface structured_data"
+      CKANEXT__DCAT__RDF_PROFILES: "euro_dcat_ap_2"
+      CKAN_SYSADMIN_NAME: ${CKAN_ADMIN_USER:-ckan_admin}
+      CKAN_SYSADMIN_PASSWORD: ${CKAN_ADMIN_PASSWORD:?CKAN_ADMIN_PASSWORD fehlt — s. .env.example}
+      CKAN_SYSADMIN_EMAIL: admin@example.org
+    expose: ["5000"]       # extern über Gateway /catalog
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  solr:
+    image: ckan/ckan-solr:2.10-solr9
+    container_name: udp-solr
+    volumes:
+      - solr-data:/var/solr
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  redis:
+    # Valkey (BSD-3) statt Redis: redis:7-alpine zog als Floating-Tag 7.4 mit
+    # RSAL/SSPL-Lizenz — Lizenz-Audit 2026-07-20, Sprintplan 1.1
+    image: valkey/valkey:8-alpine
+    container_name: udp-redis
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # API-MANAGEMENT & IDENTITÄT (LB B.II.2 + B.II.4)
+  # ---------------------------------------------------------------------------
+
+  apisix:
+    image: apache/apisix:3.17.0-debian
+    container_name: udp-apisix
+    # Standalone-Modus wird über config.yaml deklariert (deployment.role data_plane);
+    # APISIX_STAND_ALONE nicht setzen – der Entrypoint würde sonst die
+    # read-only gemountete config.yaml überschreiben wollen.
+    volumes:
+      - ./config/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./config/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    ports:
+      - "${PROXY_PORT:-8780}:9080"      # Proxy-Slot gem. PORTS.md (alle Plattform-APIs)
+    expose: ["9091"]       # Prometheus-Metriken nur intern
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  keycloak:
+    # 26.x: 24.0 ist End-of-Life; keycloak-js 26 garantiert Kompatibilität nur
+    # mit aktiv unterstützten Serverversionen (adapter-eigener Releasezyklus).
+    image: quay.io/keycloak/keycloak:26.7
+    container_name: udp-keycloak
+    command: start-dev --import-realm --http-port=8080
+    depends_on:
+      timescale:
+        condition: service_healthy
+    environment:
+      # ab 26 heißen die Erstanmeldedaten KC_BOOTSTRAP_ADMIN_* (alte Namen entfallen)
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD fehlt — s. .env.example}
+      KC_PROXY_HEADERS: xforwarded
+      # Persistenz in der zentralen PostgreSQL-Instanz (wie im K8s-Deployment);
+      # H2-Dateivolume entfällt (Berechtigungsprobleme, nicht produktionstauglich).
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://timescale:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER:-udp}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+    volumes:
+      - ./config/keycloak/udp-realm.json:/opt/keycloak/data/import/udp-realm.json:ro
+    ports:
+      - "${APP_PORT:-8700}:8080"        # App-Slot gem. PORTS.md (Identität/Rechte)
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # VISUALISIERUNG (LB B.II.6): GeoServer, (Masterportal/Superset optional)
+  # ---------------------------------------------------------------------------
+
+  geoserver:
+    image: docker.osgeo.org/geoserver:2.28.4
+    container_name: udp-geoserver
+    environment:
+      SKIP_DEMO_DATA: "true"
+      CORS_ENABLED: "true"
+    volumes:
+      - geoserver-data:/opt/geoserver_data
+    expose: ["8080"]       # extern über Gateway /geoserver
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  masterportal:
+    image: nginx:1.30-alpine
+    container_name: udp-masterportal
+    profiles: [viz-extra]
+    volumes:
+      - ./config/masterportal:/usr/share/nginx/html:ro
+    expose: ["80"]         # extern über Gateway /portal
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  superset:
+    image: apache/superset:6.1.0
+    container_name: udp-superset
+    profiles: [analytics]
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?SUPERSET_SECRET_KEY fehlt — s. .env.example}
+      ADMIN_USERNAME: ${SUPERSET_ADMIN:-admin}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:?SUPERSET_ADMIN_PASSWORD fehlt — s. .env.example}
+    ports:
+      - "${SUPERSET_PORT:-8781}:8088"   # Zusatzport gem. PORTS.md (kein Subpath-Support)
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # BETRIEB (LB B.II.5)
+  #
+  # Das Verfügbarkeits-Monitoring (Uptime Kuma) liegt bewusst NICHT in diesem
+  # Stack, sondern in monitoring/ – es soll nicht mit der Plattform starten,
+  # stoppen und ausfallen, die es überwachen soll. Start dort:
+  #   cd monitoring && cp .env.example .env && docker compose up -d
+  # ---------------------------------------------------------------------------
+
+  backup:
+    image: prodrigestivill/postgres-backup-local:16-alpine
+    container_name: udp-backup
+    depends_on:
+      timescale:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: timescale
+      POSTGRES_USER: ${POSTGRES_USER:-udp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+      POSTGRES_DB: orion,frost,ckan,ckan_datastore
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 14
+      BACKUP_KEEP_WEEKS: 8
+      BACKUP_KEEP_MONTHS: 12
+    volumes:
+      - backup-data:/backups
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # GUI: UDP-Cockpit (Eigenentwicklung, EUPL-1.2)
+  # ---------------------------------------------------------------------------
+
+  cockpit:
+    # Gleiche Basis wie das gebaute Cockpit-Image (s. gui/Dockerfile): laeuft
+    # als Benutzer 101 und lauscht deshalb auf 8080 statt 80.
+    image: nginxinc/nginx-unprivileged:1.30-alpine
+    container_name: udp-cockpit
+    environment:
+      # Die Konfiguration ist eine envsubst-Vorlage (gleiche Datei wie im
+      # Cockpit-Image, s. gui/Dockerfile). NGINX_ENVSUBST_FILTER begrenzt die
+      # Ersetzung auf UDP_*, damit nginx-eigene $-Variablen unberührt bleiben.
+      # Der Entrypoint liest die Nameserver aus /etc/resolv.conf (hier das
+      # eingebettete Docker-DNS 127.0.0.11) nach NGINX_LOCAL_RESOLVERS.
+      NGINX_ENTRYPOINT_LOCAL_RESOLVERS: "1"
+      NGINX_ENVSUBST_FILTER: "^(UDP_|NGINX_LOCAL_RESOLVERS)"
+      UDP_GATEWAY_UPSTREAM: "apisix:9080"
+      UDP_NODERED_UPSTREAM: "node-red:1880"
+    volumes:
+      - ../gui/dist:/usr/share/nginx/html:ro
+      - ./config/nginx/cockpit.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports:
+      - "${UI_PORT:-3700}:8080"         # UI-Slot gem. PORTS.md
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+networks:
+  udp:
+    name: udp
+
+volumes:
+  mongo-data:
+  postgres-data:
+  mosquitto-data:
+  nodered-data:
+  solr-data:
+  geoserver-data:
+  backup-data:

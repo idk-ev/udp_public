@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# Minimale CI (Sprintplan 2.3): Build, statische Tests, Lint, Compose-Validierung.
+# Die Live-Suite (tests/run.js --live) braucht den laufenden Stack und bleibt lokal.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+      - name: Abhängigkeiten
+        run: npm --prefix gui ci
+      - name: Lint
+        run: npm --prefix gui run lint
+      - name: Statische Tests
+        run: node tests/run.js
+      - name: GUI-Build
+        run: npm --prefix gui run build
+      - name: Compose validieren
+        # Die Passwörter sind Pflichtvariablen (${VAR:?…}); ohne Werte bricht schon
+        # die Syntaxprüfung ab. .env.example liefert bewusst KEINE Vorgabewerte
+        # (sonst landen sie in echten Installationen), deshalb erzeugt die CI hier
+        # Wegwerfwerte. Es werden keine Container gestartet.
+        run: |
+          cp platform/.env.example platform/.env
+          sed -i 's/^\([A-Z_]*\(USER\|ADMIN\)\)=$/\1=ci/;
+                  s/^\([A-Z_]*\(PASSWORD\|SECRET_KEY\)\)=$/\1=ci-throwaway-not-a-secret/' \
+              platform/.env
+          docker compose -f platform/docker-compose.yml --env-file platform/.env config -q
+      - name: SSG-Generatoren laufen
+        # -I'"stand":' ignoriert das Zeitstempelfeld in connectors-status.json:
+        # Es wird aus der Registry-mtime abgeleitet, die ein frischer Klon auf die
+        # Checkout-Zeit setzt — sonst warnte der Schritt bei JEDEM Lauf und eine
+        # echte Drift ginge im Dauerrauschen unter.
+        run: |
+          python3 scripts/generate-city-pages.py
+          python3 scripts/generate-nodered-flows.py
+          git diff --stat --exit-code -I'"stand":' platform/config/nodered/flows.json \
+                                       gui/public/connectors-status.json \
+                                       gui/public/g || \
+            echo "::warning::Generierte Artefakte weichen vom Generator-Stand ab — generate-nodered-flows.py laufen lassen und committen"

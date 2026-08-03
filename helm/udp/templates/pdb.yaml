@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# PodDisruptionBudgets für hochverfügbare (mehrfach replizierte) Dienste.
+{{- range $comp := list
+      (dict "name" "orion-ld" "cfg" .Values.orionLd)
+      (dict "name" "apisix"   "cfg" .Values.apisix)
+      (dict "name" "cockpit"  "cfg" .Values.cockpit) }}
+{{- if $comp.cfg.pdb }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $comp.name }}
+  labels:
+    {{- include "udp.labels" (dict "ctx" $ "component" $comp.name) | nindent 4 }}
+spec:
+  minAvailable: {{ $comp.cfg.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" $comp.name | nindent 6 }}
+{{- end }}
+{{- end }}

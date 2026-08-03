@@ -1,0 +1,66 @@
+{
+  "Portalconfig": {
+    "mainMenu": {
+      "expanded": true,
+      "title": {
+        "text": "Urbane Datenplattform – Geoportal",
+        "toolTip": "Masterportal der Urbanen Datenplattform"
+      },
+      "sections": [
+        [
+          { "type": "fileImport" },
+          { "type": "openConfig" },
+          { "type": "contact",
+            "serviceId": "80001",
+            "includeSystemInfo": true }
+        ]
+      ]
+    },
+    "map": {
+      "controls": {
+        "zoom": true,
+        "orientation": { "zoomMode": "once" },
+        "totalView": true
+      },
+      "mapView": {
+        "backgroundImage": "",
+        "startCenter": [473500, 5613500],
+        "startZoomLevel": 6,
+        "epsg": "EPSG:25832"
+      }
+    },
+    "tree": {
+      "type": "auto",
+      "validLayerTypesAutoTree": ["WMS", "WFS"]
+    }
+  },
+  "Themenconfig": {
+    "Hintergrundkarten": {
+      "elements": [
+        {
+          "id": "osm",
+          "name": "OpenStreetMap",
+          "typ": "WMS",
+          "url": "https://ows.terrestris.de/osm/service",
+          "layers": "OSM-WMS",
+          "version": "1.3.0",
+          "visibility": true
+        }
+      ]
+    },
+    "Fachdaten": {
+      "elements": [
+        {
+          "id": "udp-geoserver",
+          "name": "UDP GeoServer (WMS)",
+          "typ": "WMS",
+          "url": "http://localhost:8780/geoserver/ows",
+          "layers": "",
+          "version": "1.3.0",
+          "visibility": false,
+          "info": "Fachlayer der Urbanen Datenplattform; Layer nach Einrichtung im GeoServer eintragen."
+        }
+      ]
+    }
+  }
+}

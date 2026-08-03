@@ -1,0 +1,95 @@
+
+============================================================================
+  Urbane Datenplattform (UDP) – Release "{{ .Release.Name }}"
+  Namespace: {{ .Release.Namespace }}
+============================================================================
+
+1) Rollout-Status beobachten:
+
+   kubectl -n {{ .Release.Namespace }} get pods -w
+
+   Reihenfolge der Bereitschaft: mongo/timescale zuerst, danach
+   orion-ld/keycloak/frost, zuletzt apisix/cockpit.
+
+{{- if .Values.secrets.create }}
+
+2) Generierte Zugangsdaten auslesen (nur wenn vom Chart verwaltet):
+
+{{- if not .Values.db.existingSecret }}
+   # Datenbank:
+   kubectl -n {{ .Release.Namespace }} get secret udp-db \
+     -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d; echo
+{{- end }}
+{{- if not .Values.keycloak.existingSecret }}
+   # Keycloak-Admin ({{ .Values.keycloak.adminUser }}):
+   kubectl -n {{ .Release.Namespace }} get secret udp-keycloak \
+     -o jsonpath='{.data.KEYCLOAK_ADMIN_PASSWORD}' | base64 -d; echo
+{{- end }}
+{{- if and .Values.ckan.enabled (not .Values.ckan.existingSecret) }}
+   # CKAN-Sysadmin ({{ .Values.ckan.adminUser }}):
+   kubectl -n {{ .Release.Namespace }} get secret udp-ckan \
+     -o jsonpath='{.data.CKAN_SYSADMIN_PASSWORD}' | base64 -d; echo
+{{- end }}
+{{- if and .Values.geoserver.enabled (not .Values.geoserver.existingSecret) }}
+   # GeoServer-Admin ({{ .Values.geoserver.adminUser }}):
+   kubectl -n {{ .Release.Namespace }} get secret udp-geoserver \
+     -o jsonpath='{.data.GEOSERVER_ADMIN_PASSWORD}' | base64 -d; echo
+{{- end }}
+{{- else }}
+
+2) Secrets werden extern verwaltet (secrets.create=false).
+   Stelle sicher, dass diese Secrets im Namespace existieren:
+     - {{ include "udp.dbSecretName" . }} (POSTGRES_USER, POSTGRES_PASSWORD)
+     - {{ include "udp.keycloakSecretName" . }} (KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD)
+{{- if .Values.ckan.enabled }}
+     - {{ include "udp.ckanSecretName" . }} (CKAN_SYSADMIN_PASSWORD)
+{{- end }}
+{{- if .Values.geoserver.enabled }}
+     - {{ include "udp.geoserverSecretName" . }} (GEOSERVER_ADMIN_PASSWORD)
+{{- end }}
+{{- end }}
+
+3) Zugriff:
+{{- if .Values.ingress.enabled }}
+   Öffentlich über Ingress:  https://{{ .Values.ingress.host }}/
+     - Startseite: https://{{ .Values.ingress.host }}/ (Mitmachen-Angebot)
+     - Cockpit:   https://{{ .Values.ingress.host }}/cockpit
+     - NGSI-LD:   https://{{ .Values.ingress.host }}/ngsi-ld/v1/entities
+     - Zeitreihen: https://{{ .Values.ingress.host }}/temporal/v1/entities
+     - SensorThings: https://{{ .Values.ingress.host }}/FROST-Server/v1.1
+     - Keycloak:  https://{{ .Values.ingress.host }}{{ .Values.keycloakApp.relativePath }}
+{{- if .Values.ckan.enabled }}
+     - Katalog:   https://{{ .Values.ingress.host }}/catalog
+{{- end }}
+{{- if .Values.geoserver.enabled }}
+     - GeoServer: https://{{ .Values.ingress.host }}/geoserver
+{{- end }}
+   {{- if .Values.ingress.tls.enabled }}
+   TLS-Zertifikat: Secret "{{ .Values.ingress.tls.secretName }}"
+     {{- if .Values.ingress.clusterIssuer }} (cert-manager: {{ .Values.ingress.clusterIssuer }}){{- end }}
+   {{- end }}
+{{- else }}
+   Ingress ist deaktiviert. Lokaler Test per port-forward:
+     kubectl -n {{ .Release.Namespace }} port-forward svc/cockpit 8080:80
+{{- end }}
+
+{{- if .Values.networkPolicies.enabled }}
+
+4) NetworkPolicies sind AKTIV. Falls Dienste sich nicht erreichen, prüfe, ob
+   dein CNI Policies durchsetzt (Calico/Cilium). Flannel ohne Policy-Plugin
+   ignoriert sie (kein Schutz, aber auch keine Blockade).
+{{- end }}
+
+5) Sicherheits-Checkliste vor Produktivbetrieb:
+   [x] Interne Zugangsdaten sind starke Zufallspasswörter (automatisch, stabil)
+   [ ] Eigene values-prod.yaml mit echtem Host, StorageClass, Registry
+   [ ] Image-Tags auf Digests (@sha256:…) pinnen
+   [ ] MQTT-Authentifizierung/TLS aktivieren (mosquitto allow_anonymous)
+   [ ] APISIX-Routen mit OIDC (Keycloak) absichern
+   [ ] Netzwerk: strictEgress erwägen, Monitoring-Zugriff auf :9091 ergänzen
+
+Deinstallation:  helm -n {{ .Release.Namespace }} uninstall {{ .Release.Name }}
+   Hinweis Datenerhalt bei uninstall:
+     - udp-db / udp-keycloak (Secrets): bleiben erhalten (resource-policy=keep)
+     - mongo/timescale-PVCs (StatefulSet): bleiben erhalten (von Helm nicht verwaltet)
+     - Node-RED: kein PVC (Flows liegen im Image) -> nichts zu sichern

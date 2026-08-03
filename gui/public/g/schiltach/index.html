@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart City Schiltach — Live-Dashboard</title>
+<meta name="description" content="Live-Dashboard für Schiltach: Wetter, Warnungen, Baustellen, Umwelt-, Mobilitäts- und Energiedaten aus offenen Quellen. Urbane Datenplattform.">
+<meta property="og:title" content="Smart City Schiltach">
+<meta property="og:description" content="Offene Live-Daten für Schiltach (3.725 Einwohner): Wetter, Luft, Mobilität, Energie.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script>window.STADT = {"ags": "08325051", "slug": "schiltach", "name": "Schiltach", "row": ["08325051", "Schiltach", 48.27327, 8.33938, "08325", "S", 3725, null, "schiltach"], "website": "https://www.schiltach.de/"};</script>
+<script>
+// Bundle-Loader: gemeinsames Template übernimmt ab hier (Skripte sequenziell!)
+fetch("/stadt.html").then(r => r.text()).then(async html => {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  document.body.innerHTML = doc.body.innerHTML;
+  for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
+  for (const s of doc.querySelectorAll("body script")) {
+    await new Promise((res, rej) => {
+      const n = document.createElement("script");
+      if (s.src) { n.src = s.src; n.onload = res; n.onerror = res; }
+      else { n.textContent = s.textContent; }
+      document.body.appendChild(n);
+      if (!s.src) res();
+    });
+  }
+});
+</script>
+</head>
+<body></body>
+</html>

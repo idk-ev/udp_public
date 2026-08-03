@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: EUPL-1.2
+  © 2024–2026 Thomas Kieß and contributors
+-->
+
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mitmachen — Smart City Dashboards für Kommunen</title>
+<link rel="stylesheet" href="/smartcity-theme.css">
+<style>
+  main { max-width: 880px; }
+  .stufe { border-left: 4px solid var(--accent); padding: 10px 16px; margin: 14px 0; background: var(--surface-1);
+           border-radius: 0 12px 12px 0; border-top: 1px solid var(--border); border-right: 1px solid var(--border);
+           border-bottom: 1px solid var(--border); }
+  .stufe h2 { font-size: 1rem; }
+  .stufe .frei { color: var(--status-good); font-weight: 600; font-size: .85rem; }
+  code, textarea { background: var(--surface-0); border-radius: 6px; padding: 2px 6px; font-size: .85rem; }
+  textarea { width: 100%; border: 1px solid var(--border); color: var(--text-primary); padding: 10px; height: 74px; }
+  label { font-size: .85rem; color: var(--text-secondary); }
+  input { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1);
+          color: var(--text-primary); font: inherit; }
+  .anfrage { margin: 8px 0 0; font-weight: 600; }
+  .anfrage a { color: var(--accent); }
+  /* Eingebettete Kommunen-Suche */
+  .search-wrap { margin: 4px 0 18px; }
+  .search { position: relative; }
+  #q { width: 100%; padding: 13px 16px; font-size: 1.05rem; border: 1px solid var(--border);
+       border-radius: 12px; background: var(--surface-0); color: var(--text-primary); font-family: inherit; }
+  #q:focus { outline: none; border-color: var(--accent); }
+  .sug { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 12px;
+         background: var(--surface-1); overflow: hidden; position: absolute; left: 0; right: 0; z-index: 40;
+         box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+  .sug:empty { display: none; }
+  .sug li { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .sug li:last-child { border-bottom: none; }
+  .sug li:hover, .sug li.active { background: color-mix(in srgb, var(--accent) 12%, var(--surface-1)); }
+  .sug .nm { font-weight: 600; }
+  .sug .meta { font-size: .8rem; color: var(--text-muted); margin-left: auto; text-align: right; }
+  .sug .empty { padding: 14px; color: var(--text-muted); cursor: default; }
+  .searchhint { font-size: .84rem; color: var(--text-muted); margin-top: 8px; }
+</style>
+<meta name="theme-color" content="#0074e8">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body>
+<header>
+  <h1>Ihr Smart-City-Dashboard ist schon fertig</h1>
+</header>
+<main>
+<p style="margin-bottom:12px">
+Für jede der 1.103 Gemeinden Baden-Württembergs betreiben wir ein vorgeladenes
+Live-Dashboard aus offenen Daten — kostenlos, unter
+<code>/&lt;ihre-kommune&gt;</code> (z.&nbsp;B. <a href="/tuebingen">/tuebingen</a>,
+<a href="/boellen">/boellen</a>).
+</p>
+
+<div class="search-wrap">
+  <label for="q">Ihre Kommune finden:</label>
+  <div class="search">
+    <input id="q" type="search" autocomplete="off" placeholder="Gemeinde, Stadt oder Landkreis suchen …" aria-label="Kommune suchen">
+    <ul class="sug" id="sug"></ul>
+  </div>
+  <div class="searchhint" id="count">lädt …</div>
+</div>
+
+<p style="margin:16px 0 14px">So geht es weiter:</p>
+
+<div class="stufe">
+  <h2>Stufe 1 — Basis <span class="frei">kostenlos, läuft bereits</span></h2>
+  Wetter, amtliche Warnungen, Baustellen — plus Luft, Parken, Sharing, Laden,
+  Radverkehr und PV-Ausbau, wo offene Daten für Ihre Kommune existieren.
+  Gekennzeichnet als inoffizielles Angebot aus offenen Daten.
+</div>
+<div class="stufe">
+  <h2>Stufe 2 — Adoptiert <span class="frei">kostenlos gegen offizielle Verlinkung</span></h2>
+  Ihre Farben (aus einem barrierefrei validierten Katalog oder frei, geprüft),
+  Ihr Logo, kuratierte Kacheln, Einbettung in Ihre Website (unten), auf Wunsch
+  eigene Subdomain.
+</div>
+<div class="stufe">
+  <h2>Stufe 3 — Erweitert</h2>
+  Ihre eigenen Datenquellen, zentral von uns betrieben: ÖPNV-Abfahrtsmonitore,
+  Passantenfrequenz, kommunale Fachdaten (API/CSV), LoRaWAN-Sensorik light.
+  Einrichtung nach Quellen-Sichtung.
+  <p class="anfrage">Anfrage senden: <a href="mailto:info@idkev.de?subject=Urbane%20Datenplattform%20%E2%80%93%20Stufe%203">info@idkev.de</a></p>
+</div>
+<div class="stufe">
+  <h2>Stufe 4 — Eigene Plattform</h2>
+  Ihre eigene Urbane Datenplattform (FIWARE/NGSI-LD, DIN SPEC 91357):
+  Mandantenfähigkeit, Rollen/Rechte, Fachverfahren, Open-Data-Portal, SLA und
+  volle Datenhoheit — als Projekt.
+  <p class="anfrage">Anfrage senden: <a href="mailto:info@idkev.de?subject=Urbane%20Datenplattform%20%E2%80%93%20Stufe%204">info@idkev.de</a></p>
+</div>
+
+<h2 style="margin:20px 0 6px">Dashboard einbetten (ab Stufe 1 erlaubt)</h2>
+<label>Slug Ihrer Kommune: <input id="slug" value="tuebingen" size="24"></label>
+<textarea id="embed" readonly></textarea>
+
+<h2 style="margin:20px 0 6px">Kontakt</h2>
+<p>Urbane Datenplattform (Referenzimplementierung LB 60982-25) ·
+Interesse an Stufe 2–4: <b>Anfrage senden an
+<a href="mailto:info@idkev.de?subject=Urbane%20Datenplattform%20%E2%80%93%20Anfrage">info@idkev.de</a></b>.
+Wir sichten Ihre Datenlage und melden uns mit einem konkreten Vorschlag.</p>
+</main>
+<footer>
+  Datenquellen und Lizenzen: siehe Fußzeile der Dashboards
+</footer>
+<script src="/smartcity-lib.js"></script>
+<script>
+"use strict";
+const { $, esc, jget, fmtN } = SC;
+
+/* ---------- Eingebettete Kommunen-Suche (öffnet das Dashboard per Permalink) ---------- */
+let GEM = [], KREISE = [], KREIS_NAME = {}, shown = [], active = -1;
+const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss");
+const go = slug => { if (slug) location.href = "/" + slug; };
+
+function search(term) {
+  const t = norm(term.trim());
+  const sug = $("#sug");
+  if (!t) { sug.innerHTML = ""; shown = []; active = -1; return; }
+  const starts = [], contains = [];
+  for (const k of KREISE) {
+    const label = (k[4] === "LK" ? "landkreis " : "stadtkreis ") + norm(k[1]);
+    if (norm(k[1]).startsWith(t) || label.startsWith(t)) starts.push({ kreis: k });
+    else if (label.includes(t)) contains.push({ kreis: k });
+  }
+  for (const g of GEM) {
+    const n = norm(g[1]);
+    if (n.startsWith(t)) starts.push({ gem: g });
+    else if (n.includes(t)) contains.push({ gem: g });
+    if (starts.length >= 24) break;
+  }
+  const merged = starts.concat(contains);
+  const gemSlugs = new Set(merged.filter(x => x.gem).map(x => x.gem[8]));
+  shown = merged.filter(x => !(x.kreis && x.kreis[4] === "SK" && gemSlugs.has(x.kreis[7]))).slice(0, 12);
+  active = -1;
+  sug.innerHTML = shown.length
+    ? shown.map((it, i) => it.kreis
+      ? `<li data-slug="${esc(it.kreis[7])}" data-i="${i}">
+           <span class="nm">${esc(KREIS_NAME[it.kreis[0]] || it.kreis[1])}</span>
+           <span class="meta">${esc(it.kreis[5])} Gemeinden · ${fmtN(it.kreis[6])} Ew.</span></li>`
+      : `<li data-slug="${esc(it.gem[8])}" data-i="${i}">
+           <span class="nm">${esc(it.gem[1])}</span>
+           <span class="meta">${it.gem[5] === "S" ? "Stadt" : it.gem[5] === "F" ? "Gemeindefreies Gebiet" : "Gemeinde"} · ${fmtN(it.gem[6])} Ew.<br>${esc(KREIS_NAME[it.gem[4]] || "Kreis " + it.gem[4])}</span></li>`).join("")
+    : `<li class="empty">Keine Kommune gefunden.</li>`;
+}
+$("#q").addEventListener("input", e => search(e.target.value));
+$("#q").addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (!shown.length) return;
+    if (e.key === "ArrowUp" && active < 0) active = shown.length - 1;
+    else active = (active + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length;
+    $("#sug").querySelectorAll("li").forEach((li, i) => li.classList.toggle("active", i === active));
+  } else if (e.key === "Enter") {
+    const it = active >= 0 ? shown[active] : shown[0];
+    if (it) go(it.kreis ? it.kreis[7] : it.gem[8]);
+  } else if (e.key === "Escape") {
+    $("#sug").innerHTML = ""; shown = [];
+  }
+});
+$("#sug").addEventListener("click", e => { const li = e.target.closest("li[data-slug]"); if (li) go(li.dataset.slug); });
+document.addEventListener("click", e => { if (!e.target.closest(".search")) { $("#sug").innerHTML = ""; shown = []; } });
+
+(async () => {
+  try {
+    const g = await jget("/bw-gemeinden.json");
+    GEM = g.gemeinden; KREISE = g.kreise || [];
+    KREISE.forEach(k => KREIS_NAME[k[0]] = k[4] === "SK" ? "Stadtkreis " + k[1]
+      : /kreis$/i.test(k[1]) ? k[1] : "Landkreis " + k[1]);
+    const lk = KREISE.filter(k => k[4] === "LK").length;
+    $("#count").textContent = fmtN(GEM.length) + " Gemeinden und " + lk +
+      " Landkreise — tippen zum Suchen, öffnet das Live-Dashboard.";
+  } catch (e) {
+    $("#count").textContent = "Kommunenliste konnte nicht geladen werden.";
+  }
+})();
+
+/* ---------- Einbett-Code ---------- */
+const upd = () => {
+  const s = document.querySelector("#slug").value.trim() || "tuebingen";
+  document.querySelector("#embed").value =
+    `<iframe src="${location.origin}/${s}?embed=1" style="width:100%;height:900px;border:0" title="Smart City Dashboard" loading="lazy"></iframe>`;
+};
+document.querySelector("#slug").addEventListener("input", upd); upd();
+</script>
+</body>
+</html>

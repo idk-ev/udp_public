@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+{{- if .Values.geoserver.enabled }}
+# =============================================================================
+# OGC-Dienste: GeoServer (WMS/WFS/WPS), Gateway-Route /geoserver
+# Der native Kontextpfad des Images ist bereits /geoserver – die Route am
+# Gateway leitet deshalb ohne Rewrite weiter.
+# =============================================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: geoserver
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "geoserver") | nindent 4 }}
+spec:
+  serviceName: geoserver
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "geoserver" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "geoserver") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.geoserver.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: geoserver
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.geoserver.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.geoserver.containerSecurityContext) | nindent 12 }}
+          env:
+            - { name: SKIP_DEMO_DATA, value: "true" }
+            - { name: CORS_ENABLED,   value: "true" }
+            # Ohne das hier läuft GeoServer mit admin/geoserver – und ist über
+            # den Ingress öffentlich erreichbar.
+            - { name: GEOSERVER_ADMIN_USER, value: {{ .Values.geoserver.adminUser | quote }} }
+            - name: GEOSERVER_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.geoserverSecretName" . }}, key: GEOSERVER_ADMIN_PASSWORD } }
+          ports: [{ containerPort: 8080 }]
+          volumeMounts:
+            - { name: data, mountPath: /opt/geoserver_data }
+          resources:
+            {{- toYaml .Values.geoserver.resources | nindent 12 }}
+          # Der erste Start entpackt das Data-Directory; bis zu 5 min einplanen.
+          startupProbe:
+            tcpSocket: { port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            periodSeconds: 15
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- include "udp.storageClass" (dict "ctx" . "override" .Values.geoserver.persistence.storageClass) | nindent 8 }}
+        resources: { requests: { storage: {{ .Values.geoserver.persistence.size }} } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: geoserver
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "geoserver") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "geoserver" | nindent 4 }}
+  ports: [{ port: 8080 }]
+{{- end }}
+{{- if .Values.masterportal.enabled }}
+---
+# Masterportal – statisches Geoportal (Compose-Profil "viz-extra").
+# Das Image muss den fertigen Portal-Build unter /usr/share/nginx/html
+# mitbringen; der Build selbst liegt nicht im Repository (.gitignore).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: masterportal
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "masterportal") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "masterportal" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "masterportal") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.masterportal.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: masterportal
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.masterportal.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.masterportal.containerSecurityContext) | nindent 12 }}
+          ports: [{ containerPort: 80 }]
+          resources:
+            {{- toYaml .Values.masterportal.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: masterportal
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "masterportal") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "masterportal" | nindent 4 }}
+  ports: [{ port: 80 }]
+{{- end }}

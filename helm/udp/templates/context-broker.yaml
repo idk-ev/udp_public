@@ -1,0 +1,129 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# Kontextverwaltung: Orion-LD (NGSI-LD) + Mintaka (Temporal API)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orion-ld
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "orion-ld") | nindent 4 }}
+spec:
+  replicas: {{ .Values.orionLd.replicas }}
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "orion-ld" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "orion-ld") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.orionLd.podSecurityContext) | nindent 8 }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "udp.selectorLabels" "orion-ld" | nindent 20 }}
+      containers:
+        - name: orion-ld
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.orionLd.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.orionLd.containerSecurityContext) | nindent 12 }}
+          args:
+            - -dbhost
+            - mongo
+            - -logLevel
+            - WARN
+            - -forwarding
+            - -troe
+            - -troeHost
+            - timescale
+            - -troeUser
+            - $(POSTGRES_USER)
+            - -troePwd
+            - $(POSTGRES_PASSWORD)
+          env:
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
+          ports: [{ containerPort: 1026 }]
+          resources:
+            {{- toYaml .Values.orionLd.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /ngsi-ld/ex/v1/version, port: 1026 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orion-ld
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "orion-ld") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "orion-ld" | nindent 4 }}
+  ports: [{ port: 1026 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mintaka
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mintaka") | nindent 4 }}
+spec:
+  replicas: {{ .Values.mintaka.replicas }}
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "mintaka" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "mintaka") | nindent 8 }}
+    spec:
+      serviceAccountName: udp
+      automountServiceAccountToken: false
+      {{- include "udp.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.mintaka.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: mintaka
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.mintaka.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.mintaka.containerSecurityContext) | nindent 12 }}
+          env:
+            - { name: DATASOURCES_DEFAULT_HOST, value: timescale }
+            - { name: DATASOURCES_DEFAULT_PORT, value: "5432" }
+            - { name: DATASOURCES_DEFAULT_DATABASE, value: {{ .Values.timescale.db.name | quote }} }
+            - name: DATASOURCES_DEFAULT_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
+            - name: DATASOURCES_DEFAULT_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
+            - { name: ENDPOINTS_ALL_PORT, value: "8080" }
+            - { name: MICRONAUT_METRICS_ENABLED, value: "false" }  # JDK-cgroup-Bug-Workaround
+            - { name: JAVA_TOOL_OPTIONS, value: "-XX:-UseContainerSupport" }
+          ports: [{ containerPort: 8080 }]
+          resources:
+            {{- toYaml .Values.mintaka.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mintaka
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mintaka") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "mintaka" | nindent 4 }}
+  ports: [{ port: 8080 }]

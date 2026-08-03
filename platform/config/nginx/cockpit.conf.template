@@ -1,0 +1,192 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# UDP-Cockpit – Auslieferung der SPA + Reverse-Proxy auf das API-Gateway,
+# damit die GUI ohne CORS-Sonderfälle unter einem Origin läuft.
+#
+# .template, weil der nginx-Entrypoint (20-envsubst-on-templates.sh) alles
+# unter /etc/nginx/templates/ durch envsubst schickt. Ersetzt werden NUR
+# Variablen mit dem Präfix UDP_ (NGINX_ENVSUBST_FILTER) – die nginx-eigenen
+# $-Variablen ($uri, $host, …) bleiben unangetastet.
+#
+#   NGINX_LOCAL_RESOLVERS  Nameserver aus /etc/resolv.conf – der nginx-Entrypoint
+#                          setzt die Variable selbst, sobald
+#                          NGINX_ENTRYPOINT_LOCAL_RESOLVERS gesetzt ist. Damit
+#                          stimmt der Resolver in Docker (127.0.0.11) UND in
+#                          Kubernetes (Cluster-DNS), ohne ihn zu pflegen.
+#   UDP_GATEWAY_UPSTREAM   host:port von APISIX
+#   UDP_NODERED_UPSTREAM   host:port von Node-RED
+#
+# In Kubernetes MÜSSEN die Upstreams voll qualifiziert sein
+# (apisix.<ns>.svc.cluster.local): nginx wendet auf Namen, die es über den
+# resolver auflöst, die search-Domains aus /etc/resolv.conf NICHT an – "apisix"
+# allein bliebe unauflösbar und jede Gateway-Anfrage liefe in einen 502.
+
+# Micro-Cache (F5): schützt Orion/Mintaka und die offenen Upstreams bei
+# öffentlichem Traffic; 60 s Kontext / 300 s Zeitreihen genügen den Takten.
+proxy_cache_path /var/cache/nginx/udp levels=1:2 keys_zone=udpapi:10m
+                 max_size=100m inactive=15m use_temp_path=off;
+
+server {
+    # 8080, nicht 80: das Image ist nginx-unprivileged und laeuft als Benutzer
+    # 101. Ports unter 1024 brauchen CAP_NET_BIND_SERVICE, das in Kubernetes
+    # mit "capabilities: drop: [ALL]" wegfaellt. Der Service vor dem Pod
+    # veroeffentlicht weiterhin Port 80.
+    listen 8080;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+    absolute_redirect off;  # Location-Header relativ lassen (Betrieb hinter Port/Proxy)
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Sicherheits-Header (BSI-Grundschutz-orientiert)
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    # Startseite ist das öffentliche Mitmachen-Angebot, nicht das Cockpit.
+    # Exakter Match, damit weder "index index.html" noch die Präfix-Location
+    # weiter unten greift – und kein Redirect, damit die Domain selbst die
+    # Seite ist. Die Cockpit-Übersicht liegt dafür unter /cockpit.
+    location = / {
+        expires -1;   # wie die übrigen HTML-Seiten: immer revalidieren
+        try_files /mitmachen.html =404;
+    }
+
+    # Abgelöste Seiten (Konsolidierung 2026-07): alte Bookmarks sauber umleiten
+    location = /kommunen.html { return 301 /dashboard.html; }
+    location = /reutlingen_smartcity.html { return 301 /reutlingen; }
+    location = /smartcity.html { return 301 /reutlingen; }
+
+    # Stadtkreise haben keine eigene Kreisseite — ihr Kreis-Permalink führt aufs
+    # Stadt-Dashboard (nur die 7 ohne gleichnamigen Landkreis; Heilbronn/Karlsruhe
+    # sind echte Landkreis-Seiten).
+    location = /kreis-stuttgart { return 301 /stuttgart; }
+    location = /kreis-baden-baden { return 301 /baden-baden; }
+    location = /kreis-heidelberg { return 301 /heidelberg; }
+    location = /kreis-mannheim { return 301 /mannheim; }
+    location = /kreis-pforzheim { return 301 /pforzheim; }
+    location = /kreis-freiburg-im-breisgau { return 301 /freiburg-im-breisgau; }
+    location = /kreis-ulm { return 301 /ulm; }
+
+    # Statische Assets immer revalidieren (expires -1 => Cache-Control: no-cache):
+    # Palette-/Template-Änderungen kommen so ohne Hard-Reload an; ETag greift,
+    # und die server-weiten Security-Header bleiben vererbt.
+    location ~* \.(css|js|html|json)$ {
+        expires -1;
+        try_files $uri =404;
+    }
+
+    # PWA-Manifest mit korrektem MIME-Typ ausliefern (Installierbarkeit).
+    location = /manifest.webmanifest {
+        types { } default_type application/manifest+json;
+        expires -1;
+        try_files $uri =404;
+    }
+    # Warnungen als iCal-Abo (Node-RED). 5 min Cache — Kalender ziehen ohnehin selten.
+    location = /warnungen.ics {
+        limit_except GET HEAD OPTIONS { deny all; }
+        set $nodered http://${UDP_NODERED_UPSTREAM};
+        proxy_pass $nodered;
+        proxy_set_header Host $host;
+        proxy_cache udpapi;
+        proxy_cache_valid 200 300s;
+        proxy_cache_key $request_uri;
+        add_header X-Cache $upstream_cache_status always;
+    }
+
+    # Der Service-Worker darf nicht veralten (sonst hängen Clients auf altem Cache).
+    location = /sw.js {
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
+
+    # Interne SPA-Routen (Deep-Links des Cockpits) laufen auf die SPA.
+    # /cockpit ist die frühere Startseite (Übersicht) – der Router kennt den
+    # Pfad als eigene Route, deshalb reicht das Ausliefern der index.html.
+    location ~ ^/(cockpit|daten|karte|zeitreihen|module|verwaltung)$ {
+        try_files /index.html =404;
+    }
+
+    # Kommunen-Slugs (F2): /reutlingen -> /g/reutlingen/index.html.
+    # Unbekannte Pfade sind ein echter 404 (kein Soft-404 auf die SPA mehr).
+    error_page 404 /404.html;
+    location / {
+        try_files $uri $uri/ /g$uri/index.html =404;
+    }
+
+    # Plattform-APIs über das API-Gateway (APISIX).
+    # Resolver + Variable im proxy_pass: der Upstream wird zur Laufzeit
+    # aufgelöst, damit Neustarts des Gateways keinen Cockpit-Neustart
+    # erfordern (ohne die Variable würde nginx beim Start hart scheitern,
+    # wenn APISIX gerade nicht läuft).
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    # Lesende Kontext-API: 60 s Micro-Cache
+    # ^~ : verhindert, dass die Regex-Location für .css|.js|.html|.json weiter
+    # oben greift und Gateway-Pfade mit solcher Endung aus dem Dateisystem
+    # beantwortet (Regex schlägt sonst jeden Präfix-Treffer).
+    location ^~ /gateway/ngsi-ld/ {
+        limit_except GET HEAD OPTIONS { deny all; }
+        set $gateway http://${UDP_GATEWAY_UPSTREAM};
+        rewrite ^/gateway/(.*)$ /$1 break;
+        proxy_pass $gateway;
+        proxy_set_header Host $host;
+        proxy_cache udpapi;
+        proxy_cache_methods GET HEAD;
+        proxy_cache_valid 200 60s;
+        proxy_cache_key $request_uri;
+        proxy_cache_lock on;
+        add_header X-Cache $upstream_cache_status always;
+    }
+    # ÖPNV-Abfahrten auf Anfrage (Node-RED). 60 s Micro-Cache mit proxy_cache_lock:
+    # Gleichzeitige Aufrufe desselben Halts werden zu einer einzigen Anfrage an
+    # die EFA-BW-Auskunft zusammengefasst.
+    # Exakter Match (nicht Präfix): sonst reichte /abfahrten/<beliebig> in die
+    # Node-RED-Instanz durch, die selbst keine Authentifizierung hat.
+    location = /abfahrten {
+        limit_except GET HEAD OPTIONS { deny all; }
+        set $nodered http://${UDP_NODERED_UPSTREAM};
+        proxy_pass $nodered;
+        proxy_set_header Host $host;
+        proxy_cache udpapi;
+        proxy_cache_methods GET HEAD;
+        proxy_cache_valid 200 60s;
+        proxy_cache_valid 404 502 503 30s;
+        proxy_cache_key $request_uri;
+        proxy_cache_lock on;
+        add_header X-Cache $upstream_cache_status always;
+    }
+
+    # Zeitreihen: 300 s
+    location ^~ /gateway/temporal/ {
+        limit_except GET HEAD OPTIONS { deny all; }
+        set $gateway http://${UDP_GATEWAY_UPSTREAM};
+        rewrite ^/gateway/(.*)$ /$1 break;
+        proxy_pass $gateway;
+        proxy_set_header Host $host;
+        proxy_cache udpapi;
+        proxy_cache_methods GET HEAD;
+        proxy_cache_valid 200 300s;
+        proxy_cache_key $request_uri;
+        proxy_cache_lock on;
+        add_header X-Cache $upstream_cache_status always;
+    }
+
+    # Öffentlich erreichbar ist die Plattform-API AUSSCHLIESSLICH lesend: die
+    # Routen hinter dem Gateway sind (noch) nicht per OIDC abgesichert, ein
+    # anonymes POST/PATCH/DELETE würde direkt in den Context Broker schreiben.
+    # Schreibende Nutzung läuft bis dahin cluster-intern gegen apisix:9080.
+    location ^~ /gateway/ {
+        limit_except GET HEAD OPTIONS { deny all; }
+        set $gateway http://${UDP_GATEWAY_UPSTREAM};
+        rewrite ^/gateway/(.*)$ /$1 break;
+        proxy_pass $gateway;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

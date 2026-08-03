@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# Override: Uptime Kuma zusätzlich ins Plattform-Netz "udp" hängen.
+#
+# Nur sinnvoll, wenn Monitoring und Plattform auf DEMSELBEN Host laufen und
+# neben den öffentlichen Endpunkten auch interne geprüft werden sollen, die am
+# Host nicht veröffentlicht sind (orion-ld:1026, mintaka:8080, frost:8080,
+# ckan:5000, apisix:9091/apisix/prometheus/metrics, mosquitto:1883).
+#
+# Achtung: Damit hängt die Außensicht wieder am selben Docker-Netz wie die
+# Plattform. Die Monitore auf die ÖFFENTLICHEN Adressen (über das Gateway)
+# bleiben deshalb Pflicht — die internen sind nur zur Fehlereingrenzung da.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.udp-network.yml up -d
+#
+# Das Netz "udp" muss existieren (wird von platform/docker-compose.yml angelegt).
+# =============================================================================
+
+services:
+  uptime-kuma:
+    networks: [monitoring, udp]
+
+networks:
+  udp:
+    external: true
+    name: udp
