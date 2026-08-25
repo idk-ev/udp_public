@@ -195,10 +195,13 @@ zielten nur auf den kleineren Teil des Volumens:
    (die Gemeindemediane bleiben im 15-Minuten-Takt).
 3. **Gestaffelte Aufbewahrung.** Aggregate je Gemeinde bleiben 12 Monate —
    auf ihnen beruhen die Verlaufsdiagramme. Einzelstandorte
-   (`EVChargingStation`, `CarSharingStation`, `ParkingSite`,
+   (`EVChargingStation`, `CarSharingStation`,
    `AirQualityObserved:bw-sensor-*`) werden nach 3 Monaten gelöscht; sie
    werden nirgends über Monate ausgewertet, die Dashboards zeigen ihren
-   aktuellen Zustand auf der Karte.
+   aktuellen Zustand auf der Karte. `ParkingSite` stand hier ebenfalls, solange
+   der Konnektor ~1,04 Mio Zeilen/Tag schrieb, und ist seit Sprint 2.9 wieder
+   heraus: Bei grob 6.000 Zeilen/Tag spart die Staffel nichts, löscht aber die
+   einmalig geschriebenen Stammdaten einer Anlage, die nicht nachwachsen.
 
 Damit sich ein solcher Fehler nicht wieder einen Monat lang verstecken kann,
 sind seit Sprint 2.9 zwei Sicherungen eingezogen:

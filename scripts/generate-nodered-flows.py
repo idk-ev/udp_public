@@ -3007,16 +3007,24 @@ try {
     a = (await client.query("DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '12 months'")).rowCount;
     s = (await client.query("DELETE FROM subattributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '12 months'")).rowCount;
 
-    // Gestaffelt: Einzelstandorte (Ladesäulen, Carsharing-Stationen, Parkplätze,
+    // Gestaffelt: Einzelstandorte (Ladesäulen, Carsharing-Stationen,
     // Bürgersensoren) sind der Volumentreiber des landesweiten Stufe-3-Ausbaus,
     // werden aber nirgends über Monate ausgewertet — die Dashboards zeigen
     // ihren aktuellen Zustand auf der Karte. Aggregate je Gemeinde bleiben die
     // vollen 12 Monate, weil die Verlaufsdiagramme darauf beruhen.
+    //
+    // ParkingSite stand hier bis Sprint 2.9 mit drin, als der Konnektor noch
+    // ~1,04 Mio Zeilen/Tag schrieb. Seit der Trennung von Stamm- und
+    // Bewegungsdaten sind es grob 6.000 — die Staffel spart nichts mehr und
+    // schadet sogar: Die statischen Attribute einer Anlage werden genau einmal
+    // bei der Erstsichtung geschrieben und danach nie wieder. Ein Löschen nach
+    // 3 Monaten entfernt damit die einzige Zeile, die es je gab, ohne dass sie
+    // nachwächst. Der Broker bliebe korrekt (er hält den Ist-Stand), aber die
+    // Temporal-API hätte für Parkanlagen dauerhaft nichts mehr zu liefern.
     const kurz = (await client.query(
         "DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '3 months' " +
         "AND (entityid LIKE 'urn:ngsi-ld:EVChargingStation:%' " +
         "  OR entityid LIKE 'urn:ngsi-ld:CarSharingStation:%' " +
-        "  OR entityid LIKE 'urn:ngsi-ld:ParkingSite:%' " +
         "  OR entityid LIKE 'urn:ngsi-ld:AirQualityObserved:bw-sensor-%')")).rowCount;
     a += kurz;
     if (kurz) node.warn('Retention: ' + kurz + ' Zeilen aus Einzelstandorten (3-Monats-Staffel)');
