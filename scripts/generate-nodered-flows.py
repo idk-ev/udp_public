@@ -10,7 +10,7 @@ from pathlib import Path
 FLOWS = str(Path(__file__).resolve().parent.parent / "platform" / "config" / "nodered" / "flows.json")
 REGISTRY_PATH = str(Path(__file__).resolve().parent.parent / "platform" / "config" / "connectors.json")
 STATUS_EXPORT = str(Path(__file__).resolve().parent.parent / "gui" / "public" / "connectors-status.json")
-with open(REGISTRY_PATH) as _f:
+with open(REGISTRY_PATH, encoding="utf-8") as _f:
     REGISTRY = json.load(_f)["connectors"]
 REG = {c["id"]: c for c in REGISTRY}
 
@@ -685,7 +685,18 @@ function emitChunks(node, msg, entities, size) {
 // sich der Wert geändert hat. Ein über Stunden konstanter Pegel/Warnstatus/Median
 // erzeugt so unnötig Volumen. sigOf(e) muss die Messwerte hashen, NICHT den
 // dateObserved-Zeitstempel. Die Signaturen werden im flow-Kontext akkumuliert.
-function gateChanged(node, entities, key, sigOf) {
+//
+// opts.replace (Sprint 2.9): Standard ist MERGEN — Flows wie das GBFS-Carsharing
+// rufen die Erkennung einmal je System auf und tragen jeweils nur einen
+// Teilbestand bei; ein Ersetzen würde die Tabelle bei jedem System auf dessen
+// Stationen eindampfen und die Erkennung wirkungslos machen. Für Flows, die den
+// GANZEN Bestand in einem Lauf sehen (Parken landesweit), ist Mergen dagegen ein
+// Leck: Entitäten, die aus der Quelle verschwinden, bleiben für immer in der
+// Signaturtabelle stehen. Der flow-Kontext liegt über contextStorage
+// (settings.js: localfilesystem) auch auf der Platte — das Leck wächst dort mit.
+// Solche Aufrufer setzen { replace: true } und speichern nur den aktuellen Stand.
+function gateChanged(node, entities, key, sigOf, opts) {
+    const ersetzen = !!(opts && opts.replace);
     const prev = flow.get(key) || {};
     const next = {};
     const out = [];
@@ -702,7 +713,7 @@ function gateChanged(node, entities, key, sigOf) {
             out.push({ id: e.id, type: e.type, dateObserved: e.dateObserved, '@context': e['@context'] });
         }
     }
-    flow.set(key, Object.assign(prev, next));
+    flow.set(key, ersetzen ? next : Object.assign(prev, next));
     node.status({ text: changed + '/' + entities.length + ' geändert (Rest: nur Frische)' });
     return out;
 }
@@ -1841,51 +1852,311 @@ delay_rate("udp-rt-bs-rate", Z, ["udp-rt-bs-post"], 350)
 upsert("udp-rt-bs-post", Z, ["udp-rt-bs-debug"], 350)
 debug("udp-rt-bs-debug", Z, "Feinstaub-BW Ergebnis", 350)
 
-FN_PARK_PAGES = r'''// ParkAPI: 64 Seiten à 500
-const msgs = [];
-for (let p = 0; p < 66; p++) {
-    msgs.push({ url: 'https://api.mobidata-bw.de/park-api/api/public/v3/parking-sites?limit=500&offset=' + (p * 500),
-                parts: { id: msg._msgid, index: p, count: 66 }, topic: 'pk' + p });
-}
-return [msgs];'''
+# --- Parken landesweit (MobiData BW ParkAPI v3) -------------------------------
+# Sprint 2.9, Fehlerbild vom 24.08.: Dieser Konnektor war mit ~1,04 Mio Zeilen/Tag
+# der mit Abstand größte TRoE-Volumentreiber (rund die Hälfte der gesamten
+# Zeitreihen-Datenbank) und deckte dabei 1,6 % des Bestands ab. Drei Fehler
+# lagen übereinander:
+#   1. Die Seitenaufteilung nutzte &offset=, das die v3-API stillschweigend
+#      ignoriert — alle 66 Anfragen lieferten dieselben ersten 500 Datensätze.
+#   2. Die Entitäts-IDs wurden aus dem geslugten Anlagennamen gebildet; gleich
+#      benannte Anlagen fielen zusammen (500 Datensätze -> 336 IDs).
+#   3. Je Lauf gingen alle sieben Attribute jeder Anlage neu heraus.
+# Behoben durch: Cursor-Pagination (start=<next_id>), stabile IDs aus der
+# ParkAPI-eigenen id und getrennte Statik-/Dynamik-Schreibpfade.
 
-FN_PARK_WRAP = r'''if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.items)) {
-    msg.payload = [];
-    return msg;
+FN_PARK_FETCH = r'''// ParkAPI v3: Cursor-Pagination (start=<next_id>), sequentiell in EINEM Node
+//
+// Vorher fächerte dieser Schritt 66 Anfragen mit &offset=<n*500> auf. Die v3-API
+// ignoriert offset stillschweigend: Die Antworten zu offset=0/500/…/2500 waren
+// byteweise identisch (IDs 384–1441). Der Konnektor sah also 500 von 31.909
+// Anlagen und schrieb jede davon 66× je Lauf. Paginiert wird über einen Cursor —
+// die Antwort trägt total_count, next_id und next_path
+// (»?limit=500&start=<next_id>«); fehlt next_id, ist der Bestand durch.
+//
+// Warum ein Function-Node statt Fan-out/Join: Der Cursor der Folgeseite steht
+// erst in der Antwort der Vorseite. Das ist von Natur aus sequentiell und passt
+// nicht in das parallele Inject→Split→HTTP→Join-Muster der übrigen Konnektoren.
+//
+// Warum node:https statt fetch(): Der Function-Node läuft in einem eigenen
+// vm-Kontext (Node-RED 4.1, 10-function.js: vm.createContext(sandbox)). Der
+// Sandbox enthält console/util/Buffer/URL/Date/RED/setTimeout — die Node-Globals
+// werden NICHT vererbt, fetch ist dort undefined. https und zlib kommen über die
+// libs-Deklaration des Nodes herein; beides sind Kernmodule, also keine
+// zusätzliche npm-Abhängigkeit im Image.
+const BASIS = 'https://api.mobidata-bw.de/park-api/api/public/v3/parking-sites';
+const PRO_SEITE = 500;
+const MAX_SEITEN = 120;   // 31.909/500 ≈ 64 Seiten — Deckel mit Reserve fürs Wachstum
+const PAUSE_MS = 1000;    // Höflichkeit gegenüber MobiData BW (wie die frühere 1-Anfrage/s-Node)
+
+const schlaf = ms => new Promise(r => setTimeout(r, ms));
+const holen = adresse => new Promise((erfuellen, ablehnen) => {
+    const anfrage = https.get(adresse, {
+        headers: {
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip',
+            'User-Agent': 'UDP Node-RED Konnektor parken-bw'
+        }
+    }, antwort => {
+        const teile = [];
+        antwort.on('data', d => teile.push(d));
+        antwort.on('error', ablehnen);
+        antwort.on('end', () => {
+            try {
+                const roh = Buffer.concat(teile);
+                const kodierung = String(antwort.headers['content-encoding'] || '');
+                erfuellen({
+                    status: antwort.statusCode,
+                    text: /gzip/i.test(kodierung) ? zlib.gunzipSync(roh).toString('utf8') : roh.toString('utf8')
+                });
+            } catch (e) { ablehnen(e); }
+        });
+    });
+    anfrage.on('error', ablehnen);
+    anfrage.setTimeout(30000, () => anfrage.destroy(new Error('Zeitüberschreitung nach 30 s')));
+});
+
+// Kompaktes Positionsarray statt Objekt — bei ~32.000 Anlagen zählt jedes Feld:
+// 0 id · 1 lat · 2 lon · 3 Kapazität · 4 Zweck · 5 Name · 6 official_region_code
+// 7 source_id · 8 original_uid · 9 modified_at · 10 Echtzeitdaten? · 11 freie Plätze (-1 = unbekannt)
+// Apostroph bricht den TRoE-SQL-Insert (bekannter Orion-LD-Bug) -> ersetzen.
+const putz = t => String(t == null ? '' : t).replace(/'/g, '’').slice(0, 80);
+
+const gesehen = new Set();
+const anlagen = [];
+let start = null, seiten = 0, gesamt = null, fertig = false;
+while (seiten < MAX_SEITEN) {
+    const adresse = BASIS + '?limit=' + PRO_SEITE + (start === null ? '' : '&start=' + encodeURIComponent(start));
+    let antwort;
+    try {
+        antwort = await holen(adresse);
+    } catch (e) {
+        node.error('ParkAPI: Seite ' + (seiten + 1) + ' nicht abrufbar (' + (e && e.message ? e.message : e) + ')');
+        return null;
+    }
+    if (antwort.status !== 200) {
+        node.error('ParkAPI: HTTP ' + antwort.status + ' auf Seite ' + (seiten + 1) + ' (' + adresse + ')');
+        return null;
+    }
+    let seite;
+    try { seite = JSON.parse(antwort.text); } catch (e) {
+        node.error('ParkAPI: Seite ' + (seiten + 1) + ' ist kein gültiges JSON');
+        return null;
+    }
+    if (!seite || !Array.isArray(seite.items)) {
+        node.error('ParkAPI: Seite ' + (seiten + 1) + ' ohne items-Array — Antwortformat geändert?');
+        return null;
+    }
+    seiten++;
+    if (gesamt === null && typeof seite.total_count === 'number') gesamt = seite.total_count;
+
+    // Überschneidungsprüfung. Genau dieser Fehler — Seiten, die alle denselben
+    // Ausschnitt liefern — blieb einen Monat unentdeckt, weil er still war.
+    // Lieber laut abbrechen als noch einmal 66× denselben Bestand schreiben.
+    let doppelt = 0;
+    for (const i of seite.items) if (gesehen.has(i.id)) doppelt++;
+    if (doppelt) {
+        node.error('ParkAPI: Seite ' + seiten + ' überschneidet die bisherigen Seiten in '
+                   + doppelt + ' von ' + seite.items.length + ' Datensätzen — greift der Cursor »start« nicht mehr? Lauf abgebrochen');
+        return null;
+    }
+    for (const i of seite.items) {
+        gesehen.add(i.id);
+        if (!i.lat || !i.lon) continue;
+        if (i.purpose !== 'CAR' && i.purpose !== 'BIKE') continue;
+        const echtzeit = i.has_realtime_data === true;
+        anlagen.push([
+            i.id, +i.lat, +i.lon, i.capacity || 0, i.purpose, putz((i.name || '').trim()),
+            String(i.official_region_code == null ? '' : i.official_region_code),
+            i.source_id == null ? null : i.source_id,
+            i.original_uid == null ? '' : String(i.original_uid).slice(0, 64),
+            i.modified_at || '',
+            echtzeit,
+            (echtzeit && i.realtime_free_capacity != null) ? i.realtime_free_capacity : -1
+        ]);
+    }
+    node.status({ text: 'Seite ' + seiten + ' · ' + gesehen.size + (gesamt ? '/' + gesamt : '') + ' Datensätze' });
+
+    if (seite.next_id === null || seite.next_id === undefined) { fertig = true; break; }
+    if (String(seite.next_id) === String(start)) {
+        node.error('ParkAPI: Cursor steht still (next_id ' + seite.next_id + ' wie zuvor) — Lauf abgebrochen');
+        return null;
+    }
+    start = seite.next_id;
+    await schlaf(PAUSE_MS);
 }
-// purpose trennt Auto- und Fahrradanlagen. Beide werden mitgenommen: Die
-// Fahrradanlagen mit Echtzeitbelegung sind der B+R-Baustein, den es bisher nur
-// für Reutlingen gab — die Seiten werden ohnehin geholt.
-const clean = t => String(t == null ? '' : t).replace(/'/g, '’').slice(0, 80);
-msg.payload = msg.payload.items
-    .filter(i => i.lat && i.lon && (i.purpose === 'CAR' || i.purpose === 'BIKE'))
-    .map(i => [i.lat, i.lon, i.capacity || 0,
-               i.has_realtime_data ? (i.realtime_free_capacity ?? -1) : -1,
-               i.purpose, clean((i.name || '').trim())]);
+// Niemals stillschweigend abschneiden: Wer den Deckel erreicht, bekommt einen
+// Eintrag im Log — sonst wiederholt sich der Fehler von oben mit anderem Vorzeichen.
+if (!fertig) {
+    node.warn('ParkAPI: Seitendeckel ' + MAX_SEITEN + ' erreicht, Bestand unvollständig ('
+              + gesehen.size + (gesamt ? ' von ' + gesamt : '') + ') — MAX_SEITEN anheben');
+}
+if (gesamt && fertig && gesehen.size < gesamt * 0.9) {
+    node.warn('ParkAPI: nur ' + gesehen.size + ' von ' + gesamt + ' angekündigten Datensätzen geholt');
+}
+if (!anlagen.length) { node.warn('ParkAPI: keine verwertbaren Anlagen im Abzug'); return null; }
+node.status({ text: seiten + ' Seiten · ' + gesehen.size + (gesamt ? '/' + gesamt : '') + ' Datensätze · ' + anlagen.length + ' verwertbar' });
+msg.payload = anlagen;
+msg.parkSeiten = seiten;
+msg.parkGesamt = gesamt;
 return msg;'''
 
-FN_PARK_BUILD = r'''// ParkAPI-Seiten -> ParkingSummary je Gemeinde
+FN_PARK_BUILD = r'''// ParkAPI-Abzug -> ParkingSummary je Gemeinde + Einzelanlagen (Auto und Rad)
 ''' + NEAREST_HELPER + r'''
-const sites = msg.payload.flat().filter(Array.isArray);
+const anlagen = Array.isArray(msg.payload) ? msg.payload.filter(Array.isArray) : [];
+if (!anlagen.length) return null;
+
+// Gemeindezuordnung über den Amtlichen Regionalschlüssel statt Punkt-in-Polygon:
+// Die ParkAPI führt official_region_code zu 100 % — einen 12-stelligen ARS. Der
+// AGS steckt darin, nur an anderer Stelle: AGS = ARS[0..5] + ARS[9..12]
+// (Land+RB+Kreis, dann die Gemeinde; die Stellen 6–9 sind der Verbandsschlüssel).
+// Beispiele: 081160019019 -> 08116019, 082120000000 -> 08212000. Gegen
+// gui/public/bw-gemeinden.json geprüft: 830 von 830 Stichproben getroffen.
+// Das ist exakt, kostet nichts und erspart diesem Konnektor die Suche in der
+// 1 MB großen Grenzen-GeoJSON aus dem global-Kontext. nearest() bleibt nur der
+// Notnagel für Datensätze ohne oder mit unbekanntem ARS.
+const arsZuAgs = ars => {
+    const s = String(ars || '');
+    return /^[0-9]{12}$/.test(s) ? s.slice(0, 5) + s.slice(9, 12) : null;
+};
+// Umkasten BW: hält Anlagen außerhalb des Landes vom Zentroid-Fallback in
+// nearest() fern — der würde sie sonst stumm der nächsten BW-Gemeinde zuschlagen.
+const imKasten = (lat, lon) => lat > 47.4 && lat < 49.9 && lon > 7.3 && lon < 10.7;
+
 const byGem = {};
 const radAnlagen = [];
 const autoAnlagen = [];
-for (const [lat, lon, cap, rtFree, zweck, bez] of sites) {
-    const g = nearest(lat, lon);
-    if (!g || g[0].slice(0, 2) !== '08') continue;
-    if (zweck === 'BIKE') {
-        // Nur Anlagen mit Echtzeitbelegung — eine reine Kapazitätsangabe ohne
-        // freie Plätze trüge im Dashboard nichts bei.
-        if (rtFree >= 0) radAnlagen.push([g, lat, lon, cap, rtFree, bez]);
+let ueberArs = 0, ueberGeo = 0, ausserhalb = 0, ohneZuordnung = 0, frischeQuelle = 0;
+const vorTagen = Date.now() - 86400000;
+for (const a of anlagen) {
+    const lat = a[1], lon = a[2];
+    let g = null;
+    const ags = arsZuAgs(a[6]);
+    if (ags) {
+        if (ags.slice(0, 2) !== '08') { ausserhalb++; continue; }   // ARS sagt: nicht Baden-Württemberg
+        g = GEMBYAGS[ags] || null;
+        if (g) ueberArs++;
+    }
+    if (!g) {
+        if (!imKasten(lat, lon)) { ausserhalb++; continue; }
+        g = nearest(lat, lon);
+        if (!g || g[0].slice(0, 2) !== '08') { ohneZuordnung++; continue; }
+        ueberGeo++;
+    }
+    if (a[9] && Date.parse(a[9]) > vorTagen) frischeQuelle++;
+    if (a[4] === 'BIKE') {
+        // Nur Radanlagen mit Echtzeitbelegung — eine reine Kapazitätsangabe ohne
+        // freie Plätze trüge im Dashboard nichts bei (B+R-Baustein »br«).
+        if (a[11] >= 0) radAnlagen.push([g, a]);
         continue;
     }
     const b = byGem[g[0]] = byGem[g[0]] || { n: 0, cap: 0, rtFree: 0, rtN: 0 };
-    b.n++; b.cap += cap;
-    if (rtFree >= 0) { b.rtFree += rtFree; b.rtN++; }
-    // Einzelanlage mit Koordinaten für die Parken-Kartenebene/-Detailkarte merken.
-    autoAnlagen.push([g, lat, lon, cap, rtFree, bez]);
+    b.n++; b.cap += a[3];
+    if (a[11] >= 0) { b.rtFree += a[11]; b.rtN++; }
+    autoAnlagen.push([g, a]);
 }
-const entities = Object.keys(byGem).map(ags => {
+
+// Kompakte Wertsignatur. Der flow-Kontext wird über contextStorage
+// (settings.js: localfilesystem) auf die Platte geschrieben; bei ~26.000 Anlagen
+// wären Rohsignaturen mehrere MB je Schreibvorgang. Zwei FNV-1a-Läufe mit
+// verschiedenen Primzahlen ergeben 64 Bit, base36 kodiert ~13 Zeichen je Eintrag.
+const hash64 = s => {
+    let x = 0x811c9dc5, y = 0x1000193;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        x = Math.imul(x ^ c, 0x01000193) >>> 0;
+        y = Math.imul(y ^ c, 0x85ebca6b) >>> 0;
+    }
+    return x.toString(36) + y.toString(36);
+};
+
+// Statik und Dynamik trennen. Orion-LD schreibt bei options=update je
+// mitgesendetem Attribut eine TRoE-Zeile, unabhängig davon, ob sich der Wert
+// geändert hat. Der frühere Stand schickte je Anlage und Lauf alle sieben
+// Attribute; nur 4,7 % der Anlagen haben überhaupt Echtzeitdaten, die übrigen
+// sechs Attribute ändern sich praktisch nie.
+//
+// Bewusst NICHT modified_at als Auslöser für den Vollschrieb: Das Feld wandert
+// bei jedem Neueinlesen der Quelle mit. Im Abzug vom 24.08. trugen 93 von 500
+// Datensätzen (darunter alle 32 mit Echtzeitdaten) ein frisches modified_at,
+// ohne dass sich fachlich etwas geändert hätte — als Schreibgrund taugt es
+// damit nicht, als Betriebsanzeige schon (siehe node.status unten). Maßgeblich
+// ist die Wertsignatur der statischen Attribute, dieselbe Idee wie gateChanged().
+const statik = flow.get('parkStatik') || {};
+const belegung = flow.get('parkFrei') || {};
+const neueStatik = {}, neueBelegung = {};
+const entities = [];
+const ids = new Set();
+let voll = 0, nurFrei = 0, unveraendert = 0;
+const ANBIETER = 'MobiData BW ParkAPI';
+
+// Stabile Entitäts-IDs aus der ParkAPI-eigenen id (»parkapi-<id>«). Vorher
+// stand dort der geslugte Anlagenname, weshalb gleichnamige Anlagen aufeinander
+// fielen (42× »hauptbahnhof-westseite«, 36× »list-gymnasium« …). Die AGS gehört
+// bewusst NICHT in die ID: sie ist abgeleitet, und eine Neuverortung der Anlage
+// würde die Entität samt Zeitreihe verwaisen lassen. Das Frontend fragt über das
+// ags-ATTRIBUT ab (gui/public/smartcity-lib.js, byAgs), nie über die ID.
+const anlegen = (typ, g, a) => {
+    const kennung = 'urn:ngsi-ld:' + typ + ':parkapi-' + a[0];
+    const lat = a[1], lon = a[2], kap = a[3], bez = a[5], frei = a[11];
+    ids.add(kennung);
+    const sig = hash64([g[0], bez, kap, lat.toFixed(5), lon.toFixed(5), a[7], a[8], a[4]].join('|'));
+    neueStatik[kennung] = sig;
+    if (frei >= 0) neueBelegung[kennung] = frei;
+    if (statik[kennung] !== sig) {
+        // Erstsichtung oder echte Stammdatenänderung -> volle Entität
+        voll++;
+        const e = {
+            id: kennung,
+            type: typ,
+            ags: { type: 'Property', value: g[0] },
+            name: { type: 'Property', value: bez || (typ === 'BikeParking' ? 'Radabstellanlage' : 'Parkplatz') },
+            totalSpotNumber: { type: 'Property', value: kap, unitCode: 'C62' },
+            dateObserved: { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } },
+            dataProvider: { type: 'Property', value: ANBIETER },
+            location: { type: 'GeoProperty', value: { type: 'Point', coordinates: [lon, lat] } },
+            '@context': CTX
+        };
+        // Fremdschlüssel der Quelle mitschreiben: Sollte MobiData BW seine
+        // Datenbank je neu aufbauen und die ids sich neu vergeben, lassen sich
+        // die Entitäten darüber wieder zuordnen. Nur setzen, wenn vorhanden —
+        // eine Property mit null-Wert nimmt Orion-LD nicht an.
+        if (a[7] !== null && a[7] !== undefined) e.sourceId = { type: 'Property', value: a[7] };
+        if (a[8]) e.originalUid = { type: 'Property', value: a[8] };
+        if (typ === 'ParkingSite') e.category = { type: 'Property', value: 'CAR' };
+        if (frei >= 0) e.availableSpotNumber = P(frei, 'C62');
+        entities.push(e);
+        return;
+    }
+    // Stammdaten unverändert: nur die Belegung, und nur wenn sie sich bewegt hat.
+    // dateObserved wird hier bewusst NICHT aufgefrischt — das wäre je Anlage und
+    // Lauf eine Zeile (rund 255.000/Tag), und keine Ansicht wertet das Feld an
+    // der Einzelanlage aus.
+    if (frei >= 0 && belegung[kennung] !== frei) {
+        nurFrei++;
+        entities.push({ id: kennung, type: typ, availableSpotNumber: P(frei, 'C62'), '@context': CTX });
+        return;
+    }
+    unveraendert++;
+};
+for (const [g, a] of autoAnlagen) anlegen('ParkingSite', g, a);
+for (const [g, a] of radAnlagen) anlegen('BikeParking', g, a);
+
+// Ganzer Bestand je Lauf -> ersetzen statt mergen (sonst wächst die
+// Signaturtabelle im flow-Kontext und damit auf der Platte unbegrenzt).
+flow.set('parkStatik', neueStatik);
+flow.set('parkFrei', neueBelegung);
+
+// Kardinalitäts-Invariante: Wenn aus n Quelldatensätzen deutlich weniger als n
+// Entitäts-IDs werden, kollidieren IDs — genau der Fehler, der hier einen Monat
+// lang aus geslugten Namen entstand (500 Datensätze -> 336 IDs).
+const quellsaetze = autoAnlagen.length + radAnlagen.length;
+if (quellsaetze && ids.size / quellsaetze < 0.95) {
+    node.warn('Parken-BW: nur ' + ids.size + ' verschiedene Entitäts-IDs aus ' + quellsaetze
+              + ' Quelldatensätzen (' + Math.round(ids.size / quellsaetze * 100) + ' %) — ID-Kollision?');
+}
+
+const summen = Object.keys(byGem).map(ags => {
     const b = byGem[ags];
     const e = {
         id: 'urn:ngsi-ld:ParkingSummary:bw-' + ags,
@@ -1898,62 +2169,31 @@ const entities = Object.keys(byGem).map(ags => {
     if (b.rtN) { e.realtimeFree = P(b.rtFree, 'C62'); e.realtimeSites = P(b.rtN, 'C62'); }
     return e;
 });
-
-// B+R-Fahrradparken je Anlage (Stufe-3-Baustein »br«), landesweit aus demselben
-// Abzug. Die Kachel summiert über das ags-Attribut, die Kartenebene braucht den
-// Slug im ID-Präfix.
-const radSlug = t => String(t).toLowerCase()
-    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-for (const [g, lat, lon, cap, frei, bez] of radAnlagen) {
-    entities.push({
-        id: 'urn:ngsi-ld:BikeParking:' + g[8] + '-' + (radSlug(bez) || (lat + '-' + lon)),
-        type: 'BikeParking',
-        ags: { type: 'Property', value: g[0] },
-        name: { type: 'Property', value: bez },
-        totalSpotNumber: { type: 'Property', value: cap, unitCode: 'C62' },
-        availableSpotNumber: P(frei, 'C62'),
-        dateObserved: { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } },
-        dataProvider: { type: 'Property', value: 'MobiData BW ParkAPI' },
-        location: { type: 'GeoProperty', value: { type: 'Point', coordinates: [lon, lat] } },
-        '@context': CTX
-    });
-}
-
-// Auto-Parkanlagen je Standort mit Koordinaten (Stufe-3-Baustein »Parken-Karte«).
-// Die Kachel nutzt weiterhin die ParkingSummary; diese Einzelanlagen tragen die
-// Standortkarte im Parken-Detail und die Parken-Kartenebene.
-for (const [g, lat, lon, cap, frei, bez] of autoAnlagen) {
-    const e = {
-        id: 'urn:ngsi-ld:ParkingSite:' + g[8] + '-' + (radSlug(bez) || (lat + '-' + lon)),
-        type: 'ParkingSite',
-        ags: { type: 'Property', value: g[0] },
-        name: { type: 'Property', value: bez || 'Parkplatz' },
-        category: { type: 'Property', value: 'CAR' },
-        totalSpotNumber: { type: 'Property', value: cap, unitCode: 'C62' },
-        dateObserved: { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } },
-        dataProvider: { type: 'Property', value: 'MobiData BW ParkAPI' },
-        location: { type: 'GeoProperty', value: { type: 'Point', coordinates: [lon, lat] } },
-        '@context': CTX
-    };
-    if (frei >= 0) e.availableSpotNumber = P(frei, 'C62');
-    entities.push(e);
-}
-if (!entities.length) return null;
-node.status({ text: sites.length + ' Anlagen → ' + Object.keys(byGem).length
-              + ' Gemeinden · ' + autoAnlagen.length + ' Parkanlagen · ' + radAnlagen.length + ' Radanlagen mit Echtzeit' });
 ''' + CHUNK_HELPER + r'''
+// Aggregate je Gemeinde: unverändert -> gar nicht schreiben. replace, weil dieser
+// Lauf den kompletten Landesbestand sieht (siehe gateChanged).
+for (const e of gateChanged(node, summen, 'parkSummenSig',
+        x => [x.siteCount.value, x.totalCapacity.value,
+              x.realtimeFree ? x.realtimeFree.value : '', x.realtimeSites ? x.realtimeSites.value : ''].join('|'),
+        { replace: true })) entities.push(e);
+
+node.status({ text: anlagen.length + ' Anlagen · ' + Object.keys(byGem).length + ' Gemeinden · '
+              + voll + ' voll · ' + nurFrei + ' nur Belegung · ' + unveraendert + ' unverändert'
+              + ' · ' + frischeQuelle + ' mit frischem modified_at'
+              + (ueberGeo ? ' · ' + ueberGeo + ' per Geo-Notnagel' : '')
+              + (ohneZuordnung ? ' · ' + ohneZuordnung + ' ohne Zuordnung' : '') });
+if (!entities.length) return null;
 return [emitChunks(node, msg, entities, 100)];'''
 
-inject("udp-rt-bp-inject", Z, "alle 3 Stunden", 10800, 420, ["udp-rt-bp-pages"], 440)
-func("udp-rt-bp-pages", Z, "ParkAPI-Seiten (66)", FN_PARK_PAGES, ["udp-rt-bp-rate"], 440, x=380)
-delay_rate("udp-rt-bp-rate", Z, ["udp-rt-bp-get"], 500)
-http_get("udp-rt-bp-get", Z, "ParkAPI", "", ["udp-rt-bp-wrap"], 500, x=620)
-func("udp-rt-bp-wrap", Z, "verschlanken", FN_PARK_WRAP, ["udp-rt-bp-join"], 500, x=840)
-join_parts("udp-rt-bp-join", Z, ["udp-rt-bp-build"], 560, x=400, timeout=240)
-func("udp-rt-bp-build", Z, "→ ParkingSummary", FN_PARK_BUILD, ["udp-rt-bp-post"], 560)
-upsert("udp-rt-bp-post", Z, ["udp-rt-bp-debug"], 560)
-debug("udp-rt-bp-debug", Z, "Parken-BW Ergebnis", 560)
+inject("udp-rt-bp-inject", Z, "alle 3 Stunden", 10800, 420, ["udp-rt-bp-fetch"], 440)
+# Kein Timeout am Function-Node: Der Cursor-Lauf dauert bei ~64 Seiten und
+# 1 s Pause rund 70 s. Der Konnektor läuft alle 3 Stunden, das ist vertretbar.
+func("udp-rt-bp-fetch", Z, "ParkAPI (Cursor-Seiten)", FN_PARK_FETCH, ["udp-rt-bp-build"], 440, x=400,
+     libs=[{"var": "https", "module": "https"}, {"var": "zlib", "module": "zlib"}])
+func("udp-rt-bp-build", Z, "→ ParkingSummary + Einzelanlagen", FN_PARK_BUILD, ["udp-rt-bp-rate"], 440, x=700)
+delay_rate("udp-rt-bp-rate", Z, ["udp-rt-bp-post"], 500)
+upsert("udp-rt-bp-post", Z, ["udp-rt-bp-debug"], 500)
+debug("udp-rt-bp-debug", Z, "Parken-BW Ergebnis", 500)
 
 FN_GBFS_SYS = r'''// GBFS-Systemliste -> je System eine free_bike_status-Abfrage
 if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.systems)) {
@@ -2181,6 +2421,14 @@ debug("udp-rt-cz-debug", Z, "Carsharing-BW Ergebnis", 1070)
 # deckt BW mit Reserve ab (Lörrach als entlegenster Punkt liegt bei 152 km)
 # und kommt mit 29 Seiten aus — erst dadurch ist ein 30-Minuten-Takt für den
 # landesweiten Livestatus vertretbar.
+#
+# OFFEN (24.08., bewusst NICHT in dieser Änderung behoben): Die Radius-Abfrage
+# meldet total_count 29.902, geholt werden 29 × 1000 = 29.000 Standorte — rund
+# 902 fallen also still unter den Tisch. Anders als bei der ParkAPI funktioniert
+# die offset-Pagination hier nachweislich, es fehlen schlicht Seiten. Der Fix ist
+# eine Zeile (OC_SEITEN hoch bzw. an next_path entlanglaufen), gehört aber in
+# eine eigene Änderung mit eigener Messung des Volumen-Effekts — 902 zusätzliche
+# Ladestandorte schreiben auch zusätzliche TRoE-Zeilen. Nicht vergessen.
 OC_SEITEN = 29
 FN_OC_KREISE = r'''// OCPDB-Abzug für BW paginiert (Radius 190 km um die Landesmitte)
 const msgs = [];
@@ -2659,12 +2907,27 @@ try {
         "SELECT to_char(date_trunc('hour', ts), 'HH24') AS h, count(*) AS n FROM attributes " +
         "WHERE ts > (now() AT TIME ZONE 'utc') - interval '24 hours' " +
         "GROUP BY date_trunc('hour', ts) ORDER BY date_trunc('hour', ts)")).rows;
+    // Ohne LIMIT: Die Budgetprüfung unten muss ALLE Typen sehen. Eine Ausreißer-
+    // Reihe braucht nicht unter den Top 14 zu stehen, um ihr Budget zu sprengen.
+    // Ins Dashboard gehen weiterhin nur die 14 größten (siehe rowsByType).
     typ = (await client.query(
         "SELECT split_part(entityid, ':', 3) AS typ, count(*) AS n, " +
         "count(*) FILTER (WHERE ts > (now() AT TIME ZONE 'utc') - interval '24 hours') AS n24, " +
-        "count(DISTINCT entityid) AS e FROM attributes GROUP BY 1 ORDER BY n DESC LIMIT 14")).rows;
+        "count(DISTINCT entityid) AS e FROM attributes GROUP BY 1 ORDER BY n DESC")).rows;
 } finally {
     await client.end();
+}
+// Zeilenbudget je Entitätstyp aus der Konnektor-Registry (Feld rowBudget24h,
+// optional). Nach dem ParkAPI-Vorfall vom 24.08. — ein Konnektor schrieb einen
+// Monat lang ~1,04 Mio Zeilen/Tag, die Hälfte der ganzen Zeitreihen-Datenbank,
+// ohne dass irgendetwas Alarm schlug — ist das die stehende Sicherung: Wer sein
+// erwartetes Tagesvolumen überschreitet, landet im Node-RED-Log. Typen ohne
+// hinterlegtes Budget werden wie bisher nur gezählt, nie beanstandet.
+const BUDGET = __ROW_BUDGET__;
+const ueberzogen = typ.filter(r => BUDGET[r.typ] && Number(r.n24) > BUDGET[r.typ])
+    .map(r => r.typ + ': ' + Number(r.n24) + ' statt max. ' + BUDGET[r.typ]);
+if (ueberzogen.length) {
+    node.warn('TRoE-Zeilenbudget (24 h) überschritten — ' + ueberzogen.join(' · '));
 }
 const now = new Date().toISOString();
 const P = v => ({ type: 'Property', value: v, observedAt: now });
@@ -2679,15 +2942,26 @@ msg.payload = [{
     troeRows1h: P(Number(base.r1)),
     troeEntities: P(Number(base.ents)),
     ingestByHour: P(ing.map(r => [r.h, Number(r.n)])),
-    rowsByType: P(typ.map(r => [r.typ, Number(r.n), Number(r.n24), Number(r.e)])),
+    rowsByType: P(typ.slice(0, 14).map(r => [r.typ, Number(r.n), Number(r.n24), Number(r.e)])),
     '@context': 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld'
 }];
 node.status({ text: base.rows + ' Zeilen · +' + base.r1 + '/h' });
 msg.headers = { 'Content-Type': 'application/ld+json' };
 return msg;'''
 
+
+# Budgets aus der Registry einsammeln: rowBudget24h ist ein optionales
+# {Entitätstyp: Zeilen/Tag}-Objekt je Konnektor. Mehrere Konnektoren dürfen auf
+# denselben Typ schreiben — dann summieren sich ihre Budgets.
+ROW_BUDGET = {}
+for _c in REGISTRY:
+    for _typ, _n in (_c.get("rowBudget24h") or {}).items():
+        ROW_BUDGET[_typ] = ROW_BUDGET.get(_typ, 0) + int(_n)
+
 inject("udp-rt-db-inject", Z, "alle 10 Minuten", 600, 25, ["udp-rt-db-fn"], 260)
-func("udp-rt-db-fn", Z, "→ PlatformStatus:udp-troe (SQL)", FN_TROE, ["udp-rt-db-post"], 260, x=420,
+func("udp-rt-db-fn", Z, "→ PlatformStatus:udp-troe (SQL)", FN_TROE.replace(
+         "__ROW_BUDGET__", json.dumps(ROW_BUDGET, ensure_ascii=False, sort_keys=True)),
+     ["udp-rt-db-post"], 260, x=420,
      libs=[{"var": "pg", "module": "pg"}])
 upsert("udp-rt-db-post", Z, ["udp-rt-db-debug"], 260)
 debug("udp-rt-db-debug", Z, "TRoE-Statistik Ergebnis", 260)
@@ -2809,17 +3083,17 @@ status = [{k: c.get(k) for k in ("id", "name", "scope", "enabledFor", "sollMinut
 # Generatorlauf einen Diff, obwohl sich fachlich nichts geändert hat.
 _stand = datetime.fromtimestamp(Path(REGISTRY_PATH).stat().st_mtime,
                                 timezone.utc).isoformat(timespec="seconds")
-with open(STATUS_EXPORT, "w") as f:
+with open(STATUS_EXPORT, "w", encoding="utf-8") as f:
     json.dump({"stand": _stand, "connectors": status}, f, ensure_ascii=False, indent=1)
     f.write("\n")
 
-with open(FLOWS) as f:
+with open(FLOWS, encoding="utf-8") as f:
     existing = json.load(f)
 
 existing = [n for n in existing if not str(n.get("id", "")).startswith("udp-rt-")]
 existing.extend(nodes)
 
-with open(FLOWS, "w") as f:
+with open(FLOWS, "w", encoding="utf-8") as f:
     json.dump(existing, f, indent=4, ensure_ascii=False)
     f.write("\n")
 

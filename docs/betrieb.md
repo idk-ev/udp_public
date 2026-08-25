@@ -149,11 +149,37 @@ Neustart, ohne Deploy).
 
 Mit der BW-weiten Ingestion wuchs die TRoE-Tabelle `attributes` um ~416 k
 Zeilen/Tag (20.07.2026). Der Stufe-3-Ausbau auf alle Kommunen (21.07.) hob
-das gemessen auf **~1,2 Mio Zeilen/Tag** — Einzelstandorte sind der Treiber:
-11.409 Ladestationen, 3.926 Carsharing-Stationen und 909 Bürgersensoren, wo
-vorher je eine Handvoll stand.
+das gemessen auf **~1,2 Mio Zeilen/Tag**.
 
-Drei Gegenmaßnahmen sind umgesetzt:
+**Korrektur der Ursachenzuschreibung (24.08.2026):** An dieser Stelle stand
+lange, Einzelstandorte seien der Treiber — Ladestationen, Carsharing-Stationen
+und Bürgersensoren. Das war falsch. Die Messung am 24.08. hat den Löwenanteil
+einem einzigen fehlerhaften Konnektor zugeordnet: `parken-bw` schrieb allein
+**~1,04 Mio Zeilen/Tag**, rund die Hälfte der gesamten Zeitreihen-Datenbank,
+und deckte dabei 1,6 % der Quelldaten ab. Drei Fehler lagen übereinander:
+
+* Die Seitenaufteilung ging mit `&offset=` gegen die MobiData-BW-ParkAPI v3.
+  Die API ignoriert den Parameter stillschweigend — alle 66 Anfragen je Lauf
+  lieferten dieselben ersten 500 von 31.908 Datensätzen zurück, und jeder
+  dieser Datensätze wurde 66× je Lauf geschrieben.
+* Die Entitäts-IDs entstanden aus dem geslugten Anlagennamen. Gleich benannte
+  Anlagen fielen zusammen: aus 500 sichtbaren Datensätzen wurden 336 Entitäten
+  (42× »Hauptbahnhof Westseite«, 36× »List-Gymnasium« …).
+* Je Lauf gingen alle sieben Attribute jeder Anlage neu heraus, obwohl nur
+  1,6 % der Anlagen in BW überhaupt Echtzeitdaten führen und die übrigen sechs
+  Attribute sich praktisch nie ändern.
+
+Behoben (Sprint 2.9) durch Cursor-Pagination (`start=<next_id>` statt
+`offset=`), stabile IDs aus dem ParkAPI-eigenen Primärschlüssel
+(`urn:ngsi-ld:ParkingSite:parkapi-<id>`) und einen getrennten Schreibpfad für
+Stamm- und Bewegungsdaten. Der Konnektor deckt seither statt 336 Entitäten
+rund 24.900 Parkanlagen in Baden-Württemberg ab und schreibt im eingeschwungenen
+Zustand grob **6.000 Zeilen/Tag**. Der erste Lauf nach dem Deploy legt einmalig
+rund 226.000 Zeilen an — die Erstsichtung aller Anlagen — und löst dabei
+erwartungsgemäß eine Budgetwarnung aus; ab dem zweiten Lauf ist Ruhe.
+
+Die drei ursprünglichen Gegenmaßnahmen bleiben richtig und in Kraft — sie
+zielten nur auf den kleineren Teil des Volumens:
 
 1. **Nur Änderungen schreiben.** Ladestationen und Carsharing-Stationen
    werden gegen die letzte Statussignatur geprüft; eine Station, deren
@@ -167,16 +193,36 @@ Drei Gegenmaßnahmen sind umgesetzt:
    werden nach 3 Monaten gelöscht; sie werden nirgends über Monate
    ausgewertet, die Dashboards zeigen ihren aktuellen Zustand auf der Karte.
 
+Damit sich ein solcher Fehler nicht wieder einen Monat lang verstecken kann,
+sind seit Sprint 2.9 zwei Sicherungen eingezogen:
+
+4. **Zeilenbudget je Entitätstyp.** Ein Konnektor kann in
+   `platform/config/connectors.json` ein optionales `rowBudget24h`
+   (`{"ParkingSite": 25000, …}`) hinterlegen. Der Flow-Generator summiert die
+   Budgets aller Konnektoren und übergibt sie an die TRoE-Statistik
+   (`troe-stats`, alle 10 Minuten); wer sein Tagesvolumen überschreitet,
+   erscheint als Warnung im Node-RED-Log. Konnektoren ohne das Feld verhalten
+   sich unverändert.
+5. **Lautes Scheitern statt stiller Lücken.** Der ParkAPI-Abruf prüft, ob sich
+   zwei Seiten überschneiden, und bricht den Lauf mit `node.error` ab, statt
+   denselben Ausschnitt erneut zu schreiben; ein erreichter Seitendeckel
+   erzeugt eine Warnung. Der Aufbauschritt vergleicht zusätzlich die Zahl der
+   verschiedenen Entitäts-IDs mit der Zahl der Quelldatensätze und warnt bei
+   unter 95 % — das ist die Signatur einer ID-Kollision.
+
 **Retention ist aktiv** (Sprint 1.6): Der Registry-Konnektor
 `troe-retention` löscht täglich 03:40 via Node-RED/pg aus `attributes` und
 `subattributes` (die kleine `entities`-Tabelle bleibt für Mintaka-Metadaten)
 und pflegt idempotente `ts`-Indizes. `drop_chunks` ist bewusst NICHT im
 Einsatz — TRoE nutzt einfache Tabellen, keine Hypertables.
 
-Zu beobachten: Der Plattenbedarf im eingeschwungenen Zustand liegt bei
-grob 100–150 GB (bei ~390 Byte je Zeile). Das passt auf den Referenzhost,
-gehört aber ins Kapazitätsmonitoring — bei einem produktiven Betrieb mit
-mehreren Mandanten ist die Staffelung neu zu bewerten.
+Zu beobachten: Der Plattenbedarf im eingeschwungenen Zustand wurde bei
+~1,2 Mio Zeilen/Tag mit grob 100–150 GB veranschlagt (bei ~390 Byte je Zeile).
+Ohne den `parken-bw`-Fehler fällt gut die Hälfte dieses Volumens weg; die Zahl
+ist nach ein paar Wochen Regelbetrieb neu zu messen, statt sie hier
+fortzuschreiben. Der Punkt gehört so oder so ins Kapazitätsmonitoring — bei
+einem produktiven Betrieb mit mehreren Mandanten ist die Staffelung neu zu
+bewerten.
 
 (Voraussetzung: `attributes` als Hypertable partitioniert; im
 Referenz-Setup von Orion-LD als normale Tabelle angelegt — dann stattdessen
