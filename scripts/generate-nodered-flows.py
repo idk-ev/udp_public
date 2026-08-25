@@ -402,6 +402,22 @@ msg.payload = [Object.assign({
     dataProvider: { type: 'Property', value: 'EFA-BW (naldo/bwegt)' },
     '@context': 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld'
 }, COORDS ? { location: { type: 'GeoProperty', value: { type: 'Point', coordinates: COORDS } } } : {})];
+// TRoE-Dedupe: unveränderte Attribute (Stammdaten wie name/stopCode/location,
+// aber auch ein konstanter avgDelayMinutes) nicht bei jedem Lauf erneut in die
+// Historie schreiben — Orion-LD legt bei options=update je mitgesendetem Attribut
+// eine TRoE-Zeile an, der Broker behält Nicht-Mitgesendetes. dateObserved bleibt
+// als Frischesignal immer dabei; nach Neustart ist der Kontext leer -> einmal voll.
+const ent = msg.payload[0];
+const sigKey = 'oepnvSig:' + ent.id;
+const prevSig = flow.get(sigKey) || {};
+const nextSig = {};
+for (const k of Object.keys(ent)) {
+    if (k === 'id' || k === 'type' || k === '@context' || k === 'dateObserved') continue;
+    const s = JSON.stringify(ent[k].value);
+    nextSig[k] = s;
+    if (prevSig[k] === s) delete ent[k];
+}
+flow.set(sigKey, nextSig);
 msg.headers = { 'Content-Type': 'application/ld+json' };
 return msg;'''
 
@@ -2831,9 +2847,13 @@ for (const ags of Object.keys(gem)) {
     });
 }
 if (!entities.length) return null;
-node.status({ text: entities.length + ' Gemeinde-Pulse' });
 ''' + CHUNK_HELPER + r'''
-return [emitChunks(node, msg, entities, 100)];'''
+// Stündlicher Lauf, aber die meisten Komponenten ändern sich seltener — ohne Gate
+// schrieb jeder Lauf alle Gemeinde-Pulse erneut in die TRoE-Historie (~38k Zeilen/Tag).
+const geaendert = gateChanged(node, entities, 'pulseSig',
+    e => e.pulseIndex.value + '|' + JSON.stringify(e.components.value));
+if (!geaendert.length) { node.status({ text: 'unverändert (' + entities.length + ')' }); return null; }
+return [emitChunks(node, msg, geaendert, 100)];'''
 
 inject("udp-rt-bz-inject", Z, "stündlich", 3600, 840, ["udp-rt-bz-msgs"], 300)
 func("udp-rt-bz-msgs", Z, "Aggregat-Abfragen (6)", FN_PULSE_BW_MSGS, ["udp-rt-bz-rate"], 300, x=400)
@@ -2981,10 +3001,13 @@ try {
     // ts-Indizes (idempotent): tragen Retention UND die 10-min-Statistikabfragen
     await client.query("CREATE INDEX IF NOT EXISTS attributes_ts_idx ON attributes (ts)");
     await client.query("CREATE INDEX IF NOT EXISTS subattributes_ts_idx ON subattributes (ts)");
+    // (entityid, ts) mit text_pattern_ops: trägt Mintaka-Temporalabfragen je
+    // Entität (vorher Seq-Scan über die ganze Tabelle) und die LIKE-Staffeln unten
+    await client.query("CREATE INDEX IF NOT EXISTS attributes_entityid_ts_idx ON attributes (entityid text_pattern_ops, ts)");
     a = (await client.query("DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '12 months'")).rowCount;
     s = (await client.query("DELETE FROM subattributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '12 months'")).rowCount;
 
-    // Gestaffelt: Einzelstandorte (Ladesäulen, Carsharing-Stationen,
+    // Gestaffelt: Einzelstandorte (Ladesäulen, Carsharing-Stationen, Parkplätze,
     // Bürgersensoren) sind der Volumentreiber des landesweiten Stufe-3-Ausbaus,
     // werden aber nirgends über Monate ausgewertet — die Dashboards zeigen
     // ihren aktuellen Zustand auf der Karte. Aggregate je Gemeinde bleiben die
@@ -2993,6 +3016,7 @@ try {
         "DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '3 months' " +
         "AND (entityid LIKE 'urn:ngsi-ld:EVChargingStation:%' " +
         "  OR entityid LIKE 'urn:ngsi-ld:CarSharingStation:%' " +
+        "  OR entityid LIKE 'urn:ngsi-ld:ParkingSite:%' " +
         "  OR entityid LIKE 'urn:ngsi-ld:AirQualityObserved:bw-sensor-%')")).rowCount;
     a += kurz;
     if (kurz) node.warn('Retention: ' + kurz + ' Zeilen aus Einzelstandorten (3-Monats-Staffel)');

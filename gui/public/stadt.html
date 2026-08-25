@@ -14,8 +14,6 @@
 <style>
   /* Seitenspezifisch (Basis kommt aus smartcity-theme.css) */
   #map { height: 460px; }
-  .stagebadge { font-size: .72rem; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border);
-                color: var(--text-muted); vertical-align: 3px; }
   .disclaimer { font-size: .78rem; color: var(--text-muted); margin: -8px 0 14px; }
   .fc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .fc .day { text-align: center; background: linear-gradient(180deg, var(--surface-1), var(--surface-0));
@@ -327,13 +325,13 @@ async function render() {
   const [, name, lat, lon, krs, typ, ew, dashUrl, slug] = STADT.row;
   const ags = STADT.row[0];
   const cfg = DASH[slug] || {};
-  const stage = cfg.stage || 1;
+  const adoptiert = cfg.adoptiert === true;
   document.title = `Smart City ${name} — Live-Dashboard`;
   $("#title").textContent = name;
-  $("#subtitle").innerHTML = `${typ === "S" ? "Stadt" : typ === "F" ? "Gemeindefreies Gebiet" : "Gemeinde"} · ${fmtN(ew)} Einwohner · <span class="stagebadge">Stufe ${stage}</span> <a class="searchlink" href="/dashboard.html" style="color:var(--text-muted)">· Kommunen-Suche</a>`;
-  $("#disclaimer").textContent = stage >= 2
+  $("#subtitle").innerHTML = `${typ === "S" ? "Stadt" : typ === "F" ? "Gemeindefreies Gebiet" : "Gemeinde"} · ${fmtN(ew)} Einwohner <a class="searchlink" href="/mitmachen.html" style="color:var(--text-muted)">· Kommunen-Suche</a>`;
+  $("#disclaimer").textContent = adoptiert
     ? "In Kooperation mit der Kommune · Datenquellen siehe Fußzeile"
-    : "Inoffizielles Angebot aus offenen Daten — die Kommune kann dieses Dashboard kostenlos übernehmen und gestalten (Stufe 2).";
+    : "Inoffizielles Angebot aus offenen Daten — die Kommune kann dieses Dashboard kostenlos übernehmen und gestalten.";
   if (cfg.branding) {
     for (const [k, v] of Object.entries(cfg.branding)) {
       if (k === "primary") document.documentElement.style.setProperty("--tile", v);
@@ -343,11 +341,11 @@ async function render() {
   }
 
   const komm = kommuneConn(ags);
-  // Kommunenspezifische UND landesweite Bausteine: Seit dem Stufe-3-Ausbau
+  // Kommunenspezifische UND landesweite Bausteine: Seit dem Ausbau um eigene Datenquellen
   // liefern Landeskonnektoren (enabledFor "*") Dinge, die früher je Kommune
   // eingerichtet werden mussten — B+R, Ladestatus, Carsharing, Abfahrten.
   const provides = new Set([...komm.flatMap(c => c.provides || []), ...landProvides()]);
-  // Stufe-3-Konnektoren, die die Kachel-/Detaildaten bestimmen. Vorgezogen,
+  // kommunenspezifische Konnektoren, die die Kachel-/Detaildaten bestimmen. Vorgezogen,
   // damit ALLE Abrufe in EINEM Promise.all parallel laufen (früher zwei
   // sequentielle Blöcke → unnötige Latenz).
   const findC = p => komm.find(c => (c.provides || []).includes(p))
@@ -398,9 +396,9 @@ async function render() {
     entity("urn:ngsi-ld:PublicAmenity:bw-" + ags),
     // Container-/Behälter-Füllstände (FIWARE WasteContainer). Es gibt dafür derzeit
     // keine offenen Landesdaten — die Ebene aktiviert sich automatisch, sobald eine
-    // Kommune ihren LoRaWAN-Sensor-Feed anbindet (Stufe-3-Baustein).
+    // Kommune ihren LoRaWAN-Sensor-Feed anbindet (kommunenspezifischer Baustein).
     byAgs("WasteContainer", ags).catch(() => []),
-    // Parkanlagen je Standort mit Koordinaten (MobiData BW ParkAPI, Stufe-3-Baustein)
+    // Parkanlagen je Standort mit Koordinaten (MobiData BW ParkAPI, kommunenspezifischer Baustein)
     // für die Parken-Detailkarte und die Parken-Kartenebene. Die ParkingSummary oben
     // bleibt der aggregierte Kachelwert.
     byAgs("ParkingSite", ags, "name,totalSpotNumber,availableSpotNumber,category,ags,location").catch(() => []),
@@ -485,7 +483,7 @@ async function render() {
     tiles += tile("Puls", p, "/100", { detail: "puls", status: p >= 75 ? css("--status-good") : p >= 50 ? css("--status-warn") : css("--status-serious"),
       mini: { v: p, min: 0, max: 100, stops: PULS_STOPS, flip: true }, hint: "Gesamtzustand", explain: "Gewichteter Zustandsindex aus Luft, Verfügbarkeiten, Baustellen und Warnlage (0–100, höher = besser)." });
   }
-  // 7-Tage-Vorhersagestreifen für die Temperatur-Detailkarte (aus der Stufe-3-Vorhersage).
+  // 7-Tage-Vorhersagestreifen für die Temperatur-Detailkarte (aus der kommunenspezifischen Vorhersage).
   const fcStrip = fcDays.slice(0, 7).map((d, i) =>
     [i === 0 ? "Heute" : new Date(d[0] + "T12:00:00").toLocaleDateString("de-DE", { weekday: "short" }), d[1], d[2], d[3], d[4], d[5]]);
   if (wx) {
@@ -810,7 +808,7 @@ async function render() {
       + (val(e, "availableSpotNumber") != null ? " · " + fmtN(val(e, "availableSpotNumber")) + " frei" : "") })).filter(i => i.lat);
   if (pk) {
     if (parkPts.length) {
-      // Bevorzugt: Standortkarte der Parkanlagen (Stufe-3-Baustein mit Koordinaten).
+      // Bevorzugt: Standortkarte der Parkanlagen (kommunenspezifischer Baustein mit Koordinaten).
       D.parken = { kind: "stations", title: "Parken", center: [lat, lon],
         explain: "Parkanlagen mit Standort und — wo gemeldet — freien Plätzen in Echtzeit (MobiData BW ParkAPI).",
         groups: [{ name: "Parken", color: MAP_C.parken, items: parkPts }],
@@ -900,15 +898,15 @@ async function render() {
       explain: "Rechenweg: installierte PV-Leistung × 950 kWh je kWp und Jahr (typischer Ertrag in Süddeutschland) × 0,4 kg CO₂ je kWh verdrängtem Strommix. Eine Näherung — keine Messung." });
   }
 
-  // Stufe-3-Kacheln (kommune-spezifische Konnektoren)
+  // Kacheln aus kommunenspezifischen Konnektoren
   if (bikes.length) {
     // Detailkarte: Standortkarte der überwachten Fahrradparkplätze (frei/gesamt im Popup).
     D.br = { kind: "stations", title: "B+R Fahrradparken", center: [lat, lon],
-      explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — Standorte mit freien Plätzen in Echtzeit (Stufe 3).",
+      explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — Standorte mit freien Plätzen in Echtzeit.",
       groups: [{ name: "B+R Fahrradparken", color: MAP_C.br, items: bikes.map(b => ({ ...pos(b), name: val(b, "name"),
         extra: "frei: " + (val(b, "availableSpotNumber") ?? "?") + " / " + (val(b, "totalSpotNumber") ?? "?") + " Plätze" })).filter(i => i.lat) }] };
     tiles += tile("B+R Fahrradparken", brFrei, "", { topic: "mobilitaet", detail: D.br.groups[0].items.length ? "br" : null, status: css("--status-good"),
-      hint: "freie Plätze, Echtzeit", explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — kommune-spezifischer Echtzeitkonnektor (Stufe 3). Klick: Standortkarte." });
+      hint: "freie Plätze, Echtzeit", explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — kommune-spezifischer Echtzeitkonnektor. Klick: Standortkarte." });
   }
   if (csFlotten.length) {
     const anbieter = csFlotten.map(e => val(e, "operator")).filter(Boolean);
@@ -947,7 +945,7 @@ async function render() {
   if (passant && val(passant, "pedestrianCount") != null) {
     D.passanten = { kind: "chart", title: "Passantenfrequenz", explain: "Fußverkehr an der Zählstelle (hystreet).", zero: true, series: [{ id: passant.id, attr: "pedestrianCount", name: "Personen/h" }] };
     tiles += tile("Passanten", fmtN(val(passant, "pedestrianCount")), "/h", { topic: "mobilitaet", detail: "passanten",
-      hint: esc(val(passant, "name")) || "Innenstadt", explain: "Passantenfrequenz der letzten Stunde (hystreet) — Stufe-3-Konnektor." });
+      hint: esc(val(passant, "name")) || "Innenstadt", explain: "Passantenfrequenz der letzten Stunde (hystreet) — kommune-spezifischer Konnektor." });
   }
   const deps0 = asArray(val(ptStops[0], "departures"));
   const abfList = (abfahrten && Array.isArray(abfahrten.abfahrten)) ? abfahrten.abfahrten : [];
@@ -1098,7 +1096,7 @@ async function render() {
   wb.style.display = heads.length ? "" : "none";
   wb.innerHTML = heads.length ? heads.join("<br>") : "";
 
-  // Vorhersage-Karte (nur wenn Stufe-3-Vorhersage vorhanden; Entität oben geladen)
+  // Vorhersage-Karte (nur wenn kommunenspezifische Vorhersage vorhanden; Entität oben geladen)
   {
     const days = fcDays;
     if (days.length) {

@@ -378,7 +378,9 @@ services:
       SCHEDULE: "@daily"
       BACKUP_KEEP_DAYS: 14
       BACKUP_KEEP_WEEKS: 8
-      BACKUP_KEEP_MONTHS: 12
+      # 3 statt 12 Monate: die TRoE-Historie ist append-only und steckt in jedem
+      # Voll-Dump erneut — 12 Monats-Dumps wären fast nur redundantes Volumen
+      BACKUP_KEEP_MONTHS: 3
     volumes:
       - backup-data:/backups
     restart: unless-stopped

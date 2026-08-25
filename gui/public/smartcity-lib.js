@@ -336,7 +336,7 @@
         <div style="font-size:.82rem;font-weight:600">Hell / Dunkel</div>
         <div class="row">${[["", "Auto"], ["light", "Hell"], ["dark", "Dunkel"]].map(([m, n]) =>
           `<button type="button" class="mode${m === state.mode ? " active" : ""}" data-m="${m}">${n}</button>`).join("")}</div>
-        <div class="note">Kommunen wählen ihr Standard-Schema ab Stufe 2 — <a href="/mitmachen.html">mitmachen</a>. Alle Schemata sind kontrast- und farbfehlsichtigkeitsgeprüft.</div>
+        <div class="note">Kommunen können ein eigenes Standard-Schema festlegen — <a href="/mitmachen.html">mitmachen</a>. Alle Schemata sind kontrast- und farbfehlsichtigkeitsgeprüft.</div>
       </div>`;
     mount.appendChild(el);
     el.querySelector("button").addEventListener("click", () => el.classList.toggle("open"));
