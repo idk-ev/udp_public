@@ -116,6 +116,35 @@ Diagnose bei Verdacht: `SELECT count(*) FROM attributes WHERE entityid =
 '<id>';` in der Datenbank `orion` — 0 Zeilen trotz vorhandener Entität im
 Broker deutet auf einen der beiden Fälle.
 
+### Neustartschleife MongoDB → Orion-LD (Kubernetes)
+
+Orion-LD 1.6.0 beendet sich mit **SIGSEGV**, wenn MongoDB unter ihm
+verschwindet — es fängt den Verbindungsabbruch nicht ab. Jeder Mongo-Neustart
+reißt damit alle Broker-Replikate mit, und während des Wiederanlaufs schreibt
+kein Konnektor. Das ist harmlos, solange MongoDB stabil läuft, und fatal, wenn
+es das nicht tut.
+
+Genau das trat auf dem Referenzcluster ein: Die Liveness-Probe rief
+`mongosh --eval "db.adminCommand('ping').ok"` mit dem Kubernetes-Vorgabewert
+`timeoutSeconds: 1` auf. `mongosh` ist ein Node-CLI und braucht allein zum
+Starten rund eine Sekunde — die Probe scheiterte also an ihrer eigenen
+Startzeit, nicht an der Datenbank. Bilanz bis 26.08.2026: 102 Neustarts von
+`mongo-0`, 1622 von `orion-ld`, dazu eine **fünftägige Ingestion-Lücke
+(19.–23.08.2026)** ohne eine einzige TRoE-Zeile. Der Fehler ist still: Beide
+Pods stehen durchgehend auf `Running`, nur die Restart-Zähler wachsen.
+
+Behoben in `helm/udp/templates/persistence.yaml` mit `timeoutSeconds: 10`.
+Compose ist nicht betroffen — Dockers Vorgabewert für `healthcheck.timeout`
+liegt bei 30 s. Zur Diagnose taugt der Restart-Zähler, nicht der Pod-Status:
+
+```sh
+kubectl -n udp get pods -o wide            # RESTARTS von mongo-0 / orion-ld
+kubectl -n udp get events --sort-by=.lastTimestamp | grep -i unhealthy
+# Ingestion-Lücken sichtbar machen:
+psql -U udp -d orion -c \
+  "SELECT ts::date, count(*) FROM attributes GROUP BY 1 ORDER BY 1;"
+```
+
 ## Secrets
 
 `platform/.env` ist verpflichtend: Seit 21.07. sind alle Passwörter in

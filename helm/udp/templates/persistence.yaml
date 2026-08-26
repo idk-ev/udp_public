@@ -41,6 +41,14 @@ spec:
             exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
             initialDelaySeconds: 15
             periodSeconds: 20
+            # mongosh ist ein Node-CLI und braucht allein zum Starten rund eine
+            # Sekunde. Mit dem Kubernetes-Standard (timeoutSeconds: 1) scheitert
+            # die Prüfung deshalb an ihrer eigenen Startzeit statt an der
+            # Datenbank: Auf dem Referenzcluster hat das mongo-0 102× neu
+            # gestartet und orion-ld jedes Mal mit SIGSEGV mitgerissen
+            # (1622 Neustarts, dabei 19.–23.08.2026 fünf Tage ohne Ingestion).
+            # Compose ist nicht betroffen — dort liegt der Vorgabewert bei 30 s.
+            timeoutSeconds: 10
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:

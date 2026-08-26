@@ -21,6 +21,7 @@ Nachgezogen aus dem Betrieb des Referenzclusters:
 
 - Retention räumt den Alt-Bestand des Konnektors ab (hier 23,8 Mio Zeilen).
 - Service-Worker: Cacheversion folgt der Chart-Version, Shell wird aufgefrischt.
+- MongoDB-Liveness-Probe: 10 s statt Vorgabe 1 s — sie riss Orion-LD mit.
 
 ## 1.0.1 — Chart-Veröffentlichung korrigiert
 
