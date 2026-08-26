@@ -17,6 +17,10 @@ Bewegungsdaten. Ergebnis rund 24.900 statt 336 Parkanlagen bei grob 6.000 statt
 1,04 Mio Zeilen/Tag. Gegen Wiederholung: Zeilenbudget je Konnektor
 (`rowBudget24h`), Kardinalitäts-Prüfung und Tests unter `tests/`.
 
+Nachgezogen aus dem Betrieb des Referenzclusters:
+
+- Retention räumt den Alt-Bestand des Konnektors ab (hier 23,8 Mio Zeilen).
+
 ## 1.0.1 — Chart-Veröffentlichung korrigiert
 
 Keine funktionalen Änderungen an der Plattform. Der Release-Lauf zu `v1.0.0`

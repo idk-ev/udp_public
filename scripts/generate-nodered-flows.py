@@ -3035,6 +3035,42 @@ try {
         "DELETE FROM attributes WHERE entityid LIKE 'urn:ngsi-ld:OffStreetParking:%'")).rowCount;
     if (verwaist) node.warn('Retention: ' + verwaist + ' verwaiste OffStreetParking-Zeilen entfernt');
     a += verwaist;
+
+    // Alt-Schema-Reste von parken-bw: Bis Sprint 2.9 entstand die Entitäts-ID aus
+    // dem geslugten Anlagennamen, seither aus dem ParkAPI-Schlüssel
+    // (»parkapi-<id>«). Die alten Zeilen wachsen nicht nach — ihre Entitäten
+    // werden nie wieder geschrieben —, altern seit dem Herausnehmen von
+    // ParkingSite aus der 3-Monats-Staffel aber auch nicht mehr von selbst weg.
+    // Auf dem Referenzcluster waren es 23,8 Mio Zeilen, 47 % der Tabelle.
+    //
+    // Die IDs kommen aus der KLEINEN entities-Tabelle (dort 101.000 Zeilen), nicht
+    // aus einem LIKE über attributes: Ein »NOT LIKE« auf 22 GB lässt sich nicht
+    // indizieren, der Planer wählt einen Seq Scan — und zwar auch dann noch jede
+    // Nacht, wenn längst nichts mehr zu tun ist. Mit einer konkreten ID-Liste
+    // greift attributes_entityid_ts_idx (Bitmap Index Scan, gemessen 57 k statt
+    // 2,9 Mio geschätzte Kosten). Der Leerlauf kostet damit einen Scan über die
+    // kleine Tabelle statt über die große.
+    const altIds = (await client.query(
+        "SELECT DISTINCT id FROM entities" +
+        " WHERE (id LIKE 'urn:ngsi-ld:ParkingSite:%' AND id NOT LIKE 'urn:ngsi-ld:ParkingSite:parkapi-%')" +
+        "    OR (id LIKE 'urn:ngsi-ld:BikeParking:%' AND id NOT LIKE 'urn:ngsi-ld:BikeParking:parkapi-%')"
+        )).rows.map(r => r.id);
+    // Stapelgröße klein halten: Auf dem Referenzcluster hingen rund 70.000 Zeilen
+    // an EINER Anlage, fünf IDs je Anweisung sind also schon ~350.000 Zeilen.
+    // Der Deckel begrenzt die Nacht; der Rest folgt in der nächsten (dort fünf
+    // Nächte). Die entities-Zeilen bleiben stehen — sie sind klein, tragen die
+    // Mintaka-Metadaten und machen diesen Schritt beim nächsten Lauf idempotent.
+    const ALT_STAPEL = 5, ALT_DECKEL = 5000000;
+    let altPark = 0, altIdx = 0;
+    while (altIdx < altIds.length && altPark < ALT_DECKEL) {
+        altPark += (await client.query("DELETE FROM attributes WHERE entityid = ANY($1::text[])",
+                                       [altIds.slice(altIdx, altIdx + ALT_STAPEL)])).rowCount;
+        altIdx += ALT_STAPEL;
+    }
+    if (altPark) node.warn('Retention: ' + altPark + ' Zeilen von ' + Math.min(altIdx, altIds.length)
+                           + '/' + altIds.length + ' Parkanlagen im Alt-ID-Schema entfernt'
+                           + (altPark >= ALT_DECKEL ? ' (Deckel erreicht, Rest folgt morgen)' : ''));
+    a += altPark;
 } finally {
     await client.end();
 }

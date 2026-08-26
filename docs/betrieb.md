@@ -228,6 +228,41 @@ und pflegt idempotente Indizes (`ts` sowie `(entityid, ts)` mit
 und die LIKE-Staffeln der Retention). `drop_chunks` ist bewusst NICHT im
 Einsatz — TRoE nutzt einfache Tabellen, keine Hypertables.
 
+**Alt-Schema-Reste von `parken-bw` (einmalig, ab Sprint 2.9):** Die Entitäten
+aus der Zeit vor dem Fix tragen IDs aus geslugten Anlagennamen
+(`urn:ngsi-ld:ParkingSite:karlsruhe-parkgarage-fasanengarten`) statt
+`…:parkapi-<id>`. Sie wachsen nicht nach, werden aber auch nie wieder
+geschrieben, und seit ParkingSite aus der 3-Monats-Staffel heraus ist, altern
+sie nicht mehr von selbst weg. Zwei getrennte Aufräumschritte:
+
+* **Zeitreihen** — die Retention räumt sie ab dem ersten Lauf nach dem Deploy
+  selbst weg, höchstens 5 Mio Zeilen je Nacht (auf dem Referenzcluster
+  23,8 Mio Zeilen, 47 % der Tabelle → rund fünf Nächte). Die betroffenen IDs
+  holt sie aus der kleinen `entities`-Tabelle und löscht dann gezielt über
+  `entityid = ANY(...)`; ein `NOT LIKE` direkt auf `attributes` wäre nicht
+  indizierbar und würde die 22 GB jede Nacht erneut sequenziell lesen, auch
+  im Leerlauf. Ein `DELETE` gibt den Platz nur zur Wiederverwendung frei; das
+  ist gewollt — `VACUUM FULL` bräuchte fast so viel freien Platz wie die
+  Tabelle groß ist (dort 22 GB bei 17 GB frei).
+* **Broker** — die Entitäten selbst stehen in Orion-LD und werden von der
+  Retention (nur `pg`) nicht angefasst. Sie tragen ein `ags` und erscheinen
+  daher als veraltete Doppelgänger auf den Parken-Karten. Einmalig entfernen:
+
+  ```sh
+  # IDs im Alt-Schema sammeln (Orion-LD kann »nicht parkapi-« nicht filtern)
+  curl -s 'http://orion-ld:1026/ngsi-ld/v1/entities?type=ParkingSite&limit=1000&attrs=ags' \
+    | jq -r '.[].id' | grep -v ':parkapi-' > alt-ids.txt
+  # in Stapeln zu 100 löschen (entityOperations/delete nimmt ein ID-Array)
+  split -l 100 alt-ids.txt stapel- && for f in stapel-*; do
+    jq -Rn '[inputs]' < "$f" | curl -s -X POST \
+      'http://orion-ld:1026/ngsi-ld/v1/entityOperations/delete' \
+      -H 'Content-Type: application/json' --data-binary @- ; done
+  ```
+
+  Ein Wiederauftreten ist ausgeschlossen: Der Konnektor bildet IDs nur noch aus
+  dem ParkAPI-Schlüssel, und `tests/static/flow-invarianten.test.js` verbietet
+  Entitäts-IDs aus geslugtem Freitext.
+
 Zu beobachten: Der Plattenbedarf im eingeschwungenen Zustand wurde bei
 ~1,2 Mio Zeilen/Tag mit grob 100–150 GB veranschlagt (bei ~390 Byte je Zeile).
 Ohne den `parken-bw`-Fehler fällt gut die Hälfte dieses Volumens weg; die Zahl
