@@ -20,6 +20,7 @@ Bewegungsdaten. Ergebnis rund 24.900 statt 336 Parkanlagen bei grob 6.000 statt
 Nachgezogen aus dem Betrieb des Referenzclusters:
 
 - Retention räumt den Alt-Bestand des Konnektors ab (hier 23,8 Mio Zeilen).
+- Service-Worker: Cacheversion folgt der Chart-Version, Shell wird aufgefrischt.
 
 ## 1.0.1 — Chart-Veröffentlichung korrigiert
 

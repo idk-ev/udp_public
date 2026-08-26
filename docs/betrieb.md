@@ -71,6 +71,20 @@ genau nicht. Compose und Helm: [`monitoring/`](../monitoring/README.md).
   Anomalieerkennung der Fachanwendungen können als Module ergänzt werden;
   Basis-Plausibilisierung (Schema-Validierung NGSI-LD) erfolgt im Broker.
 
+**Ein Deploy allein macht die Dashboards nicht neu.** Die Seiten registrieren
+einen Service-Worker (`gui/public/sw.js`, PWA/Offline-Kiosk). Seiten und
+`/gateway`-Abfragen laufen netz-zuerst und sind sofort aktuell; die statische
+Shell (`smartcity-lib.js`, `smartcity-theme.css`, `dashboards.json`,
+`connectors-status.json`, Leaflet) kommt aus dem Cache und wird seit Sprint 2.9
+im Hintergrund aufgefrischt — sichtbar wird eine Änderung dort also erst beim
+**zweiten** Aufruf nach dem Deploy. Die Cacheversion `V` in `sw.js` ist an die
+Chart-Version gekoppelt (`tests/static/sw-cache.test.js` prüft das): Ein
+Release verwirft damit den Cache seines Vorgängers vollständig. Bis Sprint 2.9
+stand dort ein handgepflegtes `"udp-v2"`, das nie erhöht wurde und
+wiederkehrende Browser dauerhaft auf den Dateien ihres ersten Besuchs
+festhielt. Bei Verdacht auf einen hängenden Client: harter Reload, ersatzweise
+DevTools → Application → Service Workers → Unregister.
+
 ## Härtung (Auszug)
 
 - TLS überall (Ingress, cert-manager), HSTS; interne Netzsegmentierung über
