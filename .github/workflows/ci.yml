@@ -56,3 +56,35 @@ jobs:
                                        gui/public/connectors-status.json \
                                        gui/public/g || \
             echo "::warning::Generierte Artefakte weichen vom Generator-Stand ab — generate-nodered-flows.py laufen lassen und committen"
+
+  # A separate job instead of extra steps in build-test: the connector service
+  # needs Node 22 (package.json: engines), the cockpit SPA runs on 20. A second
+  # setup-node in the same job would switch the Node version for every step that
+  # follows — that belongs apart.
+  connectors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: platform/connectors/package-lock.json
+      - name: Dependencies
+        run: npm --prefix platform/connectors ci
+      - name: Typecheck
+        run: npm --prefix platform/connectors run typecheck
+      - name: Lint
+        run: npm --prefix platform/connectors run lint
+      - name: Formatting
+        run: npm --prefix platform/connectors run format:check
+      - name: Build
+        run: npm --prefix platform/connectors run build
+      - name: Static tests incl. hardening proof
+        # Runs a second time here, and that is deliberate: tests/static/
+        # type-discipline.test.js calls the service's tsc and eslint and skips
+        # itself without its node_modules. In build-test (without an install)
+        # the proof is therefore skipped — only here does it really take hold.
+        # Incidentally, the run over there shows that the suite still passes
+        # dependency-free on a fresh clone.
+        run: node tests/run.js

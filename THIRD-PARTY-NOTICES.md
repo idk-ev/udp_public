@@ -92,6 +92,19 @@ Nicht Teil der Auslieferung — sie erzeugen bzw. prüfen das Bundle nur.
 Direkte Werkzeuge: Vite (MIT), TypeScript (Apache-2.0), ESLint (MIT),
 typescript-eslint (MIT), Prettier (MIT), jsdom (MIT), @vitejs/plugin-react (MIT).
 
+### 3.1 Konnektordienst (`platform/connectors`)
+
+Eigenes npm-Paket (Node 22, TypeScript). Die Laufzeit hat **eine** Abhängigkeit:
+
+| Paket | Lizenz | Rolle |
+|---|---|---|
+| `pg` | MIT | TRoE-Statistiken und Retention sprechen direkt SQL |
+
+Werkzeuge (`devDependencies`, nicht ausgeliefert): TypeScript (Apache-2.0),
+ESLint (MIT), typescript-eslint (MIT), Prettier (MIT), `@types/node` (MIT),
+`@types/pg` (MIT). Bis auf die beiden `@types`-Pakete dieselben Werkzeuge wie
+im Cockpit — die Lizenzlage ändert sich durch das zweite Paket nicht.
+
 MPL-2.0 ist dateibezogenes Copyleft und laut EUPL-Anhang kompatibel; da
 `lightningcss` unverändert als Build-Werkzeug genutzt und nicht ausgeliefert wird,
 entstehen keine weitergehenden Pflichten.
@@ -161,6 +174,7 @@ veröffentlicht — sie werden also **weiterverbreitet**.
 |---|---|---|---|
 | `cockpit` | `nginxinc/nginx-unprivileged:1.30-alpine` (BSD-2-Clause), Build mit `node:24-alpine` (MIT) | eigenes GUI-Bundle | Eigenanteil EUPL-1.2 + permissive Basis — unkritisch |
 | `node-red-udp` | `nodered/node-red:4.1` (Apache-2.0) | `pg@8` (MIT) | permissiv — unkritisch |
+| `udp-connectors` | `node:22-alpine` (MIT) | `pg@8` (MIT) | permissiv — unkritisch |
 | `ckan-dcat` | `ckan/ckan-base:2.10.10` (**AGPL-3.0**) | `ckanext-dcat>=1.7.0` (AGPL-3.0) | **REVIEW NEEDED** (§8.1) |
 | `postgres-timescale-oss` | `postgis/postgis:16-3.5` — PostgreSQL-Lizenz + PostGIS (**GPL-2.0**) | TimescaleDB **Apache Edition** (`timescaledb-2-oss`, Apache-2.0) | **REVIEW NEEDED** (§8.1) |
 

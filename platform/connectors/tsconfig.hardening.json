@@ -1,0 +1,20 @@
+{
+  /* SPDX-License-Identifier: EUPL-1.2
+     © 2024–2026 Thomas Kieß and contributors
+
+     Separate project for the hardening proofs under test/hardening/. These
+     files are NOT supposed to compile — they show that the options from
+     tsconfig.json really do take effect. That is why they are excluded from the
+     main project and are only invoked by tests/static/type-discipline.test.js.
+
+     The compilerOptions are inherited: whoever switches off a hardening in
+     tsconfig.json thereby turns the matching proof green automatically — and
+     the test fails, because it expects a failure. That is exactly how it should
+     be: the hardening cannot be loosened unnoticed. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["test/hardening"],
+  "exclude": []
+}

@@ -2,7 +2,16 @@
 # SPDX-License-Identifier: EUPL-1.2
 # © 2024–2026 Thomas Kieß and contributors
 
-# Pre-Commit (Sprint 2.8, dependency-frei statt husky): statische Tests + Lint
+# Pre-commit (Sprint 2.8, dependency-free instead of husky): static tests + lint
 set -e
+
+# Compile the connector service first: tests/run.js reads the parity tests from
+# dist/, so a stale state would otherwise check the day before yesterday's code.
+# Only when installed — on a fresh clone the suite stays dependency-free.
+if [ -d platform/connectors/node_modules ]; then
+  npm --prefix platform/connectors run -s build
+  npm --prefix platform/connectors run -s lint
+fi
+
 node tests/run.js
 npm --prefix gui run -s lint

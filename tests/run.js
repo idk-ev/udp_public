@@ -4,21 +4,35 @@
  * © 2024–2026 Thomas Kieß and contributors
  */
 
-/* Test-Runner (Sprint 2.8): node tests/run.js [--live]
-   static/  — ohne laufenden Stack (CI-fähig): Parsen, Datenintegrität, Invarianten
-   live/    — gegen den laufenden Stack (BASE_URL, Default http://localhost:3700) */
+/* Test runner (Sprint 2.8): node tests/run.js [--live]
+   static/  — without a running stack (CI-capable): parsing, data integrity, invariants
+   parity/  — old against new per connector (compiled from platform/connectors/test)
+   live/    — against the running stack (BASE_URL, default http://localhost:3700)
+
+   One runner for everything: the parity tests of the connector migration hang
+   in here instead of in a second suite, otherwise the pre-commit hook checks one
+   half and CI the other. They exist as COMPILED TypeScript and are therefore
+   loaded differently — see below. If the directory is missing (before the first
+   `npm --prefix platform/connectors run build`), it is skipped. */
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const { pathToFileURL } = require("url");
 
 const live = process.argv.includes("--live");
-const dirs = [path.join(__dirname, "static")].concat(live ? [path.join(__dirname, "live")] : []);
+const PARITY = path.join(__dirname, "..", "platform", "connectors", "dist", "test", "parity");
+const dirs = [path.join(__dirname, "static")]
+  .concat(fs.existsSync(PARITY) ? [PARITY] : [])
+  .concat(live ? [path.join(__dirname, "live")] : []);
 let pass = 0, fail = 0;
 
 (async () => {
   for (const dir of dirs) {
     for (const f of fs.readdirSync(dir).filter(x => x.endsWith(".test.js")).sort()) {
-      const mod = require(path.join(dir, f));
+      // The connector service is an ESM package ("type": "module"); require()
+      // would not get past its compiled output code.
+      const file = path.join(dir, f);
+      const mod = dir === PARITY ? await import(pathToFileURL(file).href) : require(file);
       for (const [name, fn] of Object.entries(mod)) {
         try {
           await fn();
