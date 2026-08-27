@@ -71,6 +71,20 @@ genau nicht. Compose und Helm: [`monitoring/`](../monitoring/README.md).
   Anomalieerkennung der Fachanwendungen können als Module ergänzt werden;
   Basis-Plausibilisierung (Schema-Validierung NGSI-LD) erfolgt im Broker.
 
+**Ein Deploy allein macht die Dashboards nicht neu.** Die Seiten registrieren
+einen Service-Worker (`gui/public/sw.js`, PWA/Offline-Kiosk). Seiten und
+`/gateway`-Abfragen laufen netz-zuerst und sind sofort aktuell; die statische
+Shell (`smartcity-lib.js`, `smartcity-theme.css`, `dashboards.json`,
+`connectors-status.json`, Leaflet) kommt aus dem Cache und wird seit Sprint 2.9
+im Hintergrund aufgefrischt — sichtbar wird eine Änderung dort also erst beim
+**zweiten** Aufruf nach dem Deploy. Die Cacheversion `V` in `sw.js` ist an die
+Chart-Version gekoppelt (`tests/static/sw-cache.test.js` prüft das): Ein
+Release verwirft damit den Cache seines Vorgängers vollständig. Bis Sprint 2.9
+stand dort ein handgepflegtes `"udp-v2"`, das nie erhöht wurde und
+wiederkehrende Browser dauerhaft auf den Dateien ihres ersten Besuchs
+festhielt. Bei Verdacht auf einen hängenden Client: harter Reload, ersatzweise
+DevTools → Application → Service Workers → Unregister.
+
 ## Härtung (Auszug)
 
 - TLS überall (Ingress, cert-manager), HSTS; interne Netzsegmentierung über
@@ -101,6 +115,35 @@ TimescaleDB fehlen die Zeilen; es gibt keinen Log-Eintrag:
 Diagnose bei Verdacht: `SELECT count(*) FROM attributes WHERE entityid =
 '<id>';` in der Datenbank `orion` — 0 Zeilen trotz vorhandener Entität im
 Broker deutet auf einen der beiden Fälle.
+
+### Neustartschleife MongoDB → Orion-LD (Kubernetes)
+
+Orion-LD 1.6.0 beendet sich mit **SIGSEGV**, wenn MongoDB unter ihm
+verschwindet — es fängt den Verbindungsabbruch nicht ab. Jeder Mongo-Neustart
+reißt damit alle Broker-Replikate mit, und während des Wiederanlaufs schreibt
+kein Konnektor. Das ist harmlos, solange MongoDB stabil läuft, und fatal, wenn
+es das nicht tut.
+
+Genau das trat auf dem Referenzcluster ein: Die Liveness-Probe rief
+`mongosh --eval "db.adminCommand('ping').ok"` mit dem Kubernetes-Vorgabewert
+`timeoutSeconds: 1` auf. `mongosh` ist ein Node-CLI und braucht allein zum
+Starten rund eine Sekunde — die Probe scheiterte also an ihrer eigenen
+Startzeit, nicht an der Datenbank. Bilanz bis 26.08.2026: 102 Neustarts von
+`mongo-0`, 1622 von `orion-ld`, dazu eine **fünftägige Ingestion-Lücke
+(19.–23.08.2026)** ohne eine einzige TRoE-Zeile. Der Fehler ist still: Beide
+Pods stehen durchgehend auf `Running`, nur die Restart-Zähler wachsen.
+
+Behoben in `helm/udp/templates/persistence.yaml` mit `timeoutSeconds: 10`.
+Compose ist nicht betroffen — Dockers Vorgabewert für `healthcheck.timeout`
+liegt bei 30 s. Zur Diagnose taugt der Restart-Zähler, nicht der Pod-Status:
+
+```sh
+kubectl -n udp get pods -o wide            # RESTARTS von mongo-0 / orion-ld
+kubectl -n udp get events --sort-by=.lastTimestamp | grep -i unhealthy
+# Ingestion-Lücken sichtbar machen:
+psql -U udp -d orion -c \
+  "SELECT ts::date, count(*) FROM attributes GROUP BY 1 ORDER BY 1;"
+```
 
 ## Secrets
 
@@ -151,11 +194,37 @@ Neustart, ohne Deploy).
 
 Mit der BW-weiten Ingestion wuchs die TRoE-Tabelle `attributes` um ~416 k
 Zeilen/Tag (20.07.2026). Der Stufe-3-Ausbau auf alle Kommunen (21.07.) hob
-das gemessen auf **~1,2 Mio Zeilen/Tag** — Einzelstandorte sind der Treiber:
-11.409 Ladestationen, 3.926 Carsharing-Stationen und 909 Bürgersensoren, wo
-vorher je eine Handvoll stand.
+das gemessen auf **~1,2 Mio Zeilen/Tag**.
 
-Drei Gegenmaßnahmen sind umgesetzt:
+**Korrektur der Ursachenzuschreibung (24.08.2026):** An dieser Stelle stand
+lange, Einzelstandorte seien der Treiber — Ladestationen, Carsharing-Stationen
+und Bürgersensoren. Das war falsch. Die Messung am 24.08. hat den Löwenanteil
+einem einzigen fehlerhaften Konnektor zugeordnet: `parken-bw` schrieb allein
+**~1,04 Mio Zeilen/Tag**, rund die Hälfte der gesamten Zeitreihen-Datenbank,
+und deckte dabei 1,6 % der Quelldaten ab. Drei Fehler lagen übereinander:
+
+* Die Seitenaufteilung ging mit `&offset=` gegen die MobiData-BW-ParkAPI v3.
+  Die API ignoriert den Parameter stillschweigend — alle 66 Anfragen je Lauf
+  lieferten dieselben ersten 500 von 31.908 Datensätzen zurück, und jeder
+  dieser Datensätze wurde 66× je Lauf geschrieben.
+* Die Entitäts-IDs entstanden aus dem geslugten Anlagennamen. Gleich benannte
+  Anlagen fielen zusammen: aus 500 sichtbaren Datensätzen wurden 336 Entitäten
+  (42× »Hauptbahnhof Westseite«, 36× »List-Gymnasium« …).
+* Je Lauf gingen alle sieben Attribute jeder Anlage neu heraus, obwohl nur
+  1,6 % der Anlagen in BW überhaupt Echtzeitdaten führen und die übrigen sechs
+  Attribute sich praktisch nie ändern.
+
+Behoben (Sprint 2.9) durch Cursor-Pagination (`start=<next_id>` statt
+`offset=`), stabile IDs aus dem ParkAPI-eigenen Primärschlüssel
+(`urn:ngsi-ld:ParkingSite:parkapi-<id>`) und einen getrennten Schreibpfad für
+Stamm- und Bewegungsdaten. Der Konnektor deckt seither statt 336 Entitäten
+rund 24.900 Parkanlagen in Baden-Württemberg ab und schreibt im eingeschwungenen
+Zustand grob **6.000 Zeilen/Tag**. Der erste Lauf nach dem Deploy legt einmalig
+rund 226.000 Zeilen an — die Erstsichtung aller Anlagen — und löst dabei
+erwartungsgemäß eine Budgetwarnung aus; ab dem zweiten Lauf ist Ruhe.
+
+Die drei ursprünglichen Gegenmaßnahmen bleiben richtig und in Kraft — sie
+zielten nur auf den kleineren Teil des Volumens:
 
 1. **Nur Änderungen schreiben.** Ladestationen und Carsharing-Stationen
    werden gegen die letzte Statussignatur geprüft; eine Station, deren
@@ -169,9 +238,30 @@ Drei Gegenmaßnahmen sind umgesetzt:
    (die Gemeindemediane bleiben im 15-Minuten-Takt).
 3. **Gestaffelte Aufbewahrung.** Aggregate je Gemeinde bleiben 12 Monate —
    auf ihnen beruhen die Verlaufsdiagramme. Einzelstandorte
-   (`EVChargingStation`, `CarSharingStation`, `ParkingSite`,
-   `AirQualityObserved:bw-sensor-*`) werden nach 3 Monaten gelöscht; sie werden nirgends über Monate
-   ausgewertet, die Dashboards zeigen ihren aktuellen Zustand auf der Karte.
+   (`EVChargingStation`, `CarSharingStation`,
+   `AirQualityObserved:bw-sensor-*`) werden nach 3 Monaten gelöscht; sie
+   werden nirgends über Monate ausgewertet, die Dashboards zeigen ihren
+   aktuellen Zustand auf der Karte. `ParkingSite` stand hier ebenfalls, solange
+   der Konnektor ~1,04 Mio Zeilen/Tag schrieb, und ist seit Sprint 2.9 wieder
+   heraus: Bei grob 6.000 Zeilen/Tag spart die Staffel nichts, löscht aber die
+   einmalig geschriebenen Stammdaten einer Anlage, die nicht nachwachsen.
+
+Damit sich ein solcher Fehler nicht wieder einen Monat lang verstecken kann,
+sind seit Sprint 2.9 zwei Sicherungen eingezogen:
+
+4. **Zeilenbudget je Entitätstyp.** Ein Konnektor kann in
+   `platform/config/connectors.json` ein optionales `rowBudget24h`
+   (`{"ParkingSite": 25000, …}`) hinterlegen. Der Flow-Generator summiert die
+   Budgets aller Konnektoren und übergibt sie an die TRoE-Statistik
+   (`troe-stats`, alle 10 Minuten); wer sein Tagesvolumen überschreitet,
+   erscheint als Warnung im Node-RED-Log. Konnektoren ohne das Feld verhalten
+   sich unverändert.
+5. **Lautes Scheitern statt stiller Lücken.** Der ParkAPI-Abruf prüft, ob sich
+   zwei Seiten überschneiden, und bricht den Lauf mit `node.error` ab, statt
+   denselben Ausschnitt erneut zu schreiben; ein erreichter Seitendeckel
+   erzeugt eine Warnung. Der Aufbauschritt vergleicht zusätzlich die Zahl der
+   verschiedenen Entitäts-IDs mit der Zahl der Quelldatensätze und warnt bei
+   unter 95 % — das ist die Signatur einer ID-Kollision.
 
 **Retention ist aktiv** (Sprint 1.6): Der Registry-Konnektor
 `troe-retention` löscht täglich 03:40 via Node-RED/pg aus `attributes` und
@@ -181,10 +271,48 @@ und pflegt idempotente Indizes (`ts` sowie `(entityid, ts)` mit
 und die LIKE-Staffeln der Retention). `drop_chunks` ist bewusst NICHT im
 Einsatz — TRoE nutzt einfache Tabellen, keine Hypertables.
 
-Zu beobachten: Der Plattenbedarf im eingeschwungenen Zustand liegt bei
-grob 100–150 GB (bei ~390 Byte je Zeile). Das passt auf den Referenzhost,
-gehört aber ins Kapazitätsmonitoring — bei einem produktiven Betrieb mit
-mehreren Mandanten ist die Staffelung neu zu bewerten.
+**Alt-Schema-Reste von `parken-bw` (einmalig, ab Sprint 2.9):** Die Entitäten
+aus der Zeit vor dem Fix tragen IDs aus geslugten Anlagennamen
+(`urn:ngsi-ld:ParkingSite:karlsruhe-parkgarage-fasanengarten`) statt
+`…:parkapi-<id>`. Sie wachsen nicht nach, werden aber auch nie wieder
+geschrieben, und seit ParkingSite aus der 3-Monats-Staffel heraus ist, altern
+sie nicht mehr von selbst weg. Zwei getrennte Aufräumschritte:
+
+* **Zeitreihen** — die Retention räumt sie ab dem ersten Lauf nach dem Deploy
+  selbst weg, höchstens 5 Mio Zeilen je Nacht (auf dem Referenzcluster
+  23,8 Mio Zeilen, 47 % der Tabelle → rund fünf Nächte). Die betroffenen IDs
+  holt sie aus der kleinen `entities`-Tabelle und löscht dann gezielt über
+  `entityid = ANY(...)`; ein `NOT LIKE` direkt auf `attributes` wäre nicht
+  indizierbar und würde die 22 GB jede Nacht erneut sequenziell lesen, auch
+  im Leerlauf. Ein `DELETE` gibt den Platz nur zur Wiederverwendung frei; das
+  ist gewollt — `VACUUM FULL` bräuchte fast so viel freien Platz wie die
+  Tabelle groß ist (dort 22 GB bei 17 GB frei).
+* **Broker** — die Entitäten selbst stehen in Orion-LD und werden von der
+  Retention (nur `pg`) nicht angefasst. Sie tragen ein `ags` und erscheinen
+  daher als veraltete Doppelgänger auf den Parken-Karten. Einmalig entfernen:
+
+  ```sh
+  # IDs im Alt-Schema sammeln (Orion-LD kann »nicht parkapi-« nicht filtern)
+  curl -s 'http://orion-ld:1026/ngsi-ld/v1/entities?type=ParkingSite&limit=1000&attrs=ags' \
+    | jq -r '.[].id' | grep -v ':parkapi-' > alt-ids.txt
+  # in Stapeln zu 100 löschen (entityOperations/delete nimmt ein ID-Array)
+  split -l 100 alt-ids.txt stapel- && for f in stapel-*; do
+    jq -Rn '[inputs]' < "$f" | curl -s -X POST \
+      'http://orion-ld:1026/ngsi-ld/v1/entityOperations/delete' \
+      -H 'Content-Type: application/json' --data-binary @- ; done
+  ```
+
+  Ein Wiederauftreten ist ausgeschlossen: Der Konnektor bildet IDs nur noch aus
+  dem ParkAPI-Schlüssel, und `tests/static/flow-invarianten.test.js` verbietet
+  Entitäts-IDs aus geslugtem Freitext.
+
+Zu beobachten: Der Plattenbedarf im eingeschwungenen Zustand wurde bei
+~1,2 Mio Zeilen/Tag mit grob 100–150 GB veranschlagt (bei ~390 Byte je Zeile).
+Ohne den `parken-bw`-Fehler fällt gut die Hälfte dieses Volumens weg; die Zahl
+ist nach ein paar Wochen Regelbetrieb neu zu messen, statt sie hier
+fortzuschreiben. Der Punkt gehört so oder so ins Kapazitätsmonitoring — bei
+einem produktiven Betrieb mit mehreren Mandanten ist die Staffelung neu zu
+bewerten.
 
 (Voraussetzung: `attributes` als Hypertable partitioniert; im
 Referenz-Setup von Orion-LD als normale Tabelle angelegt — dann stattdessen

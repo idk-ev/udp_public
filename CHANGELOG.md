@@ -2,6 +2,27 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Parken-Konnektor (ParkAPI) repariert
+
+`parken-bw` schrieb **~1,04 Mio TRoE-Zeilen/Tag** — rund die Hälfte der
+Zeitreihen-Datenbank — und deckte dabei 1,6 % der Quelldaten ab. Drei Fehler
+lagen übereinander: `&offset=` wird von der ParkAPI v3 ignoriert (alle 66
+Anfragen je Lauf lieferten denselben Ausschnitt), die Entitäts-IDs entstanden
+aus geslugten Anlagennamen (500 Datensätze → 336 Entitäten), und je Lauf gingen
+alle Attribute neu heraus.
+
+Jetzt: Cursor-Pagination (`start=<next_id>`), stabile IDs aus dem
+ParkAPI-Primärschlüssel und getrennte Schreibpfade für Stamm- und
+Bewegungsdaten. Ergebnis rund 24.900 statt 336 Parkanlagen bei grob 6.000 statt
+1,04 Mio Zeilen/Tag. Gegen Wiederholung: Zeilenbudget je Konnektor
+(`rowBudget24h`), Kardinalitäts-Prüfung und Tests unter `tests/`.
+
+Nachgezogen aus dem Betrieb des Referenzclusters:
+
+- Retention räumt den Alt-Bestand des Konnektors ab (hier 23,8 Mio Zeilen).
+- Service-Worker: Cacheversion folgt der Chart-Version, Shell wird aufgefrischt.
+- MongoDB-Liveness-Probe: 10 s statt Vorgabe 1 s — sie riss Orion-LD mit.
+
 ## 1.0.1 — Chart-Veröffentlichung korrigiert
 
 Keine funktionalen Änderungen an der Plattform. Der Release-Lauf zu `v1.0.0`

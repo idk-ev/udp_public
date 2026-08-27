@@ -1,5 +1,5 @@
 {
-  "_doc": "Konnektor-Registry (Masterplan §5 F1). Eine Quelle für Takt, Scope, Aktivierung, Monitoring und Frontend-Fähigkeiten aller Ingestion-Konnektoren. Der Flow-Generator (scripts/generate-nodered-flows.py) interpretiert diese Datei: Takt/Cron werden auf die Inject-Nodes angewandt, inaktive Konnektoren werden aus flows.json entfernt, und gui/public/connectors-status.json wird für Hauptdashboard/Monitoring exportiert. Transform-Logik bleibt Code (nodePrefixes verweisen auf die Bausteine im Generator). supersededBy ist die Ablöse-Markierung (Migrationsmatrix); die Reutlingen-Migration ist abgeschlossen, aktuell setzt kein Konnektor das Feld.",
+  "_doc": "Konnektor-Registry (Masterplan §5 F1). Eine Quelle für Takt, Scope, Aktivierung, Monitoring und Frontend-Fähigkeiten aller Ingestion-Konnektoren. Der Flow-Generator (scripts/generate-nodered-flows.py) interpretiert diese Datei: Takt/Cron werden auf die Inject-Nodes angewandt, inaktive Konnektoren werden aus flows.json entfernt, und gui/public/connectors-status.json wird für Hauptdashboard/Monitoring exportiert. Transform-Logik bleibt Code (nodePrefixes verweisen auf die Bausteine im Generator). supersededBy ist die Ablöse-Markierung (Migrationsmatrix); die Reutlingen-Migration ist abgeschlossen, aktuell setzt kein Konnektor das Feld. rowBudget24h ist optional und ordnet einem Konnektor sein erwartetes TRoE-Tagesvolumen je Entitätstyp zu ({\"ParkingSite\": 25000}); der Generator summiert die Budgets aller Konnektoren und gibt sie an die TRoE-Statistik-Funktion weiter, die bei Überschreitung eine Warnung ins Node-RED-Log schreibt. Konnektoren ohne das Feld verhalten sich unverändert.",
   "connectors": [
     {
       "id": "ops-host",
@@ -361,6 +361,11 @@
       "attribution": "MobiData BW ParkAPI",
       "requiresSecret": null,
       "active": true,
+      "rowBudget24h": {
+        "ParkingSite": 25000,
+        "BikeParking": 8000,
+        "ParkingSummary": 25000
+      },
       "nodePrefixes": [
         "udp-rt-bp-"
       ]
