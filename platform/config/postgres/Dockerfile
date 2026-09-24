@@ -19,10 +19,18 @@ FROM postgis/postgis:16-3.5
 
 ARG TIMESCALE_MAJOR=2
 
+# The base image is Debian bullseye. Since Sep 2026 deb.debian.org answers
+# bullseye-security pool files with 404 while its index still lists them, so
+# every apt-get install that pulls a security update fails. The security source
+# is dropped for the BUILD only: it installs just the tools needed to add the
+# Timescale repository (purged again below); the runtime packages of the base
+# image stay untouched.
 RUN set -eux; \
+    sed -i '/debian-security/d' /etc/apt/sources.list; \
+    . /etc/os-release; \
     apt-get update; \
-    apt-get install -y --no-install-recommends gnupg postgresql-common apt-transport-https lsb-release wget ca-certificates; \
-    echo "deb https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -cs) main" \
+    apt-get install -y --no-install-recommends gnupg postgresql-common apt-transport-https wget ca-certificates; \
+    echo "deb https://packagecloud.io/timescale/timescaledb/debian/ ${VERSION_CODENAME} main" \
         > /etc/apt/sources.list.d/timescaledb.list; \
     wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
         | gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg; \

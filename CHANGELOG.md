@@ -16,6 +16,8 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - Mintaka mit festem `-Xmx`, Postgres mit Fast-Shutdown und größerem
   `/dev/shm`, APISIX mit 2 statt „auto“ Workern, `enableServiceLinks: false`,
   PDB für Mintaka, Node-RED mit `Recreate`.
+- Postgres-Image baut wieder: `bullseye-security` liefert 404, die Quelle
+  entfällt für den Build.
 
 ## Unveröffentlicht — Parken-Konnektor (ParkAPI) repariert
 
