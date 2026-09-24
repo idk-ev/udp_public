@@ -54,6 +54,11 @@ global:
   # StorageClass für alle PVCs. "" = Cluster-Default. Für Datenbanken eine
   # Klasse mit garantiertem IOPS/Backups empfohlen.
   storageClass: ""
+  # Scheduling defaults for ALL workloads. Each component can override them
+  # with its own priorityClassName / nodeSelector / tolerations / affinity.
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
 
 # -----------------------------------------------------------------------------
 # Sicherheits-Defaults (werden pro Komponente gemerged/überschrieben)
@@ -141,6 +146,35 @@ networkPolicies:
   # Namespace-Selector-Label des Ingress-Controllers (für Freigabe → Gateway).
   ingressControllerNamespaceLabel:
     kubernetes.io/metadata.name: ingress-nginx
+  # Namespace of the availability monitoring / metrics scraper
+  # (monitoring/helm/uptime-kuma, Prometheus). Empty = no access from outside
+  # the namespace except the ingress controller. Set e.g.
+  #   kubernetes.io/metadata.name: udp-monitoring
+  # to let it reach the HTTP ports of all platform services and APISIX metrics
+  # (:9091) – databases stay closed.
+  monitoringNamespaceLabel: {}
+  # Additional callers per component (templates/networkpolicy.yaml holds the
+  # full matrix). Map of app label -> list of NetworkPolicy "from" peers, e.g.
+  #   extraFrom:
+  #     orion-ld:
+  #       - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: analytics } }
+  extraFrom: {}
+  # Only with strictEgress: which components may reach the internet (TCP
+  # 80/443 to everything outside the private ranges below). Node-RED pulls
+  # every open-data source from outside, Orion-LD and the IoT agent fetch
+  # JSON-LD @contexts, CKAN harvests remote catalogues.
+  internetEgress:
+    components: [node-red, orion-ld, iot-agent-json, ckan]
+    ports: [80, 443]
+    # Cluster/private networks stay excluded – internal traffic is governed by
+    # the in-namespace rules, not by the internet exception.
+    exceptCidrs: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+  # DNS target for strictEgress. Default: every pod in kube-system on port 53.
+  # With NodeLocal DNSCache add the link-local address as ipBlock, e.g.
+  #   dnsExtraTo: [{ ipBlock: { cidr: 169.254.20.10/32 } }]
+  dnsNamespaceLabel:
+    kubernetes.io/metadata.name: kube-system
+  dnsExtraTo: []
 
 # -----------------------------------------------------------------------------
 # Ingress
@@ -206,6 +240,30 @@ mongo:
     runAsUser: 999        # mongodb
     runAsGroup: 999
     fsGroup: 999
+  # mongod flushes and closes its files on SIGTERM. The Kubernetes default of
+  # 30 s is tight for a loaded instance running with --nojournal: a SIGKILL
+  # loses everything since the last checkpoint.
+  terminationGracePeriodSeconds: 60
+  # mongosh is a Node CLI and needs about a second just to start. With the
+  # Kubernetes default (timeoutSeconds: 1) the probe fails on its own start-up
+  # time instead of on the database: on the reference cluster that restarted
+  # mongo-0 102 times and took orion-ld down with SIGSEGV each time (1622
+  # restarts, five days without ingestion 19.–23.08.2026). Keep >= 10 s.
+  probes:
+    startup:
+      exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 30
+    readiness:
+      exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
+      periodSeconds: 20
+      timeoutSeconds: 10
+    liveness:
+      exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 6
 
 timescale:
   # Eigenes Image (platform/config/postgres/Dockerfile): PostGIS **und**
@@ -231,6 +289,34 @@ timescale:
     runAsUser: 999        # postgres
     runAsGroup: 999
     fsGroup: 999
+  # Size of /dev/shm. Container runtimes default to 64 MiB, and parallel
+  # queries (TimescaleDB chunk scans) then fail with "could not resize shared
+  # memory segment". Counts towards the memory limit.
+  shmSize: 256Mi
+  # Kubernetes sends SIGTERM, which is Postgres' "smart" shutdown: it waits for
+  # every client to disconnect – with the connection pools of Orion-LD, Mintaka
+  # and Keycloak that never happens, SIGKILL follows after the grace period and
+  # the next start runs crash recovery. The preStop hook in
+  # templates/persistence.yaml therefore does a fast shutdown (pg_ctl -m fast),
+  # this is the time it gets.
+  terminationGracePeriodSeconds: 120
+  probes:
+    # Crash recovery after an unclean stop replays the WAL before Postgres
+    # accepts connections – allow up to 10 min before liveness takes over.
+    startup:
+      exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 60
+    readiness:
+      exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+      periodSeconds: 10
+      timeoutSeconds: 5
+    liveness:
+      exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 6
 
 # ---------- Context Broker ----------
 orionLd:
@@ -243,6 +329,41 @@ orionLd:
   # Upstream-Image benötigt Root – Non-Root-Härtung als TODO dokumentiert.
   podSecurityContext:
     runAsNonRoot: false
+  # Orion-LD serves HTTP via libmicrohttpd on select(), which can only handle
+  # file descriptors below FD_SETSIZE (1024, compiled in – raising ulimit does
+  # NOT help). The upstream defaults are no idle timeout (-reqTimeout 0) and
+  # -maxConnections 1020: idle keep-alive connections of the clients (APISIX,
+  # Node-RED, …) are never closed, the process reaches fd 1024 and from then
+  # on rejects EVERY new connection ("New connection socket descriptor (1024)
+  # is not less than FD_SETSIZE (1024)") – while staying alive.
+  # Reproduced with 1.6.0: ~1000 idle connections wedge it permanently; with
+  # the values below it keeps answering.
+  #   reqTimeout:     idle connections are closed after this many seconds.
+  #                   Must stay ABOVE the clients' keep-alive idle timeout
+  #                   (APISIX upstream: 30 s, files/apisix/apisix.yaml.tpl),
+  #                   otherwise a client reuses a socket the server just closed.
+  #   maxConnections: leaves ~120 descriptors for the Mongo/TRoE pools, log
+  #                   files and outgoing notifications.
+  reqTimeout: 60
+  maxConnections: 900
+  # Should the broker still wedge, the liveness probe restarts the pod within
+  # about a minute instead of leaving a dead-but-running process in the Service.
+  probes:
+    # Orion-LD waits for MongoDB/TimescaleDB on start.
+    startup:
+      httpGet: { path: /ngsi-ld/ex/v1/version, port: 1026 }
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 60
+    readiness:
+      httpGet: { path: /ngsi-ld/ex/v1/version, port: 1026 }
+      periodSeconds: 10
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /ngsi-ld/ex/v1/version, port: 1026 }
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 4
 
 mintaka:
   image: { repository: fiware/mintaka, tag: "0.7.0" }
@@ -250,8 +371,32 @@ mintaka:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { cpu: 500m, memory: 768Mi }
+  pdb: { minAvailable: 1 }
   podSecurityContext:
     runAsNonRoot: false
+  # -XX:-UseContainerSupport works around the JDK cgroup bug, but it also makes
+  # the JVM size its heap from the NODE's memory (1/4 of it) instead of the
+  # container limit – on a 16 GiB node a 4 GiB heap in a 768 MiB container,
+  # i.e. an OOM kill under load. Hence the explicit -Xmx; keep it about 300 MiB
+  # below resources.limits.memory (metaspace, threads, code cache).
+  javaOpts: "-XX:-UseContainerSupport -Xms128m -Xmx448m"
+  # Verified against 0.7.0: /health/liveness stays 200 with the database gone
+  # (safe for liveness), /health/readiness follows the database.
+  probes:
+    startup:
+      httpGet: { path: /health/liveness, port: 8080 }
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 60
+    readiness:
+      httpGet: { path: /health/readiness, port: 8080 }
+      periodSeconds: 10
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /health/liveness, port: 8080 }
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 3
 
 # ---------- IoT ----------
 mosquitto:
@@ -263,6 +408,17 @@ mosquitto:
     runAsNonRoot: true
     runAsUser: 1883
     runAsGroup: 1883
+  # Plain TCP: the MQTT listener is up as soon as the port accepts. Only works
+  # because the chart mounts files/mosquitto/mosquitto.conf – without a config
+  # file Mosquitto 2.x listens on 127.0.0.1 only ("local only mode").
+  probes:
+    readiness:
+      tcpSocket: { port: 1883 }
+      periodSeconds: 10
+    liveness:
+      tcpSocket: { port: 1883 }
+      periodSeconds: 20
+      failureThreshold: 3
 
 iotAgentJson:
   image: { repository: fiware/iotagent-json, tag: "3.14.0-distroless" }
@@ -281,6 +437,23 @@ iotAgentJson:
     limits:   { cpu: 500m, memory: 512Mi }
   podSecurityContext:
     runAsNonRoot: false
+  # /iot/about is answered by the north port without touching MongoDB or the
+  # broker. Distroless image: no shell, so no exec probes and no preStop sleep.
+  probes:
+    startup:
+      httpGet: { path: /iot/about, port: 4041 }
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 36
+    readiness:
+      httpGet: { path: /iot/about, port: 4041 }
+      periodSeconds: 10
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /iot/about, port: 4041 }
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 3
 
 frost:
   image: { repository: fraunhoferiosb/frost-server, tag: "2.7.3" }
@@ -293,6 +466,24 @@ frost:
     limits:   { cpu: "1",  memory: 1536Mi }
   podSecurityContext:
     runAsNonRoot: false
+  # Without a probe FROST counted as ready as soon as the process ran – even
+  # when it hung connecting to the database and never opened its port. The port
+  # is bound only after the DB is up, so tcpSocket suffices; startup covers the
+  # schema migration (persistence_autoUpdateDatabase) with up to 5 min.
+  # Liveness stays on TCP on purpose: an HTTP path would query the database
+  # and turn a DB outage into a restart loop.
+  probes:
+    startup:
+      tcpSocket: { port: 8080 }
+      periodSeconds: 10
+      failureThreshold: 30
+    readiness:
+      tcpSocket: { port: 8080 }
+      periodSeconds: 15
+    liveness:
+      tcpSocket: { port: 8080 }
+      periodSeconds: 30
+      failureThreshold: 3
 
 # ---------- Open Data & Geo ----------
 # CKAN veröffentlicht die offenen Daten als DCAT-AP.de. Das Gateway routet
@@ -336,6 +527,24 @@ ckan:
     # Der Entrypoint (start_ckan.sh) schreibt ckan.ini und trennt die Rechte
     # selbst – er muss als Root starten (s. platform/config/ckan/Dockerfile).
     runAsNonRoot: false
+  # CKAN migrates its schema and creates the sysadmin on first start – startup
+  # allows up to 5 min. status_show reads only config, no DB/Solr query, so it
+  # is safe for liveness too.
+  probes:
+    startup:
+      httpGet: { path: /api/3/action/status_show, port: 5000 }
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 30
+    readiness:
+      httpGet: { path: /api/3/action/status_show, port: 5000 }
+      periodSeconds: 15
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /api/3/action/status_show, port: 5000 }
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 4
 
 solr:
   image: { repository: ckan/ckan-solr, tag: "2.10-solr9" }
@@ -350,6 +559,22 @@ solr:
     runAsUser: 8983       # solr
     runAsGroup: 8983
     fsGroup: 8983
+  probes:
+    # First start creates the "ckan" core (solr-precreate).
+    startup:
+      httpGet: { path: /solr/admin/info/system, port: 8983 }
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 30
+    readiness:
+      httpGet: { path: /solr/admin/info/system, port: 8983 }
+      periodSeconds: 15
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /solr/admin/info/system, port: 8983 }
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 4
 
 redis:
   # Valkey (BSD-3) statt Redis: redis:7-alpine zog als Floating-Tag 7.4 mit
@@ -363,6 +588,15 @@ redis:
     runAsNonRoot: true
     runAsUser: 999        # valkey
     runAsGroup: 1000
+  probes:
+    readiness:
+      exec: { command: ["valkey-cli", "ping"] }
+      periodSeconds: 15
+      timeoutSeconds: 5
+    liveness:
+      tcpSocket: { port: 6379 }
+      periodSeconds: 20
+      failureThreshold: 3
 
 # OGC-Dienste (WMS/WFS/WPS). Gateway-Route /geoserver.
 geoserver:
@@ -384,6 +618,22 @@ geoserver:
     storageClass: ""
   podSecurityContext:
     runAsNonRoot: false   # Upstream-Image startet als Root
+  probes:
+    # First start unpacks the data directory – up to 5 min.
+    startup:
+      tcpSocket: { port: 8080 }
+      periodSeconds: 10
+      failureThreshold: 30
+    readiness:
+      httpGet: { path: /geoserver/web/, port: 8080 }
+      periodSeconds: 15
+      timeoutSeconds: 10
+    # Generous: a GeoServer rendering big layers can be slow without being
+    # dead; only a closed port restarts it.
+    liveness:
+      tcpSocket: { port: 8080 }
+      periodSeconds: 30
+      failureThreshold: 4
 
 # Masterportal: statisches Geoportal, im Compose-Profil "viz-extra".
 # Standardmäßig AUS, weil der Portal-Build (platform/config/masterportal/) nicht
@@ -397,6 +647,14 @@ masterportal:
     limits:   { cpu: 250m, memory: 256Mi }
   podSecurityContext:
     runAsNonRoot: false
+  probes:
+    readiness:
+      httpGet: { path: /, port: 80 }
+      periodSeconds: 15
+    liveness:
+      tcpSocket: { port: 80 }
+      periodSeconds: 30
+      failureThreshold: 3
 
 # ---------- API & Identität ----------
 apisix:
@@ -409,6 +667,28 @@ apisix:
   # APISIX schreibt Logs ins Root-FS -> Non-Root-Härtung als TODO.
   podSecurityContext:
     runAsNonRoot: false
+  # nginx worker processes. APISIX' default "auto" counts the NODE's cores, not
+  # the container's CPU limit – on a 32-core node that is 32 workers (each with
+  # its own memory and upstream connection pools) squeezed into one CPU.
+  workerProcesses: 2
+  # Status server (files/apisix/config.yaml.tpl, port 7085): /status answers as
+  # soon as nginx runs, /status/ready only once every worker has loaded the
+  # route configuration.
+  probes:
+    startup:
+      httpGet: { path: /status, port: 7085 }
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 24
+    readiness:
+      httpGet: { path: /status/ready, port: 7085 }
+      periodSeconds: 10
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /status, port: 7085 }
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 4
 
 keycloakApp:
   image: { repository: quay.io/keycloak/keycloak, tag: "26.7" }
@@ -432,6 +712,23 @@ keycloakApp:
     runAsUser: 1000
     runAsGroup: 1000
     fsGroup: 1000
+  # Health endpoints live on the management port 9000 (KC_HEALTH_ENABLED) and
+  # inherit the relative path – with relativePath "/auth" that is
+  # /auth/health/{started,ready,live} (verified against 26.7). The template
+  # builds the path from relativePath; only timings are set here.
+  probes:
+    # First start imports the realm and creates the schema.
+    startup:
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 60
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 5
+    liveness:
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 3
 
 # ---------- Anwendungsdienste ----------
 nodeRed:
@@ -457,6 +754,23 @@ nodeRed:
     runAsNonRoot: true
     runAsUser: 1000
     fsGroup: 1000
+  # "/" serves the editor as soon as the runtime is up – no external source is
+  # involved, so an unreachable open-data API never restarts Node-RED.
+  probes:
+    startup:
+      httpGet: { path: /, port: 1880 }
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 36
+    readiness:
+      httpGet: { path: /, port: 1880 }
+      periodSeconds: 15
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /, port: 1880 }
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 4
 
 # Uptime Kuma ist NICHT mehr Teil dieses Charts: ein Monitoring, das mit der
 # ueberwachten Plattform ausgerollt wird, meldet deren Ausfall nicht. Eigenes
@@ -520,6 +834,16 @@ cockpit:
     runAsNonRoot: true
     runAsUser: 101        # nginx
     runAsGroup: 101
+  # Static files only – the probes never go through the /gateway proxy, so an
+  # APISIX outage does not take the cockpit out of the Service as well.
+  probes:
+    readiness:
+      httpGet: { path: /index.html, port: 8080 }
+      periodSeconds: 10
+    liveness:
+      httpGet: { path: /index.html, port: 8080 }
+      periodSeconds: 20
+      failureThreshold: 3
 
 # ---------- Betrieb ----------
 # Logische Dumps aller Plattform-Datenbanken (pg_dump, komprimiert).
@@ -540,3 +864,10 @@ backup:
     storageClass: ""
   podSecurityContext:
     runAsNonRoot: false   # Image startet als Root (/init.sh, go-cron)
+  # go-cron serves its health check on HEALTHCHECK_PORT (8080, verified in the
+  # image's /init.sh).
+  probes:
+    liveness:
+      tcpSocket: { port: 8080 }
+      periodSeconds: 60
+      failureThreshold: 3

@@ -2,23 +2,60 @@
 # © 2024–2026 Thomas Kieß and contributors
 
 {{- if .Values.networkPolicies.enabled }}
+{{- $np := .Values.networkPolicies }}
 # =============================================================================
-# NetworkPolicies – segmentiertes Plattform-Netz
-# Voraussetzung: CNI mit Policy-Unterstützung (Calico, Cilium, …).
+# NetworkPolicies – least-privilege platform network
+# Requires a CNI that enforces policies (Calico, Cilium, …).
 #
-# Modell:
-#   1. default-deny-ingress: niemand erreicht einen Pod, außer explizit erlaubt.
-#   2. allow-intra-namespace: Dienste dürfen sich untereinander erreichen,
-#      AUSSER den Datenspeichern (mongo/timescale/mosquitto/solr/redis).
-#   3. Datenspeicher: nur ihre benannten Clients dürfen zugreifen.
-#   4. Ingress-Controller darf apisix/keycloak/cockpit und den ACME-Solver
-#      erreichen.
-#   5. optional strictEgress: Default-deny ausgehend (nur Namespace + DNS).
-#      Ohne strictEgress entsteht bewusst KEINE Egress-Policy – s. Kommentar
-#      unten: schon eine einzige wuerde allen ausgehenden Verkehr sperren.
+# Model:
+#   1. default-deny-ingress: no pod is reachable unless a rule below allows it.
+#   2. One policy per component: only its actual callers, only its ports.
+#      The table below IS the communication matrix of the platform – a new
+#      caller needs a line here (or networkPolicies.extraFrom).
+#   3. The ingress controller reaches the public frontends; the monitoring
+#      namespace (networkPolicies.monitoringNamespaceLabel) and an Uptime Kuma
+#      in this namespace reach the HTTP services, never the data stores.
+#   4. optional strictEgress: default-deny outgoing, allowed are DNS, the
+#      namespace itself and – for the listed components – the internet.
+#      Without strictEgress there is deliberately NO egress policy: a single
+#      one would lock all outgoing traffic of the selected pods.
 # =============================================================================
 
-# 1. Default-Deny für allen eingehenden Verkehr im Namespace.
+{{- /*
+Communication matrix. from = app labels of the calling pods in this namespace.
+public = reachable from the ingress controller. monitored = reachable from the
+monitoring namespace / Uptime Kuma. Disabled components drop out.
+*/}}
+{{- $timescaleClients := list "orion-ld" "mintaka" "frost" "keycloak" "node-red" }}
+{{- if .Values.ckan.enabled }}{{ $timescaleClients = append $timescaleClients "ckan" }}{{ end }}
+{{- if .Values.backup.enabled }}{{ $timescaleClients = append $timescaleClients "db-backup" }}{{ end }}
+{{- $rules := list
+  (dict "app" "apisix"         "ports" (list 9080)      "from" (list "cockpit")                         "public" true "monitored" true)
+  (dict "app" "cockpit"        "ports" (list 8080)      "from" (list "node-red")                        "public" true "monitored" true)
+  (dict "app" "keycloak"       "ports" (list 8080)      "from" (list "apisix")                          "public" true "monitored" true)
+  (dict "app" "orion-ld"       "ports" (list 1026)      "from" (list "apisix" "iot-agent-json" "node-red")            "monitored" true)
+  (dict "app" "mintaka"        "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
+  (dict "app" "frost"          "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
+  (dict "app" "iot-agent-json" "ports" (list 4041 7896) "from" (list "apisix" "orion-ld")                             "monitored" true)
+  (dict "app" "node-red"       "ports" (list 1880)      "from" (list "cockpit")                                       "monitored" true)
+  (dict "app" "mongo"          "ports" (list 27017)     "from" (list "orion-ld" "iot-agent-json"))
+  (dict "app" "timescale"      "ports" (list 5432)      "from" $timescaleClients)
+  (dict "app" "mosquitto"      "ports" (list 1883 9001) "from" (list "iot-agent-json"))
+}}
+{{- if .Values.ckan.enabled }}
+{{- $rules = concat $rules (list
+  (dict "app" "ckan"  "ports" (list 5000) "from" (list "apisix") "monitored" true)
+  (dict "app" "solr"  "ports" (list 8983) "from" (list "ckan"))
+  (dict "app" "redis" "ports" (list 6379) "from" (list "ckan"))) }}
+{{- end }}
+{{- if .Values.geoserver.enabled }}
+{{- $rules = append $rules (dict "app" "geoserver" "ports" (list 8080) "from" (list "apisix") "monitored" true) }}
+{{- end }}
+{{- if .Values.masterportal.enabled }}
+{{- $rules = append $rules (dict "app" "masterportal" "ports" (list 80) "from" (list "apisix") "monitored" true) }}
+{{- end }}
+
+# 1. Default deny for all incoming traffic in the namespace.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -28,145 +65,77 @@ metadata:
 spec:
   podSelector: {}
   policyTypes: [Ingress]
+{{- range $rules }}
+{{- $extra := get ($np.extraFrom | default dict) .app }}
 ---
-# 2. Intra-Namespace-Verkehr erlauben – außer für Datenspeicher.
+# 2. {{ .app }}: {{ join ", " .from }}{{ if .public }} + ingress controller{{ end }}{{ if .monitored }} + monitoring{{ end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-intra-namespace
+  name: allow-{{ .app }}
   labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+    {{- include "udp.labels" (dict "ctx" $ "component" "netpol") | nindent 4 }}
 spec:
   podSelector:
-    matchExpressions:
-      - { key: app, operator: NotIn, values: [mongo, timescale, mosquitto, solr, redis] }
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector: {}
----
-# 3a. MongoDB nur für Orion-LD und IoT-Agent.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-mongo-clients
-  labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels: { app: mongo }
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector: { matchExpressions: [ { key: app, operator: In, values: [orion-ld, iot-agent-json] } ] }
-      ports:
-        - { protocol: TCP, port: 27017 }
----
-# 3b. PostGIS/Timescale nur für Orion-LD, Mintaka, FROST, Keycloak – und, falls
-#     aktiviert, CKAN (Katalog + Datastore) sowie den Backup-Dienst (pg_dump).
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-timescale-clients
-  labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels: { app: timescale }
+    matchLabels: { app: {{ .app }} }
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector:
             matchExpressions:
-              - key: app
-                operator: In
-                values:
-                  - orion-ld
-                  - mintaka
-                  - frost
-                  - keycloak
-                  # TRoE-Statistik (PlatformStatus:udp-troe) und die
-                  # TRoE-Retention sprechen als einzige Flows direkt SQL.
-                  - node-red
-                  {{- if .Values.ckan.enabled }}
-                  - ckan
-                  {{- end }}
-                  {{- if .Values.backup.enabled }}
-                  - db-backup
-                  {{- end }}
+              - { key: app, operator: In, values: {{ toJson .from }} }
+        {{- if .public }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml $np.ingressControllerNamespaceLabel | nindent 14 }}
+        {{- end }}
+        {{- if .monitored }}
+        # Uptime Kuma in this namespace (legacy layout, s. monitoring/README.md).
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: uptime-kuma }
+        {{- with $np.monitoringNamespaceLabel }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+        {{- end }}
+        {{- end }}
+        {{- with $extra }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       ports:
-        - { protocol: TCP, port: 5432 }
----
-# 3c. Mosquitto nur für den IoT-Agent.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-mosquitto-clients
-  labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels: { app: mosquitto }
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector: { matchExpressions: [ { key: app, operator: In, values: [iot-agent-json] } ] }
-      ports:
-        - { protocol: TCP, port: 1883 }
-        - { protocol: TCP, port: 9001 }
-{{- if .Values.ckan.enabled }}
----
-# 3d. Solr und Valkey enthalten Katalogdaten bzw. Sitzungs-/Job-Zustand –
-#     ausschließlich CKAN darf sie erreichen.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-catalog-store-clients
-  labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
-spec:
-  podSelector:
-    matchExpressions:
-      - { key: app, operator: In, values: [solr, redis] }
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector: { matchLabels: { app: ckan } }
-      ports:
-        - { protocol: TCP, port: 8983 }
-        - { protocol: TCP, port: 6379 }
+        {{- range .ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
 {{- end }}
+{{- with $np.monitoringNamespaceLabel }}
 ---
-# 4. Ingress-Controller darf die öffentlich erreichbaren Frontends bedienen.
+# 3. Prometheus metrics of APISIX for the monitoring namespace only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-ingress-controller
+  name: allow-apisix-metrics
   labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+    {{- include "udp.labels" (dict "ctx" $ "component" "netpol") | nindent 4 }}
 spec:
   podSelector:
-    matchExpressions:
-      - { key: app, operator: In, values: [apisix, keycloak, cockpit] }
+    matchLabels: { app: apisix }
   policyTypes: [Ingress]
   ingress:
     - from:
         - namespaceSelector:
             matchLabels:
-              {{- toYaml .Values.networkPolicies.ingressControllerNamespaceLabel | nindent 14 }}
+              {{- toYaml . | nindent 14 }}
       ports:
-        - { protocol: TCP, port: 9080 }
-        - { protocol: TCP, port: 8080 }
-        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 9091 }
+{{- end }}
 {{- if .Values.ingress.clusterIssuer }}
 ---
-# 4b. HTTP-01-Solver von cert-manager. Die Pods legt cert-manager waehrend der
-#     Zertifikatsausstellung selbst an – sie tragen KEIN app-Label und fallen
-#     damit unter default-deny-ingress, waehrend allow-ingress-controller nur
-#     apisix/keycloak/cockpit oeffnet. Ohne diese Regel erreicht der Ingress-
-#     Controller den Solver nicht, die Challenge bleibt "pending"
-#     ("failed to perform self check ... context deadline exceeded") und es gibt
-#     nie ein Zertifikat. Der acmesolver lauscht auf 8089.
+# 3b. HTTP-01 solver of cert-manager. cert-manager creates these pods itself
+#     during issuance – they carry NO app label and would fall under
+#     default-deny-ingress. Without this rule the ingress controller cannot
+#     reach the solver, the challenge stays "pending" ("failed to perform self
+#     check ... context deadline exceeded") and no certificate is ever issued.
+#     The acmesolver listens on 8089.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -182,33 +151,26 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              {{- toYaml .Values.networkPolicies.ingressControllerNamespaceLabel | nindent 14 }}
+              {{- toYaml $np.ingressControllerNamespaceLabel | nindent 14 }}
       ports:
         - { protocol: TCP, port: 8089 }
 {{- end }}
-{{- if .Values.networkPolicies.strictEgress }}
+{{- if $np.strictEgress }}
 ---
-# 5. strictEgress: Default-deny ausgehend – erlaubt bleiben DNS und der
-#    Namespace-interne Verkehr.
+# 4. strictEgress: default deny outgoing. Allowed: DNS, the namespace itself
+#    and the internet for networkPolicies.internetEgress.components.
 #
-#    WICHTIG: Diese drei Policies gehoeren ZUSAMMEN und duerfen nur gemeinsam
-#    existieren. Eine Egress-Policy mit podSelector {} macht Egress fuer JEDEN
-#    Pod des Namespace zu "default deny" – erlaubt ist dann ausschliesslich, was
-#    die Egress-Regeln aufzaehlen. Stand allow-dns-egress frueher allein (also
-#    auch bei strictEgress=false), war damit der gesamte ausgehende Verkehr
-#    ausser DNS gesperrt: mintaka/orion-ld/ckan/keycloak liefen in
-#    "Connect timed out" zu timescale bzw. mongo, ohne dass eine Ingress-Regel
-#    fehlte. Ohne strictEgress darf es deshalb GAR KEINE Egress-Policy geben;
-#    die Segmentierung uebernehmen die Ingress-Regeln der Datenspeicher oben.
+#    IMPORTANT: these policies belong TOGETHER. An egress policy with
+#    podSelector {} turns egress of EVERY pod in the namespace into default
+#    deny – only what the egress rules list is allowed. When allow-dns-egress
+#    once existed on its own (also with strictEgress=false), all outgoing
+#    traffic except DNS was blocked: mintaka/orion-ld/ckan/keycloak ran into
+#    "Connect timed out" to timescale/mongo without any ingress rule missing.
+#    Without strictEgress there must be NO egress policy at all.
 #
-#    ACHTUNG: blockiert externen Verkehr (Let's-Encrypt-Validierung laeuft ueber
-#    den Ingress-Controller, Orion-Forwarding, JSON-LD-@context-Abruf des
-#    IoT-Agent). Nur bewusst aktivieren.
-#
-#    ACHTUNG 2: podSelector {} trifft JEDEN Pod des Namespace – auch die aus
-#    ANDEREN Releases. Wer das Monitoring (monitoring/helm/uptime-kuma) in
-#    diesen Namespace legt, sperrt ihm mit strictEgress saemtliche Checks aus.
-#    Das Monitoring gehoert ohnehin in einen eigenen Namespace.
+#    CAUTION: podSelector {} hits EVERY pod of the namespace, including those of
+#    OTHER releases. Uptime Kuma in this namespace would lose all external
+#    checks – the monitoring belongs in its own namespace anyway.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -222,7 +184,10 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: kube-system
+              {{- toYaml $np.dnsNamespaceLabel | nindent 14 }}
+        {{- with $np.dnsExtraTo }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
@@ -239,6 +204,33 @@ spec:
   egress:
     - to:
         - podSelector: {}
+{{- with $np.internetEgress.components }}
+---
+# Internet access (HTTP/HTTPS) for components that fetch external data:
+# Node-RED connectors, JSON-LD @contexts (Orion-LD, IoT agent), CKAN harvesting.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internet-egress
+  labels:
+    {{- include "udp.labels" (dict "ctx" $ "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: {{ toJson . }} }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $np.internetEgress.exceptCidrs }}
+            except: {{ toJson . }}
+            {{- end }}
+      ports:
+        {{- range $np.internetEgress.ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

@@ -29,11 +29,7 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "db-backup") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.backup.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.backup) | nindent 6 }}
       containers:
         - name: backup
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.backup.image) }}
@@ -54,6 +50,7 @@ spec:
             - { name: backups, mountPath: /backups }
           resources:
             {{- toYaml .Values.backup.resources | nindent 12 }}
+          {{- include "udp.probes" .Values.backup.probes | nindent 10 }}
       volumes:
         - name: backups
           persistentVolumeClaim: { claimName: db-backup-data }

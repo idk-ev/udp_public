@@ -4,9 +4,11 @@
 # PodDisruptionBudgets für hochverfügbare (mehrfach replizierte) Dienste.
 {{- range $comp := list
       (dict "name" "orion-ld" "cfg" .Values.orionLd)
+      (dict "name" "mintaka"  "cfg" .Values.mintaka)
       (dict "name" "apisix"   "cfg" .Values.apisix)
       (dict "name" "cockpit"  "cfg" .Values.cockpit) }}
-{{- if $comp.cfg.pdb }}
+{{- /* A PDB with minAvailable 1 on a single replica blocks every node drain. */}}
+{{- if and $comp.cfg.pdb (gt (int ($comp.cfg.replicas | default 1)) 1) }}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

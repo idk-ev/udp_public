@@ -16,6 +16,9 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "node-red") | nindent 4 }}
 spec:
   replicas: 1
+  # The flows poll and write on timers. During a rolling update two instances
+  # would run every connector twice (doubled TRoE rows, doubled API quota).
+  strategy: { type: Recreate }
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "node-red" | nindent 6 }}
@@ -24,11 +27,7 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "node-red") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.nodeRed.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.nodeRed) | nindent 6 }}
       containers:
         - name: node-red
           image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.nodeRed.image) }}
@@ -59,6 +58,7 @@ spec:
           # Entitäten neu.
           resources:
             {{- toYaml .Values.nodeRed.resources | nindent 12 }}
+          {{- include "udp.probes" .Values.nodeRed.probes | nindent 10 }}
 ---
 apiVersion: v1
 kind: Service
@@ -91,11 +91,8 @@ spec:
         # Neue Adressen in config.js sollen die Pods auch wirklich neu ausrollen.
         checksum/config: {{ include "udp.cockpitConfigJs" . | sha256sum }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.cockpit.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.cockpit) | nindent 6 }}
+      {{- include "udp.spread" (dict "component" "cockpit" "cfg" .Values.cockpit) | nindent 6 }}
       containers:
         - name: cockpit
           image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.cockpit.image) }}
@@ -124,9 +121,8 @@ spec:
               readOnly: true
           resources:
             {{- toYaml .Values.cockpit.resources | nindent 12 }}
-          readinessProbe:
-            httpGet: { path: /index.html, port: 8080 }
-            periodSeconds: 15
+          {{- include "udp.probes" .Values.cockpit.probes | nindent 10 }}
+          {{- include "udp.preStopSleep" 5 | nindent 10 }}
       volumes:
         - name: config
           configMap: { name: cockpit-config }

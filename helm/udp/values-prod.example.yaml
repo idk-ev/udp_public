@@ -59,6 +59,9 @@ networkPolicies:
   strictEgress: false               # erst nach Egress-Test aktivieren
   ingressControllerNamespaceLabel:
     kubernetes.io/metadata.name: ingress-nginx
+  # Namespace des Monitorings (monitoring/helm/uptime-kuma, Prometheus).
+  # monitoringNamespaceLabel:
+  #   kubernetes.io/metadata.name: udp-monitoring
 
 # Selbst gebaute Images: in Produktion auf den Digest pinnen statt auf einen
 # beweglichen Tag. Die Digests gibt die GitHub Action (build-images.yml) in der

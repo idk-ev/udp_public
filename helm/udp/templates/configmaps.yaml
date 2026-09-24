@@ -16,7 +16,7 @@ data:
   apisix.yaml: |
 {{ tpl (.Files.Get "files/apisix/apisix.yaml.tpl") . | indent 4 }}
   config.yaml: |
-{{ .Files.Get "files/apisix/config.yaml" | indent 4 }}
+{{ tpl (.Files.Get "files/apisix/config.yaml.tpl") . | indent 4 }}
 ---
 # Keycloak-Realm-Import
 apiVersion: v1
@@ -63,3 +63,15 @@ data:
 {{ .Files.Get "files/postgres/00-auth.sh" | indent 4 }}
   01-databases.sql: |
 {{ .Files.Get "files/postgres/01-databases.sql" | indent 4 }}
+---
+# Mosquitto listeners (MQTT 1883, WebSocket 9001). Without this file Mosquitto
+# 2.x falls back to "local only mode" and binds 127.0.0.1 only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-config
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mosquitto") | nindent 4 }}
+data:
+  mosquitto.conf: |
+{{ .Files.Get "files/mosquitto/mosquitto.conf" | indent 4 }}

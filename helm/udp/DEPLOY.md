@@ -142,8 +142,8 @@ Das Chart ist „secure by default“ ausgelegt:
 **Grundsatz: Was nicht selbst festgelegt werden muss, wird automatisch als
 starkes Zufallspasswort erzeugt.** Das DB-Passwort ist eine reine App-zu-App-
 Zugangsdatei – die Datenbank ist von außen nicht erreichbar (kein Ingress) und
-per NetworkPolicy nur für `orion-ld`, `mintaka`, `frost` und `keycloak`
-geöffnet. Es gibt daher keinen Grund, es manuell zu vergeben.
+per NetworkPolicy nur für die Dienste geöffnet, die sie tatsächlich nutzen
+(Matrix in `templates/networkpolicy.yaml`). Es gibt daher keinen Grund, es manuell zu vergeben.
 
 ### Weg A – Automatisch erzeugte Zufallspasswörter (Default, auch für Produktion)
 
@@ -248,6 +248,8 @@ Mindestens anpassen:
 - `frost.serviceRootUrl` – auf den echten Host zeigen
 - `networkPolicies.ingressControllerNamespaceLabel` – Namespace eures Ingress-
   Controllers (Default: `ingress-nginx`)
+- `networkPolicies.monitoringNamespaceLabel` – Namespace von Uptime Kuma /
+  Prometheus, sonst erreicht das Monitoring die Dienste nicht (leer = aus)
 
 > `values-prod.yaml` gehört **nicht** mit echten Secrets in Git. Passwörter über
 > Weg B (Abschnitt 4), nicht in dieser Datei.
@@ -482,12 +484,17 @@ Das Monitoring hat ein eigenes Release und wird separat entfernt
 - [ ] **APISIX-Routen mit OIDC** (Keycloak) schützen – die Standalone-Config
       enthält CORS `*` und offene Routen; pro Route `openid-connect`-Plugin.
 - [ ] **CORS einschränken:** `global_rules` `allow_origins: "*"` → echte Origins.
-- [ ] **strictEgress** erproben und aktivieren (`networkPolicies.strictEgress`),
-      wenn kein Pod ungewollten Außenverkehr braucht.
-- [ ] **Monitoring:** Zugriff auf APISIX-Metrics `:9091` per NetworkPolicy für
-      euren Prometheus-Namespace ergänzen.
+- [ ] **strictEgress** erproben und aktivieren (`networkPolicies.strictEgress`).
+      Internetzugang behalten dann nur `networkPolicies.internetEgress.components`
+      (Default: Node-RED, Orion-LD, IoT-Agent, CKAN).
+- [ ] **Monitoring:** `networkPolicies.monitoringNamespaceLabel` setzen – öffnet
+      die HTTP-Dienste und APISIX-Metrics `:9091` für diesen Namespace.
 - [ ] **Backups** für mongo/timescale-Volumes einrichten (Velero/Snapshots).
-- [ ] **Ressourcen/HPA** nach Last justieren; PDBs sind bereits gesetzt.
+- [ ] **Ressourcen/HPA** nach Last justieren; PDBs sind für die replizierten
+      Dienste gesetzt (nur bei `replicas > 1`).
+- [x] **Probes:** jeder Dienst hat Readiness- und Liveness-Probe, langsam
+      startende zusätzlich eine Startup-Probe. Timings pro Komponente unter
+      `<komponente>.probes` anpassbar, `null` schaltet eine Probe ab.
 - [ ] **readOnlyRootFilesystem** je Dienst testen und wo möglich aktivieren.
 
 ---
@@ -499,6 +506,8 @@ Das Monitoring hat ein eigenes Release und wird separat entfernt
 | Pods `CrashLoopBackOff` mit „runAsNonRoot“ | Image braucht andere UID → in Values `podSecurityContext.runAsNonRoot: false` oder passende `runAsUser` setzen. |
 | DB-Pods `Pending` | Keine (passende) StorageClass → `global.storageClass` setzen, `kubectl get pvc -n udp`. |
 | Dienste erreichen DB nicht | NetworkPolicy zu streng oder CNI setzt nicht durch → `kubectl describe netpol`, CNI prüfen. |
+| Neuer Dienst/Aufrufer bekommt Timeouts | Jede Komponente ist nur für ihre bekannten Aufrufer offen → Zeile in `templates/networkpolicy.yaml` ergänzen oder `networkPolicies.extraFrom.<app>` setzen. |
+| Orion-LD antwortet nicht mehr, Log „New connection socket descriptor (1024) is not less than FD_SETSIZE“ | Leerlaufende Keep-Alive-Verbindungen haben die 1024 Dateideskriptoren von `select()` aufgebraucht. `orionLd.reqTimeout`/`maxConnections` verhindern das; die Liveness-Probe startet den Pod sonst nach rund einer Minute neu. `ulimit` hilft nicht. |
 | Kein externer Zugriff | Ingress-Controller-Namespace-Label stimmt nicht (`networkPolicies.ingressControllerNamespaceLabel`) oder DNS/TLS fehlt. |
 | Keycloak startet nicht | DB `keycloak` nicht angelegt → Postgres-Init-Logs prüfen (`kubectl logs sts/timescale`). |
 | `timescale` `CrashLoopBackOff`, Log „extension timescaledb is not available“ | Falsches Image. `timescale.image` muss `ghcr.io/idk-ev/udp/postgres-timescale-oss` sein, nicht `postgis/postgis`. |
