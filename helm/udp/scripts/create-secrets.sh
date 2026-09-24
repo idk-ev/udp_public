@@ -5,9 +5,11 @@
 # =============================================================================
 # UDP – Secrets für Produktion anlegen (secrets.create=false / Weg B).
 #
-# Erzeugt die beiden vom Chart erwarteten Secrets mit starken Zufallspasswörtern:
+# Erzeugt die vom Chart erwarteten Secrets mit starken Zufallspasswörtern:
 #   - udp-db        (POSTGRES_USER, POSTGRES_PASSWORD)
 #   - udp-keycloak  (KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD)
+#   - timescale-role-<user>, timescale-role-ckan-ro  (CNPG-Rollen, basic-auth,
+#     username/password – Passwort IMMER identisch mit udp-db)
 #
 # SICHERHEIT – ZIELCLUSTER: --context ist PFLICHT. Das Skript wählt niemals
 # implizit den "current-context" (Schutz vor versehentlichem Deploy auf den
@@ -41,7 +43,7 @@ SEALED=0
 ASSUME_YES=0
 OUT_DIR="${OUT_DIR:-./sealed}"
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -130,6 +132,22 @@ if [ "$SEALED" -eq 0 ] && ! kc get namespace "$NAMESPACE" >/dev/null 2>&1; then
   kc create namespace "$NAMESPACE"
 fi
 
+# Emits a finished manifest: as SealedSecret file (--sealed) or directly
+# via kubectl apply. Args: <secret-name> <manifest>
+emit_manifest() {
+  local name="$1" manifest="$2"
+  if [ "$SEALED" -eq 1 ]; then
+    mkdir -p "$OUT_DIR"
+    local seal=(kubeseal)
+    [ -n "$KUBECONFIG_FILE" ] && seal+=(--kubeconfig "$KUBECONFIG_FILE")
+    seal+=(--context "$CONTEXT" --format yaml)
+    printf '%s\n' "$manifest" | "${seal[@]}" > "$OUT_DIR/$name.sealed.yaml"
+    echo "  -> SealedSecret geschrieben: $OUT_DIR/$name.sealed.yaml"
+  else
+    printf '%s\n' "$manifest" | kc apply -f -
+  fi
+}
+
 # Erzeugt/aktualisiert ein generisches Secret aus key=value-Paaren.
 # Args: <secret-name> <k1> <v1> [<k2> <v2> ...]
 apply_secret() {
@@ -140,17 +158,7 @@ apply_secret() {
   local manifest
   manifest="$(kc create secret generic "$name" -n "$NAMESPACE" \
     "${args[@]}" --dry-run=client -o yaml)"
-
-  if [ "$SEALED" -eq 1 ]; then
-    mkdir -p "$OUT_DIR"
-    local seal=(kubeseal)
-    [ -n "$KUBECONFIG_FILE" ] && seal+=(--kubeconfig "$KUBECONFIG_FILE")
-    seal+=(--context "$CONTEXT" --format yaml)
-    echo "$manifest" | "${seal[@]}" > "$OUT_DIR/$name.sealed.yaml"
-    echo "  -> SealedSecret geschrieben: $OUT_DIR/$name.sealed.yaml"
-  else
-    echo "$manifest" | kc apply -f -
-  fi
+  emit_manifest "$name" "$manifest"
 }
 
 # Legt ein Secret an, sofern nicht vorhanden (oder --force).
@@ -165,6 +173,63 @@ ensure_secret() {
   return 0
 }
 
+# Base64 without line breaks (printf is a builtin -> value never shows up in ps).
+b64() { printf '%s' "$1" | base64 | tr -d '\r\n'; }
+
+# Reads one data key of an existing secret (decoded). Output is only captured,
+# never printed. Args: <secret-name> <key>
+read_secret_key() {
+  local raw
+  raw="$(kc get secret "$1" -n "$NAMESPACE" -o "jsonpath={.data.$2}" 2>/dev/null)" || return 1
+  [ -n "$raw" ] || return 1
+  printf '%s' "$raw" | base64 -d
+}
+
+# CNPG role secret name: timescale-role-<role> with "_" -> "-".
+role_secret_name() { printf 'timescale-role-%s' "$(printf '%s' "$1" | tr '_' '-')"; }
+
+# Writes a CNPG role secret (basic-auth). Label + annotation are required by the
+# chart: without cnpg.io/passwordPassthrough CNPG stores a SCRAM hash and
+# Orion-LD (libpq without SCRAM) cannot log in.
+# Args: <secret-name> <username> <password>
+apply_role_secret() {
+  local name="$1" user="$2" pass="$3" manifest
+  manifest="apiVersion: v1
+kind: Secret
+metadata:
+  name: $name
+  namespace: $NAMESPACE
+  labels:
+    cnpg.io/reload: \"true\"
+  annotations:
+    cnpg.io/passwordPassthrough: \"enabled\"
+type: kubernetes.io/basic-auth
+data:
+  username: $(b64 "$user")
+  password: $(b64 "$pass")"
+  emit_manifest "$name" "$manifest"
+}
+
+# Role secret: always written when udp-db was (re)written (passwords must match);
+# otherwise only created if missing. An existing one with a different password
+# is reported (without printing it). Args: <role> <password> <force 0|1>
+ensure_role_secret() {
+  local role="$1" pass="$2" force="$3" name cur
+  name="$(role_secret_name "$role")"
+  if [ "$SEALED" -eq 0 ] && [ "$force" -eq 0 ] \
+     && kc get secret "$name" -n "$NAMESPACE" >/dev/null 2>&1; then
+    cur="$(read_secret_key "$name" password || true)"
+    if [ "$cur" = "$pass" ]; then
+      echo "Secret '$name' existiert bereits – übersprungen."
+    else
+      echo "WARNUNG: Secret '$name' existiert, Passwort weicht von '$DB_SECRET' ab!" >&2
+      echo "  Löschen und Skript erneut ausführen (wird dann aus '$DB_SECRET' neu erzeugt)." >&2
+    fi
+    return 0
+  fi
+  apply_role_secret "$name" "$role" "$pass"
+}
+
 echo "== UDP-Secrets für Namespace '$NAMESPACE' =="
 
 DB_PASS="$(gen_pw)"
@@ -174,6 +239,21 @@ DB_WRITTEN=0; KC_WRITTEN=0
 ensure_secret "$DB_SECRET" POSTGRES_USER "$DB_USER" POSTGRES_PASSWORD "$DB_PASS" && DB_WRITTEN=1 || true
 ensure_secret "$KC_SECRET" KEYCLOAK_ADMIN "$KC_ADMIN" KEYCLOAK_ADMIN_PASSWORD "$KC_PASS" && KC_WRITTEN=1 || true
 
+# --- CNPG role secrets: credentials always taken from udp-db ----------------
+if [ "$DB_WRITTEN" -eq 1 ]; then
+  ROLE_USER="$DB_USER"; ROLE_PASS="$DB_PASS"
+else
+  ROLE_USER="$(read_secret_key "$DB_SECRET" POSTGRES_USER || true)"
+  ROLE_PASS="$(read_secret_key "$DB_SECRET" POSTGRES_PASSWORD || true)"
+  if [ -z "$ROLE_USER" ] || [ -z "$ROLE_PASS" ]; then
+    echo "FEHLER: POSTGRES_USER/POSTGRES_PASSWORD aus Secret '$DB_SECRET' nicht lesbar." >&2
+    exit 1
+  fi
+fi
+ensure_role_secret "$ROLE_USER" "$ROLE_PASS" "$DB_WRITTEN"
+ensure_role_secret "ckan_ro"    "$ROLE_PASS" "$DB_WRITTEN"
+unset ROLE_PASS DB_PASS
+
 echo
 if [ "$SEALED" -eq 1 ]; then
   echo "Fertig. SealedSecrets in '$OUT_DIR/' – ins Git-Repo committen und mit"
@@ -181,6 +261,7 @@ if [ "$SEALED" -eq 1 ]; then
 else
   echo "Fertig. In values-prod.yaml sicherstellen:"
   echo "  secrets.create: false"
+  echo "  db.user: \"$ROLE_USER\""
   echo "  db.existingSecret: \"$DB_SECRET\""
   echo "  keycloak.existingSecret: \"$KC_SECRET\""
   echo

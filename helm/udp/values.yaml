@@ -27,12 +27,13 @@ global:
   imageRegistry: ""
 
   # --- Selbst gebaute Images -------------------------------------------------
-  # Vier Images baut .github/workflows/build-images.yml aus diesem Repository:
-  #   cockpit                 (gui/Dockerfile)
-  #   ckan-dcat               (platform/config/ckan)
-  #   postgres-timescale-oss  (platform/config/postgres)
-  #   node-red-udp            (platform/config/nodered)
-  # Registry und Tag stehen hier EINMAL für alle vier. Pro Komponente
+  # Diese Images baut .github/workflows/build-images.yml aus diesem Repository:
+  #   cockpit                  (gui/Dockerfile)
+  #   ckan-dcat                (platform/config/ckan)
+  #   postgres-timescale-cnpg  (platform/config/postgres-cnpg)
+  #   postgres-timescale-oss   (platform/config/postgres, nur zur Migration)
+  #   node-red-udp             (platform/config/nodered)
+  # Registry und Tag stehen hier EINMAL für alle. Pro Komponente
   # überschreibbar: <komponente>.image.registry / .image.tag.
   # imageRegistry gilt hier nicht – udpRegistry ist bereits ein vollständiger
   # Registry-Pfad. Für einen Mirror einfach diesen Wert umbiegen.
@@ -175,6 +176,23 @@ networkPolicies:
   dnsNamespaceLabel:
     kubernetes.io/metadata.name: kube-system
   dnsExtraTo: []
+  # The CloudNativePG operator reaches the database instances on 8000 (status)
+  # and 5432. Namespace and pod labels of its Helm release (cloudnative-pg chart).
+  cnpgOperator:
+    namespaceLabel:
+      kubernetes.io/metadata.name: cnpg-system
+    podLabels:
+      app.kubernetes.io/name: cloudnative-pg
+  # Only with strictEgress (required then): the database instances talk to the
+  # Kubernetes API (status, leader lease). Peers of that egress rule – the
+  # addresses of the API server / control-plane nodes, e.g.
+  #   to: [{ ipBlock: { cidr: 10.0.0.0/16 } }]
+  # CAUTION with Cilium: an ipBlock does not match an API server on the host
+  # network – there a CiliumNetworkPolicy with toEntities: [kube-apiserver]
+  # is needed instead (outside this chart).
+  apiServerEgress:
+    to: []
+    ports: [443, 6443]
 
 # -----------------------------------------------------------------------------
 # Ingress
@@ -269,57 +287,96 @@ mongo:
       failureThreshold: 6
 
 timescale:
-  # Eigenes Image (platform/config/postgres/Dockerfile): PostGIS **und**
-  # TimescaleDB Apache Edition. Ein reines postgis/postgis reicht NICHT —
-  # files/postgres/01-databases.sql legt `CREATE EXTENSION timescaledb` an und
-  # der Init würde abbrechen; Mintaka braucht last() für typ-skopierte
-  # Temporal-Abfragen.
-  # registry/tag leer -> global.udpRegistry / global.udpTag.
-  # PGDATA liegt bewusst in einem UNTERVERZEICHNIS des Volumes
-  # (/var/lib/postgresql/data/pgdata, s. templates/persistence.yaml): auf dem
-  # Mountpoint selbst liegt bei ext4 ein lost+found, und initdb verweigert ein
-  # nicht leeres Datenverzeichnis.
-  image: { name: postgres-timescale-oss, registry: "", tag: "" }
-  db: { name: orion }     # POSTGRES_DB (Bootstrap-DB des Context Brokers)
+  # PostgreSQL 16 + PostGIS + TimescaleDB Apache Edition, run by the
+  # CloudNativePG operator (templates/timescale.yaml) as a replicated cluster:
+  # one primary, the other instances stream from it and take over on failover
+  # or before their node is drained. The operator is a cluster-wide
+  # prerequisite (DEPLOY.md §2) – the chart refuses to install without its CRDs.
+  #
+  # Clients keep using the host "timescale": a Service of the chart that always
+  # points to the current primary.
+  #
+  # Own image (platform/config/postgres-cnpg/Dockerfile) on top of the CNPG
+  # PostGIS image. Mintaka needs TimescaleDB's last() for type-scoped temporal
+  # queries, a plain PostGIS image is not enough.
+  # registry/tag empty -> global.udpRegistry / global.udpTag.
+  image: { name: postgres-timescale-cnpg, registry: "", tag: "" }
+  db: { name: orion }     # bootstrap database of the context broker (TRoE)
+  # 2 = primary + one standby. Spread over zones (affinity below) this survives
+  # the loss or maintenance of one node. 1 = no HA (CNPG then blocks no drain:
+  # the chart disables its PDB).
+  instances: 2
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits:   { cpu: "2",  memory: 4Gi }
+  # One volume PER INSTANCE of this size.
   persistence:
     size: 50Gi
     storageClass: ""
-  podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 999        # postgres
-    runAsGroup: 999
-    fsGroup: 999
+  # Where the instances may run relative to each other (CNPG spec.affinity).
+  # "preferred" still schedules both on one zone when there is only one;
+  # clusters with one node per zone should use "required" so a standby never
+  # shares the fate of the primary.
+  affinity:
+    topologyKey: topology.kubernetes.io/zone
+    podAntiAffinityType: preferred
+  # Synchronous replication that degrades instead of blocking: while a standby
+  # is healthy, a commit returns only once it has the WAL (no data loss on
+  # failover); with the standby gone (node reboot) writes continue on the
+  # primary alone. Only rendered with instances > 1.
+  synchronous: { method: any, number: 1, dataDurability: preferred }
+  # Additional postgresql.conf parameters (CNPG rejects the ones it manages
+  # itself, e.g. shared_preload_libraries, archive_*, log_*).
+  parameters: {}
   # Size of /dev/shm. Container runtimes default to 64 MiB, and parallel
   # queries (TimescaleDB chunk scans) then fail with "could not resize shared
   # memory segment". Counts towards the memory limit.
   shmSize: 256Mi
-  # Kubernetes sends SIGTERM, which is Postgres' "smart" shutdown: it waits for
-  # every client to disconnect – with the connection pools of Orion-LD, Mintaka
-  # and Keycloak that never happens, SIGKILL follows after the grace period and
-  # the next start runs crash recovery. The preStop hook in
-  # templates/persistence.yaml therefore does a fast shutdown (pg_ctl -m fast),
-  # this is the time it gets.
-  terminationGracePeriodSeconds: 120
-  probes:
-    # Crash recovery after an unclean stop replays the WAL before Postgres
-    # accepts connections – allow up to 10 min before liveness takes over.
-    startup:
-      exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
-      periodSeconds: 10
-      timeoutSeconds: 5
-      failureThreshold: 60
-    readiness:
-      exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
-      periodSeconds: 10
-      timeoutSeconds: 5
-    liveness:
-      exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
-      periodSeconds: 30
-      timeoutSeconds: 10
-      failureThreshold: 6
+
+  # --- Migration from the single-instance StatefulSet (chart <= 1.0.x) -------
+  # Existing installations keep their data in the PVC data-timescale-0 of the
+  # old StatefulSet "timescale". The chart refuses a plain upgrade while that
+  # StatefulSet still serves the data; scripts/migrate-timescale-cnpg.sh and
+  # helm/udp/DEPLOY.md §10a walk through the phases:
+  #   ""       normal operation: only the CNPG cluster (fresh installs, after
+  #            the migration)
+  #   prepare  old StatefulSet keeps serving "timescale", CNPG cluster runs
+  #            empty next to it and receives the copy
+  #   cutover  "timescale" points to the CNPG primary; the old StatefulSet
+  #            stays (Service timescale-legacy) as a rollback copy
+  migration:
+    phase: ""
+  # The old StatefulSet – only rendered in the migration phases.
+  legacy:
+    image: { name: postgres-timescale-oss, registry: "", tag: "" }
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 999        # postgres
+      runAsGroup: 999
+      fsGroup: 999
+    # Kubernetes sends SIGTERM, which is Postgres' "smart" shutdown: it waits
+    # for every client to disconnect – with the connection pools of Orion-LD,
+    # Mintaka and Keycloak that never happens, SIGKILL follows after the grace
+    # period and the next start runs crash recovery. The preStop hook
+    # therefore does a fast shutdown (pg_ctl -m fast), this is the time it gets.
+    terminationGracePeriodSeconds: 120
+    probes:
+      # Crash recovery after an unclean stop replays the WAL before Postgres
+      # accepts connections – allow up to 10 min before liveness takes over.
+      startup:
+        exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 60
+      readiness:
+        exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+        periodSeconds: 10
+        timeoutSeconds: 5
+      liveness:
+        exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 6
 
 # ---------- Context Broker ----------
 orionLd:

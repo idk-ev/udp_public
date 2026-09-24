@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: EUPL-1.2
 # © 2024–2026 Thomas Kieß and contributors
 
-# Baut die vier selbst gepflegten Images der Plattform und pusht sie in die
+# Baut die selbst gepflegten Images der Plattform und pusht sie in die
 # GitHub Container Registry (ghcr.io/<owner>/<repo>/<image>).
 #
-#   cockpit                 gui/Dockerfile            -> Helm: cockpit.image
-#   ckan-dcat               platform/config/ckan      -> Helm: ckan.image
-#   postgres-timescale-oss  platform/config/postgres  -> Helm: timescale.image
-#   node-red-udp            platform/config/nodered   -> Helm: nodeRed.image
+#   cockpit                  gui/Dockerfile                 -> Helm: cockpit.image
+#   ckan-dcat                platform/config/ckan           -> Helm: ckan.image
+#   postgres-timescale-cnpg  platform/config/postgres-cnpg  -> Helm: timescale.image
+#   postgres-timescale-oss   platform/config/postgres       -> Helm: timescale.legacy.image
+#                                                              (+ docker compose)
+#   node-red-udp             platform/config/nodered        -> Helm: nodeRed.image
 #
 # Alle übrigen Images (Orion-LD, Keycloak, APISIX, …) kommen unverändert von
 # Upstream und werden hier bewusst NICHT gespiegelt.
@@ -40,6 +42,7 @@ on:
       - 'platform/config/nginx/**'
       - 'platform/config/ckan/**'
       - 'platform/config/postgres/**'
+      - 'platform/config/postgres-cnpg/**'
       - 'platform/config/nodered/**'
       - 'helm/**'
       - '.github/workflows/build-images.yml'
@@ -49,11 +52,12 @@ on:
       - 'platform/config/nginx/**'
       - 'platform/config/ckan/**'
       - 'platform/config/postgres/**'
+      - 'platform/config/postgres-cnpg/**'
       - 'platform/config/nodered/**'
       - 'helm/**'
       - '.github/workflows/build-images.yml'
   # Releases haben absichtlich keinen paths-Filter: ein Release muss immer alle
-  # drei Images erzeugen, auch wenn der getaggte Commit nur Doku geändert hat.
+  # Images erzeugen, auch wenn der getaggte Commit nur Doku geändert hat.
   release:
     types: [published]
   workflow_dispatch:
@@ -90,10 +94,16 @@ jobs:
             dockerfile: platform/config/ckan/Dockerfile
             valueKey: ckan
             description: CKAN 2.10 mit ckanext-dcat (DCAT-AP.de)
+          - name: postgres-timescale-cnpg
+            context: platform/config/postgres-cnpg
+            dockerfile: platform/config/postgres-cnpg/Dockerfile
+            valueKey: timescale
+            description: PostgreSQL 16 + PostGIS + TimescaleDB Apache Edition (CloudNativePG)
+          # Compose stack and the old StatefulSet during the migration to CNPG.
           - name: postgres-timescale-oss
             context: platform/config/postgres
             dockerfile: platform/config/postgres/Dockerfile
-            valueKey: timescale
+            valueKey: timescale.legacy
             description: PostgreSQL 16 + PostGIS + TimescaleDB Apache Edition
           # Build-Kontext ist das Repo-Root: das Dockerfile kopiert die
           # generierten Flows aus platform/config/nodered/.
@@ -348,7 +358,7 @@ jobs:
 
             pinned=""
             if [ "$mode" = "pin" ]; then
-              for key in cockpit ckan timescale nodeRed; do
+              for key in cockpit ckan timescale timescale.legacy nodeRed; do
                 if [ ! -s "digests/$key" ]; then pinned=""; break; fi
                 TAGVAL="${tag}@$(cat "digests/$key")" \
                   yq -i ".${key}.image.tag = strenv(TAGVAL)" "$CHART_DIR/values.yaml"
