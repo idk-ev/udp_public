@@ -26,11 +26,7 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "ckan") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.ckan.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.ckan) | nindent 6 }}
       containers:
         - name: ckan
           image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.ckan.image) }}
@@ -64,16 +60,7 @@ spec:
             - { name: data, mountPath: /var/lib/ckan }
           resources:
             {{- toYaml .Values.ckan.resources | nindent 12 }}
-          # CKAN migriert beim ersten Start das Schema und legt den Sysadmin an –
-          # das dauert. startupProbe deckt bis zu 5 min ab, ohne die Liveness zu
-          # verschärfen.
-          startupProbe:
-            httpGet: { path: /api/3/action/status_show, port: 5000 }
-            periodSeconds: 10
-            failureThreshold: 30
-          readinessProbe:
-            httpGet: { path: /api/3/action/status_show, port: 5000 }
-            periodSeconds: 15
+          {{- include "udp.probes" .Values.ckan.probes | nindent 10 }}
       volumes:
         - name: data
           persistentVolumeClaim: { claimName: ckan-data }
@@ -119,11 +106,7 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "solr") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.solr.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.solr) | nindent 6 }}
       containers:
         - name: solr
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.solr.image) }}
@@ -134,11 +117,7 @@ spec:
             - { name: data, mountPath: /var/solr }
           resources:
             {{- toYaml .Values.solr.resources | nindent 12 }}
-          readinessProbe:
-            httpGet: { path: /solr/admin/info/system, port: 8983 }
-            initialDelaySeconds: 20
-            periodSeconds: 15
-            failureThreshold: 12
+          {{- include "udp.probes" .Values.solr.probes | nindent 10 }}
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:
@@ -176,11 +155,7 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "redis") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.redis.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.redis) | nindent 6 }}
       containers:
         - name: redis
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.redis.image) }}
@@ -189,9 +164,7 @@ spec:
           ports: [{ containerPort: 6379 }]
           resources:
             {{- toYaml .Values.redis.resources | nindent 12 }}
-          readinessProbe:
-            tcpSocket: { port: 6379 }
-            periodSeconds: 15
+          {{- include "udp.probes" .Values.redis.probes | nindent 10 }}
 ---
 apiVersion: v1
 kind: Service

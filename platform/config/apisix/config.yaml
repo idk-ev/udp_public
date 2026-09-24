@@ -6,6 +6,13 @@ apisix:
   node_listen: 9080
   enable_admin: false
 
+nginx_config:
+  http:
+    upstream:
+      # Must stay below Orion-LD's -reqTimeout (60 s), otherwise APISIX reuses
+      # a keep-alive socket Orion-LD has just closed (502).
+      keepalive_timeout: 30s
+
 deployment:
   role: data_plane
   role_data_plane:

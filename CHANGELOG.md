@@ -2,6 +2,26 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Kubernetes: Probes, NetworkPolicies, Orion-LD
+
+- **Orion-LD blieb hängen** („socket descriptor (1024) is not less than
+  FD_SETSIZE“): ohne Leerlauf-Timeout sammelten sich Keep-Alive-Verbindungen
+  bis zur `select()`-Grenze. Jetzt `-reqTimeout 60 -maxConnections 900`
+  (Helm und Compose), APISIX-Keep-Alive auf 30 s.
+- **Mosquitto** war im Cluster nur auf `127.0.0.1` erreichbar – die
+  `mosquitto.conf` wird jetzt eingehängt.
+- **Probes** für alle Dienste, Timings unter `<komponente>.probes`.
+- **NetworkPolicies** pro Komponente statt „alles im Namespace“; Monitoring-
+  Namespace und Internet-Egress (strictEgress) konfigurierbar.
+- Mintaka mit festem `-Xmx`, Postgres mit Fast-Shutdown und größerem
+  `/dev/shm`, APISIX mit 2 statt „auto“ Workern, `enableServiceLinks: false`,
+  PDB für Mintaka, Node-RED mit `Recreate`.
+- Orion-LD wartet per Init-Container auf MongoDB/TimescaleDB (sonst SIGSEGV
+  und CrashLoopBackOff nach jedem DB-Neustart); replizierte Dienste rollen mit
+  `maxUnavailable: 0` aus. MongoDB-Liveness per TCP statt `mongosh`.
+- Postgres-Image baut wieder: `bullseye-security` liefert 404, die Quelle
+  entfällt für den Build.
+
 ## Unveröffentlicht — Parken-Konnektor (ParkAPI) repariert
 
 `parken-bw` schrieb **~1,04 Mio TRoE-Zeilen/Tag** — rund die Hälfte der

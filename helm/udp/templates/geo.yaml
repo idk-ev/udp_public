@@ -24,11 +24,7 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "geoserver") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.geoserver.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.geoserver) | nindent 6 }}
       containers:
         - name: geoserver
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.geoserver.image) }}
@@ -47,14 +43,7 @@ spec:
             - { name: data, mountPath: /opt/geoserver_data }
           resources:
             {{- toYaml .Values.geoserver.resources | nindent 12 }}
-          # Der erste Start entpackt das Data-Directory; bis zu 5 min einplanen.
-          startupProbe:
-            tcpSocket: { port: 8080 }
-            periodSeconds: 10
-            failureThreshold: 30
-          readinessProbe:
-            tcpSocket: { port: 8080 }
-            periodSeconds: 15
+          {{- include "udp.probes" .Values.geoserver.probes | nindent 10 }}
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:
@@ -94,11 +83,7 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "masterportal") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.masterportal.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.masterportal) | nindent 6 }}
       containers:
         - name: masterportal
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.masterportal.image) }}
@@ -107,6 +92,7 @@ spec:
           ports: [{ containerPort: 80 }]
           resources:
             {{- toYaml .Values.masterportal.resources | nindent 12 }}
+          {{- include "udp.probes" .Values.masterportal.probes | nindent 10 }}
 ---
 apiVersion: v1
 kind: Service

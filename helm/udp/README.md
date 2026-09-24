@@ -105,7 +105,12 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.gatewayUpstream` | `""` | FQDN von APISIX für den nginx-Proxy im Cockpit (leer → `apisix.<ns>.svc.cluster.local:9080`) |
 | `ingress.clusterIssuer` | `letsencrypt` | cert-manager für TLS |
 | `networkPolicies.enabled` | `true` | Netzsegmentierung (CNI mit Policy nötig) |
-| `networkPolicies.strictEgress` | `false` | zusätzlich Egress-Default-deny |
+| `networkPolicies.strictEgress` | `false` | zusätzlich Egress-Default-deny (Internet nur für `internetEgress.components`) |
+| `networkPolicies.monitoringNamespaceLabel` | `{}` | Namespace des Monitorings (Uptime Kuma, Prometheus) |
+| `networkPolicies.extraFrom` | `{}` | zusätzliche Aufrufer pro Komponente |
+| `<komponente>.probes` | je Dienst | Startup-/Readiness-/Liveness-Probe, `null` schaltet ab |
+| `orionLd.reqTimeout` / `maxConnections` | `60` / `900` | hält Orion-LD unter FD_SETSIZE (1024) |
+| `global.priorityClassName` / `nodeSelector` / `tolerations` | leer | Scheduling-Vorgaben für alle Pods |
 | `global.imageRegistry` | `""` | Registry-Prefix für Upstream-Images (Mirror) |
 | `global.udpRegistry` | `ghcr.io/idk-ev/udp` | Registry der drei eigenen Images |
 | `global.udpTag` | `main` | Tag der drei eigenen Images |
@@ -117,8 +122,12 @@ Alle Parameter mit Kommentaren siehe [values.yaml](values.yaml).
 
 - Container: `drop ALL caps`, `no privilege escalation`, `seccomp RuntimeDefault`;
   Non-Root wo das Image es erlaubt (DBs, Keycloak, Mosquitto, Node-RED).
-- NetworkPolicies: Default-deny-Ingress, Datenspeicher nur für benannte Clients,
-  extern nur Cockpit/APISIX/Keycloak über den Ingress-Controller.
+- NetworkPolicies: Default-deny-Ingress, jede Komponente nur für ihre
+  tatsächlichen Aufrufer und Ports, extern nur Cockpit/APISIX/Keycloak über den
+  Ingress-Controller.
+- Resilienz: Probes für jeden Dienst, PDBs und Verteilung über Knoten/Zonen für
+  replizierte Dienste, geordnetes Herunterfahren (Postgres Fast-Shutdown,
+  preStop-Verzögerung vor Gateway/Cockpit/Orion-LD/Mintaka).
 - ServiceAccount ohne API-Token-Mount.
 - Secrets: interne App-zu-App-Zugangsdaten (DB, Keycloak-Admin) werden beim
   ersten Install als starke Zufallspasswörter erzeugt und stabil gehalten –

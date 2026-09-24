@@ -98,17 +98,6 @@ imagePullPolicy: {{ .Values.global.udpPullPolicy | default "Always" }}
 {{- end -}}
 
 {{/*
-imagePullSecrets-Block (nur wenn gesetzt). Basis-Einrückung 0 – am Aufrufort
-mit "| nindent <n>" positionieren, z. B. {{- include "udp.imagePullSecrets" . | nindent 6 }}
-*/}}
-{{- define "udp.imagePullSecrets" -}}
-{{- with .Values.global.imagePullSecrets -}}
-imagePullSecrets:
-{{ toYaml . }}
-{{- end -}}
-{{- end -}}
-
-{{/*
 Pod-SecurityContext = security.podSecurityContext (global) gemerged mit dem
 komponentenspezifischen Override.
 Aufruf: {{ include "udp.podSecurityContext" (dict "ctx" . "override" .Values.mongo.podSecurityContext) }}
@@ -255,6 +244,122 @@ cockpit.extraModuleUrls lassen sie sich nachtragen, sobald sie veröffentlicht s
 -}}
 // Von Helm erzeugt (ConfigMap cockpit-config) – NICHT im Container bearbeiten.
 window.UDP_CONFIG = {{ toPrettyJson $cfg | trim }};
+{{- end -}}
+
+{{/*
+Pod-spec fields shared by every workload of the chart. Base indentation 0 –
+position it at the call site with "| nindent 6".
+Call: {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.mongo) | nindent 6 }}
+
+enableServiceLinks: false – otherwise Kubernetes injects <SERVICE>_PORT etc.
+for EVERY service of the namespace into every container. With services named
+ckan, keycloak, redis or mongo these collide with variables the images read
+themselves (CKAN_* is parsed by ckanext-envvars, Micronaut maps MONGO_PORT to a
+property). All components address each other by DNS name, nothing needs them.
+*/}}
+{{- define "udp.podSpec" -}}
+{{- $g := .ctx.Values.global -}}
+serviceAccountName: udp
+automountServiceAccountToken: false
+enableServiceLinks: false
+{{- with $g.imagePullSecrets }}
+imagePullSecrets:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with (.cfg.priorityClassName | default $g.priorityClassName) }}
+priorityClassName: {{ . }}
+{{- end }}
+{{- with .cfg.terminationGracePeriodSeconds }}
+terminationGracePeriodSeconds: {{ . }}
+{{- end }}
+{{- with (.cfg.nodeSelector | default $g.nodeSelector) }}
+nodeSelector:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with (.cfg.tolerations | default $g.tolerations) }}
+tolerations:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+securityContext:
+{{- include "udp.podSecurityContext" (dict "ctx" .ctx "override" .cfg.podSecurityContext) | nindent 2 }}
+{{- end -}}
+
+{{/*
+Scheduling spread. An explicit <component>.affinity wins. Otherwise components
+running more than one replica get soft anti-affinity per node plus a soft
+spread across zones – both "preferred"/"ScheduleAnyway", so a single-node
+cluster still schedules everything. Nodes without a zone label are ignored by
+the zone constraint.
+Call: {{- include "udp.spread" (dict "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
+*/}}
+{{- define "udp.spread" -}}
+{{- if .cfg.affinity -}}
+affinity:
+{{- toYaml .cfg.affinity | nindent 2 }}
+{{- else if gt (int (.cfg.replicas | default 1)) 1 -}}
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              {{- include "udp.selectorLabels" .component | nindent 14 }}
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        {{- include "udp.selectorLabels" .component | nindent 8 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Rollout strategy for replicated Deployments: never take a ready pod away
+before its replacement is ready (maxUnavailable 0) – the Service keeps at least
+the full replica count during an update. Needs room for one extra pod
+(maxSurge 1); if the cluster has none, the rollout waits instead of degrading.
+Call: {{- include "udp.rollingUpdate" .Values.orionLd | nindent 2 }}
+*/}}
+{{- define "udp.rollingUpdate" -}}
+strategy:
+  type: RollingUpdate
+  rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+{{- end -}}
+
+{{/*
+startup/readiness/liveness probes from <component>.probes. Each probe is a plain
+Kubernetes probe object, so every field can be tuned via values; set a probe to
+null to drop it. Base indentation 0 – call with "| nindent 10".
+Call: {{- include "udp.probes" .Values.mongo.probes | nindent 10 }}
+*/}}
+{{- define "udp.probes" -}}
+{{- with .startup }}
+startupProbe:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .readiness }}
+readinessProbe:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .liveness }}
+livenessProbe:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+preStop delay for services behind a Service/Ingress. Endpoint removal reaches
+kube-proxy and the ingress controller only after the pod has already received
+SIGTERM; without a short delay in-flight connections hit a closed port during
+every rollout or node drain. Needs a "sleep" binary in the image.
+*/}}
+{{- define "udp.preStopSleep" -}}
+lifecycle:
+  preStop:
+    exec: { command: ["sleep", "{{ . | default 5 }}"] }
 {{- end -}}
 
 {{/*

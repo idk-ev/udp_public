@@ -21,11 +21,7 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "mongo") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.mongo.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.mongo) | nindent 6 }}
       containers:
         - name: mongo
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.mongo.image) }}
@@ -37,18 +33,7 @@ spec:
             - { name: data, mountPath: /data/db }
           resources:
             {{- toYaml .Values.mongo.resources | nindent 12 }}
-          livenessProbe:
-            exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
-            initialDelaySeconds: 15
-            periodSeconds: 20
-            # mongosh ist ein Node-CLI und braucht allein zum Starten rund eine
-            # Sekunde. Mit dem Kubernetes-Standard (timeoutSeconds: 1) scheitert
-            # die Prüfung deshalb an ihrer eigenen Startzeit statt an der
-            # Datenbank: Auf dem Referenzcluster hat das mongo-0 102× neu
-            # gestartet und orion-ld jedes Mal mit SIGSEGV mitgerissen
-            # (1622 Neustarts, dabei 19.–23.08.2026 fünf Tage ohne Ingestion).
-            # Compose ist nicht betroffen — dort liegt der Vorgabewert bei 30 s.
-            timeoutSeconds: 10
+          {{- include "udp.probes" .Values.mongo.probes | nindent 10 }}
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:
@@ -88,11 +73,7 @@ spec:
         # Neustart bei Änderung der Init-Skripte erzwingen.
         checksum/init: {{ (print (.Files.Get "files/postgres/00-auth.sh") (.Files.Get "files/postgres/01-databases.sql")) | sha256sum }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.timescale.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.timescale) | nindent 6 }}
       containers:
         - name: timescale
           image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.timescale.image) }}
@@ -120,15 +101,27 @@ spec:
           volumeMounts:
             - { name: data, mountPath: /var/lib/postgresql/data }
             - { name: init, mountPath: /docker-entrypoint-initdb.d }
+            {{- if .Values.timescale.shmSize }}
+            - { name: shm, mountPath: /dev/shm }
+            {{- end }}
           resources:
             {{- toYaml .Values.timescale.resources | nindent 12 }}
-          readinessProbe:
-            exec: { command: ["pg_isready", "-U", {{ .Values.db.user | quote }}, "-d", {{ .Values.timescale.db.name | quote }}] }
-            initialDelaySeconds: 10
-            periodSeconds: 10
+          {{- include "udp.probes" .Values.timescale.probes | nindent 10 }}
+          # Fast shutdown instead of the "smart" one SIGTERM triggers, which
+          # waits for all pooled clients to disconnect (s. values.yaml).
+          # -W: only request it – waiting would end with the hook being killed
+          # along with the container (FailedPreStopHook event on every stop);
+          # terminationGracePeriodSeconds covers the actual shutdown.
+          lifecycle:
+            preStop:
+              exec: { command: ["sh", "-c", "pg_ctl -D \"$PGDATA\" -m fast -W stop"] }
       volumes:
         - name: init
           configMap: { name: postgres-init }
+        {{- if .Values.timescale.shmSize }}
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: {{ .Values.timescale.shmSize }} }
+        {{- end }}
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:

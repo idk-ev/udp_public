@@ -56,6 +56,12 @@ services:
       -troePort 5432
       -troeUser ${POSTGRES_USER:-udp}
       -troePwd ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+      -reqTimeout 60
+      -maxConnections 900
+    # -reqTimeout/-maxConnections: without an idle timeout keep-alive
+    # connections pile up until fd 1024 (FD_SETSIZE of libmicrohttpd) and
+    # Orion-LD rejects every new connection while staying alive. Details:
+    # orionLd.reqTimeout in helm/udp/values.yaml.
     expose: ["1026"]       # NGSI-LD API nur intern; extern über Gateway /ngsi-ld
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:1026/ngsi-ld/ex/v1/version || exit 1"]

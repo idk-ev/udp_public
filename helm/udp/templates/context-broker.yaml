@@ -12,6 +12,8 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "orion-ld") | nindent 4 }}
 spec:
   replicas: {{ .Values.orionLd.replicas }}
+  minReadySeconds: {{ .Values.orionLd.minReadySeconds | default 0 }}
+  {{- include "udp.rollingUpdate" .Values.orionLd | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "orion-ld" | nindent 6 }}
@@ -20,20 +22,28 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "orion-ld") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.orionLd.podSecurityContext) | nindent 8 }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchLabels:
-                    {{- include "udp.selectorLabels" "orion-ld" | nindent 20 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.orionLd) | nindent 6 }}
+      {{- include "udp.spread" (dict "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
+      {{- if .Values.orionLd.waitForDatabases }}
+      initContainers:
+        # Same image (has bash with /dev/tcp) – no extra image to pull.
+        - name: wait-for-databases
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.orionLd.image) }}
+          command:
+            - bash
+            - -c
+            - |
+              for target in mongo:27017 timescale:5432; do
+                until timeout 2 bash -c "echo > /dev/tcp/${target%:*}/${target#*:}" 2>/dev/null; do
+                  echo "waiting for $target"; sleep 2
+                done
+              done
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.orionLd.containerSecurityContext) | nindent 12 }}
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
+      {{- end }}
       containers:
         - name: orion-ld
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.orionLd.image) }}
@@ -52,6 +62,12 @@ spec:
             - $(POSTGRES_USER)
             - -troePwd
             - $(POSTGRES_PASSWORD)
+            # Idle timeout + connection cap keep the process below FD_SETSIZE
+            # (s. orionLd.reqTimeout in values.yaml).
+            - -reqTimeout
+            - {{ .Values.orionLd.reqTimeout | quote }}
+            - -maxConnections
+            - {{ .Values.orionLd.maxConnections | quote }}
           env:
             - name: POSTGRES_USER
               valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
@@ -60,10 +76,8 @@ spec:
           ports: [{ containerPort: 1026 }]
           resources:
             {{- toYaml .Values.orionLd.resources | nindent 12 }}
-          readinessProbe:
-            httpGet: { path: /ngsi-ld/ex/v1/version, port: 1026 }
-            initialDelaySeconds: 10
-            periodSeconds: 10
+          {{- include "udp.probes" .Values.orionLd.probes | nindent 10 }}
+          {{- include "udp.preStopSleep" 5 | nindent 10 }}
 ---
 apiVersion: v1
 kind: Service
@@ -84,6 +98,7 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "mintaka") | nindent 4 }}
 spec:
   replicas: {{ .Values.mintaka.replicas }}
+  {{- include "udp.rollingUpdate" .Values.mintaka | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "mintaka" | nindent 6 }}
@@ -92,11 +107,8 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "mintaka") | nindent 8 }}
     spec:
-      serviceAccountName: udp
-      automountServiceAccountToken: false
-      {{- include "udp.imagePullSecrets" . | nindent 6 }}
-      securityContext:
-        {{- include "udp.podSecurityContext" (dict "ctx" . "override" .Values.mintaka.podSecurityContext) | nindent 8 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.mintaka) | nindent 6 }}
+      {{- include "udp.spread" (dict "component" "mintaka" "cfg" .Values.mintaka) | nindent 6 }}
       containers:
         - name: mintaka
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.mintaka.image) }}
@@ -112,10 +124,14 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
             - { name: ENDPOINTS_ALL_PORT, value: "8080" }
             - { name: MICRONAUT_METRICS_ENABLED, value: "false" }  # JDK-cgroup-Bug-Workaround
-            - { name: JAVA_TOOL_OPTIONS, value: "-XX:-UseContainerSupport" }
+            # Explicit -Xmx: with container support disabled the JVM would size
+            # its heap from the node's memory (s. mintaka.javaOpts).
+            - { name: JAVA_TOOL_OPTIONS, value: {{ .Values.mintaka.javaOpts | quote }} }
           ports: [{ containerPort: 8080 }]
           resources:
             {{- toYaml .Values.mintaka.resources | nindent 12 }}
+          {{- include "udp.probes" .Values.mintaka.probes | nindent 10 }}
+          {{- include "udp.preStopSleep" 5 | nindent 10 }}
 ---
 apiVersion: v1
 kind: Service
