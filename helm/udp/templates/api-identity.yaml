@@ -12,6 +12,7 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "apisix") | nindent 4 }}
 spec:
   replicas: {{ .Values.apisix.replicas }}
+  {{- include "udp.rollingUpdate" .Values.apisix | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "apisix" | nindent 6 }}

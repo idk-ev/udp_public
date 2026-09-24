@@ -80,6 +80,7 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "cockpit") | nindent 4 }}
 spec:
   replicas: {{ .Values.cockpit.replicas }}
+  {{- include "udp.rollingUpdate" .Values.cockpit | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "cockpit" | nindent 6 }}

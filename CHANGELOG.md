@@ -16,6 +16,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - Mintaka mit festem `-Xmx`, Postgres mit Fast-Shutdown und größerem
   `/dev/shm`, APISIX mit 2 statt „auto“ Workern, `enableServiceLinks: false`,
   PDB für Mintaka, Node-RED mit `Recreate`.
+- Orion-LD wartet per Init-Container auf MongoDB/TimescaleDB (sonst SIGSEGV
+  und CrashLoopBackOff nach jedem DB-Neustart); replizierte Dienste rollen mit
+  `maxUnavailable: 0` aus. MongoDB-Liveness per TCP statt `mongosh`.
 - Postgres-Image baut wieder: `bullseye-security` liefert 404, die Quelle
   entfällt für den Build.
 

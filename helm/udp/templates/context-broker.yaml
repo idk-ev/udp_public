@@ -12,6 +12,8 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "orion-ld") | nindent 4 }}
 spec:
   replicas: {{ .Values.orionLd.replicas }}
+  minReadySeconds: {{ .Values.orionLd.minReadySeconds | default 0 }}
+  {{- include "udp.rollingUpdate" .Values.orionLd | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "orion-ld" | nindent 6 }}
@@ -22,6 +24,26 @@ spec:
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.orionLd) | nindent 6 }}
       {{- include "udp.spread" (dict "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
+      {{- if .Values.orionLd.waitForDatabases }}
+      initContainers:
+        # Same image (has bash with /dev/tcp) – no extra image to pull.
+        - name: wait-for-databases
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.orionLd.image) }}
+          command:
+            - bash
+            - -c
+            - |
+              for target in mongo:27017 timescale:5432; do
+                until timeout 2 bash -c "echo > /dev/tcp/${target%:*}/${target#*:}" 2>/dev/null; do
+                  echo "waiting for $target"; sleep 2
+                done
+              done
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.orionLd.containerSecurityContext) | nindent 12 }}
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
+      {{- end }}
       containers:
         - name: orion-ld
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.orionLd.image) }}
@@ -76,6 +98,7 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "mintaka") | nindent 4 }}
 spec:
   replicas: {{ .Values.mintaka.replicas }}
+  {{- include "udp.rollingUpdate" .Values.mintaka | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "mintaka" | nindent 6 }}

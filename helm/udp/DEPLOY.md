@@ -506,6 +506,7 @@ Das Monitoring hat ein eigenes Release und wird separat entfernt
 | Pods `CrashLoopBackOff` mit „runAsNonRoot“ | Image braucht andere UID → in Values `podSecurityContext.runAsNonRoot: false` oder passende `runAsUser` setzen. |
 | DB-Pods `Pending` | Keine (passende) StorageClass → `global.storageClass` setzen, `kubectl get pvc -n udp`. |
 | Dienste erreichen DB nicht | NetworkPolicy zu streng oder CNI setzt nicht durch → `kubectl describe netpol`, CNI prüfen. |
+| Release hängt, ein StatefulSet-Pod bleibt `0/1` (z. B. nach falscher Probe) | StatefulSets ersetzen einen nicht bereiten Pod nicht – auch nicht beim Rollback. Pod von Hand löschen (`kubectl -n udp delete pod <name>-0`), dann startet er mit der aktuellen Revision. |
 | Neuer Dienst/Aufrufer bekommt Timeouts | Jede Komponente ist nur für ihre bekannten Aufrufer offen → Zeile in `templates/networkpolicy.yaml` ergänzen oder `networkPolicies.extraFrom.<app>` setzen. |
 | Orion-LD antwortet nicht mehr, Log „New connection socket descriptor (1024) is not less than FD_SETSIZE“ | Leerlaufende Keep-Alive-Verbindungen haben die 1024 Dateideskriptoren von `select()` aufgebraucht. `orionLd.reqTimeout`/`maxConnections` verhindern das; die Liveness-Probe startet den Pod sonst nach rund einer Minute neu. `ulimit` hilft nicht. |
 | Kein externer Zugriff | Ingress-Controller-Namespace-Label stimmt nicht (`networkPolicies.ingressControllerNamespaceLabel`) oder DNS/TLS fehlt. |

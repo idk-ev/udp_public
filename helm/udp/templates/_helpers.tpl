@@ -317,6 +317,19 @@ topologySpreadConstraints:
 {{- end -}}
 
 {{/*
+Rollout strategy for replicated Deployments: never take a ready pod away
+before its replacement is ready (maxUnavailable 0) – the Service keeps at least
+the full replica count during an update. Needs room for one extra pod
+(maxSurge 1); if the cluster has none, the rollout waits instead of degrading.
+Call: {{- include "udp.rollingUpdate" .Values.orionLd | nindent 2 }}
+*/}}
+{{- define "udp.rollingUpdate" -}}
+strategy:
+  type: RollingUpdate
+  rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+{{- end -}}
+
+{{/*
 startup/readiness/liveness probes from <component>.probes. Each probe is a plain
 Kubernetes probe object, so every field can be tuned via values; set a probe to
 null to drop it. Base indentation 0 – call with "| nindent 10".

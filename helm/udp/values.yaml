@@ -248,7 +248,10 @@ mongo:
   # Kubernetes default (timeoutSeconds: 1) the probe fails on its own start-up
   # time instead of on the database: on the reference cluster that restarted
   # mongo-0 102 times and took orion-ld down with SIGSEGV each time (1622
-  # restarts, five days without ingestion 19.–23.08.2026). Keep >= 10 s.
+  # restarts, five days without ingestion 19.–23.08.2026). Even with 10 s it
+  # kept restarting (48× in 28 days) on CPU-starved nodes. Liveness is
+  # therefore a plain TCP check – it restarts mongod only when it no longer
+  # accepts connections; mongosh stays for readiness, which never restarts.
   probes:
     startup:
       exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
@@ -260,9 +263,9 @@ mongo:
       periodSeconds: 20
       timeoutSeconds: 10
     liveness:
-      exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
+      tcpSocket: { port: 27017 }
       periodSeconds: 20
-      timeoutSeconds: 10
+      timeoutSeconds: 5
       failureThreshold: 6
 
 timescale:
@@ -346,6 +349,14 @@ orionLd:
   #                   files and outgoing notifications.
   reqTimeout: 60
   maxConnections: 900
+  # Orion-LD dies with SIGSEGV (exit 139) when MongoDB or TimescaleDB is not
+  # reachable at start. After a database restart every replica then sits in
+  # CrashLoopBackOff with growing back-off (up to 5 min) – long after the
+  # databases are back. An init container waits for both ports instead.
+  waitForDatabases: true
+  # A new pod must stay ready this long before the rollout continues – catches
+  # the crash-right-after-start pattern above before the old pod is gone.
+  minReadySeconds: 10
   # Should the broker still wedge, the liveness probe restarts the pod within
   # about a minute instead of leaving a dead-but-running process in the Service.
   probes:
@@ -624,10 +635,11 @@ geoserver:
       tcpSocket: { port: 8080 }
       periodSeconds: 10
       failureThreshold: 30
+    # TCP, not /geoserver/web/: the Wicket UI answers the probe with a redirect
+    # loop ("stopped after 10 redirects") and the pod never became ready.
     readiness:
-      httpGet: { path: /geoserver/web/, port: 8080 }
+      tcpSocket: { port: 8080 }
       periodSeconds: 15
-      timeoutSeconds: 10
     # Generous: a GeoServer rendering big layers can be slow without being
     # dead; only a closed port restarts it.
     liveness:
