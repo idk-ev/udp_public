@@ -2,7 +2,15 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht — Kubernetes: hochverfügbare Datenbank (CloudNativePG)
+## 1.1.0 — Hochverfügbare Datenbank, Kubernetes-Härtung, Parken-Konnektor
+
+> **Upgrade bestehender Kubernetes-Installationen:** PostgreSQL läuft jetzt als
+> CloudNativePG-Cluster. Vorher den CNPG-Operator installieren (DEPLOY.md §2)
+> und die Daten nach DEPLOY.md §10a umziehen – ein direktes `helm upgrade`
+> verweigert das Chart, statt eine leere Datenbank zu starten. docker compose
+> ist nicht betroffen.
+
+### Kubernetes: hochverfügbare Datenbank (CloudNativePG)
 
 - **PostgreSQL/TimescaleDB als CloudNativePG-Cluster** statt einzelnem
   StatefulSet: Primary und Standby in verschiedenen Zonen, Umschaltung vor
@@ -14,7 +22,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   um (DEPLOY.md §10a); das Chart verweigert ein Upgrade, das eine leere
   Datenbank starten würde.
 
-## Unveröffentlicht — Kubernetes: Probes, NetworkPolicies, Orion-LD
+### Kubernetes: Probes, NetworkPolicies, Orion-LD
 
 - **Orion-LD blieb hängen** („socket descriptor (1024) is not less than
   FD_SETSIZE“): ohne Leerlauf-Timeout sammelten sich Keep-Alive-Verbindungen
@@ -34,7 +42,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - Postgres-Image baut wieder: `bullseye-security` liefert 404, die Quelle
   entfällt für den Build.
 
-## Unveröffentlicht — Parken-Konnektor (ParkAPI) repariert
+### Parken-Konnektor (ParkAPI) repariert
 
 `parken-bw` schrieb **~1,04 Mio TRoE-Zeilen/Tag** — rund die Hälfte der
 Zeitreihen-Datenbank — und deckte dabei 1,6 % der Quelldaten ab. Drei Fehler

@@ -12,7 +12,7 @@
    und wird von tests/static/sw-cache.test.js darauf geprüft — jedes Release
    verwirft damit die Caches seines Vorgängers. Bis Sprint 2.9 stand hier ein
    handgepflegtes "udp-v2", das seit dem ersten Release nie erhöht wurde. */
-const V = "udp-1.0.1";
+const V = "udp-1.1.0";
 const SHELL = [
   "/stadt.html", "/kreis.html", "/dashboard.html", "/mitmachen.html",
   "/smartcity-lib.js", "/smartcity-theme.css",
