@@ -52,7 +52,7 @@ zufällige Gemeindeseiten mit ~25 parallelen API-Anfragen wie
 
 ```bash
 docker run --rm -e VUS=10 -e BASE=https://<host> \
-  -v "$PWD/tests/load:/s" -v "$PWD/gui/public/bw-gemeinden.json:/s/bw-gemeinden.json" \
+  -v "$PWD/tests/load:/s" -v "$PWD/gui/public/bw-gemeinden.json:/g/bw-gemeinden.json:ro" \
   grafana/k6 run -q /s/municipality-page.js
 ```
 

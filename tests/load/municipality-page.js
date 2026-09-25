@@ -15,7 +15,7 @@
  * The test aborts by itself at > 30 % failed requests.
  *
  *   docker run --rm -e VUS=10 -e BASE=https://udp.example.org \
- *     -v "$PWD/tests/load:/s" -v "$PWD/gui/public/bw-gemeinden.json:/s/bw-gemeinden.json" \
+ *     -v "$PWD/tests/load:/s" -v "$PWD/gui/public/bw-gemeinden.json:/g/bw-gemeinden.json:ro" \
  *     grafana/k6 run -q /s/municipality-page.js
  *
  * Target: 20 VUs, page p95 < 3 s, < 1 % errors.
@@ -28,7 +28,7 @@
 import http from 'k6/http';
 import { Trend, Counter } from 'k6/metrics';
 
-const gemeinden = JSON.parse(open('/s/bw-gemeinden.json')).gemeinden
+const gemeinden = JSON.parse(open('/g/bw-gemeinden.json')).gemeinden
   .map(g => ({ ags: g[0], krs: g[4], lat: g[2], lon: g[3] }));
 const BASE = (__ENV.BASE || 'https://udp.example.org').replace(/\/$/, '');
 const VUS = Number(__ENV.VUS || 5);
