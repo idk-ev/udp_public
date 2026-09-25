@@ -22,6 +22,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # /etc/nginx/templates: der Entrypoint (20-envsubst-on-templates.sh) ersetzt die
 # Platzhalter und legt das Ergebnis unter /etc/nginx/conf.d/default.conf ab.
 COPY platform/config/nginx/cockpit.conf.template /etc/nginx/templates/default.conf.template
+# Trusted proxy networks for the client address (UDP_TRUSTED_PROXIES).
+COPY --chmod=755 gui/docker/16-udp-realip.envsh /docker-entrypoint.d/16-udp-realip.envsh
 
 # Der Entrypoint liest die Nameserver aus /etc/resolv.conf nach
 # NGINX_LOCAL_RESOLVERS – so stimmt der resolver in Docker (127.0.0.11) wie in

@@ -4,10 +4,10 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
 ## Unveröffentlicht — Lastkapazität des Dashboards
 
-Lasttest vom 24.09.2026: Schon bei 3 gleichzeitigen Besuchern lag die
-Ladezeit einer Gemeindeseite bei 34 s (p95) – jede Dashboard-Abfrage war ein
-Vollscan in MongoDB, dazu zählte die TRoE-Statistik alle 10 Minuten 57 Mio.
-Zeilen.
+Ein Lasttest zeigte: Schon wenige gleichzeitige Besucher brachten die
+Gemeindeseiten auf Ladezeiten im zweistelligen Sekundenbereich – jede
+Dashboard-Abfrage war ein Vollscan in MongoDB, dazu zählte die TRoE-Statistik
+alle 10 Minuten die komplette Zeitreihentabelle.
 
 - **MongoDB-Index** `udp_type_ags` (Typ + ags) per Helm-Hook-Job nach jedem
   Install/Upgrade, auch für alle Mandanten-Datenbanken (`mongo.indexes`).

@@ -127,7 +127,7 @@ exports["TRoE-Statistik kennt das Zeilenbudget aus der Registry"] = () => {
   assert(reg.some(c => !c.rowBudget24h), "Testannahme hinfällig: alle Konnektoren tragen ein Budget");
 };
 
-/* The 10-minute statistics once counted the whole attributes table (57 M rows).
+/* The 10-minute statistics once counted the whole attributes table.
    The client timeout did not stop the server query, runs piled up and kept
    TimescaleDB at its CPU limit. Guard both halves of the fix. */
 exports["TRoE statistics stay cheap: server-side timeout, no full scan, overlap guard"] = () => {

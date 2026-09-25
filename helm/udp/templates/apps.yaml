@@ -108,6 +108,10 @@ spec:
             # ermittelt der Entrypoint aus /etc/resolv.conf.
             - { name: UDP_GATEWAY_UPSTREAM, value: {{ .Values.cockpit.gatewayUpstream | default (printf "apisix.%s.svc.cluster.local:9080" .Release.Namespace) | quote }} }
             - { name: UDP_NODERED_UPSTREAM, value: {{ .Values.cockpit.noderedUpstream | default (printf "node-red.%s.svc.cluster.local:1880" .Release.Namespace) | quote }} }
+            {{- with .Values.cockpit.trustedProxies }}
+            # Proxy networks allowed to set the client address (rate limit key).
+            - { name: UDP_TRUSTED_PROXIES, value: {{ join " " . | quote }} }
+            {{- end }}
           # nginx-unprivileged lauscht auf 8080 – Ports unter 1024 brauchen
           # CAP_NET_BIND_SERVICE, das mit "drop: ALL" wegfaellt. Der Service
           # bleibt auf 80, damit Ingress und Gateway-Routen unveraendert sind.

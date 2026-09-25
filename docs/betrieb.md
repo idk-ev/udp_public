@@ -57,10 +57,12 @@ docker run --rm -e VUS=10 -e BASE=https://<host> \
 ```
 
 - **Ziel:** 20 VUs, Seiten-p95 < 3 s, < 1 % Fehler.
-  Ausgangswert vor den Optimierungen (24.09.2026): 3 VUs → p95 34 s.
-- **Vorsicht:** läuft gegen die Produktion und erzeugt echte Last – nur
-  bewusst und außerhalb der Hauptnutzungszeit, nicht in CI. Bricht bei mehr
-  als 30 % Fehlern selbst ab.
+- **Vorsicht:** erzeugt echte Last auf der Zielinstanz – nur bewusst und
+  außerhalb der Hauptnutzungszeit, nicht in CI. Bricht bei mehr als 30 %
+  Fehlern selbst ab.
+- **Rate-Limit:** Alle VUs teilen sich die IP des Testrechners, das
+  Client-Limit (`apisix.rateLimit`) greift also mit. Für Kapazitätstests
+  darüber hinaus das Limit vorübergehend anheben.
 
 ## Datensicherung & Disaster Recovery
 

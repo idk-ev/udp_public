@@ -19,7 +19,6 @@
  *     grafana/k6 run -q /s/municipality-page.js
  *
  * Target: 20 VUs, page p95 < 3 s, < 1 % errors.
- * Baseline 2026-09-24 (before the Mongo indexes): 3 VUs -> page p95 34 s.
  *
  * Note: per-client rate limiting (apisix.rateLimit) applies – all VUs share
  * the tester's IP, so above ~30 req/s sustained the gateway answers 429. For

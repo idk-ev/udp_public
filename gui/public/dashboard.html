@@ -257,8 +257,10 @@ async function load() {
   ]);
   const ok = probes.filter(p => p.ok).length;
   const v = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
-  const dbB = v(troe, "dbSizeBytes"), rows = v(troe, "troeRows"), ents = v(troe, "troeEntities"),
-        r24 = v(troe, "troeRows24h"), r1 = v(troe, "troeRows1h"), asOf = v(troe, "rowsByTypeAsOf");
+  // Numbers are coerced before they reach innerHTML (fmtN passes strings through).
+  const num = x => x == null ? null : Number(x);
+  const dbB = num(v(troe, "dbSizeBytes")), rows = num(v(troe, "troeRows")), ents = num(v(troe, "troeEntities")),
+        r24 = num(v(troe, "troeRows24h")), r1 = num(v(troe, "troeRows1h")), asOf = v(troe, "rowsByTypeAsOf");
 
   // 2) Kacheln
   $("#tiles").innerHTML =
@@ -340,11 +342,11 @@ async function loadCharts() {
   lineSvg("#ch-load", SC.series(loadHist, "cpuLoadPct"), "%");
   // Totals and entity counts are computed nightly (-1 = not counted yet),
   // the 24 h column is live.
-  const nightly = n => (n == null || n < 0) ? "–" : fmtN(n), asOf = v(troe, "rowsByTypeAsOf");
+  const nightly = n => (n == null || Number(n) < 0) ? "–" : fmtN(Number(n)), asOf = v(troe, "rowsByTypeAsOf");
   $("#types-desc").textContent = "TRoE-Zeilen (gesamt) und Anteil der letzten 24 h — zeigt, welche Quellen den Speicher treiben"
     + (asOf ? ". Gesamt und Entitäten: Stand " + fmtDate(asOf) : "");
   $("#types tbody").innerHTML = asRows(v(troe, "rowsByType")).map(([t, n, n24, e]) =>
-    `<tr><td>${esc(t)}</td><td class="num">${nightly(n)}</td><td class="num">${fmtN(n24)}</td><td class="num">${nightly(e)}</td></tr>`).join("");
+    `<tr><td>${esc(t)}</td><td class="num">${nightly(n)}</td><td class="num">${fmtN(Number(n24))}</td><td class="num">${nightly(e)}</td></tr>`).join("");
 }
 
 async function tick(fn) {

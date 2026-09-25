@@ -251,7 +251,7 @@ mongo:
     requests: { cpu: 250m, memory: 512Mi }
     # Two cores: every dashboard request that misses the cockpit cache is a
     # Mongo query, and a throttled mongod answers even indexed lookups in
-    # seconds (measured 11–15 s at the old 1-core limit under load).
+    # seconds under load.
     limits:   { cpu: "2",  memory: 2Gi }
   persistence:
     size: 20Gi
@@ -259,8 +259,8 @@ mongo:
   # Secondary indexes on Orion-LD's "entities" collection, created by the hook
   # job templates/mongo-indexes.yaml after every install/upgrade. Orion-LD
   # itself only indexes the entity id and location – every "type=X&q=ags==…"
-  # query of the dashboard was a collection scan over all entities (0.75 s
-  # each, ~10 per municipality page; 3 concurrent visitors saturated Mongo).
+  # query of the dashboard was a collection scan over all entities (~10 per
+  # municipality page; a few concurrent visitors saturated Mongo).
   # Applied to every database named orion or orion-<tenant>. Attribute paths
   # use Orion-LD's storage format: expanded name with "." replaced by "=".
   # createIndex is idempotent; changing the keys of an existing name fails the
@@ -892,6 +892,13 @@ cockpit:
   # Den Resolver selbst ermittelt der Container-Entrypoint aus /etc/resolv.conf.
   gatewayUpstream: ""     # leer -> apisix.<Release-Namespace>.svc.cluster.local:9080
   noderedUpstream: ""     # leer -> node-red.<Release-Namespace>.svc.cluster.local:1880
+  # Proxy networks (ingress controller pods / load balancer) whose
+  # X-Forwarded-For entries the cockpit trusts when resolving the client
+  # address for the per-client rate limit (apisix.rateLimit). Empty -> all
+  # private ranges. Narrow it to your ingress/pod network when clients can
+  # themselves come from private addresses (intranet, VPN) – otherwise they
+  # could pick their own rate-limit bucket. Example: ["10.42.0.0/16"]
+  trustedProxies: []
   # Öffentliche Basis-Adresse der Plattform, wie sie im BROWSER steht. Daraus
   # erzeugt das Chart die Laufzeit-Konfiguration der SPA (ConfigMap
   # cockpit-config) und die Redirect-URIs im Keycloak-Realm. Leer (empfohlen)

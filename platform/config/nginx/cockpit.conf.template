@@ -29,12 +29,11 @@ proxy_cache_path /var/cache/nginx/udp levels=1:2 keys_zone=udpapi:10m
 
 server {
     # Client address behind the ingress controller / load balancer: take it
-    # from X-Forwarded-For, skipping trusted proxy hops (private networks –
-    # pod/node network in Kubernetes, the bridge network in Compose). Feeds
-    # X-Real-IP below, which keys the per-client rate limit in APISIX.
-    set_real_ip_from 10.0.0.0/8;
-    set_real_ip_from 172.16.0.0/12;
-    set_real_ip_from 192.168.0.0/16;
+    # from X-Forwarded-For, skipping trusted proxy hops. The set_real_ip_from
+    # directives come from UDP_TRUSTED_PROXIES (gui/docker/16-udp-realip.envsh,
+    # default: all private ranges). Feeds X-Real-IP below, which keys the
+    # per-client rate limit in APISIX.
+    ${UDP_REALIP_FROM}
     real_ip_header X-Forwarded-For;
     real_ip_recursive on;
 
@@ -153,9 +152,10 @@ server {
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 60s;
-        # The tenant header selects a different database in Orion-LD – without
-        # it in the key, one tenant's cached answer is served to another.
-        proxy_cache_key "$request_uri|$http_ngsild_tenant";
+        # The tenant header selects a different database in Orion-LD; Accept
+        # (json / ld+json / geo+json) and Link (@context) change the rendering.
+        # Without them in the key, one client's variant is served to everyone.
+        proxy_cache_key "$request_uri|$http_ngsild_tenant|$http_accept|$http_link";
         proxy_cache_lock on;
         # Stale-while-revalidate: an expired entry is answered at once while ONE
         # request refreshes it in the background, and during a short Orion-LD /
@@ -198,9 +198,8 @@ server {
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 300s;
-        # The tenant header selects a different database in Orion-LD – without
-        # it in the key, one tenant's cached answer is served to another.
-        proxy_cache_key "$request_uri|$http_ngsild_tenant";
+        # Tenant, Accept and Link change the answer – s. /gateway/ngsi-ld/.
+        proxy_cache_key "$request_uri|$http_ngsild_tenant|$http_accept|$http_link";
         proxy_cache_lock on;
         # Stale-while-revalidate: an expired entry is answered at once while ONE
         # request refreshes it in the background, and during a short Orion-LD /

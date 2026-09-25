@@ -115,6 +115,7 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `mongo.indexes.enabled` | `true` | Hook-Job legt nach Install/Upgrade Indizes in `orion` und allen `orion-<mandant>`-DBs an |
 | `mongo.indexes.entities` | `udp_type_ags` | Indizes auf `entities` (`name`, `key` als Liste von `[feld, richtung]`); geänderte Schlüssel brauchen einen neuen Namen |
 | `apisix.rateLimit.rate` / `burst` | `30` / `150` | Anfragen/s je Client auf `/ngsi-ld` und `/temporal`, darüber HTTP 429 |
+| `cockpit.trustedProxies` | `[]` | Proxy-Netze, deren X-Forwarded-For für die Client-IP gilt (leer = alle privaten Netze) |
 | `global.priorityClassName` / `nodeSelector` / `tolerations` | leer | Scheduling-Vorgaben für alle Pods |
 | `global.imageRegistry` | `""` | Registry-Prefix für Upstream-Images (Mirror) |
 | `global.udpRegistry` | `ghcr.io/idk-ev/udp` | Registry der drei eigenen Images |
