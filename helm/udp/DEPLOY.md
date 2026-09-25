@@ -509,14 +509,14 @@ automatisch einen Rolling-Restart der betroffenen Pods aus.
 ### 10a. Migration der Datenbank auf CloudNativePG (Upgrade von Chart ≤ 1.0.x)
 
 Bis Chart 1.0.x lief die Datenbank als einzelnes StatefulSet `timescale`; ihr
-Volume ist an einen Knoten (bei Hetzner: an einen Standort) gebunden, jeder
+Volume ist an einen Knoten (je nach Speicher auch an eine Zone) gebunden, jeder
 Neustart dieses Knotens war ein Ausfall. Das Chart legt heute einen
 CNPG-Cluster an – mit **leerer** Datenbank. Ein einfaches `helm upgrade`
 verweigert es deshalb, solange die Daten noch im alten StatefulSet liegen.
 
 Umzug in Phasen (`timescale.migration.phase`), dazwischen
 `scripts/migrate-timescale-cnpg.sh`. Die Plattform steht nur zwischen `copy`
-und `resume` – bei ~27 GB rund 30–60 min (vorher mit `rehearse` messen).
+und `resume` – die Dauer hängt von der Datenmenge ab, vorher mit `rehearse` messen.
 Die neuen Volumes brauchen nur Platz für die Daten selbst: die Kopie läuft als
 Strom `pg_dump | pg_restore`, ohne Zwischendatei.
 
