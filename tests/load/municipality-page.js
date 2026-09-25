@@ -43,6 +43,7 @@ export const options = {
   vus: VUS,
   duration: __ENV.DURATION || '30s',
   discardResponseBodies: true,
+  summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'max'],
   thresholds: {
     http_req_failed: [{ threshold: 'rate<0.3', abortOnFail: true, delayAbortEval: '10s' }],
   },

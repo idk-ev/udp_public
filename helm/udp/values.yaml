@@ -764,6 +764,8 @@ apisix:
   # page loads in a row (tabs, kiosk screens, quick municipality switching),
   # rate caps sustained scraping. Over the limit: HTTP 429. The client address
   # comes from the cockpit nginx (X-Real-IP, platform/config/nginx).
+  # Counted PER APISIX REPLICA (local policy): with apisix.replicas 2 a client
+  # effectively gets twice rate and burst.
   rateLimit:
     rate: 30
     burst: 150
