@@ -126,3 +126,22 @@ exports["TRoE-Statistik kennt das Zeilenbudget aus der Registry"] = () => {
   // Rückwärtskompatibel: Konnektoren ohne rowBudget24h bleiben unbeanstandet.
   assert(reg.some(c => !c.rowBudget24h), "Testannahme hinfällig: alle Konnektoren tragen ein Budget");
 };
+
+/* The 10-minute statistics once counted the whole attributes table (57 M rows).
+   The client timeout did not stop the server query, runs piled up and kept
+   TimescaleDB at its CPU limit. Guard both halves of the fix. */
+exports["TRoE statistics stay cheap: server-side timeout, no full scan, overlap guard"] = () => {
+  const troe = FUNCS.find(n => n.id === "udp-rt-db-fn");
+  // SQL is written as concatenated string literals – join them first.
+  const code = nurCode(troe.func).replace(/"\s*\+\s*"/g, "");
+  assert(/statement_timeout:\s*\d+/.test(code), "no server-side statement_timeout in the 10-minute statistics");
+  assert(!/count\(DISTINCT/i.test(code), "count(DISTINCT …) in the 10-minute statistics – that is a full scan");
+  // Every read of attributes must be restricted to a time window.
+  for (const q of code.match(/FROM attributes[^"]*"[^"]*"/g) || []) {
+    assert(/WHERE ts >/.test(q), "unbounded query on attributes in the 10-minute statistics: " + q);
+  }
+  assert(/application_name = 'udp-troe-stats'/.test(code), "overlap guard missing");
+  const ret = FUNCS.find(n => n.id === "udp-rt-rt-fn");
+  assert(/statement_timeout:\s*\d+/.test(nurCode(ret.func)), "no server-side statement_timeout in the retention run");
+  assert(/INSERT INTO udp_troe_type_stats/.test(ret.func), "retention no longer fills the nightly type statistics");
+};

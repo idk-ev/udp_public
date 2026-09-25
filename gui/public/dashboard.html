@@ -89,7 +89,7 @@
   </div>
   <div class="card span-12">
     <h2>Zeitreihenspeicher nach Entitätstyp</h2>
-    <div class="desc">TRoE-Zeilen (gesamt) und Anteil der letzten 24 h — zeigt, welche Quellen den Speicher treiben</div>
+    <div class="desc" id="types-desc">TRoE-Zeilen (gesamt) und Anteil der letzten 24 h — zeigt, welche Quellen den Speicher treiben</div>
     <table id="types"><thead><tr><th>Typ</th><th class="num">Zeilen gesamt</th><th class="num">letzte 24 h</th><th class="num">Entitäten</th></tr></thead><tbody></tbody></table>
   </div>
 </div>
@@ -107,6 +107,7 @@
 const { $, css, esc, jget, tile, grade, barSvg, fmtN, fmtT, asRows } = SC;
 SC.themeSelector("#thememount");
 const GW = SC.GW;
+const fmtDate = iso => { const d = new Date(iso); return isNaN(d) ? "–" : d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + " Uhr"; };
 const fmtBytes = b => b == null ? "–" : b > 1073741824 ? (b / 1073741824).toFixed(1).replace(".", ",") + " GB" : Math.round(b / 1048576) + " MB";
 
 /* ---------- Kommunen-Suche (öffnet Dashboards im neuen Fenster, Permalink) ---------- */
@@ -257,7 +258,7 @@ async function load() {
   const ok = probes.filter(p => p.ok).length;
   const v = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
   const dbB = v(troe, "dbSizeBytes"), rows = v(troe, "troeRows"), ents = v(troe, "troeEntities"),
-        r24 = v(troe, "troeRows24h"), r1 = v(troe, "troeRows1h");
+        r24 = v(troe, "troeRows24h"), r1 = v(troe, "troeRows1h"), asOf = v(troe, "rowsByTypeAsOf");
 
   // 2) Kacheln
   $("#tiles").innerHTML =
@@ -279,12 +280,12 @@ async function load() {
     tile("Zeitreihen-DB", fmtBytes(dbB), "", {
       hint: "TimescaleDB „orion“ (TRoE)",
       explain: "Größe der Zeitreihendatenbank, in der jede Messwert-Änderung historisiert wird (Temporal Representation of Entities)." }) +
-    tile("TRoE-Zeilen", fmtN(rows), "", {
+    tile("TRoE-Zeilen", rows == null ? "–" : "≈ " + fmtN(rows), "", {
       hint: "+" + fmtN(r24) + " in 24 h",
-      explain: "Gesamtzahl der historisierten Attributwerte. Die 24-h-Zahl zeigt die aktuelle Schreiblast aller Konnektoren." }) +
+      explain: "Gesamtzahl der historisierten Attributwerte (Schätzwert der Datenbankstatistik). Die 24-h-Zahl ist exakt und zeigt die aktuelle Schreiblast aller Konnektoren." }) +
     tile("Entitäten", fmtN(ents), "", {
-      hint: "mit Zeitreihen-Historie",
-      explain: "Anzahl unterschiedlicher NGSI-LD-Objekte (Sensoren, Stationen, Aggregate), zu denen Historie vorliegt." }) +
+      hint: asOf ? "mit Historie · Stand " + fmtDate(asOf) : "mit Zeitreihen-Historie",
+      explain: "Anzahl unterschiedlicher NGSI-LD-Objekte (Sensoren, Stationen, Aggregate), zu denen Historie vorliegt. Wird einmal nächtlich gezählt." }) +
     tile("Datenfluss", fmtN(r1), "/h", {
       status: r1 > 0 ? css("--status-good") : css("--status-serious"),
       hint: "neue Werte letzte Stunde",
@@ -337,8 +338,13 @@ async function loadCharts() {
   const v = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
   barSvg("#bars-ingest", asRows(v(troe, "ingestByHour")).map(([h, n]) => [h + " Uhr", n]));
   lineSvg("#ch-load", SC.series(loadHist, "cpuLoadPct"), "%");
+  // Totals and entity counts are computed nightly (-1 = not counted yet),
+  // the 24 h column is live.
+  const nightly = n => (n == null || n < 0) ? "–" : fmtN(n), asOf = v(troe, "rowsByTypeAsOf");
+  $("#types-desc").textContent = "TRoE-Zeilen (gesamt) und Anteil der letzten 24 h — zeigt, welche Quellen den Speicher treiben"
+    + (asOf ? ". Gesamt und Entitäten: Stand " + fmtDate(asOf) : "");
   $("#types tbody").innerHTML = asRows(v(troe, "rowsByType")).map(([t, n, n24, e]) =>
-    `<tr><td>${esc(t)}</td><td class="num">${fmtN(n)}</td><td class="num">${fmtN(n24)}</td><td class="num">${fmtN(e)}</td></tr>`).join("");
+    `<tr><td>${esc(t)}</td><td class="num">${nightly(n)}</td><td class="num">${fmtN(n24)}</td><td class="num">${nightly(e)}</td></tr>`).join("");
 }
 
 async function tick(fn) {
