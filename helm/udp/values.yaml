@@ -757,6 +757,16 @@ apisix:
   # APISIX schreibt Logs ins Root-FS -> Non-Root-Härtung als TODO.
   podSecurityContext:
     runAsNonRoot: false
+  # Per-client limit on the public read routes /ngsi-ld and /temporal
+  # (templates/_helpers.tpl, udp.apisixRateLimit). One municipality page fires
+  # ~25 API requests at once, a dashboard tab re-polls every 60–120 s; static
+  # assets and cockpit cache hits never reach APISIX. burst absorbs several
+  # page loads in a row (tabs, kiosk screens, quick municipality switching),
+  # rate caps sustained scraping. Over the limit: HTTP 429. The client address
+  # comes from the cockpit nginx (X-Real-IP, platform/config/nginx).
+  rateLimit:
+    rate: 30
+    burst: 150
   # nginx worker processes. APISIX' default "auto" counts the NODE's cores, not
   # the container's CPU limit – on a 32-core node that is 32 workers (each with
   # its own memory and upstream connection pools) squeezed into one CPU.

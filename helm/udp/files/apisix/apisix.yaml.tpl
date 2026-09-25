@@ -77,10 +77,7 @@ routes:
     uris: ["/ngsi-ld/*"]
     upstream_id: orion
     plugins:
-      limit-req:
-        rate: 200
-        burst: 100
-        key: remote_addr
+      {{- include "udp.apisixRateLimit" . | nindent 6 }}
 
   # NGSI-LD Temporal API (Zeitreihenabfragen)
   - id: temporal
@@ -89,6 +86,7 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/temporal/(.*)", "/$1"]
+      {{- include "udp.apisixRateLimit" . | nindent 6 }}
 
   # OGC SensorThings API
   - id: sensorthings
