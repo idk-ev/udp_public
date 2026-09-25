@@ -2,6 +2,27 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Lastkapazität des Dashboards
+
+Lasttest vom 24.09.2026: Schon bei 3 gleichzeitigen Besuchern lag die
+Ladezeit einer Gemeindeseite bei 34 s (p95) – jede Dashboard-Abfrage war ein
+Vollscan in MongoDB, dazu zählte die TRoE-Statistik alle 10 Minuten 57 Mio.
+Zeilen.
+
+- **MongoDB-Index** `udp_type_ags` (Typ + ags) per Helm-Hook-Job nach jedem
+  Install/Upgrade, auch für alle Mandanten-Datenbanken (`mongo.indexes`).
+  Probes nur noch TCP, CPU-Limit 2.
+- **TRoE-Statistik** zählt alle 10 Minuten nur die letzten 24 h;
+  Gesamtwerte je Typ kommen aus dem nächtlichen Lauf (Dashboard: „Stand …“).
+  Server-seitiger Timeout, keine überlappenden Läufe mehr.
+- **Rate-Limit je Client** auf `/ngsi-ld` und `/temporal` statt eines
+  gemeinsamen Topfs für alle Besucher (`apisix.rateLimit`, HTTP 429).
+- **Cockpit-Cache**: Schlüssel enthält den Mandanten (vorher konnten Mandanten
+  fremde Antworten erhalten); bei kurzen Orion-Ausfällen wird die letzte
+  Antwort ausgeliefert.
+- Neuer Lasttest `tests/load/municipality-page.js` (k6), siehe
+  [Betrieb](docs/betrieb.md#lasttest-dashboard).
+
 ## 1.1.0 — Hochverfügbare Datenbank, Kubernetes-Härtung, Parken-Konnektor
 
 > **Upgrade bestehender Kubernetes-Installationen:** PostgreSQL läuft jetzt als
