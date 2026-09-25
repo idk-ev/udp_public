@@ -234,6 +234,10 @@ DST=timescale-rw
 # Detect a dead peer (lost node, partition) within ~90 s instead of the kernel
 # default of ~2 h – the copy would otherwise hang silently during the downtime.
 KA="keepalives_idle=30 keepalives_interval=10 keepalives_count=6"
+# Restore session only: sort memory for the index builds (the default 64 MB
+# spills a multi-GB primary key to disk) and no wait for the standby on every
+# commit – the row counts are verified afterwards anyway.
+RESTORE_OPTS="options='-c maintenance_work_mem=512MB -c synchronous_commit=off'"
 q() { psql -v ON_ERROR_STOP=1 -X -Atq "$@"; }
 dbs() { q -h "$1" -d postgres -c "SELECT datname FROM pg_database WHERE datallowconn AND datname NOT IN ('postgres','template1') ORDER BY 1"; }
 has() { case " $(echo $1) " in *" $2 "*) return 0 ;; *) return 1 ;; esac; }
@@ -310,7 +314,7 @@ copy|rehearse)
         echo "== $db"
         pg_dump -d "host=$SRC dbname=$db $KA" -Fc -Z0 \
             --exclude-schema='_timescaledb*' --exclude-schema='timescaledb_*' \
-          | pg_restore -d "host=$DST dbname=$db $KA" --exit-on-error
+          | pg_restore -d "host=$DST dbname=$db $KA $RESTORE_OPTS" --exit-on-error
         vacuumdb -h "$DST" -d "$db" --analyze-only -q
         echo "   $(( $(date +%s) - start )) s"
     done
