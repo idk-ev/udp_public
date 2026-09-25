@@ -20,6 +20,8 @@ alle 10 Minuten die komplette Zeitreihentabelle.
 - **Cockpit-Cache**: Schlüssel enthält den Mandanten (vorher konnten Mandanten
   fremde Antworten erhalten); bei kurzen Orion-Ausfällen wird die letzte
   Antwort ausgeliefert.
+- **Compose:** APISIX (Port 8780) nur noch auf `127.0.0.1` veröffentlicht
+  (`PROXY_BIND`); externer API-Zugriff über das Cockpit (`/gateway/…`).
 - Neuer Lasttest `tests/load/municipality-page.js` (k6), siehe
   [Betrieb](docs/betrieb.md#lasttest-dashboard).
 

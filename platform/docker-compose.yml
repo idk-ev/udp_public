@@ -285,7 +285,11 @@ services:
       - ./config/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
       - ./config/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
     ports:
-      - "${PROXY_PORT:-8780}:9080"      # Proxy-Slot gem. PORTS.md (alle Plattform-APIs)
+      # Only on localhost by default: APISIX trusts X-Real-IP for its
+      # per-client rate limit, which only the cockpit may set. Published on all
+      # interfaces, any client could pick (or poison) a rate-limit bucket.
+      # External API access goes through the cockpit (/gateway/…).
+      - "${PROXY_BIND:-127.0.0.1}:${PROXY_PORT:-8780}:9080"      # Proxy-Slot gem. PORTS.md (alle Plattform-APIs)
     expose: ["9091"]       # Prometheus-Metriken nur intern
     restart: unless-stopped
     networks: [udp]
