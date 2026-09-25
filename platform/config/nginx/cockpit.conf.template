@@ -28,6 +28,15 @@ proxy_cache_path /var/cache/nginx/udp levels=1:2 keys_zone=udpapi:10m
                  max_size=100m inactive=15m use_temp_path=off;
 
 server {
+    # Client address behind the ingress controller / load balancer: take it
+    # from X-Forwarded-For, skipping trusted proxy hops. The set_real_ip_from
+    # directives come from UDP_TRUSTED_PROXIES (gui/docker/16-udp-realip.envsh,
+    # default: all private ranges). Feeds X-Real-IP below, which keys the
+    # per-client rate limit in APISIX.
+    ${UDP_REALIP_FROM}
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
+
     # 8080, nicht 80: das Image ist nginx-unprivileged und laeuft als Benutzer
     # 101. Ports unter 1024 brauchen CAP_NET_BIND_SERVICE, das in Kubernetes
     # mit "capabilities: drop: [ALL]" wegfaellt. Der Service vor dem Pod
@@ -135,11 +144,24 @@ server {
         rewrite ^/gateway/(.*)$ /$1 break;
         proxy_pass $gateway;
         proxy_set_header Host $host;
+        # Client address for the per-client rate limit in APISIX. Always SET,
+        # never passed through – a client cannot choose its own bucket.
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 60s;
-        proxy_cache_key $request_uri;
+        # The tenant header selects a different database in Orion-LD; Accept
+        # (json / ld+json / geo+json) and Link (@context) change the rendering.
+        # Without them in the key, one client's variant is served to everyone.
+        proxy_cache_key "$request_uri|$http_ngsild_tenant|$http_accept|$http_link";
         proxy_cache_lock on;
+        # Stale-while-revalidate: an expired entry is answered at once while ONE
+        # request refreshes it in the background, and during a short Orion-LD /
+        # MongoDB outage the last good answer is served instead of an error.
+        proxy_cache_use_stale updating error timeout http_500 http_502 http_503 http_504;
+        proxy_cache_background_update on;
         add_header X-Cache $upstream_cache_status always;
     }
     # ÖPNV-Abfahrten auf Anfrage (Node-RED). 60 s Micro-Cache mit proxy_cache_lock:
@@ -168,11 +190,22 @@ server {
         rewrite ^/gateway/(.*)$ /$1 break;
         proxy_pass $gateway;
         proxy_set_header Host $host;
+        # Client address for the per-client rate limit in APISIX. Always SET,
+        # never passed through – a client cannot choose its own bucket.
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 300s;
-        proxy_cache_key $request_uri;
+        # Tenant, Accept and Link change the answer – s. /gateway/ngsi-ld/.
+        proxy_cache_key "$request_uri|$http_ngsild_tenant|$http_accept|$http_link";
         proxy_cache_lock on;
+        # Stale-while-revalidate: an expired entry is answered at once while ONE
+        # request refreshes it in the background, and during a short Orion-LD /
+        # MongoDB outage the last good answer is served instead of an error.
+        proxy_cache_use_stale updating error timeout http_500 http_502 http_503 http_504;
+        proxy_cache_background_update on;
         add_header X-Cache $upstream_cache_status always;
     }
 
@@ -186,6 +219,7 @@ server {
         rewrite ^/gateway/(.*)$ /$1 break;
         proxy_pass $gateway;
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }

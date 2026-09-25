@@ -62,10 +62,15 @@ routes:
     uris: ["/ngsi-ld/*"]
     upstream_id: orion
     plugins:
+      # Per client (X-Real-IP from the cockpit nginx; without it remote_addr),
+      # s. udp.apisixRateLimit in helm/udp/templates/_helpers.tpl.
       limit-req:
-        rate: 200
-        burst: 100
-        key: remote_addr
+        rate: 30
+        burst: 150
+        key_type: var_combination
+        key: "$http_x_real_ip"
+        nodelay: true
+        rejected_code: 429
 
   # NGSI-LD Temporal API (Zeitreihenabfragen)
   - id: temporal
@@ -74,6 +79,15 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/temporal/(.*)", "/$1"]
+      # Per client (X-Real-IP from the cockpit nginx; without it remote_addr),
+      # s. udp.apisixRateLimit in helm/udp/templates/_helpers.tpl.
+      limit-req:
+        rate: 30
+        burst: 150
+        key_type: var_combination
+        key: "$http_x_real_ip"
+        nodelay: true
+        rejected_code: 429
 
   # OGC SensorThings API
   - id: sensorthings

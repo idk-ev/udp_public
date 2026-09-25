@@ -363,6 +363,32 @@ lifecycle:
 {{- end -}}
 
 {{/*
+Per-client rate limit for the public read routes (s. apisix.rateLimit).
+Behind the ingress controller and the cockpit nginx, remote_addr is always a
+proxy's pod address – keyed on that, all visitors shared ONE bucket. The
+cockpit resolves the client address itself (nginx realip, trusting only the
+cluster network) and sends it as X-Real-IP, overwriting whatever a client sent.
+Requests without the header (cluster-internal callers) fall back to
+remote_addr. (APISIX' real-ip plugin did not change remote_addr in 3.17 in
+testing, hence this route.)
+Base indentation 0 – call with "| nindent 6" inside a route's plugins map.
+*/}}
+{{- define "udp.apisixRateLimit" -}}
+{{- $rl := .Values.apisix.rateLimit -}}
+limit-req:
+  rate: {{ $rl.rate }}
+  burst: {{ $rl.burst }}
+  key_type: var_combination
+  key: "$http_x_real_ip"
+  # Without nodelay, requests above "rate" are DELAYED until they fit – a
+  # municipality page (~25 parallel requests) would crawl in behind each
+  # other. nodelay serves everything within burst at once and answers only
+  # the excess with 429.
+  nodelay: true
+  rejected_code: 429
+{{- end -}}
+
+{{/*
 StorageClass-Auflösung: Komponente > global > weglassen (Cluster-Default).
 Aufruf: {{ include "udp.storageClass" (dict "ctx" . "override" .Values.mongo.persistence.storageClass) }}
 */}}

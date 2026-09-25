@@ -2906,66 +2906,109 @@ node.status({ text: 'Load ' + load[0] + '/' + cores + ' · RAM ' + (memTotal ? M
 msg.headers = { 'Content-Type': 'application/ld+json' };
 return msg;'''
 
-FN_TROE = r'''// TimescaleDB-Statistiken -> PlatformStatus:udp-troe
-// Ersetzt die frühere Grafana-Datasource-API: das Hauptdashboard liest diese
-// Entität statt selbst SQL zu sprechen (kein öffentlicher SQL-Pfad mehr).
+FN_TROE = r'''// TimescaleDB statistics -> PlatformStatus:udp-troe
+// Replaces the former Grafana datasource API: the main dashboard reads this
+// entity instead of speaking SQL itself (no public SQL path any more).
+//
+// Runs every 10 minutes, so it must stay CHEAP: attributes has tens of
+// millions of rows and no hypertable. Only the last 24 h are scanned (range
+// over attributes_ts_idx); totals per type come from udp_troe_type_stats,
+// which the nightly retention run fills with a single full scan. Earlier
+// versions counted the whole table here – each run took minutes, the client
+// timeout did not stop the server query, and the runs piled up until
+// TimescaleDB sat at its CPU limit around the clock.
 const { Client } = pg;
 const client = new Client({
-    host: 'timescale', port: 5432, database: 'orion',
+    host: env.get('TROE_DB_HOST') || 'timescale', port: 5432, database: 'orion',
     user: env.get('TROE_DB_USER') || 'udp', password: env.get('TROE_DB_PASSWORD'),
-    connectionTimeoutMillis: 10000, query_timeout: 60000,
+    application_name: 'udp-troe-stats',
+    // statement_timeout cancels on the SERVER; query_timeout only makes the
+    // client give up and would leave the query running.
+    connectionTimeoutMillis: 10000, statement_timeout: 50000, query_timeout: 60000,
 });
 await client.connect();
-let base, ing, typ;
+let base, win, totals = [];
 try {
+    // A previous run still busy (slow disk, restore, …): skip instead of
+    // stacking another scan on top of it.
+    const busy = (await client.query(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = 'udp-troe-stats' " +
+        "AND state = 'active' AND pid <> pg_backend_pid()")).rows[0].n;
+    if (busy) {
+        node.status({ fill: 'yellow', shape: 'ring', text: 'previous run still active – skipped' });
+        return null;
+    }
     base = (await client.query(
-        "SELECT pg_database_size('orion') AS db, (SELECT count(*) FROM attributes) AS rows, " +
-        "(SELECT count(DISTINCT entityid) FROM attributes) AS ents, " +
-        "(SELECT count(*) FROM attributes WHERE ts > (now() AT TIME ZONE 'utc') - interval '24 hours') AS r24, " +
+        "SELECT pg_database_size('orion') AS db, " +
+        // Planner estimate (refreshed by autovacuum/ANALYZE) instead of count(*).
+        "(SELECT reltuples::bigint FROM pg_class WHERE oid = 'attributes'::regclass) AS rows, " +
         "(SELECT count(*) FROM attributes WHERE ts > (now() AT TIME ZONE 'utc') - interval '1 hour') AS r1")).rows[0];
-    ing = (await client.query(
-        "SELECT to_char(date_trunc('hour', ts), 'HH24') AS h, count(*) AS n FROM attributes " +
-        "WHERE ts > (now() AT TIME ZONE 'utc') - interval '24 hours' " +
-        "GROUP BY date_trunc('hour', ts) ORDER BY date_trunc('hour', ts)")).rows;
-    // Ohne LIMIT: Die Budgetprüfung unten muss ALLE Typen sehen. Eine Ausreißer-
-    // Reihe braucht nicht unter den Top 14 zu stehen, um ihr Budget zu sprengen.
-    // Ins Dashboard gehen weiterhin nur die 14 größten (siehe rowsByType).
-    typ = (await client.query(
-        "SELECT split_part(entityid, ':', 3) AS typ, count(*) AS n, " +
-        "count(*) FILTER (WHERE ts > (now() AT TIME ZONE 'utc') - interval '24 hours') AS n24, " +
-        "count(DISTINCT entityid) AS e FROM attributes GROUP BY 1 ORDER BY n DESC")).rows;
+    // ONE pass over the 24 h window feeds the hourly chart, the 24 h counts
+    // per type and the row-budget check.
+    win = (await client.query(
+        "SELECT to_char(date_trunc('hour', ts), 'HH24') AS h, date_trunc('hour', ts) AS hs, " +
+        "split_part(entityid, ':', 3) AS typ, count(*) AS n FROM attributes " +
+        "WHERE ts > (now() AT TIME ZONE 'utc') - interval '24 hours' GROUP BY 1, 2, 3")).rows;
+    if ((await client.query("SELECT to_regclass('udp_troe_type_stats') AS t")).rows[0].t) {
+        totals = (await client.query("SELECT typ, n, e, computed_at FROM udp_troe_type_stats")).rows;
+    }
 } finally {
     await client.end();
 }
-// Zeilenbudget je Entitätstyp aus der Konnektor-Registry (Feld rowBudget24h,
-// optional). Nach dem ParkAPI-Vorfall vom 24.08. — ein Konnektor schrieb einen
-// Monat lang ~1,04 Mio Zeilen/Tag, die Hälfte der ganzen Zeitreihen-Datenbank,
-// ohne dass irgendetwas Alarm schlug — ist das die stehende Sicherung: Wer sein
-// erwartetes Tagesvolumen überschreitet, landet im Node-RED-Log. Typen ohne
-// hinterlegtes Budget werden wie bisher nur gezählt, nie beanstandet.
+const byHour = new Map(), n24 = new Map();
+let r24 = 0;
+for (const r of win) {
+    const n = Number(r.n);
+    r24 += n;
+    const key = new Date(r.hs).getTime();
+    byHour.set(key, [r.h, (byHour.has(key) ? byHour.get(key)[1] : 0) + n]);
+    n24.set(r.typ, (n24.get(r.typ) || 0) + n);
+}
+const ing = [...byHour.entries()].sort((x, y) => x[0] - y[0]).map(e => e[1]);
+// Row budget per entity type from the connector registry (field rowBudget24h,
+// optional). After the ParkAPI incident of 24.08. – one connector wrote
+// ~1.04 M rows/day for a month, half of the whole time-series database,
+// without anything raising an alarm – this is the standing safeguard: whoever
+// exceeds its expected daily volume ends up in the Node-RED log. Types
+// without a budget are only counted, never flagged.
 const BUDGET = __ROW_BUDGET__;
-const ueberzogen = typ.filter(r => BUDGET[r.typ] && Number(r.n24) > BUDGET[r.typ])
-    .map(r => r.typ + ': ' + Number(r.n24) + ' statt max. ' + BUDGET[r.typ]);
+const ueberzogen = [...n24.entries()].filter(([t, n]) => BUDGET[t] && n > BUDGET[t])
+    .map(([t, n]) => t + ': ' + n + ' statt max. ' + BUDGET[t]);
 if (ueberzogen.length) {
     node.warn('TRoE-Zeilenbudget (24 h) überschritten — ' + ueberzogen.join(' · '));
 }
+// Per type: totals from the nightly table, the 24 h count live. -1 marks
+// "no nightly figure yet" (new type, or before the first night) – NGSI-LD
+// values cannot carry null. Types that only exist on one side still show up.
+const tot = new Map(totals.map(r => [r.typ, r]));
+const types = new Set([...tot.keys(), ...n24.keys()]);
+const rowsByType = [...types].map(t => [t,
+        tot.has(t) ? Number(tot.get(t).n) : -1, n24.get(t) || 0,
+        tot.has(t) ? Number(tot.get(t).e) : -1])
+    .sort((x, y) => Math.max(y[1], y[2]) - Math.max(x[1], x[2]));
+const asOf = totals.length ? new Date(Math.min(...totals.map(r => new Date(r.computed_at).getTime()))).toISOString() : null;
+const entities = totals.length ? totals.reduce((s, r) => s + Number(r.e), 0) : null;
 const now = new Date().toISOString();
 const P = v => ({ type: 'Property', value: v, observedAt: now });
-msg.payload = [{
+const payload = {
     id: 'urn:ngsi-ld:PlatformStatus:udp-troe',
     type: 'PlatformStatus',
     name: { type: 'Property', value: 'TRoE-Statistiken (TimescaleDB)' },
     dateObserved: { type: 'Property', value: { '@type': 'DateTime', '@value': now } },
     dbSizeBytes: P(Number(base.db)),
-    troeRows: P(Number(base.rows)),
-    troeRows24h: P(Number(base.r24)),
+    troeRows: P(Math.max(0, Number(base.rows))),
+    troeRows24h: P(r24),
     troeRows1h: P(Number(base.r1)),
-    troeEntities: P(Number(base.ents)),
-    ingestByHour: P(ing.map(r => [r.h, Number(r.n)])),
-    rowsByType: P(typ.slice(0, 14).map(r => [r.typ, Number(r.n), Number(r.n24), Number(r.e)])),
+    ingestByHour: P(ing),
+    rowsByType: P(rowsByType.slice(0, 14)),
     '@context': 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld'
-}];
-node.status({ text: base.rows + ' Zeilen · +' + base.r1 + '/h' });
+};
+// NGSI-LD has no null property value – omit the nightly figures until the
+// first retention run has produced them.
+if (entities !== null) payload.troeEntities = P(entities);
+if (asOf) payload.rowsByTypeAsOf = P(asOf);
+msg.payload = [payload];
+node.status({ text: '≈' + base.rows + ' Zeilen · +' + base.r1 + '/h' });
 msg.headers = { 'Content-Type': 'application/ld+json' };
 return msg;'''
 
@@ -2991,9 +3034,11 @@ FN_TROE_RETENTION = r'''// TRoE-Retention: Zeitreihen älter 12 Monate löschen 
 // bleibt vollständig, damit Mintaka Entitäts-Metadaten rekonstruieren kann.
 const { Client } = pg;
 const client = new Client({
-    host: 'timescale', port: 5432, database: 'orion',
+    host: env.get('TROE_DB_HOST') || 'timescale', port: 5432, database: 'orion',
     user: env.get('TROE_DB_USER') || 'udp', password: env.get('TROE_DB_PASSWORD'),
-    connectionTimeoutMillis: 10000, query_timeout: 600000,
+    application_name: 'udp-troe-retention',
+    // Server-side limit, so an aborted client never leaves a query behind.
+    connectionTimeoutMillis: 10000, statement_timeout: 1800000, query_timeout: 1900000,
 });
 await client.connect();
 let a = 0, s = 0;
@@ -3071,6 +3116,24 @@ try {
                            + '/' + altIds.length + ' Parkanlagen im Alt-ID-Schema entfernt'
                            + (altPark >= ALT_DECKEL ? ' (Deckel erreicht, Rest folgt morgen)' : ''));
     a += altPark;
+
+    // Totals per entity type for the 10-minute statistics (FN_TROE). This is
+    // the ONLY full scan of attributes – once a night, after the deletes, so it
+    // counts what actually remains. Replaced atomically: readers see either
+    // yesterday's or today's figures, and vanished types disappear.
+    await client.query("CREATE TABLE IF NOT EXISTS udp_troe_type_stats (" +
+        "typ text PRIMARY KEY, n bigint NOT NULL, e bigint NOT NULL, computed_at timestamptz NOT NULL)");
+    await client.query('BEGIN');
+    try {
+        await client.query("DELETE FROM udp_troe_type_stats");
+        await client.query("INSERT INTO udp_troe_type_stats (typ, n, e, computed_at) " +
+            "SELECT split_part(entityid, ':', 3), count(*), count(DISTINCT entityid), now() " +
+            "FROM attributes GROUP BY 1");
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    }
 } finally {
     await client.end();
 }

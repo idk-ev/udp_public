@@ -44,6 +44,26 @@ genau nicht. Compose und Helm: [`monitoring/`](../monitoring/README.md).
 4. **Nachbereiten**: Post-Mortem im Repository (`docs/incidents/`),
    Maßnahmen-Tracking.
 
+### Lasttest Dashboard
+
+`tests/load/municipality-page.js` (k6): Jeder virtuelle Nutzer lädt
+zufällige Gemeindeseiten mit ~25 parallelen API-Anfragen wie
+`gui/public/stadt.html`.
+
+```bash
+docker run --rm -e VUS=10 -e BASE=https://<host> \
+  -v "$PWD/tests/load:/s" -v "$PWD/gui/public/bw-gemeinden.json:/g/bw-gemeinden.json:ro" \
+  grafana/k6 run -q /s/municipality-page.js
+```
+
+- **Ziel:** 20 VUs, Seiten-p95 < 3 s, < 1 % Fehler.
+- **Vorsicht:** erzeugt echte Last auf der Zielinstanz – nur bewusst und
+  außerhalb der Hauptnutzungszeit, nicht in CI. Bricht bei mehr als 30 %
+  Fehlern selbst ab.
+- **Rate-Limit:** Alle VUs teilen sich die IP des Testrechners, das
+  Client-Limit (`apisix.rateLimit`) greift also mit. Für Kapazitätstests
+  darüber hinaus das Limit vorübergehend anheben.
+
 ## Datensicherung & Disaster Recovery
 
 - **Täglich** automatisierte Dumps aller PostgreSQL-Datenbanken

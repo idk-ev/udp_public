@@ -249,10 +249,33 @@ mongo:
   image: { repository: mongo, tag: "5.0" }
   resources:
     requests: { cpu: 250m, memory: 512Mi }
-    limits:   { cpu: "1",  memory: 2Gi }
+    # Two cores: every dashboard request that misses the cockpit cache is a
+    # Mongo query, and a throttled mongod answers even indexed lookups in
+    # seconds under load.
+    limits:   { cpu: "2",  memory: 2Gi }
   persistence:
     size: 20Gi
     storageClass: ""     # "" -> global.storageClass
+  # Secondary indexes on Orion-LD's "entities" collection, created by the hook
+  # job templates/mongo-indexes.yaml after every install/upgrade. Orion-LD
+  # itself only indexes the entity id and location – every "type=X&q=ags==…"
+  # query of the dashboard was a collection scan over all entities (~10 per
+  # municipality page; a few concurrent visitors saturated Mongo).
+  # Applied to every database named orion or orion-<tenant>. Attribute paths
+  # use Orion-LD's storage format: expanded name with "." replaced by "=".
+  # createIndex is idempotent; changing the keys of an existing name fails the
+  # job – give a changed index a new name instead. "key" is an ordered list of
+  # [field, direction] pairs (a YAML map would lose the field order, which
+  # matters for compound indexes).
+  indexes:
+    enabled: true
+    entities:
+      # type + ags: serves ags=="<8 digits>" (exact) and ags~=^<district>
+      # (anchored prefix -> range scan), and type-only queries via its prefix.
+      - name: udp_type_ags
+        key:
+          - ["_id.type", 1]
+          - ["attrs.https://uri=etsi=org/ngsi-ld/default-context/ags.value", 1]
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 999        # mongodb
@@ -267,19 +290,17 @@ mongo:
   # time instead of on the database: on the reference cluster that restarted
   # mongo-0 102 times and took orion-ld down with SIGSEGV each time (1622
   # restarts, five days without ingestion 19.–23.08.2026). Even with 10 s it
-  # kept restarting (48× in 28 days) on CPU-starved nodes. Liveness is
-  # therefore a plain TCP check – it restarts mongod only when it no longer
-  # accepts connections; mongosh stays for readiness, which never restarts.
+  # kept restarting (48× in 28 days) on CPU-starved nodes, and each mongosh
+  # call costs ~3 CPU-seconds inside the container's own CPU limit. All probes
+  # are therefore plain TCP: mongod accepts connections only once it can serve.
   probes:
     startup:
-      exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
-      periodSeconds: 10
-      timeoutSeconds: 10
-      failureThreshold: 30
+      tcpSocket: { port: 27017 }
+      periodSeconds: 5
+      failureThreshold: 60
     readiness:
-      exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
-      periodSeconds: 20
-      timeoutSeconds: 10
+      tcpSocket: { port: 27017 }
+      periodSeconds: 10
     liveness:
       tcpSocket: { port: 27017 }
       periodSeconds: 20
@@ -736,6 +757,18 @@ apisix:
   # APISIX schreibt Logs ins Root-FS -> Non-Root-Härtung als TODO.
   podSecurityContext:
     runAsNonRoot: false
+  # Per-client limit on the public read routes /ngsi-ld and /temporal
+  # (templates/_helpers.tpl, udp.apisixRateLimit). One municipality page fires
+  # ~25 API requests at once, a dashboard tab re-polls every 60–120 s; static
+  # assets and cockpit cache hits never reach APISIX. burst absorbs several
+  # page loads in a row (tabs, kiosk screens, quick municipality switching),
+  # rate caps sustained scraping. Over the limit: HTTP 429. The client address
+  # comes from the cockpit nginx (X-Real-IP, platform/config/nginx).
+  # Counted PER APISIX REPLICA (local policy): with apisix.replicas 2 a client
+  # effectively gets twice rate and burst.
+  rateLimit:
+    rate: 30
+    burst: 150
   # nginx worker processes. APISIX' default "auto" counts the NODE's cores, not
   # the container's CPU limit – on a 32-core node that is 32 workers (each with
   # its own memory and upstream connection pools) squeezed into one CPU.
@@ -859,6 +892,13 @@ cockpit:
   # Den Resolver selbst ermittelt der Container-Entrypoint aus /etc/resolv.conf.
   gatewayUpstream: ""     # leer -> apisix.<Release-Namespace>.svc.cluster.local:9080
   noderedUpstream: ""     # leer -> node-red.<Release-Namespace>.svc.cluster.local:1880
+  # Proxy networks (ingress controller pods / load balancer) whose
+  # X-Forwarded-For entries the cockpit trusts when resolving the client
+  # address for the per-client rate limit (apisix.rateLimit). Empty -> all
+  # private ranges. Narrow it to your ingress/pod network when clients can
+  # themselves come from private addresses (intranet, VPN) – otherwise they
+  # could pick their own rate-limit bucket. Example: ["10.42.0.0/16"]
+  trustedProxies: []
   # Öffentliche Basis-Adresse der Plattform, wie sie im BROWSER steht. Daraus
   # erzeugt das Chart die Laufzeit-Konfiguration der SPA (ConfigMap
   # cockpit-config) und die Redirect-URIs im Keycloak-Realm. Leer (empfohlen)
