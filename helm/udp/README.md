@@ -30,7 +30,8 @@ helm/udp/
     ├── serviceaccount.yaml
     ├── secrets.yaml            # generiert ODER extern (secrets.create)
     ├── configmaps.yaml
-    ├── persistence.yaml        # mongo + timescale (StatefulSets)
+    ├── persistence.yaml        # mongo (StatefulSet)
+    ├── timescale.yaml          # PostgreSQL als CloudNativePG-Cluster (+ Migration)
     ├── context-broker.yaml     # orion-ld + mintaka
     ├── iot.yaml                # mosquitto + iot-agent-json + frost
     ├── api-identity.yaml       # apisix + keycloak
@@ -46,7 +47,7 @@ helm/udp/
 
 ## Eigene Images
 
-Drei Images sind Eigenbau und werden von
+Diese Images sind Eigenbau und werden von
 [`.github/workflows/build-images.yml`](../../.github/workflows/build-images.yml)
 nach `ghcr.io/idk-ev/udp/…` gebaut und gepusht:
 
@@ -54,9 +55,10 @@ nach `ghcr.io/idk-ev/udp/…` gebaut und gepusht:
 |-------|-------|---------------------------|
 | `cockpit.image` | `cockpit` | Eigenentwicklung (SPA + nginx-Konfiguration) |
 | `ckan.image` | `ckan-dcat` | CKAN 2.10 plus `ckanext-dcat` für DCAT-AP.de |
-| `timescale.image` | `postgres-timescale-oss` | PostGIS **und** TimescaleDB Apache Edition; das Init-Skript legt die Extension an, Mintaka braucht `last()` |
+| `timescale.image` | `postgres-timescale-cnpg` | PostGIS **und** TimescaleDB Apache Edition als CloudNativePG-Image; Mintaka braucht `last()` |
+| `timescale.legacy.image` | `postgres-timescale-oss` | dasselbe für docker compose und das alte StatefulSet während der Migration (DEPLOY.md §10a) |
 
-Registry und Tag stehen für alle drei an **einer** Stelle:
+Registry und Tag stehen für alle an **einer** Stelle:
 
 ```yaml
 global:
@@ -126,8 +128,9 @@ Alle Parameter mit Kommentaren siehe [values.yaml](values.yaml).
   tatsächlichen Aufrufer und Ports, extern nur Cockpit/APISIX/Keycloak über den
   Ingress-Controller.
 - Resilienz: Probes für jeden Dienst, PDBs und Verteilung über Knoten/Zonen für
-  replizierte Dienste, geordnetes Herunterfahren (Postgres Fast-Shutdown,
-  preStop-Verzögerung vor Gateway/Cockpit/Orion-LD/Mintaka).
+  replizierte Dienste, geordnetes Herunterfahren (preStop-Verzögerung vor
+  Gateway/Cockpit/Orion-LD/Mintaka). PostgreSQL als CloudNativePG-Cluster mit
+  Standby in einer zweiten Zone und automatischer Umschaltung.
 - ServiceAccount ohne API-Token-Mount.
 - Secrets: interne App-zu-App-Zugangsdaten (DB, Keycloak-Admin) werden beim
   ersten Install als starke Zufallspasswörter erzeugt und stabil gehalten –

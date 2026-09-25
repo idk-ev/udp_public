@@ -81,6 +81,7 @@ Ingress-Pfade entsprechen dann wieder exakt den APISIX-Routen (kein Rewrite).
 | **CNI mit NetworkPolicy** | Calico / Cilium – sonst greifen die Policies nicht |
 | Default StorageClass      | für die PVCs (oder in Values gesetzt)          |
 | cert-manager *(optional)* | automatisches TLS-Zertifikat                   |
+| **CloudNativePG-Operator ≥ 1.26** | betreibt die PostgreSQL-Datenbank `timescale` (Primary + Standby) |
 
 Prüfen:
 ```bash
@@ -91,6 +92,51 @@ kubectl get storageclass
 # NetworkPolicy-Durchsetzung? (z. B. Calico)
 kubectl get pods -n kube-system | grep -Ei 'calico|cilium'
 ```
+
+### CloudNativePG-Operator
+
+Die Datenbank (PostgreSQL + PostGIS + TimescaleDB) läuft als
+CloudNativePG-Cluster mit `timescale.instances` Instanzen: ein Primary, die
+übrigen als Standby per Streaming-Replikation. Vor dem Drain des
+Primary-Knotens schaltet der Operator auf einen Standby um, bei einem Ausfall
+übernimmt er automatisch. Der Operator ist clusterweit und wird **einmal vor
+dem Chart** installiert (das Chart bricht ohne seine CRDs ab):
+
+```bash
+helm repo add cnpg https://cloudnative-pg.github.io/charts
+helm upgrade --install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespace   --kube-context "$KUBE_CONTEXT" -f cnpg-values.yaml
+```
+
+`cnpg-values.yaml` mit zwei Operator-Replikaten in verschiedenen Zonen –
+fällt der Knoten des Operators zusammen mit dem Primary aus, gibt es sonst
+niemanden, der umschaltet:
+
+```yaml
+replicaCount: 2
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - topologyKey: topology.kubernetes.io/zone
+        labelSelector:
+          matchLabels: { app.kubernetes.io/name: cloudnative-pg }
+# Mit "required" und genau zwei Zonen findet ein dritter Pod keinen Platz –
+# Rollouts deshalb ohne Surge.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate: { maxSurge: 0, maxUnavailable: 1 }
+```
+
+Die übrigen Werte des Operator-Charts passen.
+
+Was das in der Praxis bedeutet (gemessen mit zwei Knoten in zwei Zonen):
+Drain des Primary-Knotens (Knoten-Update) ~5 s ohne Schreibzugriff,
+Absturz des Primary-Pods ~3 s, **Ausfall des ganzen Knotens ~60 s** – der
+Operator schaltet erst um, wenn Kubernetes den Knoten als `Unknown` markiert
+(`node-monitor-grace-period`, 40 s). Bestätigte Schreibvorgänge gingen in
+keinem Fall verloren (synchrone Replikation, solange der Standby läuft). Namespace/Labels abweichend? → `networkPolicies.cnpgOperator`.
+Hochverfügbar ist die Datenbank nur mit mindestens zwei Knoten (bei
+zonengebundenen Volumes: zwei Zonen, dazu `timescale.affinity.podAntiAffinityType:
+required`).
 
 > **Wichtig:** Ohne policy-fähiges CNI (z. B. bei reinem Flannel) werden die
 > NetworkPolicies stillschweigend ignoriert – die Segmentierung greift dann
@@ -181,8 +227,12 @@ die `existingSecret`-Namen setzen (auskommentierter Block in
 `values-prod.example.yaml`) und die Secrets vorab anlegen.
 
 **Am einfachsten per Helfer-Skript** (`scripts/create-secrets.{sh,ps1}`) – legt
-`udp-db` und `udp-keycloak` mit starken Zufallspasswörtern an, **idempotent**
-(vorhandene Secrets werden nicht überschrieben, kein versehentliches Rotieren).
+`udp-db` und `udp-keycloak` mit starken Zufallspasswörtern an, dazu die
+CNPG-Rollen-Secrets `timescale-role-<user>` (Default `timescale-role-udp`) und
+`timescale-role-ckan-ro` – immer mit **demselben Passwort wie `udp-db`**
+(bei vorhandenem `udp-db` aus diesem übernommen). **Idempotent**
+(vorhandene Secrets werden nicht überschrieben, kein versehentliches Rotieren;
+`--force` rotiert `udp-db` samt Rollen-Secrets).
 Der **Zielcluster muss explizit** über `--context` angegeben werden (Schutz vor
 Deploy auf den falschen Cluster); vor dem Anlegen wird Cluster + Namespace zur
 Bestätigung angezeigt.
@@ -209,12 +259,23 @@ wie sich beide Passwörter später auslesen lassen.
 
 ```bash
 kubectl create namespace udp
+DB_PASS="$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
 kubectl -n udp create secret generic udp-db \
   --from-literal=POSTGRES_USER=udp \
-  --from-literal=POSTGRES_PASSWORD="$(openssl rand -base64 24)"
+  --from-literal=POSTGRES_PASSWORD="$DB_PASS"
 kubectl -n udp create secret generic udp-keycloak \
   --from-literal=KEYCLOAK_ADMIN=admin \
   --from-literal=KEYCLOAK_ADMIN_PASSWORD="$(openssl rand -base64 24)"
+# CNPG-Rollen: basic-auth, gleiches Passwort wie udp-db. Ohne die Annotation
+# speichert CNPG einen SCRAM-Hash -> Orion-LD kann sich nicht anmelden.
+for role in udp ckan_ro; do
+  name="timescale-role-${role//_/-}"
+  kubectl -n udp create secret generic "$name" --type=kubernetes.io/basic-auth \
+    --from-literal=username="$role" --from-literal=password="$DB_PASS"
+  kubectl -n udp label secret "$name" cnpg.io/reload=true
+  kubectl -n udp annotate secret "$name" cnpg.io/passwordPassthrough=enabled
+done
+unset DB_PASS
 ```
 … oder – noch besser – per **Sealed Secrets** (Secrets verschlüsselt in Git):
 ```bash
@@ -224,13 +285,20 @@ kubectl -n udp create secret generic udp-db \
   --dry-run=client -o yaml | kubeseal --format yaml > sealed-udp-db.yaml
 kubectl apply -f sealed-udp-db.yaml
 ```
+Die Rollen-Secrets ebenso versiegeln – Label und Annotation müssen dabei im
+YAML stehen (am einfachsten: `create-secrets.sh --sealed`).
 … oder per **External Secrets Operator** / **Vault** (Referenz auf externen
 Secret-Store).
 
 </details>
 
 In allen Fällen müssen die Schlüsselnamen exakt so heißen:
-`POSTGRES_USER`, `POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD`.
+`POSTGRES_USER`, `POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD`;
+die Rollen-Secrets `timescale-role-<user>` / `timescale-role-ckan-ro`
+(`<user>` = `POSTGRES_USER`, `_` → `-`) mit `username` (= Rollenname, also
+`<user>` bzw. `ckan_ro`) und `password` (= `POSTGRES_PASSWORD`), Typ
+`kubernetes.io/basic-auth`, Label `cnpg.io/reload: "true"` und Annotation
+`cnpg.io/passwordPassthrough: "enabled"`.
 
 ---
 
@@ -438,6 +506,74 @@ Bei generierten Secrets (Weg A) bleiben Passwörter über Upgrades **stabil**
 (via `lookup`). Config-Änderungen unter `files/` lösen dank Checksum-Annotation
 automatisch einen Rolling-Restart der betroffenen Pods aus.
 
+### 10a. Migration der Datenbank auf CloudNativePG (Upgrade von Chart ≤ 1.0.x)
+
+Bis Chart 1.0.x lief die Datenbank als einzelnes StatefulSet `timescale`; ihr
+Volume ist an einen Knoten (je nach Speicher auch an eine Zone) gebunden, jeder
+Neustart dieses Knotens war ein Ausfall. Das Chart legt heute einen
+CNPG-Cluster an – mit **leerer** Datenbank. Ein einfaches `helm upgrade`
+verweigert es deshalb, solange die Daten noch im alten StatefulSet liegen.
+
+Umzug in Phasen (`timescale.migration.phase`), dazwischen
+`scripts/migrate-timescale-cnpg.sh`. Die Plattform steht nur zwischen `copy`
+und `resume` – die Dauer hängt von der Datenmenge ab, vorher mit `rehearse` messen.
+Die neuen Volumes brauchen nur Platz für die Daten selbst: die Kopie läuft als
+Strom `pg_dump | pg_restore`, ohne Zwischendatei.
+
+Vorher prüfen:
+
+- Das alte StatefulSet läuft in `prepare` mit **seinem bisherigen Image**
+  weiter (das Chart übernimmt es aus dem Cluster) – kein Neustart.
+- Wer `timescale.image.tag` in den eigenen Values auf einen Digest gepinnt
+  hat: dieser Wert gilt jetzt dem **neuen** Image `postgres-timescale-cnpg`.
+  Den alten Pin entfernen bzw. nach `timescale.legacy.image.tag` verschieben,
+  sonst zieht der CNPG-Cluster ein falsches Image und `wait` läuft ins Leere.
+- **Knoten-Neustarts pausieren** (kured), solange `copy` läuft – ein Drain
+  würde den Kopier-Pod oder den Primary mitten in der Kopie verschieben:
+  `kubectl -n kube-system annotate ds kured weave.works/kured-node-lock='{"nodeID":"manual"}'`,
+  danach wieder `…annotate ds kured weave.works/kured-node-lock-`.
+- Die `helm upgrade`-Aufrufe der Phasen **ohne `--atomic`**: ein
+  automatisches Zurückrollen des Umschaltens müsste den Service `timescale`
+  wieder headless machen, was Kubernetes verweigert – das Release bliebe
+  halb zurückgerollt. Zurück geht es über `$S rollback`.
+
+```bash
+export NAMESPACE=udp KUBECONFIG=~/.kube/<cluster>.yaml
+S=scripts/migrate-timescale-cnpg.sh
+
+# 0. Neues Chart, altes StatefulSet bedient weiter, CNPG-Cluster startet leer daneben
+helm upgrade udp <chart> -n udp -f values-prod.yaml --set timescale.migration.phase=prepare
+$S wait
+
+# 1. Optional: Probelauf ohne Stillstand (misst die Dauer), danach leeren
+$S rehearse && $S reset
+
+# 2. Ausfall beginnt: Clients auf 0, alte DB schreibgeschützt, Kopie, Zeilenvergleich
+$S copy
+
+# 3. Umschalten: "timescale" zeigt auf den CNPG-Primary, Clients wieder hoch
+$S cutover
+helm upgrade udp <chart> -n udp -f values-prod.yaml --set timescale.migration.phase=cutover
+$S resume          # Ausfall endet
+
+# 4. Nach ein paar Tagen Regelbetrieb: altes StatefulSet entfernen
+helm upgrade udp <chart> -n udp -f values-prod.yaml      # phase ""
+kubectl -n udp delete pvc data-timescale-0              # erst wenn sicher
+```
+
+Zurück: nach einer gescheiterten Kopie `$S unfreeze` (alte DB wieder
+beschreibbar, Clients hoch) und ggf. `$S reset`. Nach dem Umschalten
+`$S rollback`, dann `helm upgrade … --set timescale.migration.phase=prepare`
+und `$S resume` – **Schreibvorgänge im neuen Cluster seit dem Umschalten gehen
+dabei verloren.** Das Chart prüft jede Phase gegen den Cluster: `cutover`
+nur nach vollständiger Kopie (Annotation am Cluster), Phase `""` erst, wenn
+`timescale` nicht mehr auf das alte StatefulSet zeigt.
+
+Was sich ändert: gleiche Datenbanken, Rollen und Passwörter (MD5, wegen
+Orion-LD), gleicher Hostname `timescale`, Sortierung `en_US.UTF-8` wie bisher;
+PostGIS 3.5 → 3.6, TimescaleDB 2.26 → aktuelle 2.x (Apache-Edition, keine
+Hypertables im Einsatz – das Skript bricht sonst ab), Datenprüfsummen an.
+
 ---
 
 ## 11. Deinstallation
@@ -447,13 +583,18 @@ helm -n udp --kube-context "$KUBE_CONTEXT" uninstall udp
 ```
 Bleibt erhalten (bewusst, gegen Datenverlust):
 - Secrets `udp-db` / `udp-keycloak` / `udp-ckan` / `udp-geoserver` (`resource-policy: keep`)
-- StatefulSet-PVCs von mongo/timescale/solr/geoserver (von Helm nicht verwaltet)
+- StatefulSet-PVCs von mongo/solr/geoserver (von Helm nicht verwaltet)
+- der CNPG-Cluster `timescale` samt ImageCatalog und seinen PVCs `timescale-1`,
+  `timescale-2` (`resource-policy: keep`; die Instanzen laufen weiter; ein erneutes `helm install` desselben Releases
+  übernimmt ihn wieder, Daten bleiben erhalten. Entfernen:
+  `kubectl -n udp delete cluster timescale` – **löscht die Daten**)
 - PVC `db-backup-data` mit den letzten Dumps (`resource-policy: keep`)
 
 Wird mit entfernt: PVC `ckan-data` – vorher sichern. Node-RED hat kein PVC
 (Flows kommen aus dem Image), es geht dort also nichts verloren.
 Vollständig aufräumen:
 ```bash
+kubectl -n udp delete cluster timescale
 kubectl -n udp delete pvc --all
 kubectl -n udp delete secret udp-db udp-keycloak udp-ckan udp-geoserver
 kubectl delete namespace udp

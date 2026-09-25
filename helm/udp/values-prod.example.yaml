@@ -12,8 +12,8 @@ global:
   # Leer = direkt von Docker Hub/quay ziehen. Für einen Mirror (Supply-Chain:
   # keine direkten Docker-Hub-Pulls) hier z. B. "harbor.example.org/udp-mirror".
   imageRegistry: ""
-  # Registry der vier selbst gebauten Images – EINE Stelle für cockpit,
-  # ckan-dcat, postgres-timescale-oss und node-red-udp. Beim Spiegeln nur
+  # Registry der selbst gebauten Images – EINE Stelle für cockpit, ckan-dcat,
+  # postgres-timescale-cnpg (-oss nur zur Migration) und node-red-udp. Beim Spiegeln nur
   # diesen Wert ändern.
   udpRegistry: "ghcr.io/idk-ev/udp"
   # Nur nötig, wenn die GHCR-Pakete privat sind (siehe DEPLOY.md, Abschnitt 6).
@@ -84,4 +84,9 @@ mongo:
 timescale:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+  # Je Instanz ein Volume dieser Größe.
   persistence: { size: 200Gi }
+  # Ein Knoten je Zone: die Standby-Instanz nie in dieselbe Zone wie den Primary.
+  affinity:
+    topologyKey: topology.kubernetes.io/zone
+    podAntiAffinityType: required

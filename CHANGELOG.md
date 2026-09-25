@@ -2,6 +2,18 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Kubernetes: hochverfügbare Datenbank (CloudNativePG)
+
+- **PostgreSQL/TimescaleDB als CloudNativePG-Cluster** statt einzelnem
+  StatefulSet: Primary und Standby in verschiedenen Zonen, Umschaltung vor
+  jedem Knoten-Drain, automatische Übernahme bei Ausfall. Ein Knoten-Update
+  ist damit kein Datenbank-Ausfall mehr. Voraussetzung: CNPG-Operator.
+- Neues Image `postgres-timescale-cnpg` (CNPG-PostGIS 3.6 + TimescaleDB OSS);
+  Hostname `timescale`, Rollen und MD5-Passwörter bleiben.
+- **Bestehende Installationen** ziehen per `scripts/migrate-timescale-cnpg.sh`
+  um (DEPLOY.md §10a); das Chart verweigert ein Upgrade, das eine leere
+  Datenbank starten würde.
+
 ## Unveröffentlicht — Kubernetes: Probes, NetworkPolicies, Orion-LD
 
 - **Orion-LD blieb hängen** („socket descriptor (1024) is not less than

@@ -1,0 +1,358 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+# =============================================================================
+# PostgreSQL 16 + PostGIS + TimescaleDB (TRoE, FROST, Keycloak, CKAN) as a
+# CloudNativePG cluster: timescale.instances instances, one primary, the others
+# streaming standbys. The operator switches over before the primary's node is
+# drained and fails over when it disappears.
+#
+# Clients address the host "timescale" – the Service at the end of this file,
+# which follows the primary. CNPG's own timescale-rw/-ro/-r services exist too.
+#
+# The old single-instance StatefulSet is only rendered during the migration
+# (timescale.migration.phase, see values.yaml and DEPLOY.md §10a).
+# =============================================================================
+{{- $ts := .Values.timescale }}
+{{- $phase := $ts.migration.phase | default "" }}
+{{- if not (has $phase (list "" "prepare" "cutover")) }}
+{{- fail (printf "timescale.migration.phase must be \"\", \"prepare\" or \"cutover\" (got %q)" $phase) }}
+{{- end }}
+{{- $instances := int $ts.instances }}
+{{- $dbUser := .Values.db.user }}
+{{- with lookup "v1" "Secret" .Release.Namespace (include "udp.dbSecretName" .) }}
+{{- $dbUser = index .data "POSTGRES_USER" | default "" | b64dec | default $dbUser }}
+{{- end }}
+
+{{- /*
+Safety checks against the live cluster. lookup is empty without a cluster
+(helm template, CI) – the checks then stay silent.
+
+The single source of truth for "the data has moved" is the annotation the
+copy sets on the Cluster (scripts/migrate-timescale-cnpg.sh copy): as long as
+the old StatefulSet exists without it, only phase prepare is allowed.
+*/}}
+{{- $liveSts := dict }}
+{{- if lookup "v1" "Namespace" "" .Release.Namespace }}
+{{- if not (.Capabilities.APIVersions.Has "postgresql.cnpg.io/v1") }}
+{{- fail "The CloudNativePG operator is missing (API postgresql.cnpg.io/v1). Install it first – see DEPLOY.md §2." }}
+{{- end }}
+{{- if not (and .Values.secrets.create (not .Values.db.existingSecret)) }}
+{{- range $role := list $dbUser "ckan_ro" }}
+{{- $name := printf "timescale-role-%s" ($role | replace "_" "-") }}
+{{- if not (lookup "v1" "Secret" $.Release.Namespace $name) }}
+{{- fail (printf "Secret %s missing. With externally managed database credentials the CNPG role secrets must be provided as well (basic-auth, username %s, annotation cnpg.io/passwordPassthrough: enabled) – see DEPLOY.md §4." $name $role) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $liveSts = lookup "apps/v1" "StatefulSet" .Release.Namespace "timescale" }}
+{{- $liveSvc := lookup "v1" "Service" .Release.Namespace "timescale" }}
+{{- $liveCluster := lookup "postgresql.cnpg.io/v1" "Cluster" .Release.Namespace "timescale" }}
+{{- $copied := dig "metadata" "annotations" "udp.idk-ev.de/copied-from-legacy" "" $liveCluster }}
+{{- if and $liveSts (not $copied) (ne $phase "prepare") }}
+{{- if eq $phase "cutover" }}
+{{- fail "Cutover refused: the CNPG cluster carries no udp.idk-ev.de/copied-from-legacy annotation, i.e. the data copy has not completed. Run scripts/migrate-timescale-cnpg.sh copy first." }}
+{{- else }}
+{{- fail "The data still lives in the single-instance StatefulSet \"timescale\" (no completed copy recorded on the CNPG cluster). A plain upgrade would start an EMPTY database. Migrate first: timescale.migration.phase=prepare, see DEPLOY.md §10a / scripts/migrate-timescale-cnpg.sh." }}
+{{- end }}
+{{- end }}
+{{- if and $liveSvc (ne $phase "prepare") (eq (dig "spec" "clusterIP" "" $liveSvc) "None") }}
+{{- fail "Service \"timescale\" is still headless (old StatefulSet) and cannot be changed in place. Delete it right before this upgrade: scripts/migrate-timescale-cnpg.sh cutover." }}
+{{- end }}
+{{- if and $liveSvc (eq $phase "prepare") (ne (dig "spec" "clusterIP" "None" $liveSvc) "None") }}
+{{- fail "Service \"timescale\" must become headless again for phase prepare. Delete it right before this upgrade: scripts/migrate-timescale-cnpg.sh rollback." }}
+{{- end }}
+{{- end }}
+{{- /* The old StatefulSet keeps the image it runs: a new digest would only
+     restart the instance that is about to be retired. */}}
+{{- /* Settings of the old StatefulSet. Values that installations set under
+     timescale.* up to chart 1.0.x still win over the defaults in
+     timescale.legacy – otherwise the upgrade to phase prepare would change
+     (and restart) the pod that still serves the data. */}}
+{{- $legacy := mergeOverwrite (deepCopy $ts.legacy) (pick $ts "priorityClassName" "nodeSelector" "tolerations" "podSecurityContext" "containerSecurityContext" "terminationGracePeriodSeconds" "probes") }}
+{{- $legacyImage := include "udp.ownImage" (dict "ctx" . "image" $ts.legacy.image) }}
+{{- with $liveSts }}
+{{- $legacyImage = (index .spec.template.spec.containers 0).image }}
+{{- end }}
+---
+# The operand image. Referenced through a catalog because CNPG derives the
+# PostgreSQL major version from the image tag otherwise – our own images carry
+# floating tags ("main", "pr-<nr>") or digests instead.
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: timescale
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
+  annotations:
+    # Kept together with the Cluster: without it the operator cannot recreate
+    # an instance (node drain, lost pod) until the chart is installed again.
+    "helm.sh/resource-policy": keep
+spec:
+  images:
+    - major: 16
+      image: {{ include "udp.ownImage" (dict "ctx" . "image" $ts.image) }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: timescale
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
+  annotations:
+    # The instance PVCs belong to the Cluster and would be garbage-collected
+    # with it – "helm uninstall" must not delete the data (DEPLOY.md §11).
+    "helm.sh/resource-policy": keep
+spec:
+  instances: {{ $instances }}
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: timescale
+    major: 16
+  imagePullPolicy: {{ .Values.global.udpPullPolicy | default "Always" }}
+  {{- with .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with ($ts.priorityClassName | default .Values.global.priorityClassName) }}
+  priorityClassName: {{ . }}
+  {{- end }}
+  # Labels for the pods, PVCs and services CNPG creates. Deliberately without
+  # "app": the old StatefulSet's Service selects app=timescale and must not pick
+  # up the CNPG instances during the migration.
+  inheritedMetadata:
+    labels:
+      app.kubernetes.io/part-of: urbane-datenplattform
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: timescale
+  # Updates (new image digest with every chart release, parameters) restart the
+  # standbys first, then switch over to an updated one instead of restarting
+  # the primary in place – a few seconds without writes instead of a restart.
+  # CNPG refuses to change the image and restart-requiring parameters in one
+  # update with this method: ship such changes in separate releases.
+  primaryUpdateStrategy: unsupervised
+  primaryUpdateMethod: switchover
+  # The PDB lets the operator switch over before a drain takes the primary.
+  # With a single instance it would block every drain.
+  enablePDB: {{ gt $instances 1 }}
+  enableSuperuserAccess: false
+  postgresql:
+    shared_preload_libraries: [timescaledb]
+    parameters:
+      # Orion-LD's libpq cannot do SCRAM: passwords are stored as MD5 (the role
+      # secrets pass them through unhashed, see templates/secrets.yaml).
+      password_encryption: md5
+      # CNPG defaults to TLS 1.3 only; older client libraries still negotiate 1.2.
+      ssl_min_protocol_version: TLSv1.2
+      timescaledb.telemetry_level: "off"
+      {{- with $ts.parameters }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+    # Before CNPG's default "scram-sha-256" rule. md5 also accepts clients that
+    # speak SCRAM, access is limited by the NetworkPolicies.
+    pg_hba:
+      - host all all all md5
+    {{- if gt $instances 1 }}
+    synchronous:
+      {{- toYaml $ts.synchronous | nindent 6 }}
+    {{- end }}
+  bootstrap:
+    initdb:
+      database: {{ $ts.db.name }}
+      owner: {{ $dbUser }}
+      secret: { name: timescale-role-{{ $dbUser | replace "_" "-" }} }
+      # Same collation as the old docker-library image (en_US.utf8) – CNPG's
+      # default "C" would change the sort order of text columns.
+      localeCollate: en_US.UTF-8
+      localeCType: en_US.UTF-8
+      dataChecksums: true
+  managed:
+    roles:
+      # The platform's single application role; Orion-LD creates a database
+      # per tenant and needs superuser rights for CREATE EXTENSION.
+      - name: {{ $dbUser }}
+        ensure: present
+        login: true
+        superuser: true
+        createdb: true
+        passwordSecret: { name: timescale-role-{{ $dbUser | replace "_" "-" }} }
+      # Read-only user of the CKAN datastore (CKAN_DATASTORE_READ_URL).
+      - name: ckan_ro
+        ensure: present
+        login: true
+        passwordSecret: { name: timescale-role-ckan-ro }
+  storage:
+    size: {{ $ts.persistence.size }}
+    {{- with ($ts.persistence.storageClass | default .Values.global.storageClass) }}
+    storageClass: {{ . }}
+    {{- end }}
+  resources:
+    {{- toYaml $ts.resources | nindent 4 }}
+  {{- with $ts.shmSize }}
+  ephemeralVolumesSizeLimit:
+    shm: {{ . }}
+  {{- end }}
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: {{ $ts.affinity.topologyKey }}
+    podAntiAffinityType: {{ $ts.affinity.podAntiAffinityType }}
+    {{- with ($ts.nodeSelector | default .Values.global.nodeSelector) }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with ($ts.tolerations | default .Values.global.tolerations) }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- /*
+Databases of the platform (formerly files/postgres/01-databases.sql). The
+controller creates missing ones and adopts existing ones. It reconciles on
+changes of the resource only (CNPG 1.30) – a database dropped later is NOT
+recreated by itself. databaseReclaimPolicy retain: deleting the resource (e.g.
+helm uninstall) leaves the database in place.
+*/}}
+{{- $databases := list
+  (dict "name" $ts.db.name  "extensions" (list "timescaledb" "postgis"))
+  (dict "name" $dbUser      "extensions" (list))
+  (dict "name" "frost"      "extensions" (list "postgis"))
+  (dict "name" "ckan"       "extensions" (list "postgis"))
+  (dict "name" "ckan_datastore" "extensions" (list))
+  (dict "name" "keycloak"   "extensions" (list)) }}
+{{- range $databases }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: timescale-{{ .name | replace "_" "-" }}
+  labels:
+    {{- include "udp.labels" (dict "ctx" $ "component" "timescale") | nindent 4 }}
+spec:
+  cluster: { name: timescale }
+  name: {{ .name }}
+  owner: {{ $dbUser }}
+  ensure: present
+  databaseReclaimPolicy: retain
+  {{- with .extensions }}
+  extensions:
+    {{- range . }}
+    - { name: {{ . }}, ensure: present }
+    {{- end }}
+  {{- end }}
+{{- end }}
+---
+# "timescale" – the address of all clients.
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescale
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
+spec:
+  {{- if eq $phase "prepare" }}
+  # Migration phase "prepare": still the old StatefulSet (headless as before).
+  clusterIP: None
+  selector:
+    {{- include "udp.selectorLabels" "timescale" | nindent 4 }}
+  {{- else }}
+  # The current primary – same selector as CNPG's timescale-rw. A ClusterIP
+  # (not headless), so a failover takes effect without DNS caching delays.
+  selector:
+    cnpg.io/cluster: timescale
+    cnpg.io/instanceRole: primary
+  {{- end }}
+  ports: [{ name: postgres, port: 5432, targetPort: 5432 }]
+{{- if ne $phase "" }}
+---
+# =============================================================================
+# Old single-instance StatefulSet – migration phases only. Unchanged from chart
+# 1.0.x (name, serviceName, volumeClaimTemplates are immutable), so the upgrade
+# keeps the pod and its PVC data-timescale-0 untouched.
+# =============================================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescale
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
+spec:
+  serviceName: timescale
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "timescale" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "timescale") | nindent 8 }}
+      annotations:
+        # Restart when the init scripts change.
+        checksum/init: {{ (print (.Files.Get "files/postgres/00-auth.sh") (.Files.Get "files/postgres/01-databases.sql")) | sha256sum }}
+    spec:
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" $legacy) | nindent 6 }}
+      containers:
+        - name: timescale
+          image: {{ $legacyImage }}
+          {{ include "udp.ownImagePullPolicy" . }}
+          # TimescaleDB must be preloaded, otherwise CREATE EXTENSION timescaledb
+          # in the init script fails (same as the command in docker-compose.yml).
+          args: ["postgres", "-c", "shared_preload_libraries=timescaledb"]
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" $legacy.containerSecurityContext) | nindent 12 }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
+            - { name: POSTGRES_DB, value: {{ $ts.db.name | quote }} }
+            - { name: POSTGRES_HOST_AUTH_METHOD, value: md5 }  # Orion-LD's libpq: no SCRAM
+            # PGDATA MUST be a subdirectory of the mount point: an ext4 volume
+            # carries lost+found and initdb refuses a non-empty directory. The
+            # mount point also belongs to root:fsGroup – only the subdirectory
+            # belongs to postgres, so the entrypoint's chmod 0700 works without
+            # CAP_CHOWN/CAP_FOWNER.
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+            {{- if $ts.shmSize }}
+            - { name: shm, mountPath: /dev/shm }
+            {{- end }}
+          resources:
+            {{- toYaml $ts.resources | nindent 12 }}
+          {{- include "udp.probes" $legacy.probes | nindent 10 }}
+          # Fast shutdown instead of the "smart" one SIGTERM triggers, which
+          # waits for all pooled clients to disconnect (s. values.yaml).
+          # -W: only request it – waiting would end with the hook being killed
+          # along with the container (FailedPreStopHook event on every stop);
+          # terminationGracePeriodSeconds covers the actual shutdown.
+          lifecycle:
+            preStop:
+              exec: { command: ["sh", "-c", "pg_ctl -D \"$PGDATA\" -m fast -W stop"] }
+      volumes:
+        - name: init
+          configMap: { name: postgres-init }
+        {{- if $ts.shmSize }}
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: {{ $ts.shmSize }} }
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- include "udp.storageClass" (dict "ctx" . "override" $ts.persistence.storageClass) | nindent 8 }}
+        resources: { requests: { storage: {{ $ts.persistence.size }} } }
+---
+# Stable address of the old instance for the copy job and for rollback checks.
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescale-legacy
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "timescale" | nindent 4 }}
+  ports: [{ name: postgres, port: 5432, targetPort: 5432 }]
+{{- end }}

@@ -2,7 +2,7 @@
 # © 2024–2026 Thomas Kieß and contributors
 
 # =============================================================================
-# Persistenzschicht: MongoDB (Orion-LD) + PostGIS (TRoE, FROST, Keycloak, CKAN)
+# Persistenzschicht: MongoDB (Orion-LD). PostgreSQL: templates/timescale.yaml
 # =============================================================================
 apiVersion: apps/v1
 kind: StatefulSet
@@ -52,91 +52,3 @@ spec:
   selector:
     {{- include "udp.selectorLabels" "mongo" | nindent 4 }}
   ports: [{ port: 27017 }]
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: timescale
-  labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
-spec:
-  serviceName: timescale
-  replicas: 1
-  selector:
-    matchLabels:
-      {{- include "udp.selectorLabels" "timescale" | nindent 6 }}
-  template:
-    metadata:
-      labels:
-        {{- include "udp.podLabels" (dict "ctx" . "component" "timescale") | nindent 8 }}
-      annotations:
-        # Neustart bei Änderung der Init-Skripte erzwingen.
-        checksum/init: {{ (print (.Files.Get "files/postgres/00-auth.sh") (.Files.Get "files/postgres/01-databases.sql")) | sha256sum }}
-    spec:
-      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.timescale) | nindent 6 }}
-      containers:
-        - name: timescale
-          image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.timescale.image) }}
-          {{ include "udp.ownImagePullPolicy" . }}
-          # TimescaleDB muss vorgeladen werden, sonst scheitert CREATE EXTENSION
-          # timescaledb im Init-Skript (analog zum command in docker-compose.yml).
-          args: ["postgres", "-c", "shared_preload_libraries=timescaledb"]
-          securityContext:
-            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.timescale.containerSecurityContext) | nindent 12 }}
-          env:
-            - name: POSTGRES_USER
-              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
-            - name: POSTGRES_PASSWORD
-              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
-            - { name: POSTGRES_DB, value: {{ .Values.timescale.db.name | quote }} }
-            - { name: POSTGRES_HOST_AUTH_METHOD, value: md5 }  # Orion-LD-libpq: kein SCRAM
-            # PGDATA MUSS ein Unterverzeichnis des Mountpoints sein. Ein
-            # ext4-Volume bringt ein lost+found mit; initdb bricht auf einem
-            # nicht leeren Verzeichnis ab ("directory exists but is not empty").
-            # Ausserdem gehoert der Mountpoint root:fsGroup – erst das selbst
-            # angelegte Unterverzeichnis gehoert postgres, sodass der Entrypoint
-            # sein chmod 0700 ohne CAP_CHOWN/CAP_FOWNER durchbekommt.
-            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
-          ports: [{ containerPort: 5432 }]
-          volumeMounts:
-            - { name: data, mountPath: /var/lib/postgresql/data }
-            - { name: init, mountPath: /docker-entrypoint-initdb.d }
-            {{- if .Values.timescale.shmSize }}
-            - { name: shm, mountPath: /dev/shm }
-            {{- end }}
-          resources:
-            {{- toYaml .Values.timescale.resources | nindent 12 }}
-          {{- include "udp.probes" .Values.timescale.probes | nindent 10 }}
-          # Fast shutdown instead of the "smart" one SIGTERM triggers, which
-          # waits for all pooled clients to disconnect (s. values.yaml).
-          # -W: only request it – waiting would end with the hook being killed
-          # along with the container (FailedPreStopHook event on every stop);
-          # terminationGracePeriodSeconds covers the actual shutdown.
-          lifecycle:
-            preStop:
-              exec: { command: ["sh", "-c", "pg_ctl -D \"$PGDATA\" -m fast -W stop"] }
-      volumes:
-        - name: init
-          configMap: { name: postgres-init }
-        {{- if .Values.timescale.shmSize }}
-        - name: shm
-          emptyDir: { medium: Memory, sizeLimit: {{ .Values.timescale.shmSize }} }
-        {{- end }}
-  volumeClaimTemplates:
-    - metadata: { name: data }
-      spec:
-        accessModes: [ReadWriteOnce]
-        {{- include "udp.storageClass" (dict "ctx" . "override" .Values.timescale.persistence.storageClass) | nindent 8 }}
-        resources: { requests: { storage: {{ .Values.timescale.persistence.size }} } }
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: timescale
-  labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
-spec:
-  clusterIP: None
-  selector:
-    {{- include "udp.selectorLabels" "timescale" | nindent 4 }}
-  ports: [{ port: 5432 }]
