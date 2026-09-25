@@ -26,6 +26,9 @@ Communication matrix. from = app labels of the calling pods in this namespace.
 public = reachable from the ingress controller. monitored = reachable from the
 monitoring namespace / Uptime Kuma. Disabled components drop out.
 */}}
+{{- $mongoClients := list "orion-ld" "iot-agent-json" }}
+{{- /* Index hook job (templates/mongo-indexes.yaml). */}}
+{{- if .Values.mongo.indexes.enabled }}{{ $mongoClients = append $mongoClients "mongo-indexes" }}{{ end }}
 {{- $timescaleClients := list "orion-ld" "mintaka" "frost" "keycloak" "node-red" }}
 {{- if .Values.ckan.enabled }}{{ $timescaleClients = append $timescaleClients "ckan" }}{{ end }}
 {{- if .Values.backup.enabled }}{{ $timescaleClients = append $timescaleClients "db-backup" }}{{ end }}
@@ -41,7 +44,7 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
   (dict "app" "frost"          "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
   (dict "app" "iot-agent-json" "ports" (list 4041 7896) "from" (list "apisix" "orion-ld")                             "monitored" true)
   (dict "app" "node-red"       "ports" (list 1880)      "from" (list "cockpit")                                       "monitored" true)
-  (dict "app" "mongo"          "ports" (list 27017)     "from" (list "orion-ld" "iot-agent-json"))
+  (dict "app" "mongo"          "ports" (list 27017)     "from" $mongoClients)
   (dict "app" "mosquitto"      "ports" (list 1883 9001) "from" (list "iot-agent-json"))
 }}
 {{- if .Values.ckan.enabled }}

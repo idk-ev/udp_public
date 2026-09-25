@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+
+{{- if .Values.mongo.indexes.enabled }}
+# =============================================================================
+# Secondary indexes for Orion-LD (s. mongo.indexes in values.yaml)
+#
+# Orion-LD creates no index for type/attribute queries, so every dashboard
+# query was a collection scan. This hook job runs after every install/upgrade
+# and applies the configured indexes to "orion" and every tenant database
+# ("orion-<tenant>"). createIndex is a no-op for an existing identical index,
+# so re-running it costs nothing.
+# =============================================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-indexes
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mongo-indexes") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  # Mongo may itself be restarting during the upgrade – the wait loop below
+  # covers that, the deadline keeps a stuck job from blocking the release.
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "mongo-indexes") | nindent 8 }}
+    spec:
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.mongo) | nindent 6 }}
+      restartPolicy: Never
+      containers:
+        - name: mongo-indexes
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.mongo.image) }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.mongo.containerSecurityContext) | nindent 12 }}
+          env:
+            - name: UDP_INDEXES
+              value: {{ .Values.mongo.indexes.entities | toJson | quote }}
+          command:
+            - bash
+            - -c
+            - |
+              until timeout 2 bash -c "echo > /dev/tcp/mongo/27017" 2>/dev/null; do
+                echo "waiting for mongo:27017"; sleep 2
+              done
+              exec mongosh --quiet mongodb://mongo:27017/admin --eval '
+                const specs = JSON.parse(process.env.UDP_INDEXES);
+                const names = db.adminCommand({ listDatabases: 1, nameOnly: true }).databases
+                  .map(d => d.name).filter(n => /^orion(-.+)?$/.test(n));
+                if (!names.includes("orion")) names.push("orion");
+                for (const name of names) {
+                  const coll = db.getSiblingDB(name).entities;
+                  for (const s of specs) {
+                    const key = {};
+                    for (const [field, dir] of s.key) key[field] = dir;
+                    print(name + ".entities " + s.name + ": " + coll.createIndex(key, { name: s.name }));
+                  }
+                }'
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 384Mi }
+{{- end }}
