@@ -20,6 +20,24 @@ BW-Gemeinde (Leihräder aus Basel, Feinstaubsensoren aus dem Elsass).
   bzw. 24 h Bestätigung, höchstens 30 % des Bestands, nur eigene ID-Muster.
 - **Compose**: Node-RED lädt Stammdaten über `http://cockpit:8080` (vorher
   Port 80, dort lauscht das Cockpit nicht); Helm-Service zusätzlich auf 8080.
+- **Keine eingefrorenen Werte mehr**: Änderungssignaturen gelten erst nach
+  bestätigtem Upsert (2xx, bei 207 je Entität). Bei Orion-Ausfällen gehen die
+  Werte im nächsten Lauf erneut heraus, statt wochenlang stehen zu bleiben.
+- **Frische**: Parkanlagen und B+R mit Echtzeitwerten, Carsharing-Stationen,
+  Ladepunkte mit Livestatus, Parken-Summen und Gemeinde-Puls tragen ein
+  aktuelles `dateObserved`. Reine Stammdaten-Einträge bleiben ohne.
+- **Sharing**: Gemeinden ohne Fahrzeuge eines Anbieters erhalten einmal 0
+  statt bis zum Aufräumen die alte Zahl.
+- **Aufräumen** verschwundener Carsharing-Stationen und -Flotten, Ladepunkte,
+  Ladesummen und Gemeinde-Pulse; einmalig auch Parkanlagen im Alt-ID-Schema
+  (nur nach vollständigem Lauf, 7 Tage unverändert).
+- **Ladepunkte**: alle OCPDB-Seiten laut `total_count` (vorher fest 29 von 32,
+  rund 1.300 BW-Standorte fehlten).
+- **Gemeinde-Puls**: mindestens drei echte Komponenten (Warnlage zählt nicht),
+  keine Baustelle = 100, Sharing je 1.000 Einwohner, veraltete Feinstaubwerte
+  ignoriert, alle Abfragen paginiert. Methode: `docs/framework-dashboards.md`.
+- **Gemeindeseite**: Parken, B+R, Ladepunkte und Carsharing zeigen bei
+  veralteten Werten „Stand: TT.MM. HH:MM“ statt „Echtzeit“.
 
 ## Unveröffentlicht — Lastkapazität des Dashboards
 

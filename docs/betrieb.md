@@ -252,7 +252,15 @@ zielten nur auf den kleineren Teil des Volumens:
    trägt die CityPulse-Aggregate (unveränderte Gemeinde-Pulse entfallen),
    und der ÖPNV-Abfahrtsmonitor dedupliziert je Attribut: Stammdaten wie
    `name`/`location`/`stopCode` gehen nur mit, wenn sie sich geändert haben
-   (`options=update` lässt den Broker-Rest unangetastet).
+   (`options=update` lässt den Broker-Rest unangetastet). Eine Signatur gilt
+   erst, wenn der Broker den Schreibvorgang bestätigt hat (2xx, bei 207 je
+   Entität); scheitert oder hängt der Upsert, geht der Wert im nächsten Lauf
+   erneut heraus. Vorher froren Werte bei Orion-Hängern wochenlang ein.
+   Unveränderte Einzelstandorte mit Echtzeitwerten frischen nur `dateObserved`
+   auf: Parken in jedem Lauf (~3.800 Zeilen/Tag), Carsharing-Stationen und
+   Ladepunkte mit Livestatus reihum etwa alle 3 h (~32.000 bzw. ~49.000
+   Zeilen/Tag). Reine Registereinträge ohne Echtzeitwert bekommen keinen
+   Zeitstempel.
 2. **Takt an den Nutzen angepasst.** Der OCPDB-Abzug läuft stündlich statt
    halbstündlich, die Feinstaub-Einzelsensoren stündlich statt alle 15 min
    (die Gemeindemediane bleiben im 15-Minuten-Takt).
@@ -309,18 +317,15 @@ sie nicht mehr von selbst weg. Zwei getrennte Aufräumschritte:
   Tabelle groß ist (dort 22 GB bei 17 GB frei).
 * **Broker** — die Entitäten selbst stehen in Orion-LD und werden von der
   Retention (nur `pg`) nicht angefasst. Sie tragen ein `ags` und erscheinen
-  daher als veraltete Doppelgänger auf den Parken-Karten. Einmalig entfernen:
-
-  ```sh
-  # IDs im Alt-Schema sammeln (Orion-LD kann »nicht parkapi-« nicht filtern)
-  curl -s 'http://orion-ld:1026/ngsi-ld/v1/entities?type=ParkingSite&limit=1000&attrs=ags' \
-    | jq -r '.[].id' | grep -v ':parkapi-' > alt-ids.txt
-  # in Stapeln zu 100 löschen (entityOperations/delete nimmt ein ID-Array)
-  split -l 100 alt-ids.txt stapel- && for f in stapel-*; do
-    jq -Rn '[inputs]' < "$f" | curl -s -X POST \
-      'http://orion-ld:1026/ngsi-ld/v1/entityOperations/delete' \
-      -H 'Content-Type: application/json' --data-binary @- ; done
-  ```
+  daher als veraltete Doppelgänger auf den Parken-Karten. Seit der
+  Datenfrische-Überarbeitung räumt `parken-bw` sie selbst ab, höchstens einmal
+  täglich und nur nach einem vollständigen Lauf: gelöscht werden nur IDs im
+  Alt-Schema (Zeichen `[a-z0-9.-]`, beginnend mit einem bekannten
+  Gemeinde-Slug, nicht `parkapi-`, Datenlieferant »MobiData BW ParkAPI«), die
+  seit mindestens 7 Tagen unverändert sind. Kommunale Konnektoren mit
+  Slug-Präfix-IDs bleiben dadurch unberührt. Der sonst übliche 30-%-Deckel greift hier bewusst nicht – keine dieser
+  Entitäten wird je wieder bestätigt. Die erste tägliche Prüfung merkt sich nur
+  den Zeitpunkt, gelöscht wird ab der zweiten.
 
   Ein Wiederauftreten ist ausgeschlossen: Der Konnektor bildet IDs nur noch aus
   dem ParkAPI-Schlüssel, und `tests/static/flow-invarianten.test.js` verbietet
