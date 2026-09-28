@@ -145,3 +145,107 @@ exports["TRoE statistics stay cheap: server-side timeout, no full scan, overlap 
   assert(/statement_timeout:\s*\d+/.test(nurCode(ret.func)), "no server-side statement_timeout in the retention run");
   assert(/INSERT INTO udp_troe_type_stats/.test(ret.func), "retention no longer fills the nightly type statistics");
 };
+
+/* Municipality assignment. The former helper fell back to the nearest
+   municipality centroid, so objects outside Baden-Württemberg (Basel, Alsace,
+   Palatinate, Bavaria) were counted in the nearest BW municipality. Only
+   inputs guaranteed to lie in BW may still use the centroid fallback. */
+const CENTROID_WHITELIST = ["udp-rt-bu-build"];   // UBA stations, pre-selected by DEBW code
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+
+exports["All function nodes compile"] = () => {
+  for (const n of FUNCS) {
+    const libs = (n.libs || []).map(l => l.var);
+    try {
+      new AsyncFunction("msg", "node", "flow", "global", "env", "context", "RED", ...libs, n.func || "");
+    } catch (e) {
+      assert.fail(`${n.name || n.id}: ${e.message}`);
+    }
+  }
+};
+
+exports["No centroid fallback outside the whitelist"] = () => {
+  for (const n of FUNCS) {
+    const code = nurCode(n.func || "");
+    assert(!/\bnearest\s*\(/.test(code), `${n.name || n.id}: uses the removed nearest() with centroid fallback`);
+    if (CENTROID_WHITELIST.includes(n.id)) continue;
+    assert(!/nearestOrCentroid/.test(code), `${n.name || n.id}: centroid fallback outside the whitelist`);
+    assert(!/dy \* dy \+ dx \* dx/.test(code), `${n.name || n.id}: own nearest-centroid search`);
+  }
+  assert(!/g\[0\]\.slice\(0, 2\) !== '08'/.test(GENERATOR),
+    "an '08' check after the lookup suggests a centroid fallback again");
+};
+
+/* Load the strict lookup from a generated node and evaluate it against the
+   real boundary file. */
+function strictLookup() {
+  const n = FUNCS.find(x => x.id === "udp-rt-bg-fn");
+  assert(n, "GBFS node udp-rt-bg-fn missing");
+  const start = n.func.indexOf("const pip = (lat, lon, rings)");
+  const end = n.func.indexOf("const nearestStrict");
+  assert(start >= 0 && end > start, "strict lookup not found in udp-rt-bg-fn");
+  const grz = JSON.parse(fs.readFileSync(path.join(ROOT, "gui/public/bw-grenzen.json"), "utf8"));
+  return new Function("GRZ", n.func.slice(start, end) + "\nreturn agsStrict;")(grz);
+}
+
+exports["Strict lookup: Stuttgart yes, Basel/Strasbourg/Kaiserslautern no"] = () => {
+  const agsStrict = strictLookup();
+  assert.strictEqual(agsStrict(48.7758, 9.1829), "08111000", "Stuttgart city centre");
+  assert.strictEqual(agsStrict(47.5596, 7.5886), null, "Basel");
+  assert.strictEqual(agsStrict(48.5734, 7.7521), null, "Strasbourg");
+  assert.strictEqual(agsStrict(49.4447, 7.7690), null, "Kaiserslautern");
+  assert.strictEqual(agsStrict(NaN, 9.18), null, "invalid coordinates");
+  // Sanity of the boundary file: nearly every municipal centroid lies in its own polygon.
+  const gem = JSON.parse(fs.readFileSync(path.join(ROOT, "gui/public/bw-gemeinden.json"), "utf8")).gemeinden;
+  const hits = gem.filter(r => agsStrict(r[2], r[3]) === r[0]).length;
+  assert(hits / gem.length > 0.95, `only ${hits} of ${gem.length} municipal centroids found in their own polygon`);
+};
+
+exports["Node-RED reaches the cockpit on its container port"] = () => {
+  const raw = fs.readFileSync(path.join(ROOT, "platform/config/nodered/flows.json"), "utf8");
+  for (const [wo, text] of [["flows.json", raw], ["generate-nodered-flows.py", GENERATOR]]) {
+    assert(!/http:\/\/cockpit(:80)?\//.test(text),
+      `${wo}: http://cockpit/ without port 8080 — nginx-unprivileged listens on 8080 only (Compose)`);
+  }
+  assert(/http:\/\/cockpit:8080\//.test(raw), "no cockpit:8080 URL in flows.json");
+  const apps = fs.readFileSync(path.join(ROOT, "helm/udp/templates/apps.yaml"), "utf8");
+  const svc = apps.slice(apps.lastIndexOf("kind: Service"));
+  assert(/name: cockpit/.test(svc) && /port: 8080, targetPort: 8080/.test(svc),
+    "Helm Service cockpit does not expose port 8080");
+};
+
+exports["Prune steps carry their safety guards"] = () => {
+  const withPrune = FUNCS.filter(n => /pruneStale\(\{/.test(n.func || ""));
+  assert(withPrune.length >= 5, `only ${withPrune.length} connectors prune`);
+  for (const n of withPrune) {
+    const code = n.func;
+    const wo = n.name || n.id;
+    assert((n.libs || []).some(l => l.var === "http" && l.module === "http"), `${wo}: http not declared in libs`);
+    // Helper guards
+    assert(/!re\.test\(e\.id\)\) continue;/.test(code), `${wo}: prune does not re-check the id pattern`);
+    assert(/cand\.length > limit/.test(code) && /mine \* frac/.test(code), `${wo}: prune without share limit`);
+    assert(/listing incomplete/.test(code), `${wo}: prune does not check listing completeness`);
+    // Call sites: anchored pattern; own ids or age-only liveness; grace or confirmation
+    const calls = code.split("pruneStale({").slice(1).map(c => c.slice(0, c.indexOf("})")));
+    for (const c of calls) {
+      const m = /pattern: '([^']+)'/.exec(c);
+      assert(m, `${wo}: prune call without literal pattern`);
+      assert(m[1].startsWith("^urn:ngsi-ld:") && m[1].endsWith("$"), `${wo}: prune pattern not anchored: ${m[1]}`);
+      assert(!/\.\*/.test(m[1]), `${wo}: prune pattern with .* is too broad: ${m[1]}`);
+      assert(/keep:/.test(c) || /liveMs:/.test(c), `${wo}: prune call neither with keep nor with liveMs`);
+      assert(/graceMs:/.test(c) || /confirmKey:/.test(c), `${wo}: prune call without grace period or confirmation`);
+    }
+    if (/keep:/.test(code)) {
+      assert(/if \(!GRZ_OK\)/.test(code) || /GRZ_OK &&/.test(code), `${wo}: prune without boundary guard`);
+    }
+  }
+  const park = FUNCS.find(n => n.id === "udp-rt-bp-build");
+  assert(/if \(msg\.parkVollstaendig && GRZ_OK && ids\.size\)/.test(park.func),
+    "Parken-BW prunes without completeness guard");
+};
+
+exports["Roadworks: strict lookup and coordinate check"] = () => {
+  const rw = FUNCS.find(n => n.id === "udp-rt-br-fn");
+  assert(/nearestStrict\(p\[1\], p\[0\]\)/.test(rw.func), "roadworks not assigned by the strict lookup");
+  assert(/p = \[p\[1\], p\[0\]\]; getauscht\+\+/.test(rw.func), "roadworks without swapped-coordinate repair");
+};

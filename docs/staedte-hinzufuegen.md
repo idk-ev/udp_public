@@ -55,8 +55,9 @@ python3 scripts/generate-city-pages.py                   # SEO-Stubs gui/public/
 npm --prefix gui run build                               # dist aktualisieren
 ```
 
-`bw-grenzen.json` wird von Node-RED über `http://cockpit/bw-grenzen.json` in den
-globalen Kontext geladen (Punkt-in-Polygon). Nach Grenzänderung Node-RED neu
+`bw-grenzen.json` wird von Node-RED über `http://cockpit:8080/bw-grenzen.json` in den
+globalen Kontext geladen (Punkt-in-Polygon). Fehlt die Datei, überspringen die
+Konnektoren mit Gemeindezuordnung ihre Läufe, statt nach Nähe zu raten. Nach Grenzänderung Node-RED neu
 starten.
 
 ## Stufe 2 — individualisieren (Branding + Theme)
