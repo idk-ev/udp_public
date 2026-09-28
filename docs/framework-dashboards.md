@@ -121,7 +121,7 @@ Index 0–100 je Gemeinde (`CityPulse:bw-<ags>`, gewichtetes Mittel):
 | Laden (freie Live-Ladepunkte) | alle frei | 0,15 |
 | Baustellen (SVZ-BW, landesweit) | keine Baustelle | 0,15 |
 | Sharing (Fahrzeuge je 1.000 Einwohner) | ≥ 5 | 0,1 |
-| B+R (freie Plätze, < 6 h) | alle frei | 0,05 |
+| B+R (freie Plätze aller Konnektoren, < 6 h) | alle frei | 0,05 |
 | Warnlage (Kreis) | keine Warnung | 0,2 |
 
 Ein Puls entsteht nur mit mindestens drei Komponenten **ohne** die Warnlage –

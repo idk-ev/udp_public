@@ -37,7 +37,11 @@ BW-Gemeinde (Leihräder aus Basel, Feinstaubsensoren aus dem Elsass).
   keine Baustelle = 100, Sharing je 1.000 Einwohner, veraltete Feinstaubwerte
   ignoriert, alle Abfragen paginiert. Methode: `docs/framework-dashboards.md`.
 - **Gemeindeseite**: Parken, B+R, Ladepunkte und Carsharing zeigen bei
-  veralteten Werten „Stand: TT.MM. HH:MM“ statt „Echtzeit“.
+  veralteten Werten „Stand: TT.MM. HH:MM“ statt „Echtzeit“; veraltete
+  Gemeinde-Pulse werden markiert, der Kreis-Mittelwert zählt nur aktuelle.
+- **Ladesummen** nur noch bei Änderung voll geschrieben, OCPDB-Upserts
+  gedrosselt; neue Zeilenbudgets für Ladepunkte, Ladesummen, Carsharing und
+  Gemeinde-Puls.
 
 ## Unveröffentlicht — Lastkapazität des Dashboards
 
