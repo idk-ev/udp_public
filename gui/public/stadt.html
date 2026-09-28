@@ -126,7 +126,7 @@
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";
-const { $, css, esc, safeUrl, val, asArray, asRows, jget, entity, byAgs, tile, grade, fmtN, fmtDay, pos, popupHtml, groupColor, hist, series, chart, barSvg } = SC;
+const { $, css, esc, safeUrl, val, obsTime, staleStand, asArray, asRows, jget, entity, byAgs, tile, grade, fmtN, fmtDay, pos, popupHtml, groupColor, hist, series, chart, barSvg } = SC;
 
 let GEM = [], BY_AGS = {}, BY_SLUG = {}, CONN = [], DASH = {}, SERVICES = {}, STADT = window.STADT || null;
 
@@ -387,9 +387,9 @@ async function render() {
     carsharingC ? byAgs("FleetStatus", ags).catch(() => []) : [],
     passantenC && passantenC.sampleEntity ? entity(passantenC.sampleEntity) : null,
     // Ladestandorte der Gemeinde, auf Kartenattribute projiziert (statt vollem NGSI-LD).
-    ladenDetailC ? byAgs("EVChargingStation", ags, "name,operator,socketNumber,availableEvse,chargingEvse,defectEvse,liveEvse,ags,location").catch(() => []) : [],
+    ladenDetailC ? byAgs("EVChargingStation", ags, "name,operator,socketNumber,availableEvse,chargingEvse,defectEvse,liveEvse,ags,location,dateObserved").catch(() => []) : [],
     entity("urn:ngsi-ld:WeatherForecast:bw-" + ags),
-    carsharingC ? byAgs("CarSharingStation", ags, "name,operator,availableVehicles,capacity,ags,location").catch(() => []) : [],
+    carsharingC ? byAgs("CarSharingStation", ags, "name,operator,availableVehicles,capacity,ags,location,dateObserved").catch(() => []) : [],
     // Hitzebelastung: 5 DWD-Vertreterstädte, nächstgelegene wird gewählt.
     jget(`${SC.GW}/ngsi-ld/v1/entities?type=HeatHealthWarning&limit=10&options=keyValues`).catch(() => []),
     // Familie & Versorgung (OSM): Apotheke, Arzt, Kita, Spielplatz, AED, Trinkwasser.
@@ -401,7 +401,7 @@ async function render() {
     // Parkanlagen je Standort mit Koordinaten (MobiData BW ParkAPI, kommunenspezifischer Baustein)
     // für die Parken-Detailkarte und die Parken-Kartenebene. Die ParkingSummary oben
     // bleibt der aggregierte Kachelwert.
-    byAgs("ParkingSite", ags, "name,totalSpotNumber,availableSpotNumber,category,ags,location").catch(() => []),
+    byAgs("ParkingSite", ags, "name,totalSpotNumber,availableSpotNumber,category,ags,location,dateObserved").catch(() => []),
   ]);
   // Baustellen: eigene Gemeinde vs. Umland aus der einen Kreis-Abfrage ableiten.
   const rw = kreisRw.filter(e => !e.id.endsWith("summary") && val(e, "ags") === ags);
@@ -415,6 +415,10 @@ async function render() {
   // (ausgefallen oder als unplausibel verworfen) — dann lieber nichts anzeigen als
   // einen alten Wert als heutige Luftqualität auszugeben.
   const dObs = e => { const v = e && e.dateObserved && e.dateObserved.value; return v ? (v["@value"] || v) : null; };
+  // "Echtzeit" only while the value is current: twice the refresh period of the
+  // connector (parken-bw every 3 h; carsharing and charge point stations refresh
+  // unchanged values every 3 h; the charging sums are written hourly).
+  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 2 * 3600e3 };
   const scAlle = luft.find(e => e.id.includes("bw-sc-"));
   const scZeit = Date.parse(dObs(scAlle) || "");
   const sc = (scAlle && scZeit && Date.now() - scZeit < 2 * 3600e3) ? scAlle : null;
@@ -465,9 +469,17 @@ async function render() {
     const live = val(e, "liveEvse") || 0;
     if (!live) return { color: css("--text-muted"), online: false, txt: "offline · keine Livedaten (Registereintrag)" };
     const frei = val(e, "availableEvse") || 0, laedt = val(e, "chargingEvse") || 0, defekt = val(e, "defectEvse") || 0;
+    // Refreshed at least every 3 h; older values are no live status any more.
+    const stand = staleStand(e, STALE.station);
     return { color: css("--status-good"), online: true,
-             txt: "online · Live: " + frei + " frei · " + laedt + " belegt" + (defekt ? " · " + defekt + " defekt" : "") };
+             txt: esc((stand ? "online · " + stand + ": " : "online · Live: ") + frei + " frei · " + laedt + " belegt" + (defekt ? " · " + defekt + " defekt" : "")) };
   };
+  // Popup lines (inserted as HTML, hence escaped) with an age mark once the
+  // value is no longer current.
+  const mitStand = (txt, e, maxAge) => { const s = staleStand(e, maxAge); return s ? txt + " (" + s + ")" : txt; };
+  const csExtra = e => esc(mitStand("verfügbar: " + (val(e, "availableVehicles") ?? "?") + " / " + (val(e, "capacity") ?? "?"), e, STALE.station)
+    + " · " + (val(e, "operator") || ""));
+  const brExtra = e => esc(mitStand("frei: " + (val(e, "availableSpotNumber") ?? "?") + " / " + (val(e, "totalSpotNumber") ?? "?") + " Plätze", e, STALE.parken));
 
   // DETAILS = Klick-Detailtiefe je Kachel (Zeitreihen / Balken / Stationskarten)
   const D = {};
@@ -805,20 +817,21 @@ async function render() {
   const parkPts = (parkSites || []).map(e => ({ ...pos(e), name: val(e, "name") || "Parkplatz",
     frei: val(e, "availableSpotNumber"),
     extra: (val(e, "totalSpotNumber") != null ? fmtN(val(e, "totalSpotNumber")) + " Stellplätze" : "Parkplatz")
-      + (val(e, "availableSpotNumber") != null ? " · " + fmtN(val(e, "availableSpotNumber")) + " frei" : "") })).filter(i => i.lat);
+      + (val(e, "availableSpotNumber") != null ? " · " + mitStand(fmtN(val(e, "availableSpotNumber")) + " frei", e, STALE.parken) : "") })).filter(i => i.lat);
   if (pk) {
+    const pkStand = val(pk, "realtimeFree") != null ? staleStand(pk, STALE.parken) : "";
     if (parkPts.length) {
       // Bevorzugt: Standortkarte der Parkanlagen (kommunenspezifischer Baustein mit Koordinaten).
       D.parken = { kind: "stations", title: "Parken", center: [lat, lon],
-        explain: "Parkanlagen mit Standort und — wo gemeldet — freien Plätzen in Echtzeit (MobiData BW ParkAPI).",
-        groups: [{ name: "Parken", color: MAP_C.parken, items: parkPts }],
+        explain: "Parkanlagen mit Standort und — wo gemeldet — freien Plätzen " + (pkStand ? "(" + pkStand + ")" : "in Echtzeit") + " (MobiData BW ParkAPI).",
+        groups: [{ name: "Parken", color: MAP_C.parken, items: parkPts.map(p => ({ ...p, extra: esc(p.extra) })) }],
         list: parkPts.slice(0, 60).map(p => `<b>${esc(p.name)}</b> · <span style="color:var(--text-muted)">${esc(p.extra)}</span>`) };
     } else if (val(pk, "realtimeFree") != null) {
       // Ohne Anlagen-Koordinaten ersatzweise der Belegungsverlauf.
-      D.parken = { kind: "chart", title: "Freie Parkplätze", explain: "Echtzeit-Belegung (MobiData BW).", zero: true, series: [{ id: pk.id, attr: "realtimeFree", name: "frei" }] };
+      D.parken = { kind: "chart", title: "Freie Parkplätze", explain: pkStand ? "Belegung (MobiData BW), " + pkStand + "." : "Echtzeit-Belegung (MobiData BW).", zero: true, series: [{ id: pk.id, attr: "realtimeFree", name: "frei" }] };
     }
     tiles += tile("Parken", fmtN(val(pk, "totalCapacity")), "", { topic: "mobilitaet", detail: D.parken ? "parken" : null,
-      hint: fmtN(val(pk, "siteCount")) + (val(pk, "siteCount") === 1 ? " Anlage" : " Anlagen") + (val(pk, "realtimeFree") != null ? " · " + fmtN(val(pk, "realtimeFree")) + " frei" : ""),
+      hint: fmtN(val(pk, "siteCount")) + (val(pk, "siteCount") === 1 ? " Anlage" : " Anlagen") + (val(pk, "realtimeFree") != null ? " · " + fmtN(val(pk, "realtimeFree")) + " frei" + (pkStand ? " · " + pkStand : "") : ""),
       explain: "Stellplätze aller in MobiData BW erfassten Anlagen." + (parkPts.length ? " Klick: Standortkarte der Parkanlagen." : "") });
   }
   // E-Scooter-Standorte je Anbieter (aus SharingSummary.vehiclePositions) — für die
@@ -863,6 +876,7 @@ async function render() {
   }
   if (ch) {
     const live = l2 ? val(l2, "availableEvse") : null;
+    const chStand = l2 ? staleStand(l2, STALE.laden) : "";
     const pts = chList.map(e => { const st = evStatus(e); return { ...pos(e), color: st.color, name: val(e, "name"), online: st.online, legend: st.online ? "online" : "offline",
       extra: esc(String(val(e, "socketNumber") ?? "?") + " Ladepunkte · " + (val(e, "operator") || "")) + "<br>" + st.txt }; }).filter(i => i.lat);
     // Online/Offline als getrennte, ein-/ausblendbare Ebenen
@@ -874,8 +888,8 @@ async function render() {
       ].filter(g => g.items.length) };
     else if (l2) D.laden = { kind: "chart", title: "Ladepunkte frei (live)", explain: "Freie Ladepunkte im Zeitverlauf.", zero: true, series: [{ id: l2.id, attr: "availableEvse", name: "frei" }] };
     tiles += tile("Ladepunkte", fmtN(val(ch, "evseCount")), "", { topic: "energie", detail: D.laden ? "laden" : null,
-      status: live != null ? (live > 0 ? css("--status-good") : css("--status-warn")) : null,
-      hint: fmtN(val(ch, "locationCount")) + (val(ch, "locationCount") === 1 ? " Standort" : " Standorte") + (live != null ? " · " + live + " frei (live)" : ""),
+      status: live == null ? null : chStand ? css("--text-muted") : live > 0 ? css("--status-good") : css("--status-warn"),
+      hint: fmtN(val(ch, "locationCount")) + (val(ch, "locationCount") === 1 ? " Standort" : " Standorte") + (live != null ? " · " + live + " frei " + (chStand ? "(" + chStand + ")" : "(live)") : ""),
       explain: "E-Ladepunkte laut BNetzA-Register; Live-Status (frei/belegt/defekt), wo Betreiber melden." });
   }
   if (radSum) {
@@ -900,13 +914,16 @@ async function render() {
 
   // Kacheln aus kommunenspezifischen Konnektoren
   if (bikes.length) {
+    const brStand = staleStand(bikes, STALE.parken);
     // Detailkarte: Standortkarte der überwachten Fahrradparkplätze (frei/gesamt im Popup).
     D.br = { kind: "stations", title: "B+R Fahrradparken", center: [lat, lon],
-      explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — Standorte mit freien Plätzen in Echtzeit.",
+      explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — Standorte mit freien Plätzen " + (brStand ? "(" + brStand + ")." : "in Echtzeit."),
       groups: [{ name: "B+R Fahrradparken", color: MAP_C.br, items: bikes.map(b => ({ ...pos(b), name: val(b, "name"),
-        extra: "frei: " + (val(b, "availableSpotNumber") ?? "?") + " / " + (val(b, "totalSpotNumber") ?? "?") + " Plätze" })).filter(i => i.lat) }] };
-    tiles += tile("B+R Fahrradparken", brFrei, "", { topic: "mobilitaet", detail: D.br.groups[0].items.length ? "br" : null, status: css("--status-good"),
-      hint: "freie Plätze, Echtzeit", explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — kommune-spezifischer Echtzeitkonnektor. Klick: Standortkarte." });
+        extra: brExtra(b) })).filter(i => i.lat) }] };
+    tiles += tile("B+R Fahrradparken", brFrei, "", { topic: "mobilitaet", detail: D.br.groups[0].items.length ? "br" : null,
+      status: brStand ? css("--text-muted") : css("--status-good"),
+      hint: brStand ? "freie Plätze · " + brStand : "freie Plätze, Echtzeit",
+      explain: "Überwachtes Fahrradparken (Boxen/Sammelgarage) — " + (brStand ? "zuletzt gemeldete freie Plätze, " + brStand : "freie Plätze in Echtzeit") + ". Klick: Standortkarte." });
   }
   if (csFlotten.length) {
     const anbieter = csFlotten.map(e => val(e, "operator")).filter(Boolean);
@@ -914,8 +931,7 @@ async function render() {
     // (verfügbar/Kapazität im Popup). Ohne Stationsstandorte (frei flottierend)
     // bleibt die Kachel ohne Detailansicht — der frühere Zeitverlauf-Graph
     // zeigte dort nur eine Linie ohne Ortsbezug und ist bewusst entfallen.
-    const csPts = csList.map(e => ({ ...pos(e), name: val(e, "name"),
-      extra: "verfügbar: " + (val(e, "availableVehicles") ?? "?") + " / " + (val(e, "capacity") ?? "?") + " · " + (val(e, "operator") || "") })).filter(i => i.lat);
+    const csPts = csList.map(e => ({ ...pos(e), name: val(e, "name"), extra: csExtra(e) })).filter(i => i.lat);
     if (csPts.length) {
       D.carsharing = { kind: "stations", title: "Carsharing" + (csTop ? " (" + val(csTop, "operator") + ")" : ""), center: [lat, lon],
         explain: "Stationsbasiertes Carsharing" + (anbieter.length ? " (" + anbieter.join(", ") + ")" : "") + " — Standorte mit verfügbaren Fahrzeugen (GBFS).",
@@ -1016,7 +1032,7 @@ async function render() {
   // Datenqualitäts-Panel für Rathausmitarbeiter (?daten=1): welche Datenarten
   // liefern für DIESE Gemeinde und wie frisch. Bewusst nicht in der Bürgeransicht.
   if (new URLSearchParams(location.search).get("daten") === "1") {
-    const freshMin = e => { const d = e && dObs(e); const t = d && Date.parse(d); return t ? Math.round((Date.now() - t) / 60000) : null; };
+    const freshMin = e => { const t = obsTime(e); return t ? Math.round((Date.now() - t) / 60000) : null; };
     const first = x => Array.isArray(x) ? x[0] : x;
     const rows = [
       ["Wetter (Open-Meteo)", wx], ["Vorhersage", fcEnt], ["Gemeinde-Puls", pulse],
@@ -1195,11 +1211,11 @@ async function render() {
     // eingeklappt (DICHT-Schwelle greift wie bei den Ladesäulen).
     ...scooterGroups.map(g => ({ ...g, detail: D.sharing && D.sharing.kind === "stations" ? "sharing" : null })),
     { name: "Carsharing", color: MAP_C.carsharing, detail: D.carsharing ? "carsharing" : null, items: csList.map(e => ({ ...pos(e), name: val(e, "name"),
-        extra: "verfügbar: " + (val(e, "availableVehicles") ?? "?") + " / " + (val(e, "capacity") ?? "?") + " · " + (val(e, "operator") || "") })).filter(i => i.lat) },
+        extra: csExtra(e) })).filter(i => i.lat) },
     { name: "B+R Fahrradparken", color: MAP_C.br, detail: D.br ? "br" : null, items: bikes.map(e => ({ ...pos(e), name: val(e, "name"),
-        extra: "frei: " + (val(e, "availableSpotNumber") ?? "?") + " / " + (val(e, "totalSpotNumber") ?? "?") + " Plätze" })).filter(i => i.lat) },
+        extra: brExtra(e) })).filter(i => i.lat) },
     { name: "Parken", color: MAP_C.parken, detail: D.parken && D.parken.kind === "stations" ? "parken" : null,
-      items: parkPts.map(p => ({ lat: p.lat, lon: p.lon, name: p.name, extra: p.extra })) },
+      items: parkPts.map(p => ({ lat: p.lat, lon: p.lon, name: p.name, extra: esc(p.extra) })) },
     { name: "Pegel", color: MAP_C.pegel, detail: D.pegel ? "pegel" : null, items: pegelListe.map(e => ({ ...pos(e), name: "Pegel " + (val(e, "name") || ""),
         extra: (val(e, "water") || "") + ": " + (val(e, "level") ?? "?") + " cm · " + (val(e, "measuredAt") || "") })).filter(i => i.lat) },
     { name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) },
