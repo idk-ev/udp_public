@@ -80,15 +80,28 @@ def batch_delete(nid, z, wires, y, x=890):
         "x": x, "y": y, "wires": [wires],
     })
 
+# Node-RED fetches static files (bw-gemeinden.json, bw-grenzen.json, ...) from the
+# cockpit. Its nginx is unprivileged and listens on 8080 only; Compose has no
+# port mapping between containers, the Helm Service exposes 8080 as well.
+COCKPIT = "http://cockpit:8080"
+
 # Gemeinde-Zuordnung per Punkt-in-Polygon; von mehreren Konnektoren genutzt und
 # deshalb vor der ersten Verwendung definiert.
-NEAREST_HELPER = r'''
-const GEM = global.get('bwGemeinden');
-if (!Array.isArray(GEM)) { node.warn('bwGemeinden noch nicht im Kontext — Stammdaten-Flow abwarten'); return null; }
-// Punkt-in-Polygon (vereinfachte Gemeindegrenzen) mit Zentroid-Fallback (F1)
-const GRZ = global.get('bwGrenzen') || null;
-const GEMBYAGS = {};
-for (const r of GEM) GEMBYAGS[r[0]] = r;
+#
+# Strict lookup only: a point that lies in no municipality polygon belongs to no
+# BW municipality. The former helper fell back to the nearest municipality
+# centroid, so points outside Baden-Württemberg (Basel, Alsace, Palatinate,
+# Bavaria, ...) were silently counted in the nearest BW municipality, and
+# without boundaries every point was assigned by centroid.
+#
+# Tolerance: the boundaries in bw-grenzen.json are simplified, which leaves
+# thin slivers between neighbouring polygons (on a 1 km grid over BW roughly
+# 0.3 % of the points fall into such gaps). A point without a polygon hit is
+# still accepted if four probes ~330 m to the north, south, east and west ALL
+# hit a polygon; it gets the municipality most probes agree on. A point outside
+# the state has BW polygons on one side at most and is rejected, unless it sits
+# in a notch or enclave narrower than ~660 m.
+STRICT_LOOKUP = r'''
 const pip = (lat, lon, rings) => {
     for (const ring of rings) {
         let ins = false;
@@ -100,16 +113,100 @@ const pip = (lat, lon, rings) => {
     }
     return false;
 };
-const nearest = (lat, lon) => {
-    if (GRZ) {
-        for (const ags in GRZ) {
-            const g = GRZ[ags], b = g.b;
-            if (lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3] && pip(lat, lon, g.r)) {
-                const row = GEMBYAGS[ags];
-                if (row) return row;
-            }
-        }
+// Union of all polygon bounding boxes: cheap reject for points far outside BW
+const BW_BOX = [180, 90, -180, -90];
+for (const a in (GRZ || {})) {
+    const b = GRZ[a].b;
+    if (b[0] < BW_BOX[0]) BW_BOX[0] = b[0];
+    if (b[1] < BW_BOX[1]) BW_BOX[1] = b[1];
+    if (b[2] > BW_BOX[2]) BW_BOX[2] = b[2];
+    if (b[3] > BW_BOX[3]) BW_BOX[3] = b[3];
+}
+const pipAgs = (lat, lon) => {
+    for (const a in GRZ) {
+        const g = GRZ[a], b = g.b;
+        if (lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3] && pip(lat, lon, g.r)) return a;
     }
+    return null;
+};
+// AGS of the municipality containing the point, or null. No centroid fallback;
+// sliver tolerance: see STRICT_LOOKUP in the generator.
+const agsStrict = (lat, lon) => {
+    if (!GRZ || typeof lat !== 'number' || typeof lon !== 'number' || !isFinite(lat) || !isFinite(lon)) return null;
+    if (lon < BW_BOX[0] - 0.01 || lat < BW_BOX[1] - 0.01 || lon > BW_BOX[2] + 0.01 || lat > BW_BOX[3] + 0.01) return null;
+    const hit = pipAgs(lat, lon);
+    if (hit) return hit;
+    const votes = {};
+    let best = null;
+    for (const [dy, dx] of [[0.003, 0], [-0.003, 0], [0, 0.0045], [0, -0.0045]]) {
+        const a = pipAgs(lat + dy, lon + dx);
+        if (!a) return null;
+        votes[a] = (votes[a] || 0) + 1;
+        if (!best || votes[a] > votes[best]) best = a;
+    }
+    return best;
+};
+'''
+
+# Master data plausibility for prunes (see geo_helper). Needs GEM and GRZ.
+PRUNE_OK_JS = r'''
+const PRUNE_OK = (() => {
+    if (!Array.isArray(GEM)) return false;
+    const prev = context.get('gemCount') || 0;
+    if (GEM.length < 1000 || GEM.length < prev * 0.95) return false;
+    context.set('gemCount', GEM.length);
+    if (!GRZ || typeof GRZ !== 'object') return false;
+    let covered = 0;
+    for (const r of GEM) if (GRZ[r[0]] && Array.isArray(GRZ[r[0]].r)) covered++;
+    return covered >= GEM.length * 0.99;
+})();
+'''
+
+def interval_ms(conn_id, runs=1):
+    """Run interval of a connector from the registry in ms (cron = daily)."""
+    c = REG[conn_id]
+    sec = c.get("intervalSeconds") if not c.get("cron") else 86400
+    return str(int((sec or 86400) * 1000 * runs))
+
+def geo_helper(label, require_boundaries=True):
+    """JS prelude for connectors that assign objects to BW municipalities.
+
+    Provides GEM, GEMBYAGS, GRZ, GRZ_OK, PRUNE_OK, pip, agsStrict, nearestStrict
+    (row or null), CTX, NOW and P. With require_boundaries the function skips
+    the run (node.warn) while the boundary cache is missing: assigning by
+    centroid instead is exactly the error this replaces.
+
+    PRUNE_OK is stricter than what the lookup needs. Deleting entities relies
+    on the master data being complete: at least 1,000 municipalities, not fewer
+    than 95 % of the last plausible count (node context), and boundaries for at
+    least 99 % of their AGS (checked by key, not by count). If it fails, the
+    lookup still assigns, but no prune runs."""
+    js = r'''
+const GEM = global.get('bwGemeinden');
+if (!Array.isArray(GEM)) { node.warn('bwGemeinden not in context yet — waiting for the master data flow'); return null; }
+const GRZ = global.get('bwGrenzen') || null;
+const GRZ_OK = !!GRZ && typeof GRZ === 'object' && Object.keys(GRZ).length > 0;
+const GEMBYAGS = {};
+for (const r of GEM) GEMBYAGS[r[0]] = r;
+''' + PRUNE_OK_JS + STRICT_LOOKUP + r'''
+const nearestStrict = (lat, lon) => { const a = agsStrict(lat, lon); return a ? (GEMBYAGS[a] || null) : null; };
+const CTX = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld';
+const NOW = new Date().toISOString();
+const P = (v, u) => ({ type: 'Property', value: v, unitCode: u, observedAt: NOW });
+'''
+    if require_boundaries:
+        js += ("if (!GRZ_OK) { node.warn('" + label + ": municipality boundaries (bwGrenzen) not loaded"
+               " — run skipped instead of assigning by centroid'); return null; }\n")
+    return js
+
+# Centroid fallback. Only for inputs that are guaranteed to lie in BW (UBA
+# stations selected by their DEBW code), where a station in a sliver or during
+# a boundary outage should still get its municipality. The static tests keep a
+# whitelist of the function nodes allowed to use it.
+CENTROID_FALLBACK = r'''
+const nearestOrCentroid = (lat, lon) => {
+    const hit = nearestStrict(lat, lon);
+    if (hit) return hit;
     let best = null, bd = Infinity;
     for (const r of GEM) {
         const dy = r[2] - lat, dx = (r[3] - lon) * 0.66;
@@ -118,9 +215,171 @@ const nearest = (lat, lon) => {
     }
     return best;
 };
-const CTX = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld';
-const NOW = new Date().toISOString();
-const P = (v, u) => ({ type: 'Property', value: v, unitCode: u, observedAt: NOW });
+'''
+
+# Prune: delete a connector's own entities that it no longer confirms.
+#
+# The connectors only upsert. An entity a run no longer produces (the object
+# left the source, or it was wrongly assigned before the strict lookup) would
+# stay in the broker forever. pruneStale() lists the connector's entities by
+# type + anchored idPattern that only this connector writes (every returned id
+# is checked against the same pattern again), pages through them with
+# limit/offset (compared with NGSILD-Results-Count) and deletes the ids that
+# are not confirmed. Guards:
+#   * call site:   only after a COMPLETE, successful source run with plausible
+#                  master data (PRUNE_OK) and a non-empty result;
+#   * intervalMs:  the previous successful run of this prune must lie at most
+#                  2.5 intervals back (flow context), so a first run after an
+#                  outage or a lost context never acts on a single snapshot;
+#   * keep:        ids produced by this run are never deleted;
+#   * graceMs:     only entities whose newest timestamp (modifiedAt, observedAt,
+#                  dateObserved) is older than the grace period; unknown = keep;
+#   * confirmKey + confirmMs: for sources without refreshed timestamps an id
+#                  must be a candidate in at least two consecutive runs AND
+#                  for confirmMs; any skipped run clears the candidates;
+#   * liveMs:      age-only mode: at least one entity must have been written
+#                  recently, otherwise the connector itself is down -> skip;
+#   * maxFraction: never delete more than this share of the existing entities
+#                  (default 30 %, at least 3) -> node.warn and skip.
+# Only ids the broker confirms as deleted (204, or the success part of a 207)
+# count and lose their change signature. TRoE history is left untouched.
+PRUNE_LIBS = [{"var": "http", "module": "http"}]
+PRUNE_HELPER = r'''
+async function pruneStale(o) {
+    const BASE = 'http://orion-ld:1026/ngsi-ld/v1/';
+    const re = new RegExp(o.pattern);
+    const frac = o.maxFraction || 0.3;
+    const now = Date.now();
+    const skip = (why, quiet) => {
+        if (o.confirmKey) flow.set(o.confirmKey, {});   // "consecutive" means consecutive
+        if (quiet) node.log(o.label + ': prune skipped, ' + why);
+        else node.warn(o.label + ': prune skipped, ' + why);
+        return 0;
+    };
+    if (o.intervalMs) {
+        const key = 'pruneLastRun_' + o.label.replace(/[^A-Za-z0-9]+/g, '_');
+        const prev = flow.get(key);
+        flow.set(key, now);
+        if (!prev || now - prev > 2.5 * o.intervalMs) return skip('no successful run within the last 2.5 intervals', !prev);
+    }
+    const req = (method, path, body) => new Promise((resolve, reject) => {
+        const data = body ? Buffer.from(JSON.stringify(body)) : null;
+        const headers = { 'Accept': 'application/json' };
+        if (data) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = data.length; }
+        const r = http.request(BASE + path, { method: method, headers: headers }, res => {
+            const parts = [];
+            res.on('data', d => parts.push(d));
+            res.on('error', reject);
+            res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(parts).toString('utf8') }));
+        });
+        r.on('error', reject);
+        r.setTimeout(30000, () => r.destroy(new Error('timeout after 30 s')));
+        if (data) r.write(data);
+        r.end();
+    });
+    const tsOf = e => {
+        let t = 0;
+        const see = v => { const x = Date.parse(v); if (isFinite(x) && x > t) t = x; };
+        if (e.modifiedAt) see(e.modifiedAt);
+        for (const k of Object.keys(e)) {
+            const a = e[k];
+            if (!a || typeof a !== 'object' || Array.isArray(a)) continue;
+            if (a.observedAt) see(a.observedAt);
+            if (a.modifiedAt) see(a.modifiedAt);
+            if (k === 'dateObserved') see(a.value && typeof a.value === 'object' ? a.value['@value'] : a.value);
+        }
+        return t;
+    };
+    // 1. List all own entities, completely
+    const PAGE = 1000, MAX_PAGES = 100;
+    const existing = [];
+    let total = null, done = false;
+    try {
+        for (let page = 0; page < MAX_PAGES; page++) {
+            const res = await req('GET', 'entities?type=' + encodeURIComponent(o.type)
+                + '&idPattern=' + encodeURIComponent(o.pattern)
+                + '&attrs=' + encodeURIComponent(o.attrs || 'ags')
+                + '&options=sysAttrs&count=true&limit=' + PAGE + '&offset=' + (page * PAGE));
+            if (res.status !== 200) return skip('listing HTTP ' + res.status);
+            const list = JSON.parse(res.text);
+            if (!Array.isArray(list)) return skip('listing is not an array');
+            if (total === null) total = parseInt(res.headers['ngsild-results-count'], 10);
+            for (const e of list) existing.push(e);
+            if (list.length < PAGE) { done = true; break; }
+        }
+    } catch (e) {
+        return skip('listing failed (' + (e && e.message ? e.message : e) + ')');
+    }
+    if (!done || (isFinite(total) && existing.length < total)) {
+        return skip('listing incomplete (' + existing.length + '/' + total + ')');
+    }
+    // 2. Candidates: own ids, not confirmed by this run, old enough
+    let mine = 0, newest = 0;
+    let cand = [];
+    for (const e of existing) {
+        if (!e || typeof e.id !== 'string' || !re.test(e.id)) continue;   // never touch foreign ids
+        mine++;
+        const t = tsOf(e);
+        if (t > newest) newest = t;
+        if (o.keep && o.keep.has(e.id)) continue;
+        if (o.graceMs && (!t || now - t < o.graceMs)) continue;
+        cand.push(e.id);
+    }
+    if (o.liveMs && now - newest > o.liveMs) {
+        return skip('no entity written within the last ' + Math.round(o.liveMs / 3600000) + ' h — connector down?');
+    }
+    const limit = Math.max(3, Math.floor(mine * frac));
+    if (cand.length > limit) {
+        return skip(cand.length + ' of ' + mine + ' entities would be deleted (limit ' + limit + ') — please check manually');
+    }
+    let confirm = null;
+    if (o.confirmKey) {
+        // { id: [first seen as candidate (ms), consecutive runs] }
+        const prev = flow.get(o.confirmKey) || {};
+        confirm = {};
+        for (const id of cand) {
+            const p = Array.isArray(prev[id]) ? prev[id] : [now, 0];
+            confirm[id] = [p[0], p[1] + 1];
+        }
+        cand = cand.filter(id => confirm[id][1] >= 2 && now - confirm[id][0] >= (o.confirmMs || 24 * 3600e3));
+        flow.set(o.confirmKey, confirm);
+    }
+    if (!cand.length) return 0;
+    // 3. Delete in batches; count only what the broker confirms
+    const deletedIds = [];
+    for (let i = 0; i < cand.length; i += 100) {
+        const chunk = cand.slice(i, i + 100);
+        let res;
+        try { res = await req('POST', 'entityOperations/delete', chunk); }
+        catch (e) { node.warn(o.label + ': prune delete failed (' + (e && e.message ? e.message : e) + ')'); continue; }
+        let ok = [];
+        if (res.status === 204 || res.status === 200) ok = chunk;
+        else if (res.status === 207) {
+            try {
+                const b = JSON.parse(res.text || '{}');
+                const bad = new Set((b.errors || []).map(x => x && (x.entityId || x.id)));
+                ok = Array.isArray(b.success) ? chunk.filter(id => b.success.includes(id))
+                                              : chunk.filter(id => !bad.has(id));
+            } catch (e) { ok = []; }
+            if (ok.length < chunk.length) node.warn(o.label + ': prune delete, ' + (chunk.length - ok.length) + ' ids failed');
+        } else node.warn(o.label + ': prune delete HTTP ' + res.status);
+        for (const id of ok) deletedIds.push(id);
+    }
+    if (confirm) {
+        for (const id of deletedIds) delete confirm[id];
+        flow.set(o.confirmKey, confirm);
+    }
+    // Forget the change signatures of deleted entities, so a returning object
+    // is written in full again instead of as a freshness-only update.
+    if (o.sigKey && deletedIds.length) {
+        const sig = flow.get(o.sigKey) || {};
+        for (const id of deletedIds) delete sig[id];
+        flow.set(o.sigKey, sig);
+    }
+    node.log(o.label + ': pruned ' + deletedIds.length + ' of ' + mine + ' entities');
+    node.status({ text: (o.status ? o.status + ' · ' : '') + 'pruned ' + deletedIds.length + '/' + mine });
+    return deletedIds.length;
+}
 '''
 
 def debug(nid, z, name, y, x=1100):
@@ -217,16 +476,9 @@ if (msg.statusCode >= 400 || !msg.payload || !msg.payload.weather) return null;
 const stationen = flow.get('dwdStationen') || {};
 const st = stationen[msg.station];
 if (!st) return null;
-''' + NEAREST_HELPER + r'''
-const GRZ3 = global.get('bwGrenzen');
-const gem = (() => {
-    if (!GRZ3) return null;
-    for (const a in GRZ3) {
-        const g = GRZ3[a], b = g.b;
-        if (st.lon >= b[0] && st.lat >= b[1] && st.lon <= b[2] && st.lat <= b[3] && pip(st.lat, st.lon, g.r)) return GEMBYAGS[a] || null;
-    }
-    return null;
-})();
+''' + geo_helper("DWD", require_boundaries=False) + r'''
+// Strict: stations outside BW or without boundaries get no municipality
+const gem = nearestStrict(st.lat, st.lon);
 const w = msg.payload.weather;
 const clean = s => String(s == null ? '' : s).replace(/'/g, '’'); // TRoE-Bug: Apostroph bricht SQL-Insert
 const now = new Date().toISOString();
@@ -610,7 +862,7 @@ global.set('oepnvHalte', msg.payload.halte);
 node.status({ text: Object.keys(msg.payload.halte).length + ' Halte' });
 return null;'''
 inject("udp-rt-ah-inject", Z, "täglich", 86400, 8, ["udp-rt-ah-get"], 700)
-http_get("udp-rt-ah-get", Z, "oepnv-halte.json", "http://cockpit/oepnv-halte.json", ["udp-rt-ah-fn"], 700)
+http_get("udp-rt-ah-get", Z, "oepnv-halte.json", COCKPIT + "/oepnv-halte.json", ["udp-rt-ah-fn"], 700)
 func("udp-rt-ah-fn", Z, "Halte in den Kontext", FN_ABF_HALTE_LADEN, [], 700, x=620)
 
 # ---------------------------------------------------------------- hystreet (vorbereitet, env-gated)
@@ -681,7 +933,7 @@ tab(Z, "BW: Stammdaten & Basisdaten",
     "(georef/Wikidata via bw-gemeinden.json), Wetter (Open-Meteo-Batches), Warnungen je Kreis "
     "(DWD + NINA) und Baustellen (SVZ-BW) mit AGS-Zuordnung.")
 
-GEMEINDEN_URL = "http://cockpit/bw-gemeinden.json"
+GEMEINDEN_URL = COCKPIT + "/bw-gemeinden.json"
 CHUNK_HELPER = r'''
 // Entities in Batch-Chunks aufteilen (Orion-Payload-Limit)
 function emitChunks(node, msg, entities, size) {
@@ -785,7 +1037,7 @@ debug("udp-rt-bm-debug", Z, "Stammdaten Ergebnis", 140)
 
 FN_GRENZEN = r'''// Gemeindegrenzen in den global-Kontext (für Punkt-in-Polygon)
 if (msg.statusCode >= 400 || !msg.payload || typeof msg.payload !== 'object') {
-    node.warn('bw-grenzen.json nicht ladbar (' + msg.statusCode + ') — Fallback nearest bleibt aktiv');
+    node.warn('bw-grenzen.json not loadable (' + msg.statusCode + ') — connectors with strict municipality lookup skip their runs');
     return null;
 }
 global.set('bwGrenzen', msg.payload);
@@ -793,7 +1045,7 @@ node.status({ text: Object.keys(msg.payload).length + ' Gemeindepolygone' });
 return null;'''
 
 inject("udp-rt-bgr-inject", Z, "stündlich (+ initial)", 3600, 15, ["udp-rt-bgr-get"], 150)
-http_get("udp-rt-bgr-get", Z, "bw-grenzen.json", "http://cockpit/bw-grenzen.json", ["udp-rt-bgr-fn"], 150)
+http_get("udp-rt-bgr-get", Z, "bw-grenzen.json", COCKPIT + "/bw-grenzen.json", ["udp-rt-bgr-fn"], 150)
 func("udp-rt-bgr-fn", Z, "→ global bwGrenzen", FN_GRENZEN, [], 150, x=860)
 
 FN_WX_BATCH = r'''// Gemeinden -> 8 Open-Meteo-Batch-URLs (je ~140 Koordinaten)
@@ -1063,28 +1315,14 @@ const GRZ = global.get('bwGrenzen');
 if (!GRZ) { node.warn('PEGELONLINE: Grenzen-Cache fehlt — Lauf übersprungen'); return null; }
 const GEM = global.get('bwGemeinden') || [];
 const NAME = {}; for (const r of GEM) NAME[r[0]] = r[1];
-const pip = (lat, lon, rings) => {
-    for (const ring of rings) {
-        let ins = false;
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-            const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
-            if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) ins = !ins;
-        }
-        if (ins) return true;
-    }
-    return false;
-};
+""" + STRICT_LOOKUP + r"""
 const now = new Date().toISOString();
 const ctx = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld';
 const entities = [];
 for (const st of msg.payload) {
     const lat = st.latitude, lon = st.longitude;
     if (!lat || lat < 47.5 || lat > 49.85 || lon < 7.4 || lon > 10.6) continue;
-    let ags = null;
-    for (const a in GRZ) {
-        const g = GRZ[a], b = g.b;
-        if (lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3] && pip(lat, lon, g.r)) { ags = a; break; }
-    }
+    const ags = agsStrict(lat, lon);
     if (!ags) continue; // außerhalb BW (z. B. Main in Bayern) — bewusst verwerfen
     // Zwingend die Wasserstandsreihe W (cm) nehmen. Stationen mit Abflussmessung
     // führen Q (m³/s) an erster Stelle — die frühere Auswahl timeseries[0] hat
@@ -1129,24 +1367,8 @@ debug("udp-rt-pe-debug", Z, "Pegel Ergebnis", 830)
 PIP_ONLY = r"""
 const GRZ = global.get('bwGrenzen');
 if (!GRZ) { node.warn('Overpass-FN: Grenzen-Cache fehlt'); return null; }
-const pip = (lat, lon, rings) => {
-    for (const ring of rings) {
-        let ins = false;
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-            const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
-            if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) ins = !ins;
-        }
-        if (ins) return true;
-    }
-    return false;
-};
-const agsOf = (lat, lon) => {
-    for (const a in GRZ) {
-        const g = GRZ[a], b = g.b;
-        if (lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3] && pip(lat, lon, g.r)) return a;
-    }
-    return null;
-};
+""" + STRICT_LOOKUP + r"""
+const agsOf = agsStrict;
 """
 
 FN_PEGEL_LUBW = r"""// LUBW/HVZ-Stammdatendatei (JS) -> WaterLevelObserved je Landespegel
@@ -1556,11 +1778,11 @@ upsert("udp-rt-bk-post", Z, ["udp-rt-bk-debug"], 620)
 debug("udp-rt-bk-debug", Z, "BW-Warnungen Ergebnis", 620)
 
 FN_RW_BW = r'''// SVZ-BW-Baustellen landesweit -> RoadWork:bw-svz-<id> mit Gemeinde-Zuordnung + Kreis-Summen
-const gem = msg.gemeinden;
-if (!Array.isArray(gem) || msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.features)) {
+if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.features)) {
     node.warn('BW-Baustellen: Daten unvollständig (' + msg.statusCode + ')');
     return null;
 }
+''' + geo_helper("BW roadworks") + PRUNE_HELPER + r'''
 const clean = s => String(s == null ? '' : s).replace(/'/g, '’');
 const now = new Date().toISOString();
 const ctx = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld';
@@ -1571,27 +1793,27 @@ const firstPoint = g => {
     const pts = flat(g.coordinates);
     return pts[Math.floor(pts.length / 2)] || pts[0];
 };
-const nearest = (lat, lon) => {
-    let best = null, bd = Infinity;
-    for (const r of gem) {
-        const dy = r[2] - lat, dx = (r[3] - lon) * Math.cos(lat * 0.01745);
-        const d = dy * dy + dx * dx;
-        if (d < bd) { bd = d; best = r; }
-    }
-    return best;
-};
+// Coordinate sanity check. Some records carry [lat, lon] instead of GeoJSON's
+// [lon, lat]; they are swapped back (also in the written location). Anything
+// else outside the BW range is dropped.
+const inLat = v => v >= 47 && v <= 50, inLon = v => v >= 7 && v <= 11;
 const entities = [];
 const byKreis = {};
-let abgelaufen = 0;
+let abgelaufen = 0, getauscht = 0, ungueltig = 0, ausserhalb = 0;
 for (const f of msg.payload.features) {
     // Bereits beendete Maßnahmen gar nicht erst aufnehmen — der Feed führt sie
     // teilweise noch mit, sie sind für die Kommune aber ohne Belang.
     const ende = (f.properties || {}).endtime;
     if (ende && String(ende).slice(0, 19) < now.slice(0, 19)) { abgelaufen++; continue; }
-    const p = firstPoint(f.geometry);
-    if (!p) continue;
-    const g = nearest(p[1], p[0]);
-    if (!g) continue;
+    const p0 = firstPoint(f.geometry);
+    if (!p0) continue;
+    let p = [Number(p0[0]), Number(p0[1])];
+    if (!inLat(p[1]) && inLat(p[0]) && inLon(p[1])) { p = [p[1], p[0]]; getauscht++; }
+    else if (!inLat(p[1]) || !inLon(p[0])) { ungueltig++; continue; }
+    // Strict point-in-polygon: a roadwork just across a municipal boundary no
+    // longer lands in the neighbour with the closer centroid.
+    const g = nearestStrict(p[1], p[0]);
+    if (!g) { ausserhalb++; continue; }
     byKreis[g[4]] = (byKreis[g[4]] || 0) + 1;
     const props = f.properties || {};
     const id = String(props.id || props.reference || entities.length).replace(/[^A-Za-z0-9_-]+/g, '-');
@@ -1618,24 +1840,38 @@ for (const krs of Object.keys(byKreis)) {
         '@context': ctx
     });
 }
-node.status({ text: entities.length + ' Objekte, ' + Object.keys(byKreis).length + ' Kreise'
-              + (abgelaufen ? ', ' + abgelaufen + ' beendet übersprungen' : '') });
+const statusText = entities.length + ' Objekte, ' + Object.keys(byKreis).length + ' Kreise'
+              + (abgelaufen ? ', ' + abgelaufen + ' beendet übersprungen' : '')
+              + (getauscht ? ', ' + getauscht + ' Koordinaten getauscht' : '')
+              + (ungueltig ? ', ' + ungueltig + ' ungültig' : '')
+              + (ausserhalb ? ', ' + ausserhalb + ' außerhalb BW' : '');
+node.status({ text: statusText });
+const nFeatures = msg.payload.features.length;
+if (nFeatures && ungueltig > nFeatures * 0.05) {
+    node.warn('BW roadworks: ' + ungueltig + ' of ' + nFeatures + ' records with invalid coordinates — feed format changed?');
+}
+if (!entities.length) return null;
+// Complete feed, plausible master data, non-empty result -> remove own
+// roadworks and district sums this run no longer confirms (left the feed,
+// outside BW).
+if (PRUNE_OK) pruneStale({
+    label: 'BW roadworks', type: 'RoadWork',
+    pattern: '^urn:ngsi-ld:RoadWork:bw-(svz-[A-Za-z0-9_-]+|kreis-[0-9]{5}-summary)$',
+    attrs: 'ags,dateObserved,activeCount',
+    keep: new Set(entities.map(e => e.id)), graceMs: 24 * 3600e3,
+    intervalMs: ''' + interval_ms("baustellen-bw") + r''', status: statusText
+}).catch(e => node.warn('BW roadworks: prune failed (' + (e && e.message ? e.message : e) + ')'));
 ''' + CHUNK_HELPER + r'''
 return [emitChunks(node, msg, entities, 100)];'''
 
-FN_RW_PREP = r'''if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.gemeinden)) {
-    node.warn('BW-Baustellen: bw-gemeinden.json nicht ladbar');
-    return null;
-}
-msg.gemeinden = msg.payload.gemeinden;
+FN_RW_PREP = r'''// Municipalities and boundaries come from the global context (strict lookup)
 msg.url = 'https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json';
 return msg;'''
 
-inject("udp-rt-br-inject", Z, "alle 6 Stunden", 21600, 200, ["udp-rt-br-get"], 710)
-http_get("udp-rt-br-get", Z, "bw-gemeinden.json", GEMEINDEN_URL, ["udp-rt-br-prep"], 710)
+inject("udp-rt-br-inject", Z, "alle 6 Stunden", 21600, 200, ["udp-rt-br-prep"], 710)
 func("udp-rt-br-prep", Z, "Roadworks-URL", FN_RW_PREP, ["udp-rt-br-http"], 710)
 http_get("udp-rt-br-http", Z, "Baustellen SVZ-BW", "", ["udp-rt-br-fn"], 770, x=400)
-func("udp-rt-br-fn", Z, "→ RoadWork BW (Chunks)", FN_RW_BW, ["udp-rt-br-rate"], 770)
+func("udp-rt-br-fn", Z, "→ RoadWork BW (Chunks)", FN_RW_BW, ["udp-rt-br-rate"], 770, libs=PRUNE_LIBS)
 delay_rate("udp-rt-br-rate", Z, ["udp-rt-br-post"], 830)
 upsert("udp-rt-br-post", Z, ["udp-rt-br-debug"], 830)
 debug("udp-rt-br-debug", Z, "BW-Baustellen Ergebnis", 830)
@@ -1706,7 +1942,9 @@ FN_UBA_BW_WRAP = r'''msg.payload = { station: msg.station, ok: !(msg.statusCode 
 return msg;'''
 
 FN_UBA_BW_BUILD = r'''// UBA-Antworten -> AirQualityObserved:bw-uba-<code> mit Gemeinde-Zuordnung
-''' + NEAREST_HELPER + r'''
+''' + geo_helper("UBA-BW", require_boundaries=False) + CENTROID_FALLBACK + r'''
+// UBA stations are pre-selected by their DEBW code and therefore lie in BW:
+// here, and only here, the centroid fallback is allowed (sliver, boundary outage).
 const clean = s => String(s == null ? '' : s).replace(/'/g, '’');
 const COMP = { 1: 'pm10', 2: 'co', 3: 'o3', 4: 'so2', 5: 'no2', 9: 'pm25' };
 const entities = [];
@@ -1726,7 +1964,7 @@ for (const part of msg.payload) {
         }
     }
     if (aqi === null && !Object.keys(latest).length) continue;
-    const g = nearest(part.station.lat, part.station.lon);
+    const g = nearestOrCentroid(part.station.lat, part.station.lon);
     const e = {
         id: 'urn:ngsi-ld:AirQualityObserved:bw-uba-' + part.station.code,
         type: 'AirQualityObserved',
@@ -1762,7 +2000,7 @@ if (msg.statusCode >= 400 || !Array.isArray(msg.payload)) {
     node.warn('sensor.community BW: keine Daten (' + msg.statusCode + ')');
     return null;
 }
-''' + NEAREST_HELPER + r'''
+''' + geo_helper("sensor.community BW") + PRUNE_HELPER + r'''
 const bySensor = {};
 let verworfen = 0;
 for (const rec of msg.payload) {
@@ -1788,10 +2026,13 @@ for (const rec of msg.payload) {
     bySensor[id] = { timestamp: rec.timestamp, lat: parseFloat(rec.location.latitude), lon: parseFloat(rec.location.longitude), ...vals };
 }
 const byGem = {};
+let fremd = 0;
 for (const id of Object.keys(bySensor)) {
     const s = bySensor[id];
-    const g = nearest(s.lat, s.lon);
-    if (!g) continue;
+    // The query box also covers Alsace, Basel, the Palatinate and Bavaria:
+    // sensors outside every BW polygon are skipped (median and single sensor).
+    const g = nearestStrict(s.lat, s.lon);
+    if (!g) { fremd++; continue; }
     s.ags = g[0];
     byGem[g[0]] = byGem[g[0]] || { pm10: [], pm25: [] };
     if (s.pm10 !== undefined) byGem[g[0]].pm10.push(s.pm10);
@@ -1849,8 +2090,22 @@ for (const ags of Object.keys(byGem)) {
     entities.push(e);
 }
 if (!entities.length) return null;
-node.status({ text: (entities.length - nSensor) + ' Gemeinden mit Sensoren · ' + nSensor + ' Einzelsensoren'
-              + (verworfen ? ' · ' + verworfen + ' unplausibel verworfen' : '') });
+const statusText = (entities.length - nSensor) + ' Gemeinden mit Sensoren · ' + nSensor + ' Einzelsensoren'
+              + (verworfen ? ' · ' + verworfen + ' unplausibel verworfen' : '')
+              + (fremd ? ' · ' + fremd + ' außerhalb BW' : '');
+node.status({ text: statusText });
+// Hourly (detail run: medians AND single sensors produced): remove own
+// entities not confirmed for 24 h, e.g. sensors outside BW that were counted
+// in a border municipality before the strict lookup.
+if (detailLauf && PRUNE_OK) {
+    pruneStale({
+        label: 'sensor.community BW', type: 'AirQualityObserved',
+        pattern: '^urn:ngsi-ld:AirQualityObserved:bw-(sc-[0-9]{8}|sensor-[0-9]{8}-[0-9]+)$',
+        attrs: 'ags,dateObserved,pm10,pm25',
+        keep: new Set(entities.map(e => e.id)), graceMs: 24 * 3600e3,
+        sigKey: 'feinstaubSig', intervalMs: ''' + interval_ms("feinstaub-bw", 4) + r''', status: statusText
+    }).catch(e => node.warn('sensor.community BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
+}
 ''' + CHUNK_HELPER + r'''
 // Median ändert sich alle 15 min oft nur marginal — nur echte Änderungen schreiben.
 const geaendert = gateChanged(node, entities, 'feinstaubSig',
@@ -1863,7 +2118,7 @@ http_get("udp-rt-bs-get", Z, "sensor.community BW-Box",
          "https://data.sensor.community/airrohr/v1/filter/box=47.5,7.4,49.8,10.6", ["udp-rt-bs-fn"], 290)
 func("udp-rt-bs-fn", Z, "→ Median je Gemeinde", FN_SC_BW.replace(
     "__SENSOR_DETAIL_AGS__", json.dumps(REG["feinstaub-bw"].get("sensorDetailFor", []))),
-    ["udp-rt-bs-rate"], 290, x=860)
+    ["udp-rt-bs-rate"], 290, x=860, libs=PRUNE_LIBS)
 delay_rate("udp-rt-bs-rate", Z, ["udp-rt-bs-post"], 350)
 upsert("udp-rt-bs-post", Z, ["udp-rt-bs-debug"], 350)
 debug("udp-rt-bs-debug", Z, "Feinstaub-BW Ergebnis", 350)
@@ -2015,10 +2270,13 @@ node.status({ text: seiten + ' Seiten · ' + gesehen.size + (gesamt ? '/' + gesa
 msg.payload = anlagen;
 msg.parkSeiten = seiten;
 msg.parkGesamt = gesamt;
+// Complete inventory: cursor ran to the end and delivered what it announced.
+// Only then may the build step prune entities that are no longer in it.
+msg.parkVollstaendig = fertig && !(gesamt && gesehen.size < gesamt * 0.9);
 return msg;'''
 
 FN_PARK_BUILD = r'''// ParkAPI-Abzug -> ParkingSummary je Gemeinde + Einzelanlagen (Auto und Rad)
-''' + NEAREST_HELPER + r'''
+''' + geo_helper("Parken-BW", require_boundaries=False) + PRUNE_HELPER + r'''
 const anlagen = Array.isArray(msg.payload) ? msg.payload.filter(Array.isArray) : [];
 if (!anlagen.length) return null;
 
@@ -2029,15 +2287,13 @@ if (!anlagen.length) return null;
 // Beispiele: 081160019019 -> 08116019, 082120000000 -> 08212000. Gegen
 // gui/public/bw-gemeinden.json geprüft: 830 von 830 Stichproben getroffen.
 // Das ist exakt, kostet nichts und erspart diesem Konnektor die Suche in der
-// 1 MB großen Grenzen-GeoJSON aus dem global-Kontext. nearest() bleibt nur der
-// Notnagel für Datensätze ohne oder mit unbekanntem ARS.
+// 1 MB großen Grenzen-GeoJSON aus dem global-Kontext. The strict point-in-polygon
+// lookup is only the fallback for records without or with an unknown ARS;
+// without boundaries those records stay unassigned (no centroid guessing).
 const arsZuAgs = ars => {
     const s = String(ars || '');
     return /^[0-9]{12}$/.test(s) ? s.slice(0, 5) + s.slice(9, 12) : null;
 };
-// Umkasten BW: hält Anlagen außerhalb des Landes vom Zentroid-Fallback in
-// nearest() fern — der würde sie sonst stumm der nächsten BW-Gemeinde zuschlagen.
-const imKasten = (lat, lon) => lat > 47.4 && lat < 49.9 && lon > 7.3 && lon < 10.7;
 
 const byGem = {};
 const radAnlagen = [];
@@ -2054,9 +2310,9 @@ for (const a of anlagen) {
         if (g) ueberArs++;
     }
     if (!g) {
-        if (!imKasten(lat, lon)) { ausserhalb++; continue; }
-        g = nearest(lat, lon);
-        if (!g || g[0].slice(0, 2) !== '08') { ohneZuordnung++; continue; }
+        if (!GRZ_OK) { ohneZuordnung++; continue; }
+        g = nearestStrict(lat, lon);
+        if (!g) { ausserhalb++; continue; }                          // in no BW municipality polygon
         ueberGeo++;
     }
     if (a[9] && Date.parse(a[9]) > vorTagen) frischeQuelle++;
@@ -2193,11 +2449,38 @@ for (const e of gateChanged(node, summen, 'parkSummenSig',
               x.realtimeFree ? x.realtimeFree.value : '', x.realtimeSites ? x.realtimeSites.value : ''].join('|'),
         { replace: true })) entities.push(e);
 
-node.status({ text: anlagen.length + ' Anlagen · ' + Object.keys(byGem).length + ' Gemeinden · '
+const statusText = anlagen.length + ' Anlagen · ' + Object.keys(byGem).length + ' Gemeinden · '
               + voll + ' voll · ' + nurFrei + ' nur Belegung · ' + unveraendert + ' unverändert'
               + ' · ' + frischeQuelle + ' mit frischem modified_at'
               + (ueberGeo ? ' · ' + ueberGeo + ' per Geo-Notnagel' : '')
-              + (ohneZuordnung ? ' · ' + ohneZuordnung + ' ohne Zuordnung' : '') });
+              + (ausserhalb ? ' · ' + ausserhalb + ' außerhalb BW' : '')
+              + (ohneZuordnung ? ' · ' + ohneZuordnung + ' ohne Zuordnung' : '');
+node.status({ text: statusText });
+// Prune sites and sums this complete run no longer contains (left the source,
+// or outside BW and formerly assigned by centroid). Site timestamps are not
+// refreshed on unchanged runs, so instead of a grace period an id must be
+// missing in consecutive complete runs for at least 24 h (confirmKey); a
+// bike site without realtime data for a few hours is not deleted.
+if (msg.parkVollstaendig && PRUNE_OK && ids.size) {
+    const summenIds = new Set(summen.map(e => e.id));
+    (async () => {
+        await pruneStale({ label: 'Parken-BW ParkingSite', type: 'ParkingSite',
+                           pattern: '^urn:ngsi-ld:ParkingSite:parkapi-[^:]+$',
+                           keep: ids, confirmKey: 'parkPruneSite', confirmMs: 24 * 3600e3,
+                           intervalMs: ''' + interval_ms("parken-bw") + r''', status: statusText });
+        await pruneStale({ label: 'Parken-BW BikeParking', type: 'BikeParking',
+                           pattern: '^urn:ngsi-ld:BikeParking:parkapi-[^:]+$',
+                           keep: ids, confirmKey: 'parkPruneBike', confirmMs: 24 * 3600e3,
+                           intervalMs: ''' + interval_ms("parken-bw") + r''', status: statusText });
+        await pruneStale({ label: 'Parken-BW ParkingSummary', type: 'ParkingSummary',
+                           pattern: '^urn:ngsi-ld:ParkingSummary:bw-[0-9]{8}$',
+                           keep: summenIds, confirmKey: 'parkPruneSummary', confirmMs: 24 * 3600e3,
+                           intervalMs: ''' + interval_ms("parken-bw") + r''', status: statusText });
+    })().catch(e => node.warn('Parken-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
+} else {
+    // Incomplete run: candidates must be missing in CONSECUTIVE complete runs
+    for (const k of ['parkPruneSite', 'parkPruneBike', 'parkPruneSummary']) flow.set(k, {});
+}
 if (!entities.length) return null;
 return [emitChunks(node, msg, entities, 100)];'''
 
@@ -2206,7 +2489,8 @@ inject("udp-rt-bp-inject", Z, "alle 3 Stunden", 10800, 420, ["udp-rt-bp-fetch"],
 # 1 s Pause rund 70 s. Der Konnektor läuft alle 3 Stunden, das ist vertretbar.
 func("udp-rt-bp-fetch", Z, "ParkAPI (Cursor-Seiten)", FN_PARK_FETCH, ["udp-rt-bp-build"], 440, x=400,
      libs=[{"var": "https", "module": "https"}, {"var": "zlib", "module": "zlib"}])
-func("udp-rt-bp-build", Z, "→ ParkingSummary + Einzelanlagen", FN_PARK_BUILD, ["udp-rt-bp-rate"], 440, x=700)
+func("udp-rt-bp-build", Z, "→ ParkingSummary + Einzelanlagen", FN_PARK_BUILD, ["udp-rt-bp-rate"], 440, x=700,
+     libs=PRUNE_LIBS)
 delay_rate("udp-rt-bp-rate", Z, ["udp-rt-bp-post"], 500)
 upsert("udp-rt-bp-post", Z, ["udp-rt-bp-debug"], 500)
 debug("udp-rt-bp-debug", Z, "Parken-BW Ergebnis", 500)
@@ -2216,22 +2500,41 @@ if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.systems)
     node.warn('GBFS-BW: Systemliste nicht ladbar');
     return null;
 }
+''' + PRUNE_HELPER + r'''
+const GEM = global.get('bwGemeinden');
+const GRZ = global.get('bwGrenzen') || null;
+''' + PRUNE_OK_JS + r'''
 const msgs = msg.payload.systems.map(s => ({
     url: s.url.replace(/\/gbfs$/, '/free_bike_status'),
     system: s.id
 }));
-node.status({ text: msgs.length + ' Systeme' });
+const statusText = msgs.length + ' Systeme';
+node.status({ text: statusText });
+// The per-system runs never see the complete inventory, so the free-floating
+// summaries are pruned by age: every summary a system run produces is written
+// in full (no change gate), so one not refreshed for 24 h (24 hourly runs) is
+// no longer confirmed: the system left the list, or its vehicles are outside
+// BW and were assigned to a border municipality before the strict lookup.
+// Skipped if no summary at all was written within 3 h (connector down).
+if (PRUNE_OK) pruneStale({
+    label: 'GBFS-BW', type: 'SharingSummary',
+    pattern: '^urn:ngsi-ld:SharingSummary:bw-[0-9]{8}-ff-[A-Za-z0-9_-]+$',
+    attrs: 'ags,availableVehicles',
+    graceMs: 24 * 3600e3, liveMs: 3 * 3600e3,
+    intervalMs: ''' + interval_ms("sharing-bw") + r''', status: statusText
+}).catch(e => node.warn('GBFS-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
 return [msgs];'''
 
 FN_GBFS_FF = r'''// free_bike_status -> SharingSummary je Gemeinde und System (frei flottierend)
 if (msg.statusCode >= 400 || !msg.payload || !msg.payload.data || !Array.isArray(msg.payload.data.bikes)) return null;
-''' + NEAREST_HELPER + r'''
-const inBW = b => b.lat > 47.5 && b.lat < 49.8 && b.lon > 7.4 && b.lon < 10.6;
+''' + geo_helper("GBFS-BW") + r'''
 const byGem = {}, posByGem = {};
 for (const b of msg.payload.data.bikes) {
-    if (!inBW(b) || b.is_disabled || b.is_reserved) continue;
-    const g = nearest(b.lat, b.lon);
-    if (!g || g[0].slice(0, 2) !== '08') continue;
+    if (b.is_disabled || b.is_reserved) continue;
+    // Strict lookup: vehicles of Basel, Kaiserslautern or Swiss systems are no
+    // longer counted in the nearest BW municipality.
+    const g = nearestStrict(Number(b.lat), Number(b.lon));
+    if (!g) continue;
     byGem[g[0]] = (byGem[g[0]] || 0) + 1;
     // Einzelstandorte für die Kartenanzeige (~1 m gerundet, je Gemeinde gedeckelt,
     // damit die Entität nicht in Großstädten aufbläht).
@@ -2256,7 +2559,7 @@ return msg;'''
 
 inject("udp-rt-bg-inject", Z, "stündlich", 3600, 540, ["udp-rt-bg-sys"], 650)
 http_get("udp-rt-bg-sys", Z, "GBFS-Systeme", "https://api.mobidata-bw.de/sharing/gbfs", ["udp-rt-bg-msgs"], 650)
-func("udp-rt-bg-msgs", Z, "Systeme (~110)", FN_GBFS_SYS, ["udp-rt-bg-rate"], 650, x=860)
+func("udp-rt-bg-msgs", Z, "Systeme (~110)", FN_GBFS_SYS, ["udp-rt-bg-rate"], 650, x=860, libs=PRUNE_LIBS)
 delay_rate("udp-rt-bg-rate", Z, ["udp-rt-bg-get"], 710)
 http_get("udp-rt-bg-get", Z, "free_bike_status", "", ["udp-rt-bg-fn"], 710, x=620)
 func("udp-rt-bg-fn", Z, "→ SharingSummary", FN_GBFS_FF, ["udp-rt-bg-post"], 710, x=860)
@@ -2304,18 +2607,10 @@ if (msg.feed === 'typen') {
     return null;
 }
 if (!Array.isArray(msg.payload.data.stations) || !msg.payload.data.stations.length) return null;
-''' + NEAREST_HELPER + r'''
-const GRZ2 = global.get('bwGrenzen');
-if (!GRZ2) return null;
+''' + geo_helper("Carsharing") + r'''
 // Strikte Zuordnung wie bei den Ladesäulen: kein Zentroid-Fallback, sonst
 // landen Stationen aus Bayern oder der Schweiz in BW-Gemeinden.
-const inBW = (lat, lon) => {
-    for (const a in GRZ2) {
-        const g = GRZ2[a], b = g.b;
-        if (lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3] && pip(lat, lon, g.r)) return GEMBYAGS[a] || null;
-    }
-    return null;
-};
+const inBW = nearestStrict;
 const clean = s => String(s == null ? '' : s).replace(/'/g, '’').slice(0, 80);
 const sys = String(msg.system).replace(/[^A-Za-z0-9_-]+/g, '-');
 const cache = flow.get('csStationen') || {};
@@ -2494,7 +2789,7 @@ msg.payload = msg.payload.items
 return msg;'''
 
 FN_OC_BUILD = r'''// OCPDB-Kreisantworten -> ChargingSummary je Gemeinde (Dedupe über Standort-ID)
-''' + NEAREST_HELPER + r'''
+''' + geo_helper("OCPDB") + r'''
 const seen = {};
 for (const part of msg.payload) {
     if (!Array.isArray(part)) continue;
@@ -2502,16 +2797,8 @@ for (const part of msg.payload) {
 }
 // Strikte Zuordnung: nur echte Polygon-Treffer. Der Umkasten aus dem
 // Wrap-Schritt zieht auch Bayern, Hessen und die Schweiz herein; der
-// Zentroid-Fallback von nearest() würde die stumm der nächstgelegenen
-// BW-Gemeinde zuschlagen.
-const inBW = (lat, lon) => {
-    if (!GRZ) return null;
-    for (const a in GRZ) {
-        const g = GRZ[a], b = g.b;
-        if (lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3] && pip(lat, lon, g.r)) return GEMBYAGS[a] || null;
-    }
-    return null;
-};
+// Zentroid-Fallback würde die stumm der nächstgelegenen BW-Gemeinde zuschlagen.
+const inBW = nearestStrict;
 const byGem = {};
 for (const id of Object.keys(seen)) {
     const [, lat, lon, evse, live, frei, defekt, , , , laedt] = seen[id];
@@ -2602,7 +2889,7 @@ if (msg.statusCode >= 400 || !Array.isArray(msg.payload)) {
     node.warn('Eco-BW: keine Daten (' + msg.statusCode + ')');
     return null;
 }
-''' + NEAREST_HELPER + r'''
+''' + geo_helper("Eco-BW") + PRUNE_HELPER + r'''
 const clean = s => String(s == null ? '' : s).replace(/'/g, '’');
 const entities = [];
 const byGem = {};
@@ -2612,8 +2899,8 @@ for (const s of msg.payload) {
     if (!all.length) continue;
     all.sort((a, b) => a.iso_timestamp < b.iso_timestamp ? -1 : 1);
     const latest = all[all.length - 1];
-    const g = nearest(s.latitude, s.longitude);
-    if (!g || g[0].slice(0, 2) !== '08') continue;
+    const g = nearestStrict(Number(s.latitude), Number(s.longitude));
+    if (!g) continue;                                   // outside every BW municipality polygon
     const b = byGem[g[0]] = byGem[g[0]] || { total: 0, sites: 0, day: latest.iso_timestamp.slice(0, 10) };
     b.total += latest.counts || 0; b.sites++;
     entities.push({
@@ -2642,7 +2929,18 @@ for (const ags of Object.keys(byGem)) {
     });
 }
 if (!entities.length) return null;
-node.status({ text: entities.length + ' Objekte (' + Object.keys(byGem).length + ' Kommunen)' });
+const statusText = entities.length + ' Objekte (' + Object.keys(byGem).length + ' Kommunen)';
+node.status({ text: statusText });
+// Daily run over the complete feed: remove own counters and municipal sums not
+// confirmed for 60 h (2.5 runs), e.g. sums of a municipality that only had
+// counters by centroid proximity.
+if (PRUNE_OK) pruneStale({
+    label: 'Eco-BW', type: 'TrafficFlowObserved',
+    pattern: '^urn:ngsi-ld:TrafficFlowObserved:bw-(eco-[A-Za-z0-9_-]+|[0-9]{8}-summary)$',
+    attrs: 'ags,dateObserved,dailyTotal',
+    keep: new Set(entities.map(e => e.id)), graceMs: 60 * 3600e3,
+    intervalMs: ''' + interval_ms("eco-bw") + r''', status: statusText
+}).catch(e => node.warn('Eco-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
 ''' + CHUNK_HELPER + r'''
 return [emitChunks(node, msg, entities, 100)];'''
 
@@ -2654,7 +2952,7 @@ nodes.append({
 })
 http_get("udp-rt-be-get", Z, "Eco-Counter Tageswerte",
          "https://mobidata-bw.de/daten/eco-counter/v2/fahrradzaehler_tageswerten.json", ["udp-rt-be-fn"], 1070)
-func("udp-rt-be-fn", Z, "→ Radzähler BW", FN_ECO_BW, ["udp-rt-be-rate"], 1070, x=860)
+func("udp-rt-be-fn", Z, "→ Radzähler BW", FN_ECO_BW, ["udp-rt-be-rate"], 1070, x=860, libs=PRUNE_LIBS)
 delay_rate("udp-rt-be-rate", Z, ["udp-rt-be-post"], 1130)
 upsert("udp-rt-be-post", Z, ["udp-rt-be-debug"], 1130)
 debug("udp-rt-be-debug", Z, "Radzähler-BW Ergebnis", 1130)
