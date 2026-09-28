@@ -1,0 +1,200 @@
+/*
+ * SPDX-License-Identifier: EUPL-1.2
+ * © 2024–2026 Thomas Kieß and contributors
+ */
+
+/**
+ * `hitze-bw` — DWD thermal hazard index (heat stress) for the five
+ * Baden-Württemberg representative cities.
+ *
+ * Port of FN_HITZE (`udp-rt-hz-fn`) from scripts/generate-nodered-flows.py. The
+ * generator's note: a health-relevant summer warning, clean JSON (`gt.json`),
+ * city-based — the dashboard picks the nearest of the five, as it does for the
+ * DWD stations and the gauges. Hence the fixed coordinates below and no
+ * municipality lookup.
+ *
+ * No change gate and no chunking: five entities, written in full in one
+ * request twice a day (cron `5 6,11 * * *`), as the old upsert node did.
+ *
+ * Deliberate differences, only for input the source does not produce:
+ *
+ *  * The city and level tables are `Map`s, not object literals —
+ *    `CITIES["constructor"]` would find something on an object literal.
+ *  * A content entry that is not an object, or whose level is neither a string
+ *    nor empty, is skipped and counted with a warning ({@link parse}). The old
+ *    node crashed on the former and wrote the latter as it came.
+ */
+
+import {
+  ParseError,
+  field,
+  isArray,
+  isString,
+  isTruthy,
+  mapLenient,
+  optString,
+  requireArray,
+  requireRecord,
+} from "../kernel/parse.js";
+import { NGSI_CONTEXT } from "../kernel/types.js";
+import type {
+  ConnectorModule,
+  Ctx,
+  GeoIndex,
+  GeoJsonPoint,
+  IsoTime,
+  NgsiDateTime,
+  NgsiEntity,
+  Property,
+} from "../kernel/types.js";
+
+export const ID = "hitze-bw";
+
+export const SOURCE_URL = "https://opendata.dwd.de/climate_environment/health/alerts/gt.json";
+
+const DATA_PROVIDER = "DWD Thermischer Gefahrenindex (GeoNutzV)";
+
+/** Representative cities of the DWD index with fixed coordinates; slug for the id. */
+const CITIES = new Map<string, readonly [lat: number, lon: number]>([
+  ["Stuttgart", [48.78, 9.18]],
+  ["Freiburg", [47.99, 7.85]],
+  ["Mannheim", [49.49, 8.47]],
+  ["Konstanz", [47.66, 9.18]],
+  ["Ulm", [48.4, 9.99]],
+]);
+
+/** Levels of the index, as DWD spells them (attribute VALUES, hence German). */
+const RANK = new Map<string, number>([
+  ["keine", 0],
+  ["gering", 1],
+  ["mittel", 2],
+  ["hoch", 3],
+  ["extrem", 4],
+]);
+
+/** `|| 'keine'` of the old node. */
+const NO_LEVEL = "keine";
+
+export interface HeatForecast {
+  /** `null` when the entry has no string city — never one of ours. */
+  readonly city: string | null;
+  /** Level at the warmest time of day (15 MEZ), today and tomorrow. */
+  readonly today: string;
+  readonly tomorrow: string;
+}
+
+export interface HeatIndex {
+  readonly forecasts: readonly HeatForecast[];
+  /** Entries dropped as malformed (see the module comment). */
+  readonly malformed: number;
+}
+
+function level(raw: unknown, at: string): string {
+  if (!isTruthy(raw)) return NO_LEVEL;
+  if (!isString(raw)) throw new ParseError(at, "string", raw);
+  return raw;
+}
+
+function parseForecast(raw: unknown, index: number): HeatForecast {
+  const at = `content[${String(index)}]`;
+  const entry = requireRecord(raw, at);
+  // `r.forecast || {}`: a missing or non-object forecast yields 'keine' twice.
+  const forecast = entry.forecast;
+  return {
+    city: optString(entry.city) ?? null,
+    today: level(field(forecast, "today_15MEZ"), `${at}.forecast.today_15MEZ`),
+    tomorrow: level(field(forecast, "tomorrow_15MEZ"), `${at}.forecast.tomorrow_15MEZ`),
+  };
+}
+
+/** Narrows `gt.json`. Loud on the outer shape, lenient per entry. */
+export function parse(raw: unknown): HeatIndex {
+  const content = requireArray(field(raw, "content"), "content");
+  const { values, skipped } = mapLenient(content, parseForecast);
+  return { forecasts: values, malformed: skipped };
+}
+
+/** `r.city.toLowerCase().replace(/ä/g, 'ae')…replace(/[^a-z0-9]+/g, '-')`. */
+export function slugOf(city: string): string {
+  return city
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/[^a-z0-9]+/g, "-");
+}
+
+export interface HeatHealthWarningEntity extends NgsiEntity {
+  readonly id: `urn:ngsi-ld:HeatHealthWarning:bw-${string}`;
+  readonly type: "HeatHealthWarning";
+  readonly name: Property<string>;
+  readonly todayLevel: { readonly type: "Property"; readonly value: string; readonly observedAt: IsoTime };
+  readonly tomorrowLevel: { readonly type: "Property"; readonly value: string; readonly observedAt: IsoTime };
+  readonly maxRank: { readonly type: "Property"; readonly value: number; readonly observedAt: IsoTime };
+  readonly dateObserved: Property<NgsiDateTime>;
+  readonly dataProvider: Property<string>;
+  readonly location: { readonly type: "GeoProperty"; readonly value: GeoJsonPoint };
+  readonly "@context": string;
+}
+
+/** FN_HITZE. Pure: no network, no clock — this is what parity diffs. */
+export function build(
+  raw: HeatIndex,
+  _geo: GeoIndex | null,
+  now: IsoTime,
+): readonly HeatHealthWarningEntity[] {
+  const entities: HeatHealthWarningEntity[] = [];
+  for (const forecast of raw.forecasts) {
+    if (forecast.city === null) continue;
+    const coordinates = CITIES.get(forecast.city);
+    if (coordinates === undefined) continue;
+    const [lat, lon] = coordinates;
+    entities.push({
+      id: `urn:ngsi-ld:HeatHealthWarning:bw-${slugOf(forecast.city)}`,
+      type: "HeatHealthWarning",
+      name: { type: "Property", value: forecast.city },
+      todayLevel: { type: "Property", value: forecast.today, observedAt: now },
+      tomorrowLevel: { type: "Property", value: forecast.tomorrow, observedAt: now },
+      maxRank: {
+        type: "Property",
+        value: Math.max(RANK.get(forecast.today) ?? 0, RANK.get(forecast.tomorrow) ?? 0),
+        observedAt: now,
+      },
+      dateObserved: { type: "Property", value: { "@type": "DateTime", "@value": now } },
+      dataProvider: { type: "Property", value: DATA_PROVIDER },
+      // GeoJSON order: longitude before latitude, the table the other way round.
+      location: { type: "GeoProperty", value: { type: "Point", coordinates: [lon, lat] } },
+      "@context": NGSI_CONTEXT,
+    });
+  }
+  return entities;
+}
+
+export async function run(ctx: Ctx): Promise<void> {
+  const response = await ctx.fetch.json(SOURCE_URL);
+  // `if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.content))`
+  if (!response.ok || !isArray(field(response.body, "content"))) {
+    ctx.log.warn(`DWD heat: no data (HTTP ${String(response.status)})`);
+    return;
+  }
+  const index = parse(response.body);
+  if (index.malformed > 0) ctx.log.warn(`DWD heat: ${String(index.malformed)} malformed entries skipped`);
+  const entities = build(index, null, ctx.now());
+  if (entities.length === 0) {
+    ctx.log.warn("DWD heat: no BW cities");
+    return;
+  }
+  ctx.log.status(`${String(entities.length)} representative cities`);
+  const result = await ctx.orion.upsert(ctx.gate.ungated(entities));
+  ctx.log.info(
+    `${String(result.entities)} HeatHealthWarning upserted (${String(result.failedChunks)} chunks failed)`,
+  );
+}
+
+/** Checked against the contract by the compiler, as every ported module is. */
+export const connector: ConnectorModule<HeatIndex, readonly HeatHealthWarningEntity[]> = {
+  id: ID,
+  parse,
+  build,
+  run,
+};

@@ -4,7 +4,7 @@
  */
 
 /**
- * Parity: pollen-bw — old Node-RED function node against a new pure function.
+ * Parity: pollen-bw — old Node-RED function node against the ported module.
  *
  * The worked example of the parity harness (phase 2 of the connector
  * migration). `udp-rt-po-fn` was chosen because it is the smallest honest case:
@@ -12,157 +12,32 @@
  * DWD JSON in, NGSI-LD entities out. Whatever fails here is a fault of the
  * harness and not of the connector.
  *
- * ── NOTE FOR THE PHASE 3 OWNER (agent B · weather) ────────────────────────────
- * `build()` below is deliberately NOT in `src/`. Phase 1 owns that directory and
- * the `ctx` contract was not yet frozen when this file was written. When
- * pollen-bw is ported: move `parseDwdPollen`, `REGION_KREISE` and `build` into
- * `src/connectors/pollen-bw.ts` UNCHANGED, fit them to the module contract, and
- * import `build` here instead of declaring it. The tests themselves stay as they
- * are — that is the whole point of them.
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * Two deliberate differences from the old node, both only for input the fixture
- * does not contain:
- *
- *  * `parseDwdPollen` gets loud on a malformed response. The old node would put
- *    `undefined` into the position array for a species without `today`, and
- *    would fail outright on a species that is not an object. Getting loud is
- *    thus closer to it than silently skipping — and it is what the type
- *    discipline of the service demands (`platform/connectors/README.md`).
- *  * The mapping part-region -> district lives in a `Map`, not in an object
- *    literal. `REGION_KREISE["constructor"]` would find something on an object
- *    literal; a `Map` would not. Unreachable here, since the key comes from a
- *    number — but it costs nothing.
- *
- * Not a difference, and worth knowing before porting: the order of the species
- * within `arten` comes from the ORDER OF THE KEYS in the DWD response and
- * differs from part-region to part-region. The old node reads it via
- * `Object.keys()`, so the new one has to as well. A fixed species list would be
- * tidier and would fail the parity test.
+ * The ported side was written in this file in phase 2 and moved to
+ * src/connectors/pollen-bw.ts unchanged in phase 3; the tests below stayed as
+ * they were — that is the whole point of them. The two deliberate differences
+ * from the old node (loud parser, `Map` instead of an object literal) and the
+ * species order taken from the key order of the DWD response are described in
+ * the module header.
  */
 
 import assert from "node:assert/strict";
+import {
+  parse,
+  build as buildEntities,
+  run,
+  type PollenForecastEntity,
+} from "../../src/connectors/pollen-bw.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { assertEntitiesEqual, normalize } from "../harness/normalize.js";
 import { runFunctionNode, solePayload } from "../harness/vm-runner.js";
+import { jsonAnswer, upsertedBatches, weatherCtx, weatherFetcher } from "../harness/weather-ctx.js";
 
 const NODE_ID = "udp-rt-po-fn";
 const FIXTURE = "pollen-bw";
-const CONTEXT_URL = "https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld";
-const DATA_PROVIDER = "DWD Pollenflug-Gefahrenindex (GeoNutzV)";
 
-/* ── the ported side ─────────────────────────────────────────────────────────*/
-
-/**
- * One species in the forecast — position array, exactly as the old node emits
- * it. The names of the tuple elements are what used to be a comment.
- */
-type SpeciesForecast = readonly [species: string, today: string, tomorrow: string];
-
-interface PartRegion {
-  /** DWD part-region id as a string; the key of the district mapping. */
-  readonly id: string;
-  readonly name: string;
-  readonly species: readonly SpeciesForecast[];
-}
-
-interface PollenForecastEntity {
-  readonly id: string;
-  readonly type: "PollenForecast";
-  readonly name: { readonly type: "Property"; readonly value: string };
-  readonly kreise: { readonly type: "Property"; readonly value: readonly string[] };
-  readonly arten: {
-    readonly type: "Property";
-    readonly value: readonly SpeciesForecast[];
-    readonly observedAt: string;
-  };
-  readonly dateObserved: {
-    readonly type: "Property";
-    readonly value: { readonly "@type": "DateTime"; readonly "@value": string };
-  };
-  readonly dataProvider: { readonly type: "Property"; readonly value: string };
-  readonly "@context": string;
-}
-
-/**
- * Curated district mapping of the three Baden-Württemberg part-regions
- * (111 Oberrhein/unteres Neckartal, 112 Hohenlohe/mittlerer Neckar/Oberschwaben,
- * 113 Mittelgebirge). Identical to `POLLEN_REGION` in
- * `scripts/generate-nodered-flows.py`; a difference here would show up as a
- * parity failure in `kreise`.
- *
- * As blank-separated strings, not as arrays of literals: 43 district keys one
- * per line is what Prettier makes of the latter, and that buries the mapping.
- */
-const REGION_KREISE = new Map<string, readonly string[]>([
-  ["111", "08211 08212 08215 08216 08221 08222 08226 08311 08315 08316 08317 08336".split(" ")],
-  [
-    "112",
-    "08111 08115 08116 08117 08118 08119 08121 08125 08126 08127 08128 08135 08136 08231 08236 08415 08416 08421 08425 08426 08435 08436 08437".split(
-      " ",
-    ),
-  ],
-  ["113", "08225 08235 08237 08325 08326 08327 08337 08417".split(" ")],
-]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** External data enters as `unknown` and is narrowed, never asserted. */
-function parseDwdPollen(raw: unknown): readonly PartRegion[] {
-  if (!isRecord(raw)) throw new Error("DWD pollen: response is not a JSON object");
-  const content = raw.content;
-  if (!Array.isArray(content)) throw new Error('DWD pollen: field "content" is not an array');
-
-  const regions: PartRegion[] = [];
-  for (const entry of content) {
-    if (!isRecord(entry)) throw new Error("DWD pollen: entry in content is not an object");
-    const id = String(entry.partregion_id);
-    const name = entry.partregion_name;
-    if (typeof name !== "string") {
-      throw new Error(`DWD pollen: part-region ${id} has no "partregion_name"`);
-    }
-    const pollen = entry.Pollen;
-    const species: SpeciesForecast[] = [];
-    if (isRecord(pollen)) {
-      for (const [key, value] of Object.entries(pollen)) {
-        if (!isRecord(value)) throw new Error(`DWD pollen: species "${key}" in ${id} is not an object`);
-        const today = value.today;
-        const tomorrow = value.tomorrow;
-        if (typeof today !== "string" || typeof tomorrow !== "string") {
-          throw new Error(`DWD pollen: species "${key}" in ${id} has no today/tomorrow`);
-        }
-        species.push([key, today, tomorrow]);
-      }
-    }
-    regions.push({ id, name, species });
-  }
-  return regions;
-}
-
-/**
- * Transformation as a pure function: raw data and a timestamp in, entities out.
- * No network, no clock, no global state — that is what makes it comparable
- * against the old Node-RED code in the first place.
- */
+/** The pure half of the module, as the phase 2 tests call it: raw JSON and a timestamp. */
 function build(raw: unknown, now: string): readonly PollenForecastEntity[] {
-  const entities: PollenForecastEntity[] = [];
-  for (const region of parseDwdPollen(raw)) {
-    const kreise = REGION_KREISE.get(region.id);
-    if (kreise === undefined) continue;
-    entities.push({
-      id: `urn:ngsi-ld:PollenForecast:bw-region-${region.id}`,
-      type: "PollenForecast",
-      name: { type: "Property", value: region.name },
-      kreise: { type: "Property", value: kreise },
-      arten: { type: "Property", value: region.species, observedAt: now },
-      dateObserved: { type: "Property", value: { "@type": "DateTime", "@value": now } },
-      dataProvider: { type: "Property", value: DATA_PROVIDER },
-      "@context": CONTEXT_URL,
-    });
-  }
-  return entities;
+  return buildEntities(parse(raw), null, now);
 }
 
 /* ── the tests ───────────────────────────────────────────────────────────────*/
@@ -241,7 +116,84 @@ function onlyWallClockStampsAreNeutralised(): void {
   }, /startsAt/);
 }
 
+/* ── phase 3: run() and the guard branches ───────────────────────────────────*/
+
+async function runWritesTheEntitiesOfTheOldNode(): Promise<void> {
+  const fixture = readFixture(FIXTURE);
+  const legacy = solePayload(await runFunctionNode(NODE_ID, { msg: messageFromFixture(fixture) }));
+  const network = weatherFetcher((call) =>
+    call.method === "POST"
+      ? { response: { status: 204, ok: true, headers: {}, body: "" } }
+      : jsonAnswer(200, fixture.payload),
+  );
+  const { ctx, log } = weatherCtx("pollen-bw", network.fetcher);
+  await run(ctx);
+
+  assert.equal(network.seen[0]?.url, fixture.source);
+  const upserts = upsertedBatches(network.seen);
+  assert.equal(upserts.length, 1, "three entities, one request — the old upsert node sent one message");
+  assertEntitiesEqual(legacy, upserts[0]);
+  assert.deepEqual(log.warnings(), []);
+}
+
+async function unusableAnswersWarnOnBothSides(): Promise<void> {
+  const fixture = readFixture(FIXTURE);
+  const cases: { status: number; payload: unknown; old: string; ported: string }[] = [
+    {
+      status: 404,
+      payload: "<html/>",
+      old: "DWD-Pollen: keine Daten (404)",
+      ported: "DWD pollen: no data (HTTP 404)",
+    },
+    {
+      status: 200,
+      payload: { content: {} },
+      old: "DWD-Pollen: keine Daten (200)",
+      ported: "DWD pollen: no data (HTTP 200)",
+    },
+    {
+      status: 200,
+      payload: { content: [{ partregion_id: 41, partregion_name: "Rhein.-Westfäl. Tiefland", Pollen: {} }] },
+      old: "DWD-Pollen: keine BW-Regionen",
+      ported: "DWD pollen: no BW part-regions",
+    },
+  ];
+  for (const entry of cases) {
+    const legacy = await runFunctionNode(NODE_ID, {
+      msg: { ...messageFromFixture(fixture), statusCode: entry.status, payload: entry.payload },
+    });
+    assert.equal(legacy.returned, null);
+    assert.deepEqual(legacy.warnings, [entry.old]);
+
+    const network = weatherFetcher(() => ({
+      response: {
+        status: entry.status,
+        ok: entry.status < 300,
+        headers: {},
+        body: JSON.stringify(entry.payload),
+      },
+    }));
+    const { ctx, log } = weatherCtx("pollen-bw", network.fetcher);
+    await run(ctx);
+    assert.deepEqual(upsertedBatches(network.seen), []);
+    assert.deepEqual(log.warnings(), [entry.ported]);
+  }
+}
+
+function malformedSpeciesIsLoud(): void {
+  // Deliberate difference (module header): the old node would have written
+  // `undefined` for a species without `tomorrow`.
+  assert.throws(
+    () =>
+      parse({ content: [{ partregion_id: 112, partregion_name: "x", Pollen: { Birke: { today: "0" } } }] }),
+    /species "Birke" in 112 has no today\/tomorrow/,
+  );
+}
+
 export {
+  runWritesTheEntitiesOfTheOldNode as "pollen-bw: run() upserts what the old node emitted, in one request",
+  unusableAnswersWarnOnBothSides as "pollen-bw: HTTP error, missing content and no BW part-region warn and write nothing on both sides",
+  malformedSpeciesIsLoud as "pollen-bw: a species without today/tomorrow makes parse() loud (deliberate difference)",
   fixtureKeepsOnlyBadenWuerttemberg as "pollen-bw: recorded DWD fixture yields exactly the three BW part-regions",
   oldAndNewProduceIdenticalEntities as "pollen-bw: old Node-RED node udp-rt-po-fn and ported build() produce identical entities",
   aDriftedFieldIsReportedWithItsPath as "parity harness: a single drifted field fails the comparison and names its path",
