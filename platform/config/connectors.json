@@ -404,6 +404,9 @@
       "attribution": "MobiData BW GBFS (Anbieter-Feeds)",
       "requiresSecret": null,
       "active": true,
+      "rowBudget24h": {
+        "CarSharingStation": 200000
+      },
       "nodePrefixes": [
         "udp-rt-cs-",
         "udp-rt-cz-"
@@ -426,6 +429,10 @@
       "attribution": "MobiData BW OCPDB / Bundesnetzagentur (DATEX II)",
       "requiresSecret": null,
       "active": true,
+      "rowBudget24h": {
+        "EVChargingStation": 170000,
+        "ChargingSummary": 80000
+      },
       "nodePrefixes": [
         "udp-rt-bo-"
       ]
@@ -483,6 +490,9 @@
       "attribution": null,
       "requiresSecret": null,
       "active": true,
+      "rowBudget24h": {
+        "CityPulse": 100000
+      },
       "nodePrefixes": [
         "udp-rt-bz-"
       ]

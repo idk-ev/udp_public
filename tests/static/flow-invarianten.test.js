@@ -521,14 +521,17 @@ exports["Parking: realtime sites refresh dateObserved, static sites stay silent"
 exports["Parking legacy ids: guarded one-off cleanup"] = async () => {
   const park = FUNCS.find(n => n.id === "udp-rt-bp-build").func;
   const guard = park.indexOf("if (msg.parkVollstaendig && PRUNE_OK && ids.size)");
-  const legacy = park.indexOf("label: 'Parken-BW legacy ParkingSite'");
+  const legacy = park.indexOf("const legacy = typ => ({ label: 'Parken-BW legacy '");
   assert(guard > 0 && legacy > guard && legacy < park.indexOf("// Incomplete run"), "legacy cleanup outside the completeness guard");
-  for (const t of ["ParkingSite", "BikeParking"]) {
-    const call = park.slice(park.indexOf("label: 'Parken-BW legacy " + t + "'"));
-    const c = call.slice(0, call.indexOf("})"));
-    assert(c.includes(`exclude: '^urn:ngsi-ld:${t}:parkapi-'`) && /accept: legacyParkApi/.test(c) && /attrs: 'ags,dataProvider'/.test(c), `${t}: legacy prune without exclude/accept`);
-    assert(/graceMs: 7 \* 24 \* 3600e3/.test(c) && /intervalMs: 86400000/.test(c), `${t}: legacy prune without 7-day grace / daily interval`);
-  }
+  const c = park.slice(legacy, park.indexOf("});", legacy));
+  assert(c.includes("exclude: '^urn:ngsi-ld:' + typ + ':parkapi-'") && /accept: legacyParkApi/.test(c) && /attrs: 'ags,dataProvider'/.test(c),
+    "legacy prune without exclude/accept");
+  assert(/graceMs: 7 \* 24 \* 3600e3/.test(c) && /intervalMs: 86400000/.test(c), "legacy prune without 7-day grace / daily interval");
+  assert(c.includes("pattern: '^urn:ngsi-ld:' + typ + ':[a-z0-9][a-z0-9.-]*$'"), "legacy pattern changed");
+  assert(/Date\.parse\(e\.createdAt\) < MIGRATION/.test(park), "legacy prune without createdAt check");
+  assert(/!flow\.get\('parkLegacyDone'\) &&/.test(park)
+    && /!legacySite\.listed\.mine && !legacyBike\.listed\.mine\) \{\s*flow\.set\('parkLegacyDone', true\)/.test(park),
+    "legacy cleanup does not switch itself off");
   // Nobody else writes ParkingSite/BikeParking ids, the build only parkapi-<id>
   for (const n of FUNCS) {
     if (n.id === "udp-rt-bp-build") continue;
@@ -536,10 +539,10 @@ exports["Parking legacy ids: guarded one-off cleanup"] = async () => {
     for (const a of idAusdruecke(n.func || "")) assert(!/ParkingSite|BikeParking/.test(a), `${n.name || n.id}: writes parking ids`);
   }
   // Behaviour against a mocked broker
-  const m = /const SLUGS = [\s\S]*?\n\s*const legacyParkApi = [^\n]*/.exec(park);
+  const m = /const SLUGS = [\s\S]*?\n\s*const legacyParkApi = [^\n]*\n[^\n]*/.exec(park);
   assert(m, "legacyParkApi not found");
   const accept = new Function("GEM", "ANBIETER", m[0] + "\nreturn legacyParkApi;")(GEM_ROWS, "MobiData BW ParkAPI");
-  const dp = { dataProvider: { type: "Property", value: "MobiData BW ParkAPI" } };
+  const dp = { dataProvider: { type: "Property", value: "MobiData BW ParkAPI" }, createdAt: "2026-07-01T00:00:00Z" };
   const P = "urn:ngsi-ld:ParkingSite:";
   const list = ents(20).map(e => Object.assign(e, { modifiedAt: "2026-01-10T00:00:00Z" }))
     .concat([{ id: P + "stuttgart-hauptbahnhof", modifiedAt: "2025-12-01T00:00:00Z", ...dp },
@@ -547,17 +550,27 @@ exports["Parking legacy ids: guarded one-off cleanup"] = async () => {
              { id: P + "nirgendwo-parkplatz", modifiedAt: "2025-12-01T00:00:00Z", ...dp },
              { id: P + "stuttgart-neu", modifiedAt: "2026-01-09T12:00:00Z", ...dp },
              { id: P + "stuttgart-ohne-zeit", ...dp },
+             // created after the switch to parkapi- ids: never legacy
+             { id: P + "stuttgart-spaet", modifiedAt: "2025-12-01T00:00:00Z", ...dp, createdAt: "2026-09-01T00:00:00Z" },
              // a municipal connector with the documented slug-prefixed ids
-             { id: P + "stuttgart-br-hbf", modifiedAt: "2025-12-01T00:00:00Z",
+             { id: P + "stuttgart-br-hbf", modifiedAt: "2025-12-01T00:00:00Z", createdAt: "2026-07-01T00:00:00Z",
                dataProvider: { type: "Property", value: "Stadt Stuttgart" } }]);
   const env = pruneEnv(list);
   const prune = loadPrune()(env);
   const opts = { label: "Parken-BW legacy ParkingSite", type: "ParkingSite", pattern: "^urn:ngsi-ld:ParkingSite:[a-z0-9][a-z0-9.-]*$",
     exclude: "^urn:ngsi-ld:ParkingSite:parkapi-", accept, keep: new Set(), graceMs: 7 * 24 * H, maxFraction: 1, intervalMs: 24 * H };
   assert.strictEqual(await prune(opts), 0, "first daily check must not delete");
+  assert.strictEqual(opts.listed, undefined, "interval skip reported as a complete listing");
   env.clock += 24 * H;
   assert.strictEqual(await prune(opts), 2);
   assert.deepStrictEqual(env.deleted.sort(), [P + "reutlingen-48.49388-9.18829", P + "stuttgart-hauptbahnhof"]);
+  assert.strictEqual(opts.listed.mine, 4, "legacy entities left must keep the check alive");
+  // No legacy entity left: the listing reports zero, the caller switches off
+  const env2 = pruneEnv(ents(5));
+  env2.ctx["pruneLastRun_Parken_BW_legacy_ParkingSite"] = env2.clock - 24 * H;
+  const opts2 = Object.assign({}, opts, { listed: undefined });
+  await loadPrune()(env2)(opts2);
+  assert.deepStrictEqual(opts2.listed, { mine: 0, candidates: 0 });
 };
 
 exports["OCPDB: all pages from total_count, capped, completeness before prune"] = async () => {
@@ -684,4 +697,73 @@ exports["GUI: realtime labels only for current values"] = () => {
   assert(/const brStand = staleStand\(bikes, STALE\.parken\)/.test(page), "B+R tile without age check");
   assert(!/hint: "freie Plätze, Echtzeit", explain/.test(page), "B+R still labelled Echtzeit unconditionally");
   assert(/"name,operator,availableVehicles,capacity,ags,location,dateObserved"/.test(page), "carsharing popup without dateObserved");
+};
+
+/* Review follow-ups: OCPDB rate limit and gated sums, carsharing migration,
+   pulse share limit, stale pulses in the GUI, row budgets. */
+exports["OCPDB: rate-limited upsert, municipal sums gated"] = async () => {
+  const byId = Object.fromEntries(FLOWS.map(n => [n.id, n]));
+  const next = byId[byId["udp-rt-bo-build"].wires[0][0]];
+  assert(next && next.type === "delay" && next.wires[0][0] === "udp-rt-bo-post", "OCPDB upsert without rate limit");
+  const row = (id, live, frei) => [id, 48.7758, 9.1829, 2, live, frei, 0, "Lader " + id, "Op", "Addr", 0];
+  const part = rows => ({ ok: true, items: 1000, seiten: 1, gesamt: 1000, rows });
+  const env = nodeEnv();
+  env.http = { request() { return { on() {}, setTimeout() {}, write() {}, end() {} }; } };
+  const run = async rows => outMsgs(await runNode("udp-rt-bo-build", { payload: [part(rows)] }, env)).flatMap(m => [m]);
+  let msgs = await run([row("1", 2, 1), row("2", 0, 0)]);
+  let sum = msgs.flatMap(m => m.payload).find(e => e.type === "ChargingSummary");
+  assert(sum && sum.liveEvse && sum.dateObserved, "first run: full live sum with dateObserved");
+  for (const m of msgs) await runNode("udp-rt-bo-commit", commitMsg(m, 204), env);
+  msgs = await run([row("1", 2, 1), row("2", 0, 0)]);
+  sum = msgs.flatMap(m => m.payload).find(e => e.type === "ChargingSummary");
+  assert(sum && sum.dateObserved && !sum.liveEvse && !sum.evseCount, "unchanged sum written in full");
+  msgs = await run([row("1", 2, 0), row("2", 0, 0)]);
+  sum = msgs.flatMap(m => m.payload).find(e => e.type === "ChargingSummary");
+  assert(sum && sum.availableEvse.value === 0, "changed sum not written");
+  const n = byId["udp-rt-bo-build"].func;
+  assert(/label: 'OCPDB ChargingSummary'[\s\S]*?confirmKey: 'ocPruneSummary', confirmMs: 24 \* 3600e3/.test(n),
+    "sums are no longer refreshed every run, their prune needs the confirmation mode");
+};
+
+exports["Carsharing: csStand seeds csSig, seeded stations rewritten once within 24 runs"] = async () => {
+  const station = id => ({ station_id: id, num_bikes_available: 3 });
+  const cache = {}, alt = {};
+  for (let i = 0; i < 40; i++) { cache["sysA::" + i] = { ags: "08111000", slug: "stuttgart", name: "S" + i, lat: 48.77, lon: 9.18, kap: 4 }; alt["sysA::" + i] = 3; }
+  alt["sysB::x"] = 1;
+  const env = nodeEnv({ flowCtx: { csStationen: cache, csStand: alt, csBauform: { sysA: "car" } } });
+  env.http = null;
+  const realNow = Date.now;
+  const written = {};
+  try {
+    for (let h = 0; h < 24; h++) {
+      Date.now = () => realNow() + h * 3600e3;
+      const m = outMsgs(await runNode("udp-rt-cz-fn", { statusCode: 200, system: "sysA",
+        payload: { data: { stations: Array.from({ length: 40 }, (_, i) => station(String(i))) } } }, env))[0];
+      if (h === 0) {
+        assert.deepStrictEqual(env.flowCtx.csStand, { "sysB::x": 1 }, "migrated entries of the system not removed");
+        assert(Object.keys(env.flowCtx.csSig).length >= 30, "csSig not seeded from csStand");
+      }
+      for (const e of m.payload.filter(x => x.type === "CarSharingStation" && x.name)) written[e.id] = (written[e.id] || 0) + 1;
+      await runNode("udp-rt-cz-commit", commitMsg(m, 204), env);
+    }
+  } finally { Date.now = realNow; }
+  assert.strictEqual(Object.keys(written).length, 40, "not every seeded station was rewritten within 24 runs");
+  assert(Object.values(written).every(n => n === 1), "a seeded station was rewritten more than once");
+  assert.strictEqual(env.flowCtx.csSigSeeded, undefined, "seed marks left after 24 runs");
+};
+
+exports["CityPulse: higher share limit, stale pulses marked in the GUI"] = () => {
+  const n = FUNCS.find(x => x.id === "udp-rt-bz-build").func;
+  assert(/label: 'Puls-BW'[\s\S]*?maxFraction: 0\.8/.test(n), "CityPulse prune without its own share limit");
+  assert(/type=BikeParking&attrs=/.test(n), "pulse B+R limited to one connector");
+  const page = fs.readFileSync(path.join(ROOT, "gui/public/stadt.html"), "utf8");
+  assert(/const pStand = staleStand\(pulse, 3 \* 3600e3\)/.test(page), "pulse tile without age check");
+  const kreis = fs.readFileSync(path.join(ROOT, "gui/public/kreis.html"), "utf8");
+  assert(/const pulsVals = pulseAktuell\.filter/.test(kreis) && /pulseAktuell\.forEach/.test(kreis), "district average counts stale pulses");
+};
+
+exports["Row budgets cover the new freshness volume"] = () => {
+  const reg = JSON.parse(fs.readFileSync(path.join(ROOT, "platform/config/connectors.json"), "utf8")).connectors;
+  const b = Object.assign({}, ...reg.map(c => c.rowBudget24h || {}));
+  for (const t of ["EVChargingStation", "ChargingSummary", "CarSharingStation", "CityPulse"]) assert(b[t] > 0, "no row budget for " + t);
 };

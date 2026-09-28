@@ -376,6 +376,8 @@ async function pruneStale(o) {
         if (o.graceMs && (!t || now - t < o.graceMs)) continue;
         cand.push(e.id);
     }
+    // Result of a complete listing, for callers that act on it (o.listed)
+    o.listed = { mine: mine, candidates: cand.length };
     if (o.liveMs && now - newest > o.liveMs) {
         return skip('no entity written within the last ' + Math.round(o.liveMs / 3600000) + ' h — connector down?');
     }
@@ -2600,7 +2602,12 @@ if (msg.parkVollstaendig && PRUNE_OK && ids.size) {
         //   * at most once a day, and only if the previous daily check was
         //     done (interval check), so a single snapshot never deletes.
         // Once the legacy entities are gone, the daily check lists nothing.
-        if (Date.now() - (flow.get('parkLegacyLast') || 0) >= 20 * 3600e3) {
+        //   * created before the switch to parkapi- ids (createdAt, system
+        //     attribute; commit of 25.08.2026 03:28 CEST), so nothing written
+        //     since can ever match;
+        //   * once a complete listing finds no legacy entity of either type
+        //     any more, the check switches itself off (parkLegacyDone).
+        if (!flow.get('parkLegacyDone') && Date.now() - (flow.get('parkLegacyLast') || 0) >= 20 * 3600e3) {
             flow.set('parkLegacyLast', Date.now());
             const SLUGS = new Set(GEM.map(r => r[8]).filter(Boolean));
             const legacyOwn = id => {
@@ -2608,17 +2615,21 @@ if (msg.parkVollstaendig && PRUNE_OK && ids.size) {
                 for (let i = 1; i < parts.length; i++) if (SLUGS.has(parts.slice(0, i).join('-'))) return true;
                 return false;
             };
-            const legacyParkApi = (id, e) => legacyOwn(id) && !!e && !!e.dataProvider && e.dataProvider.value === ANBIETER;
-            await pruneStale({ label: 'Parken-BW legacy ParkingSite', type: 'ParkingSite',
-                               pattern: '^urn:ngsi-ld:ParkingSite:[a-z0-9][a-z0-9.-]*$',
-                               attrs: 'ags,dataProvider', exclude: '^urn:ngsi-ld:ParkingSite:parkapi-', accept: legacyParkApi,
-                               keep: ids, graceMs: 7 * 24 * 3600e3, maxFraction: 1,
-                               intervalMs: 86400000, status: statusText });
-            await pruneStale({ label: 'Parken-BW legacy BikeParking', type: 'BikeParking',
-                               pattern: '^urn:ngsi-ld:BikeParking:[a-z0-9][a-z0-9.-]*$',
-                               attrs: 'ags,dataProvider', exclude: '^urn:ngsi-ld:BikeParking:parkapi-', accept: legacyParkApi,
-                               keep: ids, graceMs: 7 * 24 * 3600e3, maxFraction: 1,
-                               intervalMs: 86400000, status: statusText });
+            const MIGRATION = Date.parse('2026-08-25T01:28:11Z');
+            const legacyParkApi = (id, e) => legacyOwn(id) && !!e && !!e.dataProvider && e.dataProvider.value === ANBIETER
+                && Date.parse(e.createdAt) < MIGRATION;
+            const legacy = typ => ({ label: 'Parken-BW legacy ' + typ, type: typ,
+                pattern: '^urn:ngsi-ld:' + typ + ':[a-z0-9][a-z0-9.-]*$',
+                attrs: 'ags,dataProvider', exclude: '^urn:ngsi-ld:' + typ + ':parkapi-', accept: legacyParkApi,
+                keep: ids, graceMs: 7 * 24 * 3600e3, maxFraction: 1,
+                intervalMs: 86400000, status: statusText });
+            const legacySite = legacy('ParkingSite'), legacyBike = legacy('BikeParking');
+            await pruneStale(legacySite);
+            await pruneStale(legacyBike);
+            if (legacySite.listed && legacyBike.listed && !legacySite.listed.mine && !legacyBike.listed.mine) {
+                flow.set('parkLegacyDone', true);
+                node.log('Parken-BW: no legacy parking ids left, cleanup switched off');
+            }
         }
     })().catch(e => node.warn('Parken-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
 } else {
@@ -2862,15 +2873,18 @@ const P2 = (v, u) => ({ type: 'Property', value: v, unitCode: u, observedAt: now
 ''' + CHUNK_HELPER + r'''
 const stations = [];
 const byGem = {};
+const altKey = {};   // entity id -> key of the former 'csStand' table
 for (const st of msg.payload.data.stations) {
     const info = cache[sys + '::' + st.station_id];
     if (!info) continue;                       // außerhalb BW oder ohne Stammdaten
     const frei = st.num_bikes_available != null ? st.num_bikes_available : 0;
     const b0 = byGem[info.ags] = byGem[info.ags] || { frei: 0, kap: 0, n: 0, slug: info.slug };
     b0.frei += frei; b0.kap += info.kap; b0.n++;
+    const id = 'urn:ngsi-ld:CarSharingStation:' + info.slug + '-' + sys + '-'
+        + String(st.station_id).replace(/[^A-Za-z0-9_-]+/g, '-');
+    altKey[id] = sys + '::' + st.station_id;
     stations.push({
-        id: 'urn:ngsi-ld:CarSharingStation:' + info.slug + '-' + sys + '-'
-            + String(st.station_id).replace(/[^A-Za-z0-9_-]+/g, '-'),
+        id: id,
         type: 'CarSharingStation',
         ags: { type: 'Property', value: info.ags },
         name: { type: 'Property', value: info.name },
@@ -2891,8 +2905,36 @@ for (const st of msg.payload.data.stations) {
 // Freshness: an unchanged station refreshes its dateObserved every third run
 // (freshTurn), i.e. about every 3 h: ~4,000 stations × 8 ≈ 32,000 rows/day.
 // Every run would be ~96,000. Signature keys are entity ids (so the prune can
-// forget them); the former 'csStand' table keyed by system::station is dropped.
-if (flow.get('csStand') !== undefined) flow.set('csStand', undefined);
+// forget them).
+//
+// Migration of the former table 'csStand' (system::station -> free count):
+// its values become the signatures, so the switch does not rewrite all
+// ~4,000 stations at once. But 'csStand' was stored BEFORE the write, so an
+// entry may describe a value that never reached the broker (the frozen-value
+// bug). Seeded entries are therefore marked and dropped again spread over 24
+// runs (freshTurn with 24), so every seeded station is written in full once
+// within a day, ~170 per hour instead of a burst.
+const alt = flow.get('csStand');
+if (alt) {
+    const sigT = flow.get('csSig') || {}, seeded = flow.get('csSigSeeded') || {};
+    for (const e of stations) {
+        const k = altKey[e.id];
+        if (k in alt && sigT[e.id] === undefined) { sigT[e.id] = String(alt[k]); seeded[e.id] = 1; }
+    }
+    for (const k of Object.keys(alt)) if (k.startsWith(sys + '::')) delete alt[k];
+    flow.set('csSig', sigT);
+    flow.set('csSigSeeded', seeded);
+    flow.set('csStand', Object.keys(alt).length ? alt : undefined);
+}
+const seeded = flow.get('csSigSeeded');
+if (seeded) {
+    const sigT = flow.get('csSig') || {};
+    for (const e of stations) {
+        if (seeded[e.id] && freshTurn(e.id, 24, 3600e3)) { delete sigT[e.id]; delete seeded[e.id]; }
+    }
+    flow.set('csSig', sigT);
+    flow.set('csSigSeeded', Object.keys(seeded).length ? seeded : undefined);
+}
 const entities = gateChanged(node, stations, 'csSig', e => String(e.availableVehicles.value),
                              { freshEvery: 3, periodMs: 3600e3 });
 for (const ags of Object.keys(byGem)) {
@@ -3045,7 +3087,7 @@ for (const id of Object.keys(seen)) {
     const b = byGem[g[0]] = byGem[g[0]] || { n: 0, evse: 0, live: 0, frei: 0, laedt: 0, defekt: 0 };
     b.n++; b.evse += evse; b.live += live; b.frei += frei; b.laedt += laedt; b.defekt += defekt;
 }
-const entities = Object.keys(byGem).map(ags => {
+const summen = Object.keys(byGem).map(ags => {
     const b = byGem[ags];
     const e = {
         id: 'urn:ngsi-ld:ChargingSummary:bw-' + ags,
@@ -3058,10 +3100,13 @@ const entities = Object.keys(byGem).map(ags => {
     if (b.live) {
         e.liveEvse = P(b.live, 'C62'); e.availableEvse = P(b.frei, 'C62');
         e.chargingEvse = P(b.laedt, 'C62'); e.defectEvse = P(b.defekt, 'C62');
+        // Freshness of the live sum (like ParkingSummary): unchanged sums only
+        // refresh dateObserved, ~900 × 24 ≈ 22,000 rows/day.
+        e.dateObserved = { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } };
     }
     return e;
 });
-const summenIds = new Set(entities.map(e => e.id));
+const summenIds = new Set(summen.map(e => e.id));
 
 // --- Einzelstationen für JEDE Gemeinde (Stufe-3-Baustein »laden-detail«/»laden-live«) ---
 // Der Abzug enthält die Standorte ohnehin; sie zu verwerfen wäre die eigentliche
@@ -3106,20 +3151,26 @@ for (const id of Object.keys(seen)) {
     stations.push(e);
 }
 const stationIds = new Set(stations.map(e => e.id));
+// Municipal sums: written only on change (before: every sum, every hour, ~1,000
+// × 24 × 3–7 attributes). Replace mode only after a complete run.
+const entities = gateChanged(node, summen, 'ocSumSig',
+    e => [e.locationCount.value, e.evseCount.value, e.liveEvse ? e.liveEvse.value : '', e.availableEvse ? e.availableEvse.value : '',
+          e.chargingEvse ? e.chargingEvse.value : '', e.defectEvse ? e.defectEvse.value : ''].join('|'),
+    { replace: vollstaendig });
 // Replace mode only after a complete run; an incomplete one merges, so the
 // signatures of stations on a missing page survive.
 const geaendert = gateChanged(node, stations, 'ocSig',
     e => [e.socketNumber.value, e.liveEvse ? e.liveEvse.value : 0, e.availableEvse ? e.availableEvse.value : 0,
           e.chargingEvse ? e.chargingEvse.value : 0, e.defectEvse ? e.defectEvse.value : 0].join('|'),
     { replace: vollstaendig, freshEvery: 3, periodMs: 3600e3 });
+const nSummen = entities.length;
 for (const e of geaendert) entities.push(e);
 const statusText = Object.keys(seen).length + ' Standorte → ' + Object.keys(byGem).length
-              + ' Gemeinden · ' + stations.length + ' Stationen, ' + geaendert.length + ' geschrieben';
+              + ' Gemeinden · ' + stations.length + ' Stationen, geschrieben: ' + geaendert.length + ' Stationen, ' + nSummen + ' Summen';
 node.status({ text: statusText });
 // Complete inventory: remove stations and municipal sums it no longer
-// contains. Register entries are never refreshed, so a station must be
-// missing in consecutive complete runs for 24 h (confirmKey); sums are written
-// in every run and use a grace period.
+// contains. Register entries and sums without live data are never refreshed,
+// so an id must be missing in consecutive complete runs for 24 h (confirmKey).
 if (vollstaendig && PRUNE_OK && stationIds.size) {
     (async () => {
         await pruneStale({ label: 'OCPDB EVChargingStation', type: 'EVChargingStation',
@@ -3128,11 +3179,12 @@ if (vollstaendig && PRUNE_OK && stationIds.size) {
                            sigKey: 'ocSig', intervalMs: ''' + interval_ms("ladesaeulen-bw") + r''', status: statusText });
         await pruneStale({ label: 'OCPDB ChargingSummary', type: 'ChargingSummary',
                            pattern: '^urn:ngsi-ld:ChargingSummary:bw-[0-9]{8}$',
-                           keep: summenIds, graceMs: 24 * 3600e3,
+                           keep: summenIds, confirmKey: 'ocPruneSummary', confirmMs: 24 * 3600e3,
                            intervalMs: ''' + interval_ms("ladesaeulen-bw") + r''', status: statusText });
     })().catch(e => node.warn('OCPDB: prune failed (' + (e && e.message ? e.message : e) + ')'));
 } else {
     flow.set('ocPruneStation', {});
+    flow.set('ocPruneSummary', {});
 }
 if (!entities.length) return null;
 return [emitChunks(node, msg, entities, 100)];'''
@@ -3150,8 +3202,12 @@ func("udp-rt-bo-wrap", Z, "verschlanken", FN_OC_WRAP, ["udp-rt-bo-join"], 920, x
 # Betriebsregel: Join-Timeout >= Seitenzahl x Takt, plus Luft für die Downloads
 # (60 Seiten × 3 s = 180 s).
 join_parts("udp-rt-bo-join", Z, ["udp-rt-bo-build"], 980, x=400, timeout=420)
-func("udp-rt-bo-build", Z, "→ ChargingSummary + Stationen", FN_OC_BUILD, ["udp-rt-bo-post"], 980, libs=PRUNE_LIBS)
-upsert_commit("udp-rt-bo-post", Z, ["udp-rt-bo-debug"], 980)
+func("udp-rt-bo-build", Z, "→ ChargingSummary + Stationen", FN_OC_BUILD, ["udp-rt-bo-rate2"], 980, libs=PRUNE_LIBS)
+# Rate limit towards Orion like parken/puls: a full rewrite (first run, ~125
+# chunks) must not hit the broker at once, or timed-out chunks come back every
+# hour as the next burst.
+delay_rate("udp-rt-bo-rate2", Z, ["udp-rt-bo-post"], 1040)
+upsert_commit("udp-rt-bo-post", Z, ["udp-rt-bo-debug"], 1040)
 debug("udp-rt-bo-debug", Z, "Laden-BW Ergebnis", 980)
 
 FN_ECO_BW = r'''// Eco-Counter v2 (alle Kommunen) -> Zählstellen + Gemeinde-Summen
@@ -3345,7 +3401,7 @@ FN_PULSE_BW_BUILD = r'''// Gemeinde-Puls: aggregates of the other connectors per
 //   * feinstaub: citizen sensor median, only if observed within 2 h (as the
 //     dashboard); luftindex: UBA; laden: share of free live charge points;
 //     oepnv: median delay (only if observed within 2 h); br: free share of
-//     realtime bike parking (observed within 6 h, two parking runs);
+//     realtime bike parking of any connector (observed within 6 h);
 //   * sharing: free-floating vehicles per 1,000 inhabitants (5 or more = 100),
 //     so a small town is not scored against the raw count of a city;
 //   * baustellen: the SVZ roadworks feed covers the whole state, so a
@@ -3398,7 +3454,9 @@ let d;
 try {
     d = {
         pt: await alle('PublicTransportStop', 'type=PublicTransportStop&attrs=ags,avgDelayMinutes,dateObserved'),
-        br: await alle('BikeParking', 'type=BikeParking' + idp('^urn:ngsi-ld:BikeParking:parkapi-') + '&attrs=ags,availableSpotNumber,totalSpotNumber,dateObserved'),
+        // all BikeParking (ParkAPI and municipal connectors); the 6 h age
+        // check below leaves out legacy and static entities
+        br: await alle('BikeParking', 'type=BikeParking&attrs=ags,availableSpotNumber,totalSpotNumber,dateObserved'),
         aq: await alle('AirQualityObserved', 'type=AirQualityObserved' + idp('^urn:ngsi-ld:AirQualityObserved:bw-(sc|uba)-') + '&attrs=ags,pm25,pm10,airQualityIndex,dateObserved'),
         sh: await alle('SharingSummary', 'type=SharingSummary&attrs=ags,availableVehicles'),
         ch: await alle('ChargingSummary', 'type=ChargingSummary&attrs=ags,liveEvse,availableEvse'),
@@ -3470,10 +3528,15 @@ if (!entities.length) { node.warn('Puls-BW: no municipality with 3 components');
 // Municipalities no longer reaching the minimum (or no longer in the master
 // data) lose their pulse. Every pulse produced is refreshed each run, so an
 // age of 24 h means "not produced for 24 runs".
+// Share limit 80 % instead of 30 %: a change of the method (like the stricter
+// minimum) can legitimately drop more than 30 % at once, and a prune that
+// skips forever would leave frozen pulses behind. CityPulse is derived data
+// (recomputed every hour, history stays in TRoE), and a run whose queries
+// failed or were incomplete never gets here.
 if (PRUNE_OK) pruneStale({
     label: 'Puls-BW', type: 'CityPulse',
     pattern: '^urn:ngsi-ld:CityPulse:bw-[0-9]{8}$',
-    attrs: 'ags,dateObserved',
+    attrs: 'ags,dateObserved', maxFraction: 0.8,
     keep: new Set(entities.map(e => e.id)), graceMs: 24 * 3600e3, sigKey: 'pulseSig',
     intervalMs: ''' + interval_ms("puls-bw") + r''', status: statusText
 }).catch(e => node.warn('Puls-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
