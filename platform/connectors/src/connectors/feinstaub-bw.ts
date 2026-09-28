@@ -22,19 +22,16 @@
  * time-series database without the map layer profiting. The old node counted
  * runs in the flow context (`scTakt`), starting from 0 after a (re)start, so
  * the first detail run is the fourth run after a start. The counter lives in
- * {@link cadenceOf} here — per connector context, in memory, lost on restart
- * exactly as the flow context was in Kubernetes. The prune runs in the detail
- * runs only, so its interval guard gets `ctx.intervalMs(4)`.
+ * `ctx.state` ({@link cadenceOf}) — in memory, lost on restart exactly as the
+ * flow context was in Kubernetes. The prune runs in the detail runs only, so
+ * its interval guard gets `ctx.intervalMs(4)`. Which municipalities get single
+ * sensors is `sensorDetailFor` of the registry entry.
  *
  * ## Deviations
  *
  *  * The prune runs AFTER the upsert, not concurrently before it. The prune
  *    keeps every id of the run, so the two touch disjoint ids; the order only
  *    makes the run sequential.
- *  * `sensorDetailFor` of the registry entry is not part of the typed
- *    `RegistryEntry`, so the list of detail municipalities is the constant
- *    {@link DETAIL_FOR}, `"*"` as the registry says today (reported for the
- *    contract review).
  *  * Malformed records are skipped instead of taking the run down: a record
  *    without `location`, or `null` inside `sensordatavalues`, made the old node
  *    throw (no entity at all that run). The recorded fixtures contain none.
@@ -42,6 +39,7 @@
 
 import { observed } from "../kernel/ngsi.js";
 import { isArray, isRecord, isString } from "../kernel/parse.js";
+import { stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
@@ -72,14 +70,6 @@ export const GATE_KEY = "feinstaubSig";
 /** Every n-th run is a detail run (single sensors + prune). */
 export const DETAIL_EVERY = 4;
 
-/**
- * `sensorDetailFor` of the registry entry (`"*"` or a list of AGS): the
- * municipalities whose single sensors become entities. The generator spliced
- * the registry value into the node; `RegistryEntry` does not carry the field,
- * so it is pinned here to what the registry says.
- */
-export const DETAIL_FOR: "*" | readonly Ags[] = "*";
-
 /** Readings above this are a saturated or broken SDS011 (it maxes out near 500 µg/m³). */
 const PLAUSIBLE_MAX = 400;
 
@@ -99,11 +89,18 @@ export interface SensorReading {
   readonly lon: number;
 }
 
-/** The input of one run: the box, and whether this run is a detail run. */
+/** The input of one run: the box, whether this run is a detail run, and for which municipalities. */
 export interface SensorBox {
   readonly readings: readonly SensorReading[];
   /** Set by `run` from the cadence; `parse` cannot know it and says `false`. */
   readonly detailRun: boolean;
+  /**
+   * `sensorDetailFor` of the registry entry (`"*"` or a list of AGS): the
+   * municipalities whose single sensors become entities — `DETAIL_AGS`, which
+   * the generator spliced into the node. Set by `run` from `ctx.entry`;
+   * `parse` cannot know it and says none.
+   */
+  readonly detailFor: "*" | readonly Ags[];
 }
 
 export interface MedianEntity extends NgsiEntity {
@@ -191,7 +188,7 @@ export function parse(raw: unknown): SensorBox {
     const reading = parseReading(record);
     if (reading !== null) readings.push(reading);
   }
-  return { readings, detailRun: false };
+  return { readings, detailRun: false, detailFor: [] };
 }
 
 /* ------------------------------------------------------------------ build */
@@ -317,7 +314,7 @@ export function summarize(raw: SensorBox, geo: GeoIndex | null, now: IsoTime): F
       const sensor = bySensor.get(key);
       const ags = sensor?.ags;
       if (sensor === undefined || ags === undefined) continue;
-      if (DETAIL_FOR !== "*" && !DETAIL_FOR.includes(ags)) continue;
+      if (raw.detailFor !== "*" && !raw.detailFor.includes(ags)) continue;
       entities.push({
         id: `urn:ngsi-ld:AirQualityObserved:bw-sensor-${ags}-${key}`,
         type: "AirQualityObserved",
@@ -382,16 +379,17 @@ export function statusText(result: FeinstaubResult): string {
 /* ------------------------------------------------------------------ run */
 
 /**
- * `scTakt` of the flow context, per connector context: the connector's ctx is
- * created once at startup, so this lives as long as the old flow context did
- * in Kubernetes (no volume on /data) — until the next restart.
+ * `scTakt` of the flow context, in `ctx.state`: in memory, so it lives as long
+ * as the old flow context did in Kubernetes (no volume on /data) — until the
+ * next restart.
  */
-const cadence = new WeakMap<Ctx, number>();
+export const CADENCE = stateKey("scTakt", () => 0);
 
 /** Advances the run counter and says whether this run is a detail run (`takt === 0`). */
 export function cadenceOf(ctx: Ctx): boolean {
-  const takt = ((cadence.get(ctx) ?? 0) + 1) % DETAIL_EVERY;
-  cadence.set(ctx, takt);
+  const cadence = ctx.state.slot(CADENCE);
+  const takt = (cadence.get() + 1) % DETAIL_EVERY;
+  cadence.set(takt);
   return takt === 0;
 }
 
@@ -413,7 +411,11 @@ export async function run(ctx: Ctx): Promise<void> {
   if (geo === null) return;
 
   const detailRun = cadenceOf(ctx);
-  const result = summarize({ ...parse(response.body), detailRun }, geo, ctx.now());
+  const result = summarize(
+    { ...parse(response.body), detailRun, detailFor: ctx.entry.sensorDetailFor },
+    geo,
+    ctx.now(),
+  );
   if (result.entities.length === 0) return;
   const status = statusText(result);
   ctx.log.status(status);

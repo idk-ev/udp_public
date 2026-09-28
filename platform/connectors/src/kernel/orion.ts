@@ -45,9 +45,17 @@
  *
  * ## Rate limiting
  *
- * Goes through the ordinary fetcher and therefore through the token bucket for
- * the Orion host — which is precisely the "1 Anfrage/s" delay node that sat
- * between every chunking function and its upsert node.
+ * WRITES (upsert, delete) go through the ordinary fetcher and therefore
+ * through the token bucket for the Orion host — which is precisely the
+ * "1 Anfrage/s" delay node that sat between every chunking function and its
+ * upsert node.
+ *
+ * READS (`find`, `list`, `count`) are not paced (`bucket: null`). The old flows
+ * sent them without a delay node — the pagers of PRUNE_HELPER and the city
+ * pulse used `http.request` directly, the `/warnungen.ics` GET had its own
+ * `http request` node — and in the shared bucket a read would wait behind
+ * every queued write: `parken-bw` alone queues ~320 chunks, one per second, so
+ * a calendar request would outlast the cockpit nginx's 60 s timeout.
  */
 
 import { isArray, isRecord, isString, isTruthy } from "./parse.js";
@@ -67,6 +75,7 @@ import type {
   NgsiEntity,
   Orion,
   OrionQuery,
+  OrionReadOptions,
   PendingSignature,
   SignatureValue,
   UpsertOptions,
@@ -357,6 +366,7 @@ class OrionClient implements Orion {
     try {
       const response = await this.#fetch.text(this.#entitiesUrl({ ...query, count: true, limit: 1 }), {
         headers: { Accept: "application/json" },
+        bucket: null,
       });
       if (response.status !== 200) return null;
       const total = Number.parseInt(response.headers["ngsild-results-count"] ?? "", 10);
@@ -366,8 +376,12 @@ class OrionClient implements Orion {
     }
   }
 
-  async find(query: OrionQuery): Promise<JsonResponse> {
-    return this.#fetch.json(this.#entitiesUrl(query));
+  async find(query: OrionQuery, options?: OrionReadOptions): Promise<JsonResponse> {
+    return this.#fetch.json(this.#entitiesUrl(query), {
+      bucket: null,
+      ...(options?.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+      ...(options?.retries === undefined ? {} : { retries: options.retries }),
+    });
   }
 
   /**
@@ -386,7 +400,7 @@ class OrionClient implements Orion {
       for (let page = 0; page < options.maxPages; page += 1) {
         const response = await this.#fetch.text(
           this.#entitiesUrl({ ...query, count: true, limit: pageSize, offset: page * pageSize }),
-          { headers: { Accept: "application/json" } },
+          { headers: { Accept: "application/json" }, bucket: null },
         );
         if (response.status !== 200) return { ok: false, reason: `HTTP ${String(response.status)}` };
         const parsed: unknown = JSON.parse(response.body);

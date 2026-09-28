@@ -33,16 +33,19 @@
  * closed at once instead of waiting out its timer (same content, earlier).
  * A partial group is now logged as a `[warn]`; the old node was silent.
  *
- * ## Kept although questionable — for the review
+ * ## Deliberate deviation (decided): no response is no data, not "no warnings"
  *
- * A request that fails WITHOUT a response (DNS, timeout, refused) counts as a
- * district without warnings. That is the old behaviour: the `http request`
- * node put the error code (a string) into `msg.statusCode`, and FN_WARN_WRAP's
- * `ok: !(msg.statusCode >= 400)` is `true` for a string — the body (the error
- * text) then yields zero items. It can overwrite a real warning with "none"
- * while a source is unreachable. Ported unchanged (behaviour-identical port,
- * no domain changes before parity), but counted and logged as a `[warn]`; the
- * fix is one line in {@link fetchPart} once it is decided.
+ * A DWD or NINA request that gets no response at all (DNS, timeout, refused —
+ * the old node saw a non-numeric `msg.statusCode`) is skipped for its district,
+ * which keeps its last value in Orion. The old FN_WARN_WRAP computed
+ * `ok: !(msg.statusCode >= 400)`, which is `true` for such a string, and the
+ * error text as body yielded zero items: an unreachable source overwrote a real
+ * warning with "none". Counted and logged as a `[warn]` per group.
+ *
+ * The calendar had the same flaw and gets the same fix: when Orion cannot be
+ * queried, `/warnungen.ics` answers 503 instead of a 200 "Keine amtlichen
+ * Warnungen" (see {@link calendarResponse}). The cockpit nginx caches only
+ * 200s, and a calendar client keeps its last events on an error.
  *
  * ## Deliberate differences, only for input the old code crashed on
  *
@@ -56,9 +59,9 @@
  *    request hung without an answer until the proxy gave up.
  */
 
-import { createHash } from "node:crypto";
 import { parse as parseMunicipalities } from "./stammdaten-bw.js";
 import { COCKPIT_URL } from "../kernel/env.js";
+import { weakEtag } from "../kernel/http.js";
 import { cleanText, dateObserved } from "../kernel/ngsi.js";
 import { field, isArray, isFiniteNumber, isRecord, isString, isTruthy, ParseError } from "../kernel/parse.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
@@ -72,6 +75,7 @@ import type {
   MunicipalityRow,
   NgsiDateTime,
   NgsiEntity,
+  OrionReadOptions,
   Property,
   RouteDefinition,
   RouteRequest,
@@ -173,11 +177,24 @@ async function fetchPart(ctx: Ctx, request: WarnRequest): Promise<WarnResponse> 
     const response = await ctx.fetch.text(url);
     return { kreis, quelle, ok: !(response.status >= 400), body: jsonOrText(response.body) };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    // Old behaviour, see the module header: no response -> `ok` stays true and
-    // the error text is the body, i.e. "no warnings" for this district.
-    return { kreis, quelle, ok: true, body: `${message} : ${url}`, failure: message };
+    return noResponse(request, error);
   }
+}
+
+/**
+ * A request without a response: `ok: false`, so {@link parse} drops it and the
+ * district keeps its last value. Deliberate deviation — the old node read it
+ * as "no warnings" (see the module header).
+ */
+function noResponse(request: WarnRequest, error: unknown): WarnResponse {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    kreis: request.kreis,
+    quelle: request.quelle,
+    ok: false,
+    body: `${message} : ${request.url}`,
+    failure: message,
+  };
 }
 
 /* ------------------------------------------------------------------ fan-in */
@@ -463,8 +480,8 @@ async function writeGroup(ctx: Ctx, group: readonly WarnResponse[], end: GroupEn
   const failed = group.filter((part) => part.failure !== undefined);
   if (failed.length > 0) {
     ctx.log.warn(
-      `${LABEL}: ${String(failed.length)} requests without a response, counted as "no warnings" as before ` +
-        `(first: ${failed[0]?.failure ?? ""})`,
+      `${LABEL}: ${String(failed.length)} requests without a response, skipped — those districts keep ` +
+        `their last value (first: ${failed[0]?.failure ?? ""})`,
     );
   }
   const parts = parse(group);
@@ -500,15 +517,17 @@ export async function run(ctx: Ctx): Promise<void> {
 
   // The delay node: requests leave one per second, each without waiting for
   // the previous answer.
+  // The bucket only spaces the starts (no concurrency cap), so the acquisition
+  // is released right away.
   let pace: Promise<void> = Promise.resolve();
   const tasks = requests.map((request) => {
-    pace = pace.then(() => ctx.limiter.acquire(FAN_OUT_BUCKET, { minIntervalMs: 1000 }));
+    pace = pace.then(async () => {
+      const release = await ctx.limiter.acquire(FAN_OUT_BUCKET, { minIntervalMs: 1000 });
+      release();
+    });
     return pace.then(
       () => fetchPart(ctx, request),
-      (error: unknown): WarnResponse => {
-        const message = error instanceof Error ? error.message : String(error);
-        return { ...request, ok: true, body: message, failure: message };
-      },
+      (error: unknown): WarnResponse => noResponse(request, error),
     );
   });
 
@@ -608,28 +627,26 @@ export function renderCalendar(kreis: string, alerts: readonly unknown[], now: I
 }
 
 /**
- * The weak ETag Express put on every `res.send` of the old `http response`
- * node (the `etag` package: byte length in hex, then the first 27 characters of
- * the base64 SHA-1). Kept so a calendar client's cache sees the same validator.
- */
-export function weakEtag(body: string): string {
-  const bytes = Buffer.from(body, "utf8");
-  if (bytes.length === 0) return 'W/"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
-  const hash = createHash("sha1").update(bytes).digest("base64").slice(0, 27);
-  return `W/"${bytes.length.toString(16)}-${hash}"`;
-}
-
-/**
  * The bytes the old `http response` node sent: `msg.statusCode`, `msg.headers`,
  * and what Express's `res.send` added to a string body — `; charset=utf-8` on a
- * bare `text/plain`, the weak ETag. (A conditional request answered with 304
- * is not reproduced: a route does not see the request headers. The body
- * changes every second through its stamp, so a match was rare anyway; the
- * cockpit nginx caches the 200 for five minutes in front of it.)
+ * bare `text/plain`, the weak ETag (kept so a calendar client's cache sees the
+ * same validator). A conditional request that matches it is answered with 304
+ * by the kernel's server, as Express did; the body changes every second
+ * through its stamp, so a match is rare anyway.
  */
 function sendText(status: number, contentType: string, body: string): RouteResponse {
   return { status, contentType, body, headers: { ETag: weakEtag(body) } };
 }
+
+/** Answer when Orion cannot be queried (deliberate deviation, see the module header). */
+export const UNAVAILABLE_TEXT = "Warnungen derzeit nicht abrufbar.";
+
+/**
+ * One Orion read for the calendar. No retry and the fetcher's 30 s timeout:
+ * the cockpit nginx gives up after 60 s, and the read is unpaced, so it never
+ * waits behind a write backlog (src/kernel/orion.ts).
+ */
+const CALENDAR_READ: OrionReadOptions = { retries: 0 };
 
 export async function calendarResponse(ctx: Ctx, request: RouteRequest): Promise<RouteResponse> {
   const kreis = kreisParameter(request.query);
@@ -637,16 +654,25 @@ export async function calendarResponse(ctx: Ctx, request: RouteRequest): Promise
     // msg.headers = { 'Content-Type': 'text/plain' }; Express appended the charset.
     return sendText(400, "text/plain; charset=utf-8", BAD_REQUEST_TEXT);
   }
-  let alerts: readonly unknown[] = [];
+  let alerts: readonly unknown[];
   try {
     // `type=Alert&q=ags=="<krs>"&options=keyValues`, no limit (Orion's default).
-    const response = await ctx.orion.find({ type: "Alert", q: `ags=="${kreis}"`, options: "keyValues" });
-    // `Array.isArray(msg.payload) ? msg.payload : []` — an error answer is "no alerts".
-    if (isArray(response.body)) alerts = response.body;
+    const response = await ctx.orion.find(
+      { type: "Alert", q: `ags=="${kreis}"`, options: "keyValues" },
+      CALENDAR_READ,
+    );
+    if (!response.ok || !isArray(response.body)) {
+      // Deliberate deviation: the old node read an error answer as "no
+      // alerts" and served "Keine amtlichen Warnungen" while Orion was down.
+      ctx.log.warn(`/warnungen.ics: Orion answered HTTP ${String(response.status)} — 503`);
+      return sendText(503, "text/plain; charset=utf-8", UNAVAILABLE_TEXT);
+    }
+    alerts = response.body;
   } catch (error) {
-    // The old http request node reported the fault as an error and passed the
-    // error text on, which the build node read as "no alerts".
+    // As before an `[error]` (the http request node reported the fault), but
+    // no longer a 200 calendar claiming there are no warnings.
     ctx.log.error("/warnungen.ics: Orion query failed", error);
+    return sendText(503, "text/plain; charset=utf-8", UNAVAILABLE_TEXT);
   }
   return sendText(200, "text/calendar; charset=utf-8", renderCalendar(kreis, alerts, ctx.now()));
 }

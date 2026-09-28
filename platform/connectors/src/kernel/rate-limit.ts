@@ -23,9 +23,17 @@
  * towards every provider, never less. The alternative (a bucket per connector
  * and host) would reproduce the old numbers and lose the property that makes
  * this worth having: one place that knows how hard a host is being hit.
+ *
+ * ## Concurrency cap
+ *
+ * A delay node spaces the STARTS of requests; a request slower than the
+ * interval overlapped the next one. `maxConcurrent` closes that gap where it
+ * matters (Overpass: a few slots per IP, 504 on overload): a waiter gets its
+ * token only while fewer than that many acquisitions of the bucket are
+ * unreleased. Waiters stay first-in, first-out; a release wakes the queue.
  */
 
-import type { Log, RateLimiter, RateLimitOptions } from "./types.js";
+import type { Log, RateLimiter, RateLimitOptions, RateLimitRelease } from "./types.js";
 
 /** "1 Anfrage/s" — the setting of 20 of the 25 delay nodes. */
 export const DEFAULT_MIN_INTERVAL_MS = 1000;
@@ -50,11 +58,20 @@ export class RateLimitOverflowError extends Error {
   }
 }
 
+/** A usable concurrency cap: a whole number of at least 1. */
+function validCap(value: number | undefined): value is number {
+  return value !== undefined && Number.isInteger(value) && value >= 1;
+}
+
 interface Bucket {
   readonly host: string;
   minIntervalMs: number;
   burst: number;
   maxQueue: number;
+  /** `Infinity` = no cap. */
+  maxConcurrent: number;
+  /** Acquisitions handed out and not yet released. */
+  inFlight: number;
   /** Fractional tokens, refilled by elapsed time. */
   tokens: number;
   lastRefill: number;
@@ -72,12 +89,13 @@ class HostRateLimiter implements RateLimiter {
     this.#log = log;
   }
 
-  async acquire(host: string, options?: RateLimitOptions): Promise<void> {
+  async acquire(host: string, options?: RateLimitOptions): Promise<RateLimitRelease> {
     const bucket = this.#bucket(host, options);
     this.#refill(bucket);
-    if (bucket.waiting.length === 0 && bucket.tokens >= 1) {
+    if (bucket.waiting.length === 0 && bucket.tokens >= 1 && bucket.inFlight < bucket.maxConcurrent) {
       bucket.tokens -= 1;
-      return;
+      bucket.inFlight += 1;
+      return this.#releaser(bucket);
     }
     if (bucket.waiting.length >= bucket.maxQueue) {
       if (!bucket.overflowsReported) {
@@ -89,15 +107,31 @@ class HostRateLimiter implements RateLimiter {
       }
       throw new RateLimitOverflowError(host, bucket.waiting.length);
     }
+    // #drain counts the waiter as in flight when it resolves it.
     await new Promise<void>((resolve) => {
       bucket.waiting.push(resolve);
       this.#schedule(bucket);
     });
+    return this.#releaser(bucket);
   }
 
   async run<T>(host: string, task: () => Promise<T>, options?: RateLimitOptions): Promise<T> {
-    await this.acquire(host, options);
-    return task();
+    const release = await this.acquire(host, options);
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  }
+
+  #releaser(bucket: Bucket): RateLimitRelease {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      bucket.inFlight -= 1;
+      if (bucket.waiting.length > 0) this.#drain(bucket);
+    };
   }
 
   #bucket(host: string, options?: RateLimitOptions): Bucket {
@@ -112,14 +146,20 @@ class HostRateLimiter implements RateLimiter {
       if (options?.maxQueue !== undefined && options.maxQueue > existing.maxQueue) {
         existing.maxQueue = options.maxQueue;
       }
+      // The same for the concurrency cap: the lowest cap seen wins.
+      const cap = options?.maxConcurrent;
+      if (validCap(cap) && cap < existing.maxConcurrent) existing.maxConcurrent = cap;
       return existing;
     }
     const burst = options?.burst ?? DEFAULT_BURST;
+    const cap = options?.maxConcurrent;
     const bucket: Bucket = {
       host,
       minIntervalMs: options?.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS,
       burst,
       maxQueue: options?.maxQueue ?? DEFAULT_MAX_QUEUE,
+      maxConcurrent: validCap(cap) ? cap : Number.POSITIVE_INFINITY,
+      inFlight: 0,
       tokens: burst,
       lastRefill: Date.now(),
       waiting: [],
@@ -140,6 +180,8 @@ class HostRateLimiter implements RateLimiter {
 
   #schedule(bucket: Bucket): void {
     if (bucket.timer !== null) return;
+    // At the cap no token helps; the next release drains the queue.
+    if (bucket.inFlight >= bucket.maxConcurrent) return;
     const wait = Math.max(1, Math.ceil((1 - bucket.tokens) * bucket.minIntervalMs));
     const timer = setTimeout(() => {
       bucket.timer = null;
@@ -151,8 +193,9 @@ class HostRateLimiter implements RateLimiter {
 
   #drain(bucket: Bucket): void {
     this.#refill(bucket);
-    while (bucket.tokens >= 1 && bucket.waiting.length > 0) {
+    while (bucket.tokens >= 1 && bucket.inFlight < bucket.maxConcurrent && bucket.waiting.length > 0) {
       bucket.tokens -= 1;
+      bucket.inFlight += 1;
       const next = bucket.waiting.shift();
       if (next !== undefined) next();
     }

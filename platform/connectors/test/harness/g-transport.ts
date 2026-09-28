@@ -19,6 +19,7 @@
 
 import { createHash } from "node:crypto";
 import { SignatureStore } from "../../src/kernel/change-gate.js";
+import { StateStore } from "../../src/kernel/state.js";
 import type { Kernel } from "../../src/kernel/context.js";
 import { createCtx } from "../../src/kernel/context.js";
 import { createDb } from "../../src/kernel/db.js";
@@ -119,6 +120,7 @@ export function rig(entry: RegistryEntry, fetcher: Fetcher): GRig {
     fetch: fetcher,
     orionUrl: ORION,
     signatures: new SignatureStore(),
+    state: new StateStore(),
     geo: createSharedGeo(log),
     registry: { entries: [entry], byId: (id) => (id === entry.id ? entry : undefined), appEntries: () => [] },
     publicHttp: createHttpServer(log),

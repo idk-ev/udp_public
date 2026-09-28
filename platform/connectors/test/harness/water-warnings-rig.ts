@@ -20,6 +20,7 @@ import { parse as parseBoundaries } from "../../src/connectors/grenzen-bw.js";
 import { parse as parseMunicipalities } from "../../src/connectors/stammdaten-bw.js";
 import { isArray } from "../../src/kernel/parse.js";
 import { SignatureStore } from "../../src/kernel/change-gate.js";
+import { StateStore } from "../../src/kernel/state.js";
 import type { Kernel } from "../../src/kernel/context.js";
 import { createCtx } from "../../src/kernel/context.js";
 import { createDb } from "../../src/kernel/db.js";
@@ -46,7 +47,7 @@ import { messagesOf } from "./vm-runner.js";
 
 /** Grants every token at once. */
 export const passThroughLimiter: RateLimiter = {
-  acquire: () => Promise.resolve(),
+  acquire: () => Promise.resolve(() => undefined),
   run: (_host, task) => task(),
 };
 
@@ -83,6 +84,7 @@ export function rig(id: string, respond: (request: SeenRequest) => HttpResponse 
     fetch: fetcher,
     orionUrl: "http://orion-ld:1026",
     signatures,
+    state: new StateStore(),
     geo,
     registry: createRegistry([entry]),
     publicHttp: createHttpServer(log),

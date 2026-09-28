@@ -18,7 +18,7 @@
  * It is external JSON, so it is narrowed, never asserted. The guard below is
  * long-winded on purpose: every field the service acts on is checked once, here,
  * and everything downstream is typed. Fields the service does not read
- * (`nodePrefixes`, `supersededBy`, `sensorDetailFor`, `_doc`) are ignored rather
+ * (`nodePrefixes`, `supersededBy`, `_doc`) are ignored rather
  * than rejected — the same file is read by the flow generator and exported to
  * the frontend and will keep carrying members this service does not care about.
  */
@@ -112,6 +112,14 @@ function enabledFor(raw: unknown, at: string): "*" | readonly Ags[] | null {
   });
 }
 
+/**
+ * `sensorDetailFor`: `"*"` or a list of AGS; missing (or null) means none —
+ * the generator spliced `.get("sensorDetailFor", [])` into the node.
+ */
+function sensorDetailFor(raw: unknown, at: string): "*" | readonly Ags[] {
+  return enabledFor(raw, at) ?? [];
+}
+
 function stringList(raw: unknown, at: string): readonly string[] {
   if (raw === undefined || raw === null) return [];
   if (!isArray(raw)) throw new Error(`${at}: expected a list of strings`);
@@ -203,6 +211,7 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
     attribution: optionalString(raw.attribution, `${at}.attribution`),
     provides: stringList(raw.provides, `${at}.provides`),
     rowBudget24h: rowBudget(raw.rowBudget24h, `${at}.rowBudget24h`),
+    sensorDetailFor: sensorDetailFor(raw.sensorDetailFor, `${at}.sensorDetailFor`),
     params: params(raw.params, `${at}.params`),
   };
 }

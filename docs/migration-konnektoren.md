@@ -5,8 +5,9 @@ Migrationsplan: Die 29 Konnektoren wandern aus dem generierten
 (`platform/connectors/`). Node-RED bleibt als Low-Code-Baustein stehen — nur
 nicht mehr als Laufzeit der Ingestion.
 
-Stand: **Phasen 0, 1, 1b und 2 abgeschlossen** (Gerüst, Kernel und Vertrag,
-Paritäts-Harness). Es ingestiert noch nichts.
+Stand: **Phasen 0, 1, 1b, 2, 3 und 3b abgeschlossen** (Gerüst, Kernel und
+Vertrag, Paritäts-Harness, alle 29 Konnektoren portiert, Vertragslücken
+geschlossen). Es ingestiert noch nichts — die Umschaltung ist Phase 4.
 
 ## Ziel
 
@@ -145,7 +146,7 @@ Agenten gleichzeitig. Der Vertrag ist eine Datei, die der Compiler durchsetzt:
 Ein Modul, das nicht passt, fällt beim Build durch, bevor ein Mensch die erste
 Zeile davon liest.
 
-### Phase 3 — Portierung (7 Agenten, parallel)
+### Phase 3 — Portierung (7 Agenten, parallel) ✅
 
 Geschnitten nach gemeinsamem Idiom, nicht nach Anzahl.
 
@@ -159,6 +160,9 @@ Geschnitten nach gemeinsamem Idiom, nicht nach Anzahl.
 | F · Luft & Energie | `uba-bw`, `feinstaub-bw`, `eco-bw`, `mastr-bw`, `puls-bw` | Stationslisten, Medianbildung je Gemeinde |
 | G · ÖPNV & Endpunkte | `efa-abfahrten`, `abfahrten-on-demand`, `hystreet`, `wetter-dwd-station`, `/warnungen.ics` | Die HTTP-Endpunkte; `efa-abfahrten` wird von 23 Function- und 46 HTTP-Nodes zu einer Schleife |
 
+Abweichend vom Schnitt ist `/warnungen.ics` mit `warnungen-bw` in Gruppe C
+portiert worden, nicht in G: Route und Konnektor teilen sich Modul und `ctx`.
+
 *Fertig je Konnektor:* Modul + Parsefunktion + Fixture + grüner Paritätstest +
 `tsc --noEmit` + `eslint` ohne Ausnahmen + Trockenlauf ohne Upsert. Vier der
 sechs Punkte prüft die Maschine.
@@ -167,12 +171,104 @@ Was die Agenten **nicht** dürfen: Typen im Kernel ändern, `eslint-disable`
 setzen, `as` oder `!` verwenden. Klemmt der Vertrag, ist das eine Meldung an
 die Review — kein Umweg im eigenen Modul.
 
+### Phase 3b — Vertragslücken schließen ✅
+
+Die Portierung hat Stellen gefunden, an denen der Vertrag klemmte; einige
+Module hatten sich lokal beholfen (modulweite `WeakMap<Ctx, …>`, Konstanten
+statt Registry-Feldern). Nachgezogen im Kernel, alle Module umgestellt:
+
+- **`ctx.state`** — Zustand je Konnektor im Speicher (`stateKey(name, initial)`
+  in `src/kernel/state.ts`, `ctx.state.slot(key)`), typisiert ohne Assertion,
+  geteilt von `run` und den Routen desselben Konnektors. Ersetzt die
+  Workarounds in `abfahrten-on-demand`, `efa-abfahrten`, `mastr-bw`,
+  `feinstaub-bw`, `carsharing-bw` und `parken-bw`.
+- **`SqlParam`** nimmt `readonly string[]`; `troe-retention` bindet das Array
+  wieder direkt statt eines selbstgebauten Literals.
+- **`ctx.rowBudget`** — die Summe aller `rowBudget24h` der Registry, vom Kernel
+  berechnet; `troe-stats` liest die Registry nicht mehr selbst.
+- **`RegistryEntry.sensorDetailFor`** — `feinstaub-bw` liest die Liste aus der
+  Registry statt aus einer Konstanten. Außerdem nutzen `parken-bw`,
+  `sharing-bw`, `carsharing-bw` und `ladesaeulen-bw` für die Prune-Intervalle
+  `ctx.intervalMs()` statt fest eingetragener Registry-Werte.
+- **Orion-Lesezugriffe ungetaktet** (`find`, `list`, `count`; neue Option
+  `FetchOptions.bucket`): Ein Rückstau von Schreib-Chunks (z. B. ~320 von
+  `parken-bw`) hält `/warnungen.ics` nicht mehr über das 60-s-Timeout der
+  nginx hinaus auf. Schreibzugriffe bleiben getaktet.
+- **HEAD, OPTIONS und 304** beantwortet der HTTP-Server für jede GET-Route wie
+  Express; `RouteRequest.headers` (Namen klein geschrieben).
+- **`maxConcurrent` je Host** im Rate-Limiter; die drei Overpass-Konnektoren
+  haben zusammen höchstens eine Anfrage offen.
+- **Open-Meteo-Join-Fenster** aus Batchzahl × gemeinsamem 15-s-Takt + Timeout
+  abgeleitet (375 s statt 240 s), damit der geteilte Bucket keine unechte
+  Teilgruppe erzeugen kann.
+
+Signaturspeicher, Prune-Buchführung und `ctx.state` liegen weiter im Speicher
+und ziehen in Phase 6 **gemeinsam** nach Postgres.
+
+### Bewusste Abweichungen vom Node-RED-Verhalten
+
+Gesammelt aus den Modulköpfen — das ist, worauf die Beobachtungsfenster in
+Phase 4 achten müssen. Nicht aufgeführt: reine Härtung gegen Eingaben, an
+denen der alte Node abgestürzt wäre (fehlerhafte Datensätze werden
+übersprungen und gezählt statt den Lauf zu verlieren; `Map` statt
+Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
+
+*Querschnitt (Kernel)*
+
+- Takt je **Host** statt je Delay-Node: mehrere Konnektoren gegen denselben
+  Anbieter teilen sich den Takt (strenger, nie lockerer); die Warteschlange
+  hat eine Obergrenze und meldet den Überlauf.
+- Orion-Lesezugriffe ungetaktet, Schreibzugriffe getaktet (s. Phase 3b).
+- Prunes werden abgewartet statt „fire and forget“ neben dem Upsert gestartet
+  (meist danach; bei `sharing-bw`/`carsharing-bw` vor den Systemen). Ihre
+  `keep`-Mengen sind unverändert.
+
+*Konnektoren*
+
+- `abfahrten-on-demand`: EFA über den gemeinsamen EFA-Bucket, ohne Retry, 30 s
+  Timeout (502 nach 30 s statt nginx-504 nach 60 s); kein JSONP; ein
+  Verzeichnis ohne `halte`-Objekt wird verworfen, das alte bleibt.
+- `efa-abfahrten`: höchstens 2 Anfragen gleichzeitig, 500 ms Abstand (statt 23
+  auf einmal); ein Batch-Upsert statt 23; fehlende `stopId` einmal je Prozess
+  gewarnt.
+- `warnungen-bw`: Anfrage **ohne Antwort** (DNS, Timeout, abgelehnt) zählt als
+  „keine Daten“ — der Kreis behält seinen letzten Wert (alt: „keine
+  Warnungen“); Teilgruppe nach Join-Timeout wird gewarnt.
+- `/warnungen.ics`: Orion nicht erreichbar oder Fehlerantwort → **503** (alt:
+  200 „Keine amtlichen Warnungen“); ein Lesezugriff ohne Retry.
+- `wetter-bw`, `vorhersage-bw`: gemeinsamer 15-s-Takt für `api.open-meteo.com`;
+  Join-Fenster 375 s statt 240 s; eine abgeschlossene Gruppe wird sofort
+  geschrieben statt den Timer abzuwarten.
+- `rathaus-bw`, `ausflug-bw`, `poi-bw`: gemeinsamer 90-s-Takt und höchstens
+  eine offene Overpass-Anfrage über alle drei (`rathaus-bw` war ungetaktet);
+  Geo-Kontext vor der Anfrage geprüft; kein Join-Timeout — alle Kacheln werden
+  abgewartet, keine späte Teilgruppe mehr.
+- `parken-bw`: Dienst-User-Agent statt eigenem; 2 Retries bei Netzfehlern
+  (alt: Abbruch beim ersten Fehler).
+- `sharing-bw`, `carsharing-bw`: Systeme nacheinander statt Fan-out; eine
+  Systemliste je Lauf statt zwei (`carsharing-bw`).
+- `ladesaeulen-bw`: alle Seiten abgewartet statt Join-Abbruch nach 420 s
+  (Ergebnis bei langsamer Quelle gleich: unvollständig, kein Prune).
+- `mastr-bw`, `uba-bw`: alle Anfragen abgewartet und einmal geschrieben statt
+  Join-Timeout mit Nachzügler-Gruppe; `mastr-bw` verliert Rotation und
+  Anlagenzahlen beim Neustart (wie K8s, anders als Compose).
+- `baustellen-bw`: Ablauf-Löschung am Ende jedes Laufs statt eigenem Inject
+  (gleicher Takt, ohne Versatz).
+- `wetter-dwd-station`: ein Batch-Upsert statt einem je Station; Ausfälle als
+  ein `[warn]` je Lauf statt `[error]` je Station.
+- `hystreet`: über den Host-Bucket getaktet (alt: ungetaktet).
+- `puls-bw`: Kommas in `attrs` URL-kodiert; Fehlertexte der Kernel-Listung.
+- `ops-host`: Plattenbelegung aus `df -P /` statt `/data`.
+- `pegel-bw`, `pegel-lubw`: Anfrage ohne Antwort ergibt dieselbe Warnung wie
+  ein HTTP-Fehler (anderer Wortlaut).
+
 ### Phase 4 — Umschaltung
 
 Je Konnektor ein Feld `"runtime": "app"` in `platform/config/connectors.json`.
 Der Generator lässt umgeschaltete Konnektoren aus `flows.json` fallen, der
-Dienst nimmt genau sie auf. Gruppenweise, mit Beobachtungsfenster dazwischen.
-Rückweg: Feld zurückdrehen.
+Dienst nimmt genau sie auf. Gruppenweise, mit Beobachtungsfenster dazwischen
+(worauf zu achten ist: „Bewusste Abweichungen“ oben). Rückweg: Feld
+zurückdrehen.
 
 `scripts/healthcheck.sh` muss dafür nicht angefasst werden — es misst die
 Frische der Entitäten in Orion, nicht die Laufzeit, die sie geschrieben hat.
@@ -190,6 +286,9 @@ muss den Admin-Port ansprechen. Kein Proxy (nginx, APISIX, Ingress) darf ihn
 weiterreichen; in Compose höchstens auf `127.0.0.1` veröffentlichen.
 
 ### Phase 6 — Abbau
+
+Signaturspeicher, Prune-Buchführung und `ctx.state` ziehen zusammen aus dem
+Speicher nach Postgres (siehe Risiko „Signaturspeicher“).
 
 `flows.json` schrumpft auf die fünf Beispiel-Nodes und passt damit wieder in
 eine ConfigMap — womit `node-red-udp` aus Image-Matrix und Digest-Pinning fällt

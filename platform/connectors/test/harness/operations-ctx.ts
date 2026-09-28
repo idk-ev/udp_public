@@ -20,7 +20,8 @@ import { createSharedGeo, MasterDataCheck } from "../../src/kernel/geo.js";
 import { createOrion } from "../../src/kernel/orion.js";
 import { createPruner } from "../../src/kernel/prune.js";
 import { createRateLimiter } from "../../src/kernel/rate-limit.js";
-import { intervalMsOf, loadRegistry, resolveRegistryPath } from "../../src/kernel/registry.js";
+import { intervalMsOf, loadRegistry, resolveRegistryPath, sumRowBudgets } from "../../src/kernel/registry.js";
+import { createConnectorState } from "../../src/kernel/state.js";
 import type { Ctx, Db, Env, HttpResponse, IsoTime, RegistryEntry } from "../../src/kernel/types.js";
 import { httpResponse, recordingLog, scriptedFetcher } from "./kernel.js";
 import type { RecordedLog, SeenRequest } from "./kernel.js";
@@ -111,6 +112,9 @@ export function testCtx(options: TestCtxOptions): TestCtx {
     db: options.db ?? NO_DB,
     params: entry.params,
     enabledFor: entry.enabledFor,
+    state: createConnectorState(),
+    // What src/kernel/context.ts computes: the budgets of the whole registry.
+    rowBudget: sumRowBudgets(loadRegistry(resolveRegistryPath()).entries),
     now: () => now ?? new Date().toISOString(),
     intervalMs: (runs?: number) => intervalMsOf(entry, runs),
     signal: new AbortController().signal,

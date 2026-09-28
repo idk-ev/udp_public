@@ -30,7 +30,6 @@ import {
   budgetWarning,
   build,
   parse,
-  registryBudget,
   run,
   SESSION,
   SQL_BASE,
@@ -39,6 +38,7 @@ import {
   SQL_TOTALS,
   SQL_WINDOW,
 } from "../../src/connectors/troe-stats.js";
+import { createCtx, createKernel } from "../../src/kernel/context.js";
 import { isArray } from "../../src/kernel/parse.js";
 import { loadRegistry, resolveRegistryPath, sumRowBudgets } from "../../src/kernel/registry.js";
 import type { RowBudget } from "../../src/kernel/types.js";
@@ -200,7 +200,7 @@ async function fixtureRunIsIdentical(): Promise<void> {
     base: s.base,
     window: s.window,
     totals: s.totals,
-    budget: registryBudget(ported.t.ctx),
+    budget: ported.t.ctx.rowBudget,
   });
   assertEntitiesEqual(old, [build(input, null, new Date().toISOString()).entity]);
 
@@ -224,7 +224,10 @@ function budgetIsTheRegistrySum(): void {
     normalize(old),
     "kernel sum differs from the generator's",
   );
-  assert.deepEqual(normalize(registryBudget(testCtx({ id: "troe-stats" }).ctx)), normalize(old));
+  // What the kernel hands the connector: ctx.rowBudget of a real ctx.
+  const entry = registry.byId("troe-stats");
+  assert.ok(entry !== undefined);
+  assert.deepEqual(normalize(createCtx(createKernel(registry), entry).rowBudget), normalize(old));
   // Not vacuous: the registry does carry budgets, and not on every connector.
   assert.ok(Object.keys(sumRowBudgets(registry.entries)).length >= 5);
   assert.ok(registry.entries.some((entry) => entry.rowBudget24h === null));

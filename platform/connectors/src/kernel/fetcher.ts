@@ -29,8 +29,18 @@
  * network errors and timeouts throw, and only once the retries are used up.
  */
 
-import type { Fetcher, FetchOptions, HttpResponse, JsonResponse, RateLimiter } from "./types.js";
+import type {
+  Fetcher,
+  FetchOptions,
+  HttpResponse,
+  JsonResponse,
+  RateLimiter,
+  RateLimitRelease,
+} from "./types.js";
 import type { Log } from "./types.js";
+
+/** Release of an unpaced request: nothing was acquired. */
+const NO_RELEASE: RateLimitRelease = () => undefined;
 
 /** As the ParkAPI node's socket timeout. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -127,24 +137,33 @@ class RetryingFetcher implements Fetcher {
   async text(url: string, options?: FetchOptions): Promise<HttpResponse> {
     const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const retries = options?.retries ?? DEFAULT_RETRIES;
-    const host = hostOf(url);
+    const bucket = options?.bucket === undefined ? hostOf(url) : options.bucket;
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= retries; attempt += 1) {
-      await this.#limiter.acquire(host, {
-        ...(options?.minIntervalMs === undefined ? {} : { minIntervalMs: options.minIntervalMs }),
-      });
+      // One acquisition per attempt, held until the response body is read, so
+      // a concurrency cap covers the whole request; released before the retry
+      // pause. `bucket: null` is unpaced (see FetchOptions.bucket).
+      const release =
+        bucket === null
+          ? NO_RELEASE
+          : await this.#limiter.acquire(bucket, {
+              ...(options?.minIntervalMs === undefined ? {} : { minIntervalMs: options.minIntervalMs }),
+              ...(options?.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
+            });
       try {
         return await this.#once(url, options, timeoutMs);
       } catch (error) {
         lastError = error;
-        if (attempt === retries) break;
-        const delay = DEFAULT_RETRY_DELAY_MS * (attempt + 1);
-        this.#log.debug(
-          `${url}: attempt ${String(attempt + 1)}/${String(retries + 1)} failed, retrying in ${String(delay)} ms`,
-        );
-        await sleep(delay);
+      } finally {
+        release();
       }
+      if (attempt === retries) break;
+      const delay = DEFAULT_RETRY_DELAY_MS * (attempt + 1);
+      this.#log.debug(
+        `${url}: attempt ${String(attempt + 1)}/${String(retries + 1)} failed, retrying in ${String(delay)} ms`,
+      );
+      await sleep(delay);
     }
     throw lastError;
   }

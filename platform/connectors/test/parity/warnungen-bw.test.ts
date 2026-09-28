@@ -36,6 +36,7 @@ import {
   routes,
   run,
   signatureOf,
+  UNAVAILABLE_TEXT,
 } from "../../src/connectors/warnungen-bw.js";
 import type { GroupEnd } from "../../src/connectors/warnungen-bw.js";
 import { parse as parseMunicipalities } from "../../src/connectors/stammdaten-bw.js";
@@ -308,20 +309,30 @@ async function runWritesWhatTheOldChainBuilt(): Promise<void> {
   assert.deepEqual(r.log.warnings(), []);
 }
 
-async function transportFailureCountsAsNoWarnings(): Promise<void> {
-  // Kept from the old flow (see the module header) — and now visible.
+async function transportFailureKeepsTheLastValue(): Promise<void> {
+  // DELIBERATE DEVIATION (decided): the old flow read a request without any
+  // response as "no warnings" for its district (FN_WARN_WRAP: `ok:
+  // !(msg.statusCode >= 400)` is true for an error string), so an unreachable
+  // source could overwrite a real warning with "none". Now such a district is
+  // skipped and keeps its last value in Orion; the other 19 are written.
   const rows = parseMunicipalities(readFixture("stammdaten-bw").payload).gemeinden;
   const base = responder(rows, withDwdAlerts(recorded()));
-  const failing = requestsFor(rows)[0]?.url;
+  const failingRequest = requestsFor(rows)[0];
+  assert.ok(failingRequest !== undefined);
   const r = rig("warnungen-bw", (request) =>
-    request.url.href === failing ? new Error("connect ETIMEDOUT") : base(request),
+    request.url.href === failingRequest.url ? new Error("connect ETIMEDOUT") : base(request),
   );
   await run(r.ctx);
   const written = upsertBodies(r.seen).flat();
-  assert.equal(written.length, 20);
+  assert.equal(written.length, 19);
+  const skipped = `urn:ngsi-ld:Alert:bw-kreis-${failingRequest.kreis}-${failingRequest.quelle}`;
+  assert.ok(
+    written.every((entity) => !isRecord(entity) || entity.id !== skipped),
+    `${skipped} must not be written`,
+  );
   assert.match(
     r.log.warnings().join("\n"),
-    /requests without a response, counted as "no warnings" as before/,
+    /1 requests without a response, skipped — those districts keep their last value/,
   );
 }
 
@@ -396,7 +407,14 @@ function unstamped(text: string): string {
 }
 
 function routeRequest(search: string): RouteRequest {
-  return { method: "GET", path: "/warnungen.ics", query: new URLSearchParams(search), params: {}, body: "" };
+  return {
+    method: "GET",
+    path: "/warnungen.ics",
+    query: new URLSearchParams(search),
+    params: {},
+    headers: {},
+    body: "",
+  };
 }
 
 /** Express's query object for the old side (a repeated key becomes an array). */
@@ -510,31 +528,50 @@ async function routeServesTheCalendar(): Promise<void> {
   const entities = build(parse(join), null, new Date().toISOString());
   const alerts = keyValues(entities.filter((entity) => entity.ags.value === "08111"));
 
-  const answers: (HttpResponse | Error)[] = [
-    httpResponse(200, JSON.stringify(alerts)),
-    httpResponse(500, JSON.stringify({ type: "InternalError" })),
-    new Error("connect ECONNREFUSED 10.0.0.1:1026"),
+  const answer = httpResponse(200, JSON.stringify(alerts));
+  const r = rig("warnungen-bw", () => answer);
+  const [route] = routes(r.ctx);
+  assert.ok(route !== undefined);
+  assert.equal(route.method, "GET");
+  assert.equal(route.path, "/warnungen.ics");
+  const response = await route.handle(routeRequest("kreis=08111"));
+  assert.equal(response.status, 200);
+  assert.equal(response.contentType, "text/calendar; charset=utf-8");
+  assert.equal(response.headers?.ETag, weakEtagOf(response.body));
+  const legacy = await runFunctionNode(ICS_BUILD_NODE, {
+    msg: { _msgid: "parity", krs: "08111", payload: parseJson(answer.body) },
+  });
+  assert.ok(isRecord(legacy.returned) && isString(legacy.returned.payload));
+  assert.equal(unstamped(response.body), unstamped(legacy.returned.payload));
+  // One read; unpaced and without retry (src/kernel/orion.ts), the nginx in front gives up after 60 s.
+  const reads = r.seen.filter((request) => request.url.pathname === "/ngsi-ld/v1/entities");
+  assert.equal(reads.length, 1);
+}
+
+async function orionFailureIsA503(): Promise<void> {
+  // DELIBERATE DEVIATION (decided with the fix of the fan-out): the old node
+  // read an Orion error as "no alerts" and served a 200 calendar "Keine
+  // amtlichen Warnungen" while the broker was down. Now: 503, which the
+  // cockpit nginx does not cache and a calendar client answers by keeping its
+  // last events.
+  const failures: readonly [HttpResponse | Error, string][] = [
+    [httpResponse(500, JSON.stringify({ type: "InternalError" })), "warn"],
+    [new Error("connect ECONNREFUSED 10.0.0.1:1026"), "error"],
   ];
-  for (const answer of answers) {
+  for (const [answer, level] of failures) {
     const r = rig("warnungen-bw", () => answer);
     const [route] = routes(r.ctx);
     assert.ok(route !== undefined);
-    assert.equal(route.method, "GET");
-    assert.equal(route.path, "/warnungen.ics");
     const response = await route.handle(routeRequest("kreis=08111"));
-    assert.equal(response.status, 200);
-    assert.equal(response.contentType, "text/calendar; charset=utf-8");
+    assert.equal(response.status, 503);
+    assert.equal(response.contentType, "text/plain; charset=utf-8");
+    assert.equal(response.body, UNAVAILABLE_TEXT);
     assert.equal(response.headers?.ETag, weakEtagOf(response.body));
-    const legacy = await runFunctionNode(ICS_BUILD_NODE, {
-      msg: {
-        _msgid: "parity",
-        krs: "08111",
-        // What the old http request node handed on: the parsed body, or the error text.
-        payload: answer instanceof Error ? `${answer.message} : …` : parseJson(answer.body),
-      },
-    });
-    assert.ok(isRecord(legacy.returned) && isString(legacy.returned.payload));
-    assert.equal(unstamped(response.body), unstamped(legacy.returned.payload));
+    if (level === "warn") assert.match(r.log.warnings().join("\n"), /Orion answered HTTP 500/);
+    else {
+      const errors = r.log.lines.filter((line) => line.level === "error").map((line) => line.text);
+      assert.match(errors.join("\n"), /Orion query failed/);
+    }
   }
 }
 
@@ -544,9 +581,10 @@ export {
   failedAndOddPartsAgree as "warnungen-bw: failed, error-text, alert-less and district-less parts agree",
   gateCycle as "warnungen-bw: commit matches the old commit node; changed warnings of one district are sent in full",
   runWritesWhatTheOldChainBuilt as "warnungen-bw: run() fans out, joins and upserts what the old chain built",
-  transportFailureCountsAsNoWarnings as "warnungen-bw: a request without response counts as no warnings (old behaviour), with a warning",
+  transportFailureKeepsTheLastValue as "warnungen-bw: a request without response is skipped, the district keeps its last value (deliberate deviation)",
   joinSemantics as "warnungen-bw: fan-in keeps the join's count/timeout semantics, late responses as a second batch",
   parameterHandlingAgrees as "warnungen-bw: /warnungen.ics parameter handling, 400 and Orion query agree with FN_WARN_ICS_REQ",
   calendarBytesAgree as "warnungen-bw: calendar bytes agree with FN_WARN_ICS_BUILD (escaping, fallbacks, empty)",
-  routeServesTheCalendar as "warnungen-bw: the route answers 200 with the old calendar also when Orion fails",
+  routeServesTheCalendar as "warnungen-bw: the route answers 200 with the old calendar from one Orion read",
+  orionFailureIsA503 as "warnungen-bw: Orion unreachable or failing is a 503, not a calendar without warnings (deliberate deviation)",
 };

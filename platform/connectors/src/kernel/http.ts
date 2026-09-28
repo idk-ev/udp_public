@@ -22,8 +22,25 @@
  * Connector routes are registered through {@link RouteRegistry}. Phase 3 needs
  * that for the two `http in` nodes of the old flows: `GET /abfahrten` and
  * `GET /warnungen.ics`.
+ *
+ * ## What Express answered around those nodes
+ *
+ * Node-RED serves `http in` nodes through Express 4, which added three things
+ * a client (or the cockpit nginx, `limit_except GET HEAD OPTIONS`) may rely on.
+ * They are reproduced here for every route, so a module does not have to:
+ *
+ *  * `HEAD` on a `GET` route runs the route and sends its status and headers
+ *    (`Content-Length` of the body included), without the body.
+ *  * `OPTIONS` answers what Express's router sent when no route handled it:
+ *    200, `Allow` with the methods of the routes on that path (`GET` brings
+ *    `HEAD`), the same list as a `text/html` body, and its weak ETag. No CORS
+ *    headers — Node-RED's `httpNodeCors` is not set.
+ *  * `res.send` answered a `GET`/`HEAD` with 304 and no body when the request
+ *    was fresh against the response's `ETag` ({@link isFresh}, the `fresh`
+ *    package). Routes that set an ETag get the same.
  */
 
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 
@@ -112,13 +129,109 @@ async function readBody(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function send(response: ServerResponse, result: RouteResponse): void {
+/**
+ * `IncomingMessage.headers` as {@link RouteRequest.headers}: Node already
+ * lowercases the names; a header that arrived as a list is joined.
+ */
+function headersOf(request: IncomingMessage): Readonly<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (value === undefined) continue;
+    out[name] = typeof value === "string" ? value : value.join(", ");
+  }
+  return out;
+}
+
+/** A response header by case-insensitive name. */
+function headerOf(result: RouteResponse, name: string): string | undefined {
+  for (const [key, value] of Object.entries(result.headers ?? {})) {
+    if (key.toLowerCase() === name) return value;
+  }
+  return undefined;
+}
+
+/** `parseTokenList` of the `fresh` package: a comma-separated list, spaces around items dropped. */
+function tokenList(value: string): readonly string[] {
+  const list: string[] = [];
+  let start = 0;
+  let end = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0x20) {
+      if (start === end) {
+        start = i + 1;
+        end = i + 1;
+      }
+    } else if (code === 0x2c) {
+      list.push(value.substring(start, end));
+      start = i + 1;
+      end = i + 1;
+    } else {
+      end = i + 1;
+    }
+  }
+  list.push(value.substring(start, end));
+  return list;
+}
+
+const NO_CACHE = /(?:^|,)\s*?no-cache\s*?(?:,|$)/;
+
+/**
+ * `req.fresh` of Express 4 (the `fresh` package), for a `GET`/`HEAD` request:
+ * the answer is 2xx (or 304), the request carries `If-None-Match` or
+ * `If-Modified-Since` and no `Cache-Control: no-cache`, an `If-None-Match`
+ * other than `*` names the response's `ETag` (weak and strong compared alike),
+ * and an `If-Modified-Since` is not older than its `Last-Modified`.
+ */
+export function isFresh(request: Readonly<Record<string, string>>, result: RouteResponse): boolean {
+  if (!((result.status >= 200 && result.status < 300) || result.status === 304)) return false;
+  const noneMatch = request["if-none-match"] ?? "";
+  const modifiedSince = request["if-modified-since"] ?? "";
+  if (noneMatch === "" && modifiedSince === "") return false;
+  const cacheControl = request["cache-control"] ?? "";
+  if (cacheControl !== "" && NO_CACHE.test(cacheControl)) return false;
+  if (noneMatch !== "" && noneMatch !== "*") {
+    const etag = headerOf(result, "etag") ?? "";
+    if (etag === "") return false;
+    const matches = tokenList(noneMatch).some(
+      (token) => token === etag || token === `W/${etag}` || `W/${token}` === etag,
+    );
+    if (!matches) return false;
+  }
+  if (modifiedSince !== "") {
+    const lastModified = headerOf(result, "last-modified") ?? "";
+    if (lastModified === "" || !(Date.parse(lastModified) <= Date.parse(modifiedSince))) return false;
+  }
+  return true;
+}
+
+/**
+ * Express's default ETag (`etag` package, weak): `W/"<byte length in hex>-<first
+ * 27 characters of the base64 SHA-1>"`, which `res.send` put on every body the
+ * `http response` nodes sent.
+ */
+export function weakEtag(body: string): string {
+  const bytes = Buffer.from(body, "utf8");
+  if (bytes.length === 0) return 'W/"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
+  const hash = createHash("sha1").update(bytes).digest("base64").slice(0, 27);
+  return `W/"${bytes.length.toString(16)}-${hash}"`;
+}
+
+/**
+ * Writes a result. 204 and 304 carry neither body nor `Content-Type` /
+ * `Content-Length` (Express removed both); a `HEAD` answer carries the headers
+ * of the `GET` answer, `Content-Length` included, and no body.
+ */
+function send(response: ServerResponse, result: RouteResponse, head: boolean): void {
+  const bodyless = result.status === 204 || result.status === 304;
   response.writeHead(result.status, {
-    "Content-Type": result.contentType,
-    "Content-Length": String(Buffer.byteLength(result.body)),
+    ...(bodyless
+      ? {}
+      : { "Content-Type": result.contentType, "Content-Length": String(Buffer.byteLength(result.body)) }),
     ...result.headers,
   });
-  response.end(result.body);
+  if (bodyless || head) response.end();
+  else response.end(result.body);
 }
 
 export function jsonResponse(status: number, body: unknown): RouteResponse {
@@ -195,18 +308,37 @@ class KernelHttpServer implements HttpServer {
   #handle(request: IncomingMessage, response: ServerResponse): void {
     // A route handler must never take the process down: the server also answers
     // /healthz, and an endpoint fault must not look like a dead container.
+    const head = request.method === "HEAD";
     void this.#route(request)
       .then((result) => {
-        send(response, result);
+        send(response, result, head);
       })
       .catch((error: unknown) => {
         if (error instanceof MalformedRequestError) {
-          send(response, textResponse(400, `bad request: ${error.message}\n`));
+          send(response, textResponse(400, `bad request: ${error.message}\n`), head);
           return;
         }
         this.#log.error(`request ${request.method ?? "?"} ${request.url ?? "?"} failed`, error);
-        send(response, textResponse(500, "internal error\n"));
+        send(response, textResponse(500, "internal error\n"), head);
       });
+  }
+
+  /** Express's automatic OPTIONS answer for `segments`, or `null` if no route lives there. */
+  #options(segments: readonly string[]): RouteResponse | null {
+    const methods: string[] = [];
+    for (const route of this.#routes) {
+      if (match(route, route.method, segments) === null) continue;
+      if (!methods.includes(route.method)) methods.push(route.method);
+      if (route.method === "GET" && !methods.includes("HEAD")) methods.push("HEAD");
+    }
+    if (methods.length === 0) return null;
+    const allow = methods.join(",");
+    return {
+      status: 200,
+      contentType: "text/html; charset=utf-8",
+      body: allow,
+      headers: { Allow: allow, ETag: weakEtag(allow) },
+    };
   }
 
   async #route(request: IncomingMessage): Promise<RouteResponse> {
@@ -218,19 +350,29 @@ class KernelHttpServer implements HttpServer {
     }
     const segments = url.pathname.split("/").filter((segment) => segment !== "");
     const method = request.method ?? "GET";
+    if (method === "OPTIONS") return this.#options(segments) ?? textResponse(404, "not found\n");
+    // HEAD runs the GET route; `send` drops the body.
+    const lookup = method === "HEAD" ? "GET" : method;
+    const readOnly = lookup === "GET";
 
     for (const route of this.#routes) {
-      const params = match(route, method, segments);
+      const params = match(route, lookup, segments);
       if (params === null) continue;
-      const body = method === "GET" || method === "HEAD" ? "" : await readBody(request);
+      const headers = headersOf(request);
+      const body = readOnly ? "" : await readBody(request);
       const routeRequest: RouteRequest = {
         method,
         path: url.pathname,
         query: url.searchParams,
         params,
+        headers,
         body,
       };
-      return route.definition.handle(routeRequest);
+      const result = await route.definition.handle(routeRequest);
+      if (readOnly && result.status !== 304 && isFresh(headers, result)) {
+        return { status: 304, contentType: result.contentType, body: "", headers: result.headers };
+      }
+      return result;
     }
     return textResponse(404, "not found\n");
   }

@@ -293,7 +293,7 @@ export async function run(ctx: Ctx): Promise<void> {
     attrs: ["ags", "availableVehicles"],
     graceMs: 24 * HOUR_MS,
     liveMs: 3 * HOUR_MS,
-    intervalMs: HOUR_MS,
+    intervalMs: ctx.intervalMs(),
     status,
   });
 

@@ -33,7 +33,8 @@ import { createGeoIndex, createSharedGeo, MasterDataCheck } from "../../src/kern
 import { createOrion } from "../../src/kernel/orion.js";
 import { createPruner } from "../../src/kernel/prune.js";
 import { createRateLimiter } from "../../src/kernel/rate-limit.js";
-import { intervalMsOf, loadRegistry } from "../../src/kernel/registry.js";
+import { intervalMsOf, loadRegistry, sumRowBudgets } from "../../src/kernel/registry.js";
+import { createConnectorState } from "../../src/kernel/state.js";
 import type {
   BoundarySet,
   Ctx,
@@ -289,6 +290,10 @@ export function mobilityCtx(options: WorldOptions): MobilityWorld {
     db: { session: () => Promise.reject(new Error("no database in this test")) },
     params: entry.params,
     enabledFor: entry.enabledFor,
+    state: createConnectorState(),
+    rowBudget: sumRowBudgets(
+      loadRegistry(join(repositoryRoot(), "platform", "config", "connectors.json")).entries,
+    ),
     now: () => new Date(clock.now).toISOString(),
     intervalMs: (runs) => intervalMsOf(entry, runs),
     signal: new AbortController().signal,

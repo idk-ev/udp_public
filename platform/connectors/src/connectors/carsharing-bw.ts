@@ -64,8 +64,8 @@
  *    (1 request/s), instead of through the delay node; the prunes are
  *    awaited before the status requests instead of fire-and-forget.
  *  * The cache and the form factors (`csStationen`, `csBauform`) are not
- *    signatures and live in memory per connector context; see the report on
- *    the contract (no state facility besides the gate tables).
+ *    signatures; they live in `ctx.state` ({@link STATIONS},
+ *    {@link FORM_FACTORS}), in memory like the flow context in Kubernetes.
  *  * Narrowing of malformed entries the old code would have taken verbatim or
  *    crashed on: a station id that is neither string nor number is skipped
  *    (old: `sys::undefined`); a non-numeric capacity counts 0, a non-numeric
@@ -86,6 +86,7 @@ import {
   ParseError,
   requireRecord,
 } from "../kernel/parse.js";
+import { stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
@@ -407,25 +408,14 @@ export function stationSignature(entity: CarSharingStationEntity): string {
 /* ------------------------------------------------------------------ run */
 
 /**
- * `csStationen` / `csBauform` of the flow context. `stations` stays `null`
- * until the first system delivered stations in BW — the status step waits
- * for that, as `if (!flow.get('csStationen'))` did.
+ * `csStationen` of the flow context. `null` until the first system delivered
+ * stations in BW — the status step waits for that, as
+ * `if (!flow.get('csStationen'))` did.
  */
-export interface CarsharingState {
-  stations: StationCache | null;
-  readonly formFactors: Map<string, string>;
-}
+export const STATIONS = stateKey<StationCache | null>("csStationen", () => null);
 
-const states = new WeakMap<Ctx, CarsharingState>();
-
-export function stateOf(ctx: Ctx): CarsharingState {
-  let state = states.get(ctx);
-  if (state === undefined) {
-    state = { stations: null, formFactors: new Map() };
-    states.set(ctx, state);
-  }
-  return state;
-}
+/** `csBauform` of the flow context: the prevailing form factor per system. */
+export const FORM_FACTORS = stateKey("csBauform", () => new Map<string, string>());
 
 /** Body of a feed request, or `null` where the old node got nothing usable. */
 async function feedBody(ctx: Ctx, url: string): Promise<unknown> {
@@ -447,7 +437,7 @@ function quietly<T>(parseFeed: () => T): T | null {
   }
 }
 
-async function masterData(ctx: Ctx, state: CarsharingState, system: GbfsSystem): Promise<void> {
+async function masterData(ctx: Ctx, system: GbfsSystem): Promise<void> {
   const infoBody = await feedBody(ctx, feedUrl(system, "station_information"));
   const info = quietly(() => parse({ system: system.id, payload: infoBody }));
   if (info !== null) {
@@ -456,26 +446,24 @@ async function masterData(ctx: Ctx, state: CarsharingState, system: GbfsSystem):
       const entries = build(info, geo, ctx.now());
       if (entries.length === 0) ctx.log.status(`${info.system}: no station in BW`);
       else {
-        state.stations = replaceSystem(state.stations ?? new Map(), info.system, entries);
+        const stations = ctx.state.slot(STATIONS);
+        stations.set(replaceSystem(stations.get() ?? new Map(), info.system, entries));
         ctx.log.status(`${info.system}: ${String(entries.length)} stations`);
       }
     }
   }
   const typesBody = await feedBody(ctx, feedUrl(system, "vehicle_types"));
   const types = quietly(() => formFactorOf({ system: system.id, payload: typesBody }));
-  if (types !== null && types.formFactor !== null) state.formFactors.set(types.system, types.formFactor);
+  if (types !== null && types.formFactor !== null) {
+    ctx.state.slot(FORM_FACTORS).get().set(types.system, types.formFactor);
+  }
 }
 
-async function status(
-  ctx: Ctx,
-  state: CarsharingState,
-  cache: StationCache,
-  system: GbfsSystem,
-): Promise<void> {
+async function status(ctx: Ctx, cache: StationCache, system: GbfsSystem): Promise<void> {
   const body = await feedBody(ctx, feedUrl(system, "station_status"));
   const feed = quietly(() => parseStatus({ system: system.id, payload: body }));
   if (feed === null) return;
-  const built = buildStatus(feed, cache, state.formFactors, ctx.now());
+  const built = buildStatus(feed, cache, ctx.state.slot(FORM_FACTORS).get(), ctx.now());
   const plan: UpsertPlan = mergePlans(
     ctx.gate.check(GATE_KEY, built.stations, stationSignature, { freshEvery: 3, periodMs: HOUR_MS }),
     ctx.gate.ungated(built.fleets),
@@ -504,13 +492,11 @@ export async function run(ctx: Ctx): Promise<void> {
     ctx.log.warn("Carsharing: system list not loadable");
     return;
   }
-  const state = stateOf(ctx);
-
   // Master data: two feeds per system, stations and vehicle types.
   ctx.log.status(`${String(systems.length)} systems, ${String(systems.length * 2)} requests`);
-  for (const system of systems) await masterData(ctx, state, system);
+  for (const system of systems) await masterData(ctx, system);
 
-  const cache = state.stations;
+  const cache = ctx.state.slot(STATIONS).get();
   if (cache === null) {
     ctx.log.warn("Carsharing: master data not loaded yet — run skipped");
     return;
@@ -531,7 +517,7 @@ export async function run(ctx: Ctx): Promise<void> {
     graceMs: 24 * HOUR_MS,
     liveMs: 3 * HOUR_MS,
     signatureKey: GATE_KEY,
-    intervalMs: HOUR_MS,
+    intervalMs: ctx.intervalMs(),
   });
   await ctx.prune.stale({
     label: "Carsharing fleets",
@@ -541,10 +527,10 @@ export async function run(ctx: Ctx): Promise<void> {
     accept: ownGbfs,
     graceMs: 24 * HOUR_MS,
     liveMs: 3 * HOUR_MS,
-    intervalMs: HOUR_MS,
+    intervalMs: ctx.intervalMs(),
   });
 
-  for (const system of systems) await status(ctx, state, cache, system);
+  for (const system of systems) await status(ctx, cache, system);
 }
 
 /** Checked against the contract by the compiler. */

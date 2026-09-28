@@ -28,19 +28,16 @@
  *    none at all. After a restart all three fire 600 s later — in the flows
  *    `rathaus-bw` and `ausflug-bw` then sent their first requests in the same
  *    second.
- *  * Strictly one after another within a connector: the next tile is only
- *    requested once the previous one answered. The delay node only spaced the
- *    STARTS, so a tile slower than 90 s overlapped the next one.
+ *  * Strictly one after another, across all three connectors: at most
+ *    {@link OVERPASS_MAX_CONCURRENT} request towards the host in flight
+ *    (`maxConcurrent` of the shared bucket), and within a connector the next
+ *    tile is only requested once the previous one answered. The delay node
+ *    only spaced the STARTS, so a tile slower than 90 s overlapped the next.
  *  * No retries (the fetcher would retry twice by default). The `http request`
  *    nodes sent once; a retry into an overloaded Overpass is exactly what its
  *    rate limit punishes.
  *  * 120 s client timeout — Node-RED's default `httpRequestTimeout`, which the
  *    nodes ran with (settings.js leaves it commented out).
- *
- * Across connectors the start spacing is guaranteed, the non-overlap is not:
- * the kernel's limiter spaces starts only and has no per-host concurrency cap.
- * With 90 s between starts and server-side timeouts of 90/120 s an overlap is
- * possible only for a request that runs into its full timeout.
  *
  * ## Coordinates
  *
@@ -64,6 +61,13 @@ export const OVERPASS_USER_AGENT = "UDP-BW-Dashboard/1.0 (kommunale Referenzplat
 
 /** `delay_slow(…, 90)`: "1 Anfrage/90s" in front of the tiled requests. */
 export const OVERPASS_MIN_INTERVAL_MS = 90_000;
+
+/**
+ * Overpass requests in flight at once, across `rathaus-bw`, `ausflug-bw` and
+ * `poi-bw` (one bucket per host): a request waits until the previous one has
+ * answered, and then for the 90 s spacing.
+ */
+export const OVERPASS_MAX_CONCURRENT = 1;
 
 /** Node-RED's default `httpRequestTimeout`, which the `http request` nodes ran with. */
 export const OVERPASS_TIMEOUT_MS = 120_000;
@@ -237,6 +241,7 @@ export async function fetchOverpass(ctx: Ctx, url: string): Promise<OverpassResp
       timeoutMs: OVERPASS_TIMEOUT_MS,
       retries: 0,
       minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
+      maxConcurrent: OVERPASS_MAX_CONCURRENT,
     });
     const detail = `HTTP ${String(response.status)}`;
     if (response.status >= 400) return { status: response.status, body: undefined, detail };

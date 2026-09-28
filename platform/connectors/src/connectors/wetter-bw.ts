@@ -10,7 +10,7 @@
  * scripts/generate-nodered-flows.py): `bw-gemeinden.json` -> 8 Open-Meteo
  * batches of ~140 coordinates -> join -> one `WeatherObserved:bw-<ags>` per
  * municipality. The fan-out, its pacing and the join semantics (partial groups
- * after 240 s, late batches as a group of their own) live in
+ * after 375 s, was 240 s; late batches as a group of their own) live in
  * ./open-meteo-batches.ts, shared with `vorhersage-bw`, and are explained there.
  *
  * Particulars of this connector, all carried over:
@@ -48,13 +48,13 @@ import type {
   Property,
 } from "../kernel/types.js";
 import {
-  DEFAULT_JOIN_TIMING,
   OPEN_METEO_FORECAST_URL,
   UPSERT_CHUNK_SIZE,
   agsListOf,
   coordinateQuery,
   fetchBatch,
   joinGroups,
+  joinTimingFor,
   loadMunicipalities,
   locationsOf,
   measurement,
@@ -287,8 +287,12 @@ export function build(
 
 /* ------------------------------------------------------------------ run */
 
-/** `run` with the join timing injectable — the tests cannot wait 240 s. */
-export async function runWith(ctx: Ctx, timing: JoinTiming): Promise<void> {
+/**
+ * `run` with the join timing injectable — the tests cannot wait minutes.
+ * Without one, the window is derived from the batch count and the shared
+ * Open-Meteo bucket ({@link joinTimingFor}, explained in ./open-meteo-batches.ts).
+ */
+export async function runWith(ctx: Ctx, timing?: JoinTiming): Promise<void> {
   const rows = await loadMunicipalities(ctx, LABEL);
   if (rows === null) return;
 
@@ -300,11 +304,12 @@ export async function runWith(ctx: Ctx, timing: JoinTiming): Promise<void> {
   // All calls are started at once and queue in the token bucket in batch
   // order, one per 15 s — the delay node's queue.
   const tasks = batches.map(async (batch) => partOf(batch, await fetchBatch(ctx, batch.url)));
+  const join = timing ?? joinTimingFor(batches.length);
 
-  const summary = await joinGroups(tasks, timing, ctx.signal, async (group) => {
+  const summary = await joinGroups(tasks, join, ctx.signal, async (group) => {
     if (group.closedBy === "timeout") {
       ctx.log.warn(
-        `${LABEL}: join timeout after ${String(timing.timeoutMs / 1000)} s — writing a partial result of ` +
+        `${LABEL}: join timeout after ${String(join.timeoutMs / 1000)} s — writing a partial result of ` +
           `${String(group.parts.length)}/${String(batches.length)} batches, late batches follow as their own group`,
       );
     } else if (group.sequence > 0) {
@@ -332,7 +337,7 @@ export async function runWith(ctx: Ctx, timing: JoinTiming): Promise<void> {
 }
 
 export async function run(ctx: Ctx): Promise<void> {
-  await runWith(ctx, DEFAULT_JOIN_TIMING);
+  await runWith(ctx);
 }
 
 /** Checked against the contract by the compiler, as every ported module is. */

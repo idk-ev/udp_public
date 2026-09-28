@@ -16,6 +16,7 @@
  */
 
 import { SignatureStore } from "../../src/kernel/change-gate.js";
+import { StateStore } from "../../src/kernel/state.js";
 import { createCtx } from "../../src/kernel/context.js";
 import type { Kernel } from "../../src/kernel/context.js";
 import { createDb } from "../../src/kernel/db.js";
@@ -151,6 +152,7 @@ export function weatherCtx(id: string, fetcher: Fetcher): TestCtx {
     fetch: fetcher,
     orionUrl: "http://orion-ld:1026",
     signatures: new SignatureStore(),
+    state: new StateStore(),
     geo: createSharedGeo(log),
     registry: createRegistry([entry]),
     publicHttp: createHttpServer(log),

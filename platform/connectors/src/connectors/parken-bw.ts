@@ -89,6 +89,7 @@ import {
   optString,
   requireArray,
 } from "../kernel/parse.js";
+import { stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
@@ -128,8 +129,6 @@ export const PAGE_INTERVAL_MS = 1000;
 
 /** As FN_PARK_BUILD: `emitChunks(node, msg, entities, 100)`. */
 const CHUNK_SIZE = 100;
-/** The registry interval (3 h); every prune call of the old node passed it literally. */
-const PRUNE_INTERVAL_MS = 10_800_000;
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
@@ -831,25 +830,12 @@ export function legacyParkApi(
 }
 
 /**
- * The flow-context flags of the legacy cleanup (`parkLegacyDone`,
- * `parkLegacyLast`). They are not signatures, so they cannot live in the change
- * gate; kept per connector context, in memory like the prune bookkeeping.
+ * The flow-context flags of the legacy cleanup. They are not signatures, so
+ * they cannot live in the change gate; they live in `ctx.state`, in memory
+ * like the prune bookkeeping.
  */
-interface LegacyState {
-  done: boolean;
-  lastMs: number;
-}
-
-const legacyStates = new WeakMap<Ctx, LegacyState>();
-
-function legacyStateOf(ctx: Ctx): LegacyState {
-  let state = legacyStates.get(ctx);
-  if (state === undefined) {
-    state = { done: false, lastMs: 0 };
-    legacyStates.set(ctx, state);
-  }
-  return state;
-}
+export const LEGACY_DONE = stateKey("parkLegacyDone", () => false);
+export const LEGACY_LAST = stateKey("parkLegacyLast", () => 0);
 
 /* ------------------------------------------------------------------ Run */
 
@@ -888,7 +874,7 @@ async function pruneComplete(
     keep: plan.ids,
     confirmKey: siteKey,
     confirmMs: 24 * HOUR_MS,
-    intervalMs: PRUNE_INTERVAL_MS,
+    intervalMs: ctx.intervalMs(),
     status,
   });
   await ctx.prune.stale({
@@ -898,7 +884,7 @@ async function pruneComplete(
     keep: plan.ids,
     confirmKey: bikeKey,
     confirmMs: 24 * HOUR_MS,
-    intervalMs: PRUNE_INTERVAL_MS,
+    intervalMs: ctx.intervalMs(),
     status,
   });
   await ctx.prune.stale({
@@ -908,7 +894,7 @@ async function pruneComplete(
     keep: summaryIds,
     confirmKey: summaryKey,
     confirmMs: 24 * HOUR_MS,
-    intervalMs: PRUNE_INTERVAL_MS,
+    intervalMs: ctx.intervalMs(),
     status,
   });
 
@@ -923,10 +909,11 @@ async function pruneComplete(
   // (interval check), so a single snapshot never deletes. Once a complete
   // listing finds no legacy entity of either type any more, the check
   // switches itself off.
-  const state = legacyStateOf(ctx);
+  const done = ctx.state.slot(LEGACY_DONE);
+  const last = ctx.state.slot(LEGACY_LAST);
   const nowMs = Date.parse(now);
-  if (state.done || nowMs - state.lastMs < 20 * HOUR_MS) return;
-  state.lastMs = nowMs;
+  if (done.get() || nowMs - last.get() < 20 * HOUR_MS) return;
+  last.set(nowMs);
   const slugs = new Set(geo.municipalities.map((row) => row[8]).filter((slug) => slug !== ""));
   const accept = legacyParkApi(slugs);
   const legacy = (type: SiteType): PruneOptions => ({
@@ -945,7 +932,7 @@ async function pruneComplete(
   const site = await ctx.prune.stale(legacy("ParkingSite"));
   const bike = await ctx.prune.stale(legacy("BikeParking"));
   if (site.listed !== null && bike.listed !== null && site.listed.mine === 0 && bike.listed.mine === 0) {
-    state.done = true;
+    done.set(true);
     ctx.log.info("Parken-BW: no legacy parking ids left, cleanup switched off");
   }
 }

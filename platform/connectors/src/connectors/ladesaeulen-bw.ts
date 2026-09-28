@@ -528,7 +528,7 @@ export async function run(ctx: Ctx): Promise<void> {
       confirmKey: stationKey,
       confirmMs: 24 * HOUR_MS,
       signatureKey: STATION_GATE,
-      intervalMs: HOUR_MS,
+      intervalMs: ctx.intervalMs(),
       status,
     });
     await ctx.prune.stale({
@@ -538,7 +538,7 @@ export async function run(ctx: Ctx): Promise<void> {
       keep: new Set(built.summaries.map((entity) => entity.id)),
       confirmKey: summaryKey,
       confirmMs: 24 * HOUR_MS,
-      intervalMs: HOUR_MS,
+      intervalMs: ctx.intervalMs(),
       status,
     });
   } else {

@@ -15,7 +15,12 @@
  * `scripts/healthcheck.sh` groups warnings by — and therefore every service
  * that logs on the connector's behalf (change gate, Orion client, geo view,
  * pruner), plus the prune bookkeeping, which the old flows kept in node and
- * flow context of the connector's own function nodes.
+ * flow context of the connector's own function nodes, and `ctx.state` — one
+ * per connector id from the shared {@link StateStore}, so the ctx a route is
+ * built with and the one `run` gets hold the same values.
+ *
+ * Computed here from the registry: `ctx.rowBudget`, the budgets of all
+ * entries summed per type (`ROW_BUDGET` of the generator).
  */
 
 import { createChangeGate, SignatureStore } from "./change-gate.js";
@@ -30,8 +35,9 @@ import { createLog } from "./log.js";
 import { createOrion, DEFAULT_ORION_URL } from "./orion.js";
 import { createPruner } from "./prune.js";
 import { createRateLimiter } from "./rate-limit.js";
-import { intervalMsOf } from "./registry.js";
+import { intervalMsOf, sumRowBudgets } from "./registry.js";
 import { createScheduler } from "./scheduler.js";
+import { StateStore } from "./state.js";
 import type {
   Ctx,
   Db,
@@ -52,6 +58,8 @@ export interface Kernel {
   readonly fetch: Fetcher;
   readonly orionUrl: string;
   readonly signatures: SignatureStore;
+  /** `ctx.state` of every connector, one scope per id. In memory, as the signatures. */
+  readonly state: StateStore;
   readonly geo: SharedGeo;
   readonly registry: Registry;
   /** Connector routes only (`/abfahrten`, `/warnungen.ics`); proxied to the internet. */
@@ -79,6 +87,7 @@ export function createKernel(registry: Registry, serviceName = "udp-connectors")
     fetch: createFetcher(log.child("fetch"), limiter, env.get("UDP_USER_AGENT")),
     orionUrl: env.get("ORION_URL") ?? DEFAULT_ORION_URL,
     signatures: new SignatureStore(),
+    state: new StateStore(),
     geo: createSharedGeo(log.child("geo")),
     registry,
     publicHttp: createHttpServer(log.child("http")),
@@ -127,6 +136,8 @@ export function createCtx(kernel: Kernel, entry: RegistryEntry): Ctx {
     db: kernel.db,
     params: entry.params,
     enabledFor: entry.enabledFor,
+    state: kernel.state.scope(entry.id),
+    rowBudget: sumRowBudgets(kernel.registry.entries),
     now: nowIso,
     intervalMs: (runs?: number): number => intervalMsOf(entry, runs),
     signal: kernel.shutdown.signal,

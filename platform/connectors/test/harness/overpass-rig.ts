@@ -22,6 +22,7 @@
 import { join } from "node:path";
 import { parse as parseBoundaries } from "../../src/connectors/grenzen-bw.js";
 import { SignatureStore } from "../../src/kernel/change-gate.js";
+import { StateStore } from "../../src/kernel/state.js";
 import { createCtx } from "../../src/kernel/context.js";
 import type { Kernel } from "../../src/kernel/context.js";
 import { createDb } from "../../src/kernel/db.js";
@@ -181,6 +182,7 @@ export function overpassRig(
     fetch: fetcher,
     orionUrl: ORION,
     signatures: new SignatureStore(),
+    state: new StateStore(),
     geo: createSharedGeo(log),
     registry,
     publicHttp: createHttpServer(log),

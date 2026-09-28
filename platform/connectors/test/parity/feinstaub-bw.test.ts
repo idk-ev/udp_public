@@ -23,6 +23,7 @@ import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   build,
+  CADENCE,
   DETAIL_EVERY,
   GATE_KEY,
   parse,
@@ -44,6 +45,7 @@ import {
   legacyEntities,
   legacyGlobal,
   legacyPending,
+  registryEntry,
   sharedGeo,
   testCtx,
 } from "../harness/air-energy-kernel.js";
@@ -78,8 +80,9 @@ async function runLegacy(payload: unknown, options: LegacyOptions = {}): Promise
   });
 }
 
+/** As `run` builds it: the detail list is `sensorDetailFor` of the registry entry. */
 function box(payload: unknown, detailRun: boolean): SensorBox {
-  return { ...parse(payload), detailRun };
+  return { ...parse(payload), detailRun, detailFor: registryEntry("feinstaub-bw").sensorDetailFor };
 }
 
 function ported(payload: unknown, detailRun: boolean, index: GeoIndex, store: SignatureScope): UpsertPlan {
@@ -316,7 +319,51 @@ async function pruneEveryFourthRunOnFullMasterData(): Promise<void> {
   assert.deepEqual(listing(seenLegacy), listing(seen), "prune listing query differs");
 }
 
+/**
+ * `sensorDetailFor` of the registry decides which municipalities get single
+ * sensors — `DETAIL_AGS` of the old node, which the generator spliced in from
+ * the same field. `run` reads it from `ctx.entry`; no module constant.
+ */
+async function detailListComesFromTheRegistry(): Promise<void> {
+  assert.equal(registryEntry("feinstaub-bw").sensorDetailFor, "*");
+  const payload = readFixture("feinstaub-bw").payload;
+  const index = sharedGeo(fixtureGeo()).index();
+  const all = summarize(box(payload, true), index, new Date().toISOString());
+  const sensorAgs = all.entities
+    .filter((entity) => entity.id.includes(":bw-sensor-"))
+    .map((entity) => entity.ags.value);
+  const chosen = sensorAgs[0];
+  assert.ok(chosen !== undefined);
+  const restricted = summarize(
+    { ...box(payload, true), detailFor: [chosen] },
+    index,
+    new Date().toISOString(),
+  );
+  assert.equal(restricted.sensorEntities, sensorAgs.filter((ags) => ags === chosen).length);
+  assert.ok(restricted.sensorEntities < all.sensorEntities);
+  assert.equal(
+    summarize({ ...box(payload, true), detailFor: [] }, index, new Date().toISOString()).sensorEntities,
+    0,
+  );
+
+  // Through run(): a registry entry listing one municipality, fourth run.
+  const broker = new Broker([]);
+  const respond = (request: SeenRequest): HttpResponse | Error =>
+    request.url.href === SOURCE ? httpResponse(200, JSON.stringify(payload)) : broker.respond(request);
+  const { ctx } = testCtx("feinstaub-bw", sharedGeo(fixtureGeo()), respond);
+  const narrowed = { ...ctx, entry: { ...ctx.entry, sensorDetailFor: [chosen] } };
+  ctx.state.slot(CADENCE).set(DETAIL_EVERY - 1);
+  await run(narrowed);
+  const sensorIds = broker.upserts
+    .flat()
+    .map((entity) => (isRecord(entity) ? entity.id : undefined))
+    .filter((id): id is string => typeof id === "string" && id.includes(":bw-sensor-"));
+  assert.equal(sensorIds.length, restricted.sensorEntities);
+  assert.ok(sensorIds.every((id) => id.includes(`:bw-sensor-${chosen}-`)));
+}
+
 export {
+  detailListComesFromTheRegistry as "feinstaub-bw: single sensors only for the municipalities in the registry's sensorDetailFor",
   medianRunIsIdentical as "feinstaub-bw: old node and ported build() + gate agree on a median run (strict, implausible, outside BW)",
   detailRunIsIdentical as "feinstaub-bw: every fourth run adds the single sensors, identically chunked",
   commitThenFreshnessOnly as "feinstaub-bw: commit after a confirmed upsert matches, next run is freshness only, sensors drop out",

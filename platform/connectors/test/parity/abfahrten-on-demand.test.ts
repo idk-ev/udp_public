@@ -275,6 +275,7 @@ async function failedDirectoryLoadKeepsThePreviousOne(): Promise<void> {
     path: ROUTE_PATH,
     query: new URLSearchParams("ags=08999999"),
     params: {},
+    headers: {},
     body: "",
   });
   assert.equal(response.status, 404, "the directory of the first run still answers");

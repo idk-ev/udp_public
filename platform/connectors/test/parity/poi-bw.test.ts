@@ -23,6 +23,7 @@
 import assert from "node:assert/strict";
 import { build, kindOf, parse, QUERIES, run } from "../../src/connectors/poi-bw.js";
 import {
+  OVERPASS_MAX_CONCURRENT,
   OVERPASS_MIN_INTERVAL_MS,
   OVERPASS_TIMEOUT_MS,
   OVERPASS_USER_AGENT,
@@ -192,6 +193,7 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   assert.equal(rig.maxInFlight(), 1, "Overpass requests overlapped");
   for (const request of rig.overpass()) {
     assert.deepEqual(normalize(request.options), {
+      maxConcurrent: OVERPASS_MAX_CONCURRENT,
       minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
       retries: 0,
       timeoutMs: OVERPASS_TIMEOUT_MS,

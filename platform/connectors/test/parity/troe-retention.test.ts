@@ -16,11 +16,9 @@
  * same figures (the port words them in English), and the summary the same
  * counts.
  *
- * The one place the port has to differ — the id batch travels as a Postgres
- * array literal instead of a JavaScript array, because the contract's
- * `SqlParam` has no array member — is checked against node-postgres' own
- * serialisation (`prepareValue`), which is what the old node's array became on
- * the wire.
+ * Parameters are compared as node-postgres puts them on the wire
+ * (`prepareValue`); the id batch is a JavaScript array on both sides and
+ * becomes the same Postgres array literal.
  *
  * No fixture file: the only input is row counts and entity ids, scripted per
  * scenario below. The ids are shaped like the old parken-bw scheme (slugged
@@ -31,6 +29,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import {
   build,
+  OLD_SCHEME_BATCH,
   OLD_SCHEME_CAP,
   parse,
   run,
@@ -46,7 +45,6 @@ import {
   SQL_INDEX_ATTRIBUTES_TS,
   SQL_INDEX_SUBATTRIBUTES_TS,
   SQL_OLD_SCHEME_IDS,
-  textArrayLiteral,
 } from "../../src/connectors/troe-retention.js";
 import { isRecord, normalize } from "../harness/normalize.js";
 import { testCtx } from "../harness/operations-ctx.js";
@@ -344,7 +342,7 @@ async function failedTotalsRollBack(): Promise<void> {
   assert.deepEqual(ported.t.log.warnings(), clean.run.warnings.map(reworded));
 }
 
-function batchLiteralIsWhatPgSends(): void {
+async function batchIsBoundAsAnArray(): Promise<void> {
   const awkward = [
     "urn:ngsi-ld:ParkingSite:bw-plain",
     'urn:ngsi-ld:ParkingSite:bw-"quoted"',
@@ -353,13 +351,30 @@ function batchLiteralIsWhatPgSends(): void {
     "urn:ngsi-ld:ParkingSite:bw-space and ümlaut",
     "urn:ngsi-ld:ParkingSite:bw-NULL",
   ];
-  for (let size = 0; size <= awkward.length; size += 1) {
-    const ids = awkward.slice(0, size);
-    assert.equal(textArrayLiteral(ids), prepareValue(ids), JSON.stringify(ids));
-  }
-  // A string parameter goes through prepareValue unchanged, so the server
-  // receives the literal exactly as node-postgres would have built it.
-  assert.equal(prepareValue(textArrayLiteral(awkward)), textArrayLiteral(awkward));
+  const scenario: Scenario = { ...NIGHT, oldIds: awkward };
+  const ported = await runPorted(scenario);
+  const legacy = await runLegacy(scenario);
+  assert.equal(ported.failure, null);
+  const portedBatches = ported.db.calls.filter((call) => call.sql === SQL_DELETE_BY_IDS);
+  const legacyBatches = legacy.pg.calls.filter((call) => call.sql === SQL_DELETE_BY_IDS);
+  // The port hands node-postgres the arrays themselves (SqlParam takes
+  // string[]), as the old node did — no hand-built literal any more.
+  assert.deepEqual(
+    portedBatches.map((call) => call.params),
+    [[awkward.slice(0, OLD_SCHEME_BATCH)], [awkward.slice(OLD_SCHEME_BATCH)]],
+  );
+  // And on the wire it is node-postgres' own array serialisation, byte for
+  // byte what the old node sent.
+  const expected =
+    '{"urn:ngsi-ld:ParkingSite:bw-plain","urn:ngsi-ld:ParkingSite:bw-\\"quoted\\"",' +
+    '"urn:ngsi-ld:ParkingSite:bw-back\\\\slash","urn:ngsi-ld:ParkingSite:bw-comma,brace{}",' +
+    '"urn:ngsi-ld:ParkingSite:bw-space and ümlaut"}';
+  assert.deepEqual(wire(portedBatches[0]?.params), [expected]);
+  // normalize(): the old side's arrays come from the vm realm.
+  assert.deepEqual(
+    normalize(portedBatches.map((call) => wire(call.params))),
+    normalize(legacyBatches.map((call) => wire(call.params))),
+  );
 }
 
 export {
@@ -367,5 +382,5 @@ export {
   capStopsTheOldSchemeLoop as "troe-retention: the old-scheme loop stops at the 5 M cap after the same batch on both sides",
   idleNightAndOrphans as "troe-retention: idle night and orphaned rows — identical conversation and warnings",
   failedTotalsRollBack as "troe-retention: a failing totals refill rolls back, fails the run and closes the connection",
-  batchLiteralIsWhatPgSends as "troe-retention: the id batch literal is byte-identical to node-postgres' array serialisation",
+  batchIsBoundAsAnArray as "troe-retention: the id batch is bound as an array and serialised byte-identically by node-postgres",
 };

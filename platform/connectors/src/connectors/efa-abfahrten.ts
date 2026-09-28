@@ -70,6 +70,7 @@ import {
   requireRecord,
   requireString,
 } from "../kernel/parse.js";
+import { stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
@@ -411,15 +412,11 @@ export function trimUnchanged(entity: StopEntity, previous: ReadonlyMap<string, 
 
 /* ------------------------------------------------------------------ Run */
 
-/** Stops already reported as unconfigured, per ctx — one warning per process. */
-const reportedMissing = new WeakMap<Ctx, Set<Ags>>();
+/** Stops already reported as unconfigured — one warning per process. */
+export const REPORTED_MISSING = stateKey("reportedMissing", () => new Set<Ags>());
 
 function reportMissing(ctx: Ctx, missing: readonly Ags[]): void {
-  let reported = reportedMissing.get(ctx);
-  if (reported === undefined) {
-    reported = new Set();
-    reportedMissing.set(ctx, reported);
-  }
+  const reported = ctx.state.slot(REPORTED_MISSING).get();
   for (const ags of missing) {
     if (reported.has(ags)) continue;
     reported.add(ags);

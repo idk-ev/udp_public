@@ -37,10 +37,15 @@
  *    network error on as a message too (`senderr: false`); either way the join
  *    received a part and the build node skipped its municipalities.
  *
- * One deliberate deviation in timing only: a group that cannot grow any more
- * (every batch has settled) is emitted at once instead of after the rest of the
- * 240 s. The old join waited them out when fewer than 8 batches existed (fewer
- * than 8 municipalities) or after a timeout, and then emitted the same array.
+ * Two deliberate deviations in timing only:
+ *
+ *  * A group that cannot grow any more (every batch has settled) is emitted at
+ *    once instead of after the rest of the 240 s. The old join waited them out
+ *    when fewer than 8 batches existed (fewer than 8 municipalities) or after
+ *    a timeout, and then emitted the same array.
+ *  * The join window is 375 s instead of 240 s ({@link joinTimingFor}): the
+ *    shared 15 s bucket must not be able to turn a group that is only waiting
+ *    its turn into a partial one.
  */
 
 import { field, isArray, isTruthy, requireNumber } from "../kernel/parse.js";
@@ -58,8 +63,63 @@ export const REQUEST_INTERVAL_MS = 15_000;
 /** Node-RED's default `httpRequestTimeout`; the flows did not override it. */
 export const REQUEST_TIMEOUT_MS = 120_000;
 
-/** `timeout: "240"` of both join nodes. */
+/** `timeout: "240"` of both join nodes — the floor of {@link joinTimingFor}. */
 export const JOIN_TIMEOUT_MS = 240_000;
+
+/**
+ * Connectors whose calls wait in the ONE token bucket of `api.open-meteo.com`:
+ * `wetter-bw` and `vorhersage-bw`.
+ */
+export const SHARED_BUCKET_CONNECTORS = 2;
+
+/** Slack on top of the computed worst case (answer jitter, timer drift). */
+export const JOIN_MARGIN_MS = 30_000;
+
+/** The pacing a join window has to cover; {@link OPEN_METEO_PACE} in production. */
+export interface BucketPace {
+  /** Spacing of request starts in the shared bucket. */
+  readonly intervalMs: number;
+  /** Longest a request can take before it settles (no retry). */
+  readonly requestTimeoutMs: number;
+  /** Connectors sharing the bucket, each with at most {@link BATCH_COUNT} calls per run. */
+  readonly sharers: number;
+  readonly marginMs: number;
+}
+
+export const OPEN_METEO_PACE: BucketPace = {
+  intervalMs: REQUEST_INTERVAL_MS,
+  requestTimeoutMs: REQUEST_TIMEOUT_MS,
+  sharers: SHARED_BUCKET_CONNECTORS,
+  marginMs: JOIN_MARGIN_MS,
+};
+
+/**
+ * Longest possible gap between the first and the last ARRIVAL of one run's
+ * `batchCount` batches, plus margin — the join timer starts at the first
+ * arrival (see {@link joinGroups}).
+ *
+ * Each old connector had its own delay node, so its eight calls started 15 s
+ * apart and the last arrived at most 7 × 15 s + 120 s = 225 s after the
+ * first: the join's 240 s fitted. The bucket is now shared by
+ * {@link SHARED_BUCKET_CONNECTORS} connectors (kept on purpose: it is the more
+ * polite pace, and Open-Meteo answered 429 on 21.07.). The bucket is FIFO and
+ * a run enqueues all its calls in one tick, so today they stay contiguous
+ * and the spread is unchanged — but the window must not depend on that: if
+ * the other connector's calls ever land between ours, the last of ours starts
+ * up to `(batchCount − 1 + BATCH_COUNT × (sharers − 1)) × interval` after the
+ * first and may take the full request timeout: (7 + 8) × 15 s + 120 s = 345 s,
+ * with margin 375 s. Anything shorter could cut a group that is merely waiting
+ * its turn into a spurious partial result.
+ */
+export function joinWindowMs(batchCount: number, pace: BucketPace = OPEN_METEO_PACE): number {
+  const startsAfterFirst = Math.max(0, batchCount - 1) + BATCH_COUNT * Math.max(0, pace.sharers - 1);
+  return startsAfterFirst * pace.intervalMs + pace.requestTimeoutMs + pace.marginMs;
+}
+
+/** The join of one run: `count: 8` as the node, the window of {@link joinWindowMs}, never below 240 s. */
+export function joinTimingFor(batchCount: number): JoinTiming {
+  return { count: BATCH_COUNT, timeoutMs: Math.max(JOIN_TIMEOUT_MS, joinWindowMs(batchCount)) };
+}
 
 /** Upsert chunk size of both build nodes: `emitChunks(node, msg, entities, 100)`. */
 export const UPSERT_CHUNK_SIZE = 100;
@@ -174,8 +234,6 @@ export interface JoinTiming {
   /** Milliseconds from a group's first part until it is emitted regardless. */
   readonly timeoutMs: number;
 }
-
-export const DEFAULT_JOIN_TIMING: JoinTiming = { count: BATCH_COUNT, timeoutMs: JOIN_TIMEOUT_MS };
 
 /** Why a group was emitted. */
 export type JoinClose =

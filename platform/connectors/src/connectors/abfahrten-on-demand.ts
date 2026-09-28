@@ -23,8 +23,9 @@
  *
  * `run` is the daily job that loads the stop directory (`oepnv-halte.json`,
  * written by scripts/efa-haltestellen.py, served by the cockpit) — the old
- * `global.set('oepnvHalte', …)`. The route reads the directory of the SAME ctx
- * (see {@link directories}); until the first run it answers 503, as before.
+ * `global.set('oepnvHalte', …)`. The directory lives in `ctx.state`
+ * ({@link DIRECTORY}), which `run` and the route share; until the first run
+ * the route answers 503, as before.
  *
  * ## The answer, byte for byte
  *
@@ -34,7 +35,9 @@
  * Node-RED's `http response` node produced through Express 4: `Content-Type:
  * application/json; charset=utf-8` (`res.jsonp` on an object payload; the 200
  * path set the same value itself) and a weak `ETag` over the body, which
- * `res.send` generates for every status ({@link expressEtag}). An upstream
+ * `res.send` generates for every status (`weakEtag`, src/kernel/http.ts). The
+ * kernel's server answers `HEAD`, `OPTIONS` and a matching `If-None-Match`
+ * (304) around the route as Express did. An upstream
  * header never reached the client: the http request node tags the headers it
  * copies into `msg.headers`, and the response node drops them while unchanged.
  *
@@ -57,10 +60,6 @@
  *  * No JSONP: Express's `res.jsonp` wrapped the body into a script when the
  *    query carried `callback=…`. Nothing uses that, and a JSONP endpoint on a
  *    cached public URL is an injection surface, not a feature.
- *  * No 304 on `If-None-Match` and no route for `HEAD`: `RouteRequest` carries
- *    no request headers and `HttpMethod` has no `HEAD` (reported to the
- *    kernel review). Behind the cockpit nginx neither reaches the service —
- *    `proxy_cache` strips conditional headers and turns HEAD into GET.
  *  * A stop directory whose `halte` is not an object is refused with the
  *    "not loadable" warning and the previous directory stays; the old node
  *    stored whatever truthy value came. An entry without a string `stopId` is
@@ -70,10 +69,10 @@
  *    way.
  */
 
-import { createHash } from "node:crypto";
-
 import { COCKPIT_URL } from "../kernel/env.js";
+import { weakEtag } from "../kernel/http.js";
 import { isRecord, isString, isTruthy, ParseError, requireRecord } from "../kernel/parse.js";
+import { stateKey } from "../kernel/state.js";
 import type {
   ConnectorModule,
   Ctx,
@@ -153,12 +152,10 @@ export function build(raw: StopDirectoryFile, _geo: GeoIndex | null, _now: IsoTi
 }
 
 /**
- * The loaded directory per connector ctx — the old `global.get('oepnvHalte')`.
- * Keyed by the ctx object because `run` and `routes` receive the same one
- * (src/index.ts); the contract has no other slot for state that a run fills
- * and a route reads.
+ * The loaded directory — the old `global.get('oepnvHalte')`; `null` until the
+ * first successful run. In `ctx.state`, which `run` and `routes` share.
  */
-const directories = new WeakMap<Ctx, StopDirectory>();
+export const DIRECTORY = stateKey<StopDirectory | null>("stopDirectory", () => null);
 
 /** Kept from the original: the fix is to run the script that writes the file. */
 function notLoadable(ctx: Ctx, status: string): void {
@@ -188,28 +185,19 @@ export async function run(ctx: Ctx): Promise<void> {
     return;
   }
   const directory = build(file, null, ctx.now());
-  directories.set(ctx, directory);
+  ctx.state.slot(DIRECTORY).set(directory);
   ctx.log.status(`${String(directory.size)} stops`);
 }
 
 /* ------------------------------------------------------------------ Endpoint */
 
 /**
- * Express's default ETag (`etag fn` = weak): `W/"<byte length in hex>-<first 27
- * characters of the base64 SHA-1>"` — the `etag` package that `res.send` calls
- * for every body.
+ * The `http response` node on an object payload: `res.status(code).jsonp(payload)`,
+ * with the weak ETag Express's `res.send` put on every body.
  */
-export function expressEtag(body: string): string {
-  const bytes = Buffer.from(body, "utf8");
-  if (bytes.length === 0) return 'W/"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
-  const hash = createHash("sha1").update(bytes).digest("base64").slice(0, 27);
-  return `W/"${bytes.length.toString(16)}-${hash}"`;
-}
-
-/** The `http response` node on an object payload: `res.status(code).jsonp(payload)`. */
 export function nodeRedJson(status: number, payload: JsonValue): RouteResponse {
   const body = JSON.stringify(payload);
-  return { status, contentType: JSON_CONTENT_TYPE, body, headers: { ETag: expressEtag(body) } };
+  return { status, contentType: JSON_CONTENT_TYPE, body, headers: { ETag: weakEtag(body) } };
 }
 
 /** `req.query.ags`: the single value, all values of a repeated key, or `""`. */
@@ -308,7 +296,7 @@ export function departuresResponse(halt: Halt, upstream: Upstream, now: IsoTime)
 }
 
 async function answer(ctx: Ctx, request: RouteRequest): Promise<RouteResponse> {
-  const resolution = resolve(directories.get(ctx) ?? null, request.query);
+  const resolution = resolve(ctx.state.slot(DIRECTORY).get(), request.query);
   if (resolution.kind === "answer") return resolution.response;
   let upstream: Upstream;
   try {

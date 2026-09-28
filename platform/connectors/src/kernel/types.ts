@@ -12,7 +12,10 @@
  * imports, so that importing the contract can never pull in a runtime.
  * A change here reaches every connector at once, which is exactly why
  * the migration plan freezes it after the kernel review
- * (docs/migration-konnektoren.md, "Sperre: Vertrag eingefroren").
+ * (docs/migration-konnektoren.md, "Sperre: Vertrag eingefroren"). Phase 3b
+ * widened it once, where the ports had pinched: {@link ConnectorState},
+ * `Ctx.rowBudget`, `RegistryEntry.sensorDetailFor`, request headers, the
+ * concurrency cap, unpaced Orion reads and array SQL parameters.
  *
  * Two rules carry the whole design:
  *
@@ -369,6 +372,20 @@ export interface FetchOptions {
    */
   readonly minIntervalMs?: number | undefined;
   /**
+   * Requests towards this host in flight at once, across every connector —
+   * see {@link RateLimitOptions.maxConcurrent}. Default: no cap. The Overpass
+   * connectors use 1.
+   */
+  readonly maxConcurrent?: number | undefined;
+  /**
+   * The token bucket this request waits in. Default: the URL's host, shared by
+   * every connector. `null` sends it unpaced — only for reads of this
+   * platform's own broker ({@link Orion.find}, {@link Orion.list},
+   * {@link Orion.count}): the old flows sent those without a delay node, and a
+   * read must not queue behind a backlog of paced writes to the same host.
+   */
+  readonly bucket?: string | null | undefined;
+  /**
    * Default `"follow"`, as the `http request` nodes did for the sources. Writes
    * to Orion use `"error"`: a redirected POST would silently turn into a GET
    * somewhere else, and a delete must never be re-aimed.
@@ -412,7 +429,22 @@ export interface RateLimitOptions {
   readonly burst?: number | undefined;
   /** Waiters allowed to queue before `acquire` rejects. Default 500. */
   readonly maxQueue?: number | undefined;
+  /**
+   * Holders of this bucket at once: a waiter gets its token only while fewer
+   * than this many earlier acquisitions are unreleased. Default: no cap. Like
+   * the interval, the strictest value seen for a bucket wins, so one connector
+   * cannot loosen another's cap. The delay nodes only spaced STARTS; this is
+   * what keeps a slow Overpass answer from overlapping the next request.
+   */
+  readonly maxConcurrent?: number | undefined;
 }
+
+/**
+ * Ends one acquisition of {@link RateLimiter.acquire}. Idempotent. Only
+ * matters for a bucket with {@link RateLimitOptions.maxConcurrent}, but always
+ * call it — {@link RateLimiter.run} and the fetcher do.
+ */
+export type RateLimitRelease = () => void;
 
 /**
  * Token bucket per host, replacing the 25 `delay` nodes.
@@ -423,9 +455,13 @@ export interface RateLimitOptions {
  * growing silently (docs/migration-konnektoren.md, risk "Taktung").
  */
 export interface RateLimiter {
-  /** Resolves once a token for `host` is free. Rejects on queue overflow. */
-  acquire(host: string, options?: RateLimitOptions): Promise<void>;
-  /** Convenience: acquire, then run. */
+  /**
+   * Resolves once a token for `host` is free (and, with a concurrency cap, a
+   * slot). Rejects on queue overflow. Release the result when the request is
+   * done.
+   */
+  acquire(host: string, options?: RateLimitOptions): Promise<RateLimitRelease>;
+  /** Convenience: acquire, run, release — also when `task` throws. */
   run<T>(host: string, task: () => Promise<T>, options?: RateLimitOptions): Promise<T>;
 }
 
@@ -585,6 +621,18 @@ export interface DeleteResult {
   readonly deleted: ReadonlySet<EntityId>;
 }
 
+/**
+ * Per-call limits of {@link Orion.find}. Reads are never paced (see
+ * {@link FetchOptions.bucket}); these bound how long one may take. A route
+ * answering through nginx (60 s upstream timeout) passes `retries: 0`.
+ */
+export interface OrionReadOptions {
+  /** Default 30 s, as every fetch. */
+  readonly timeoutMs?: number | undefined;
+  /** Default 2, as every fetch. */
+  readonly retries?: number | undefined;
+}
+
 /** Query against `GET /ngsi-ld/v1/entities`. */
 export interface OrionQuery {
   readonly type: string;
@@ -657,8 +705,15 @@ export interface Orion {
   ): Promise<UpsertResult>;
   /** Batch delete, chunked. Never throws for a broker fault; see {@link DeleteResult.deleted}. */
   delete(ids: readonly EntityId[], options?: DeleteOptions): Promise<DeleteResult>;
-  /** One request. Result stays `unknown`; the caller narrows it. */
-  find(query: OrionQuery): Promise<JsonResponse>;
+  /**
+   * One request. Result stays `unknown`; the caller narrows it.
+   *
+   * Reads (`find`, `list`, `count`) are not paced and so never wait behind a
+   * write backlog: `parken-bw` alone queues ~320 upsert chunks at one per
+   * second, and a `/warnungen.ics` request behind them would outlast the
+   * proxy's timeout. Writes stay paced.
+   */
+  find(query: OrionQuery, options?: OrionReadOptions): Promise<JsonResponse>;
   /** All pages of a query (`count=true`, `limit`/`offset`), checked against `NGSILD-Results-Count`. */
   list(query: OrionQuery, options: ListOptions): Promise<ListResult>;
   /**
@@ -850,6 +905,12 @@ export interface RegistryEntry {
   readonly provides: readonly string[];
   /** Expected TRoE rows per day and entity type, the ParkAPI fuse. `null` = no budget. */
   readonly rowBudget24h: RowBudget | null;
+  /**
+   * `sensorDetailFor` (read by `feinstaub-bw`): the municipalities whose single
+   * sensors become entities — `"*"` for all, or a list of AGS. Missing means
+   * none, as the generator's `.get("sensorDetailFor", [])`.
+   */
+  readonly sensorDetailFor: "*" | readonly Ags[];
   readonly params: ConnectorParams;
 }
 
@@ -923,6 +984,11 @@ export interface RouteRequest {
   readonly query: URLSearchParams;
   /** Path parameters of the matched pattern, e.g. `:id` in `/trigger/:id`. */
   readonly params: Readonly<Record<string, string>>;
+  /**
+   * Request headers, names lowercased (as Node delivers them), a repeated
+   * header joined with `", "`. Read-only.
+   */
+  readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
 }
 
@@ -937,6 +1003,11 @@ export interface RouteResponse {
  * A route contributed by a connector. `abfahrten-on-demand` brings
  * `GET /abfahrten`, the warning connector brings `GET /warnungen.ics` — the two
  * `http in` nodes of the old flows.
+ *
+ * The server answers around a route what Express answered around those nodes
+ * (src/kernel/http.ts): `HEAD` on a `GET` route (same status and headers, no
+ * body), `OPTIONS` with `Allow`, and a 304 for a `GET`/`HEAD` whose
+ * `If-None-Match` matches the `ETag` a route set on a 2xx answer.
  */
 export interface RouteDefinition {
   readonly method: HttpMethod;
@@ -951,8 +1022,11 @@ export interface RouteRegistry {
 
 /* ------------------------------------------------------------------ Database */
 
-/** A value bound to a `$n` placeholder. */
-export type SqlParam = string | number | boolean | null;
+/**
+ * A value bound to a `$n` placeholder. A string array binds as a Postgres
+ * array (`$1::text[]`), serialised by node-postgres as it always was.
+ */
+export type SqlParam = string | number | boolean | null | readonly string[];
 
 export interface DbQueryResult {
   /** Narrow them — column types are whatever the SQL says. */
@@ -990,6 +1064,56 @@ export interface Db {
   session<T>(options: DbSessionOptions, work: (session: DbSession) => Promise<T>): Promise<T>;
 }
 
+/* ------------------------------------------------------------------ Connector state */
+
+/**
+ * One value of a connector's state, as {@link ConnectorState.slot} hands it
+ * out. A mutable container (a `Map`, a `Set`) may also be changed in place.
+ */
+export interface StateSlot<T> {
+  get(): T;
+  set(value: T): void;
+}
+
+/**
+ * Declares one piece of connector state: its name, its type and how its
+ * initial value is made. Created ONCE, at module level, with
+ * `stateKey(name, initial)` from src/kernel/state.ts. The key carries the type,
+ * which is what lets {@link ConnectorState.slot} return the value typed
+ * without an assertion.
+ */
+export interface StateKey<T> {
+  readonly name: string;
+  /**
+   * The slot of this key within `owner`. Called by {@link ConnectorState.slot};
+   * a connector goes through `ctx.state.slot(key)`.
+   */
+  slotIn(owner: ConnectorState): StateSlot<T>;
+}
+
+/**
+ * Per-connector state that is neither a change signature nor prune
+ * bookkeeping — the flow and global context values the old function nodes
+ * kept (`oepnvHalte`, `mastrPos`, `scTakt`, `csStationen`, `parkLegacyDone`,
+ * …). Shared by `run` and the connector's `routes`, which receive the same
+ * ctx; invisible to every other connector.
+ *
+ * In memory, like the signature store and the prune bookkeeping: lost on
+ * restart, as the flow context was in Kubernetes (no volume on `/data`). All
+ * three move to Postgres together in phase 6
+ * (docs/migration-konnektoren.md).
+ */
+export interface ConnectorState {
+  /**
+   * The slot of `key`, created with the key's initial value on first use.
+   * Two different keys with the same name in one connector are a programming
+   * error and throw.
+   */
+  slot<T>(key: StateKey<T>): StateSlot<T>;
+  /** Names of the keys used so far. */
+  keys(): readonly string[];
+}
+
 /* ------------------------------------------------------------------ Connector */
 
 /**
@@ -1016,6 +1140,14 @@ export interface Ctx {
   readonly db: Db;
   readonly params: ConnectorParams;
   readonly enabledFor: "*" | readonly Ags[] | null;
+  /** In-memory state of this connector, shared by `run` and its `routes`. */
+  readonly state: ConnectorState;
+  /**
+   * `rowBudget24h` of EVERY registry entry summed per entity type —
+   * `ROW_BUDGET` of the generator, computed by the kernel from the registry
+   * it loaded at startup. Read by `troe-stats`.
+   */
+  readonly rowBudget: RowBudget;
   /** The clock. Only `run` may call it — `build` receives the value as an argument. */
   now(): IsoTime;
   /**
@@ -1036,7 +1168,8 @@ export interface ConnectorRunner {
   /**
    * Endpoints this connector serves on the public port, built with the
    * connector's own `ctx` at startup — `/abfahrten` needs the shared rate
-   * limiter and the stop directory, `/warnungen.ics` needs `orion.find`.
+   * limiter and the stop directory (`ctx.state`), `/warnungen.ics` needs
+   * `orion.find`.
    */
   readonly routes?: ((ctx: Ctx) => readonly RouteDefinition[]) | undefined;
 }

@@ -14,6 +14,7 @@
 import assert from "node:assert/strict";
 import { adminRoutes } from "../../src/kernel/admin.js";
 import { SignatureStore } from "../../src/kernel/change-gate.js";
+import { StateStore } from "../../src/kernel/state.js";
 import type { Kernel } from "../../src/kernel/context.js";
 import { createCtx } from "../../src/kernel/context.js";
 import { createDb } from "../../src/kernel/db.js";
@@ -61,6 +62,7 @@ async function rig(): Promise<Rig> {
     fetch: createFetcher(log, limiter),
     orionUrl: "http://orion-ld:1026",
     signatures: new SignatureStore(),
+    state: new StateStore(),
     geo: createSharedGeo(log),
     registry,
     publicHttp: createHttpServer(log),

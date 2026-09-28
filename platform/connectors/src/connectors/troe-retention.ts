@@ -18,12 +18,9 @@
  * never leaves a query behind). The run is I/O from start to end; the pure
  * part is small — the wording of the warnings and the summary.
  *
- * ONE PLACE WHERE THE CONTRACT PINCHES: the old node bound a JavaScript array
- * to `$1::text[]`. `SqlParam` of the contract has no array member, so the
- * batch is handed over as the Postgres array literal node-postgres itself
- * builds from an array (`prepareValue` → `{"a","b"}`, with `"` and `\`
- * escaped). The server receives the same text either way; the parity test
- * checks the literal against node-postgres' own serialisation.
+ * The old node bound a JavaScript array to `$1::text[]`; so does the port
+ * (`SqlParam` takes a string array), and node-postgres serialises it exactly
+ * as it did for the old node.
  */
 
 import { isFiniteNumber, ParseError, requireRecord, requireString } from "../kernel/parse.js";
@@ -191,16 +188,6 @@ export function oldSchemeWarning(rows: number, idsDone: number, idsTotal: number
   );
 }
 
-/**
- * The Postgres array literal node-postgres builds from a JavaScript array of
- * strings (`arrayString` in pg/lib/utils.js): elements in double quotes, `\`
- * and `"` escaped with a backslash. See the module header for why the batch
- * travels as a literal.
- */
-export function textArrayLiteral(values: readonly string[]): string {
-  return `{${values.map((value) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",")}}`;
-}
-
 /* ------------------------------------------------------------------ Run */
 
 /**
@@ -238,7 +225,7 @@ async function retain(db: DbSession, log: Log): Promise<RetentionCounts> {
   let oldIndex = 0;
   while (oldIndex < oldIds.length && oldRows < OLD_SCHEME_CAP) {
     const batch = oldIds.slice(oldIndex, oldIndex + OLD_SCHEME_BATCH);
-    oldRows += deleted(await db.query(SQL_DELETE_BY_IDS, [textArrayLiteral(batch)]));
+    oldRows += deleted(await db.query(SQL_DELETE_BY_IDS, [batch]));
     oldIndex += OLD_SCHEME_BATCH;
   }
   const oldSchemeText = oldSchemeWarning(oldRows, oldIndex, oldIds.length);

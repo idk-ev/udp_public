@@ -24,8 +24,10 @@
  *
  * The generator summed the budgets of ALL registry entries (active or not) per
  * type and baked the sum into the node as `const BUDGET = {…}`. Here the same
- * sum comes from the kernel's `sumRowBudgets()` over the same file, read at
- * every run from the path the service itself loaded it from. The warning text
+ * sum is `ctx.rowBudget`, which the kernel computes with `sumRowBudgets()`
+ * over the registry it loaded at startup (a registry that cannot be read
+ * stops the service before any run, so the fuse cannot be silently off). The
+ * warning text
  * is kept byte for byte, German included — it is the alarm operators know and
  * search for, and keeping it lets the parity test compare it verbatim.
  *
@@ -44,7 +46,6 @@
  * run of the other runtime while both stand side by side.
  */
 
-import { loadRegistry, resolveRegistryPath, REGISTRY_PATH_ENV, sumRowBudgets } from "../kernel/registry.js";
 import {
   isFiniteNumber,
   isString,
@@ -143,7 +144,7 @@ export interface TroeStatsInput {
   readonly window: readonly WindowRow[];
   /** Empty when the nightly table does not exist yet. */
   readonly totals: readonly TotalRow[];
-  /** Summed `rowBudget24h` of the registry, see {@link registryBudget}. */
+  /** Summed `rowBudget24h` of the registry — `ctx.rowBudget`. */
   readonly budget: RowBudget;
 }
 
@@ -347,17 +348,6 @@ export function build(input: TroeStatsInput, _geo: GeoIndex | null, now: IsoTime
 
 /* ------------------------------------------------------------------ Run */
 
-/**
- * `ROW_BUDGET` of the generator: the budgets of every registry entry summed per
- * type. Read from the same file the service loaded at startup
- * (`UDP_CONNECTORS_REGISTRY`, else the image/checkout path). Throws if it
- * cannot be read — a stats run without its budget check must not look like a
- * healthy one.
- */
-export function registryBudget(ctx: Ctx): RowBudget {
-  return sumRowBudgets(loadRegistry(resolveRegistryPath(ctx.env.get(REGISTRY_PATH_ENV))).entries);
-}
-
 function firstRow(
   rows: readonly Readonly<Record<string, unknown>>[],
   at: string,
@@ -380,24 +370,18 @@ async function querySnapshot(db: DbSession): Promise<Record<string, unknown> | n
   return { base, window, totals };
 }
 
-/** `run` with the budget injectable, so a test can pin the warning on its own budget. */
-export async function runWith(ctx: Ctx, budget: RowBudget): Promise<void> {
+export async function run(ctx: Ctx): Promise<void> {
   const snapshot = await ctx.db.session(SESSION, querySnapshot);
   if (snapshot === null) {
     ctx.log.status("previous run still active – skipped");
     return;
   }
-  const input = parse({ ...snapshot, budget });
+  // `ROW_BUDGET` of the generator, summed by the kernel over the whole registry.
+  const input = parse({ ...snapshot, budget: ctx.rowBudget });
   const stats = build(input, null, ctx.now());
   if (stats.budgetWarning !== null) ctx.log.warn(stats.budgetWarning);
   ctx.log.status(`≈${String(input.base.rows)} rows · +${String(input.base.r1)}/h`);
   await ctx.orion.upsert(ctx.gate.ungated([stats.entity]));
-}
-
-export async function run(ctx: Ctx): Promise<void> {
-  // Before the database session: a budget that cannot be read fails the run
-  // loudly instead of letting it write statistics with the fuse switched off.
-  await runWith(ctx, registryBudget(ctx));
 }
 
 export const connector: ConnectorModule<TroeStatsInput, TroeStats> = {

@@ -27,12 +27,12 @@
  * ## State
  *
  * The rotation position (`mastrPos`) and the plant counts (`mastrCount`) were
- * GLOBAL context in the flow. Here they live per connector context
- * ({@link stateOf}), in memory: lost on restart as the global context was in
+ * GLOBAL context in the flow. Here they live in `ctx.state` ({@link POSITION},
+ * {@link COUNTS}), in memory: lost on restart as the global context was in
  * Kubernetes (no volume on /data) — but not as under Compose, where Node-RED
  * persisted it. After a restart the rotation starts at the first municipality
- * again and every municipality gets ten pages once. Reported for the contract
- * review: persistent per-connector state would restore the Compose behaviour.
+ * again and every municipality gets ten pages once, until the state moves to
+ * Postgres in phase 6.
  *
  * ## Fan-out and the join
  *
@@ -52,6 +52,7 @@
 
 import { observed } from "../kernel/ngsi.js";
 import { isArray, isRecord, isString, isTruthy } from "../kernel/parse.js";
+import { stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
@@ -327,25 +328,11 @@ export function countsOf(pages: readonly MastrPage[]): ReadonlyMap<Ags, number> 
 
 /* ------------------------------------------------------------------ run */
 
-interface RotationState {
-  position: number;
-  readonly counts: Map<Ags, number>;
-}
+/** `mastrPos` of the global context. See the module header for what a restart does. */
+export const POSITION = stateKey("mastrPos", () => 0);
 
-/**
- * `mastrPos` / `mastrCount` of the global context, per connector context
- * (created once at startup). See the module header for what a restart does.
- */
-const states = new WeakMap<Ctx, RotationState>();
-
-export function stateOf(ctx: Ctx): RotationState {
-  let state = states.get(ctx);
-  if (state === undefined) {
-    state = { position: 0, counts: new Map() };
-    states.set(ctx, state);
-  }
-  return state;
-}
+/** `mastrCount` of the global context: the plant count per municipality of its last run. */
+export const COUNTS = stateKey("mastrCount", () => new Map<Ags, number>());
 
 /** At most `limit` in flight, results in item order; stops starting new ones once aborted. */
 async function inOrder<T, R>(
@@ -376,9 +363,10 @@ export async function run(ctx: Ctx): Promise<void> {
     ctx.log.warn(`${LABEL}: master data list is empty — run skipped`);
     return;
   }
-  const state = stateOf(ctx);
-  const rotation = plan(geo.municipalities, state.position, state.counts);
-  state.position = rotation.nextPosition;
+  const position = ctx.state.slot(POSITION);
+  const counts = ctx.state.slot(COUNTS).get();
+  const rotation = plan(geo.municipalities, position.get(), counts);
+  position.set(rotation.nextPosition);
   ctx.log.status(
     `position ${String(rotation.position)} → ${String(rotation.nextPosition)} · ` +
       `${String(rotation.requests.length)} requests`,
@@ -397,7 +385,7 @@ export async function run(ctx: Ctx): Promise<void> {
   const entities = build(pages, geo, ctx.now());
   if (entities.length === 0) return;
   // Cache the plant count per municipality — it steers the pages next time.
-  for (const [ags, total] of countsOf(pages)) state.counts.set(ags, total);
+  for (const [ags, total] of countsOf(pages)) counts.set(ags, total);
   ctx.log.status(`${String(entities.length)} municipalities aggregated`);
   await ctx.orion.upsert(ctx.gate.ungated(entities), { chunkSize: CHUNK_SIZE });
 }

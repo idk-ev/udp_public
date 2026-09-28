@@ -23,6 +23,7 @@
 import assert from "node:assert/strict";
 import { build, parse, QUERY, REQUEST_URL, run, score } from "../../src/connectors/rathaus-bw.js";
 import {
+  OVERPASS_MAX_CONCURRENT,
   OVERPASS_MIN_INTERVAL_MS,
   OVERPASS_TIMEOUT_MS,
   OVERPASS_USER_AGENT,
@@ -233,6 +234,7 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   assert.ok(request !== undefined && requests.length === 1);
   assert.equal(request.url, REQUEST_URL);
   assert.deepEqual(normalize(request.options), {
+    maxConcurrent: OVERPASS_MAX_CONCURRENT,
     minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
     retries: 0,
     timeoutMs: OVERPASS_TIMEOUT_MS,

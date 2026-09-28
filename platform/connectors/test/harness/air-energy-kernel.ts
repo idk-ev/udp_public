@@ -26,7 +26,8 @@ import { createSharedGeo, MasterDataCheck } from "../../src/kernel/geo.js";
 import type { SharedGeo } from "../../src/kernel/geo.js";
 import { createOrion } from "../../src/kernel/orion.js";
 import { createPruner } from "../../src/kernel/prune.js";
-import { intervalMsOf, loadRegistry } from "../../src/kernel/registry.js";
+import { intervalMsOf, loadRegistry, sumRowBudgets } from "../../src/kernel/registry.js";
+import { createConnectorState } from "../../src/kernel/state.js";
 import type { Ctx, HttpResponse, RateLimiter, RegistryEntry } from "../../src/kernel/types.js";
 import { readFixture, repositoryRoot } from "./fixtures.js";
 import { httpResponse, recordingLog, scriptedFetcher } from "./kernel.js";
@@ -89,7 +90,7 @@ export function legacyGlobal(
 /* ── ctx ─────────────────────────────────────────────────────────────────────*/
 
 const NO_LIMIT: RateLimiter = {
-  acquire: () => Promise.resolve(),
+  acquire: () => Promise.resolve(() => undefined),
   run: (_host, task) => task(),
 };
 
@@ -100,8 +101,12 @@ export interface TestCtx {
   readonly signatures: SignatureScope;
 }
 
+function registryPath(): string {
+  return join(repositoryRoot(), "platform", "config", "connectors.json");
+}
+
 export function registryEntry(id: string): RegistryEntry {
-  const entry = loadRegistry(join(repositoryRoot(), "platform", "config", "connectors.json")).byId(id);
+  const entry = loadRegistry(registryPath()).byId(id);
   if (entry === undefined) throw new Error(`registry has no entry "${id}"`);
   return entry;
 }
@@ -146,6 +151,8 @@ export function testCtx(
     db: { session: () => Promise.reject(new Error("no database in the parity tests")) },
     params: entry.params,
     enabledFor: entry.enabledFor,
+    state: createConnectorState(),
+    rowBudget: sumRowBudgets(loadRegistry(registryPath()).entries),
     now: () => new Date(nowMs()).toISOString(),
     intervalMs: (runs?: number) => intervalMsOf(entry, runs),
     signal: new AbortController().signal,

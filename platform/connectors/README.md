@@ -3,11 +3,12 @@
 Ingestion of the open data sources into NGSI-LD. Replaces the generated Node-RED
 flows step by step (`platform/config/nodered/flows.json`).
 
-**Status: phase 1b — kernel and contract.** The kernel is in place and matches
-the current flow generator (strict municipality lookup, commit of change
-signatures after a confirmed upsert, pruning of stale entities).
-`stammdaten-bw` and `grenzen-bw` are ported and pinned by parity tests. Nothing
-is switched over yet: all 29 connectors keep running in Node-RED.
+**Status: phase 3b — all 29 connectors ported, contract gaps closed.** The
+kernel matches the current flow generator (strict municipality lookup, commit
+of change signatures after a confirmed upsert, pruning of stale entities);
+every connector is pinned by parity tests against its old function nodes.
+Nothing is switched over yet: all 29 connectors keep running in Node-RED until
+phase 4 sets `"runtime": "app"` per connector.
 
 ## Why
 
@@ -35,7 +36,8 @@ The full migration plan with phases and work split is in
     src/kernel/parse.ts        narrowing building blocks for foreign data
     src/kernel/ngsi.ts         cleanText, observed (P), dateObserved
     src/kernel/fetcher.ts      fetch with timeout, retry, User-Agent
-    src/kernel/rate-limit.ts   token bucket per host (the delay nodes)
+    src/kernel/rate-limit.ts   token bucket per host (the delay nodes), optional concurrency cap
+    src/kernel/state.ts        ctx.state: per-connector in-memory state (stateKey)
     src/kernel/orion.ts        upsert + signature commit, delete, find, paged list
     src/kernel/change-gate.ts  change detection, two-phase (check -> commit)
     src/kernel/geo.ts          geo context, strict municipality lookup
@@ -115,12 +117,46 @@ A gated connector replaces the plain upsert with one call —
 Endpoints are built with the connector's own ctx:
 `routes: (ctx) => [{ method: "GET", path: "/abfahrten", handle }]`.
 
+The rest of the ctx, added in phase 3b where the ports pinched:
+
+- **`ctx.state`** — per-connector state that is neither a signature nor prune
+  bookkeeping (the old flow/global context: `oepnvHalte`, `mastrPos`,
+  `scTakt`, …). Declare a key once at module level and read it through the
+  ctx; the key carries the type, so no assertion is needed:
+
+  ```ts
+  const RUNS = stateKey("scTakt", () => 0); // src/kernel/state.ts
+  const runs = ctx.state.slot(RUNS); // StateSlot<number>
+  runs.set(runs.get() + 1);
+  ```
+
+  `run` and the connector's `routes` share it; no other connector sees it.
+  Never a module-level `let` or `WeakMap<Ctx, …>`: state belongs to the ctx.
+  It lives in memory, like the signature store and the prune bookkeeping, and
+  all three move to Postgres together in phase 6.
+- **`ctx.rowBudget`** — `rowBudget24h` of every registry entry summed per
+  type (`ROW_BUDGET` of the generator), for `troe-stats`.
+- **`ctx.entry`** carries what connectors read from the registry, including
+  `sensorDetailFor`; use `ctx.intervalMs()` rather than copying an interval.
+- **Rate limiting** — `FetchOptions.minIntervalMs` spaces starts per host,
+  `maxConcurrent` caps requests in flight per host (Overpass: 1 across all
+  three connectors); the strictest value seen for a host wins. Orion reads
+  (`find`, `list`, `count`) are unpaced (`bucket: null`) so they never queue
+  behind a write backlog; writes stay paced.
+- **`SqlParam`** accepts `readonly string[]` for `$1::text[]`.
+
 ## Ports
 
 | Port | Env (default) | Serves | Exposure |
 |---|---|---|---|
 | public | `UDP_CONNECTORS_PORT` (1880) | only the routes connectors register (`/abfahrten`, `/warnungen.ics`) | proxied by the cockpit nginx |
 | admin | `UDP_CONNECTORS_ADMIN_PORT` (1881), bound to `UDP_CONNECTORS_ADMIN_HOST` (0.0.0.0) | `GET /healthz`, `POST /trigger/:id` | **never** mapped by nginx, APISIX or an ingress; in Compose published on the host at most on 127.0.0.1 |
+
+Around every route the server answers what Express answered around the old
+`http in` nodes: `HEAD` on a `GET` route (same status and headers, no body),
+`OPTIONS` (200, `Allow: GET,HEAD`, the list as body), and 304 for a
+`GET`/`HEAD` whose `If-None-Match` matches the route's `ETag` (`weakEtag` in
+src/kernel/http.ts). Routes see the request headers, names lowercased.
 
 `/trigger` on the public port is a 404: it makes the service fetch a source and
 write to Orion, which must not be reachable from the internet. A trigger within

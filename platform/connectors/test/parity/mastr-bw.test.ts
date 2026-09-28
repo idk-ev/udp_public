@@ -19,7 +19,16 @@
  */
 
 import assert from "node:assert/strict";
-import { build, countsOf, parse, plan, run, slimPage, stateOf } from "../../src/connectors/mastr-bw.js";
+import {
+  build,
+  COUNTS,
+  countsOf,
+  parse,
+  plan,
+  POSITION,
+  run,
+  slimPage,
+} from "../../src/connectors/mastr-bw.js";
 import type { MastrRequest } from "../../src/connectors/mastr-bw.js";
 import type { HttpResponse, MunicipalityRow } from "../../src/kernel/types.js";
 import { Broker, fixtureGeo, legacyEntities, sharedGeo, testCtx } from "../harness/air-energy-kernel.js";
@@ -255,9 +264,13 @@ async function twoNightsLikeTheOldChain(): Promise<void> {
       `night ${String(night)}: page requests differ`,
     );
     assertEntitiesEqual(legacyEntities(built), broker.upserts.slice(upsertsBefore).flat());
-    assert.equal(stateOf(ctx).position, global.mastrPos, `night ${String(night)}: rotation position differs`);
+    assert.equal(
+      ctx.state.slot(POSITION).get(),
+      global.mastrPos,
+      `night ${String(night)}: rotation position differs`,
+    );
     assert.deepEqual(
-      normalize(Object.fromEntries(stateOf(ctx).counts)),
+      normalize(Object.fromEntries(ctx.state.slot(COUNTS).get())),
       normalize(global.mastrCount),
       `night ${String(night)}: cached counts differ`,
     );
