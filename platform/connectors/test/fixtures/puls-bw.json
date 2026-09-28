@@ -1,0 +1,77 @@
+{
+  "source": "http://orion-ld:1026/ngsi-ld/v1/entities?type=<type>&...&options=keyValues",
+  "recordedAt": "2026-09-28T05:30:00Z",
+  "note": "SCRIPTED, not recorded: the city pulse fetches no source, it reads what the other connectors wrote to Orion-LD. These are keyValues listings as Orion returns them for the seven queries of the node, shaped after the entities of the connectors concerned, for municipalities of the geo fixture. Instead of a dateObserved each record carries ageHours (null = no dateObserved) and dateForm (\"string\" or \"typed\" = {\"@type\": \"DateTime\", \"@value\": ...}, both forms keyValues produces); the test materialises them relative to the run time, because the node judges freshness against the clock. Cases: fresh and stale medians (2 h), a median above 400, PM2.5 null falling back to PM10, UBA index with and without value, stale and static bike parking, zero capacity, sharing in municipalities without population (08317971, 08415971), zero live charge points, roadworks fresh and 30-40 h old, a roadworks id outside the SVZ pattern, alert levels 0-5 and missing, records without ags.",
+  "statusCode": 200,
+  "headers": {"content-type": "application/json"},
+  "format": "json",
+  "payload": {
+    "PublicTransportStop": [
+      {"id": "urn:ngsi-ld:PublicTransportStop:bw-08311000-1", "type": "PublicTransportStop", "ags": "08311000", "avgDelayMinutes": 2.5, "ageHours": 0.5, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:PublicTransportStop:bw-08222000-1", "type": "PublicTransportStop", "ags": "08222000", "avgDelayMinutes": 4, "ageHours": 1.0, "dateForm": "typed"},
+      {"id": "urn:ngsi-ld:PublicTransportStop:bw-08222000-2", "type": "PublicTransportStop", "ags": "08222000", "avgDelayMinutes": 30, "ageHours": 5.0, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:PublicTransportStop:bw-08421000-1", "type": "PublicTransportStop", "ags": "08421000", "avgDelayMinutes": 1, "ageHours": 3.0, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:PublicTransportStop:bw-08317096-1", "type": "PublicTransportStop", "ags": "08317096", "avgDelayMinutes": 13.7, "ageHours": 0.2, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:PublicTransportStop:bw-x-1", "type": "PublicTransportStop", "avgDelayMinutes": 1, "ageHours": 0.2, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:PublicTransportStop:bw-08336050-1", "type": "PublicTransportStop", "ags": "08336050", "avgDelayMinutes": null, "ageHours": 0.5, "dateForm": "string"}
+    ],
+    "BikeParking": [
+      {"id": "urn:ngsi-ld:BikeParking:bw-parkapi-1", "type": "BikeParking", "ags": "08311000", "availableSpotNumber": 30, "totalSpotNumber": 120, "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:BikeParking:freiburg-br-2", "type": "BikeParking", "ags": "08311000", "availableSpotNumber": 7, "totalSpotNumber": 40, "ageHours": 2, "dateForm": "typed"},
+      {"id": "urn:ngsi-ld:BikeParking:bw-parkapi-3", "type": "BikeParking", "ags": "08311000", "availableSpotNumber": 0, "totalSpotNumber": 500, "ageHours": 9, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:BikeParking:bw-parkapi-4", "type": "BikeParking", "ags": "08317096", "availableSpotNumber": 5, "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:BikeParking:bw-parkapi-5", "type": "BikeParking", "ags": "08336050", "availableSpotNumber": 12, "totalSpotNumber": 12, "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:BikeParking:bw-static-6", "type": "BikeParking", "ags": "08222000", "availableSpotNumber": 50, "totalSpotNumber": 60}
+    ],
+    "AirQualityObserved": [
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08311000", "type": "AirQualityObserved", "ags": "08311000", "pm25": 6.3, "pm10": 11.2, "ageHours": 0.25, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08222000", "type": "AirQualityObserved", "ags": "08222000", "pm25": 9.1, "pm10": 15, "ageHours": 3, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08421000", "type": "AirQualityObserved", "ags": "08421000", "pm25": null, "pm10": 18.4, "ageHours": 0.5, "dateForm": "typed"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08317096", "type": "AirQualityObserved", "ags": "08317096", "pm25": 430, "pm10": 480, "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08336050", "type": "AirQualityObserved", "ags": "08336050", "pm25": 31.6, "ageHours": 1.5, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08316011", "type": "AirQualityObserved", "ags": "08316011", "pm10": 4, "ageHours": 0.1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW084", "type": "AirQualityObserved", "ags": "08311000", "airQualityIndex": 1, "pm10": 11},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW005", "type": "AirQualityObserved", "ags": "08222000", "airQualityIndex": 3},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW019", "type": "AirQualityObserved", "ags": "08421000", "airQualityIndex": 2},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW022", "type": "AirQualityObserved", "ags": "08317057", "airQualityIndex": 4},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW023", "type": "AirQualityObserved", "ags": "08336091"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW031", "type": "AirQualityObserved", "ags": "08317971", "airQualityIndex": 2},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW999", "type": "AirQualityObserved", "ags": "08415971", "airQualityIndex": 1}
+    ],
+    "SharingSummary": [
+      {"id": "urn:ngsi-ld:SharingSummary:bw-08311000-nextbike", "type": "SharingSummary", "ags": "08311000", "availableVehicles": 412},
+      {"id": "urn:ngsi-ld:SharingSummary:bw-08311000-tier", "type": "SharingSummary", "ags": "08311000", "availableVehicles": 380},
+      {"id": "urn:ngsi-ld:SharingSummary:bw-08222000-nextbike", "type": "SharingSummary", "ags": "08222000", "availableVehicles": 640},
+      {"id": "urn:ngsi-ld:SharingSummary:bw-08317971-x", "type": "SharingSummary", "ags": "08317971", "availableVehicles": 3},
+      {"id": "urn:ngsi-ld:SharingSummary:bw-08415971-x", "type": "SharingSummary", "ags": "08415971", "availableVehicles": 2},
+      {"id": "urn:ngsi-ld:SharingSummary:bw-08336091-x", "type": "SharingSummary", "ags": "08336091", "availableVehicles": 9},
+      {"id": "urn:ngsi-ld:SharingSummary:bw-08316011-x", "type": "SharingSummary", "ags": "08316011"}
+    ],
+    "ChargingSummary": [
+      {"id": "urn:ngsi-ld:ChargingSummary:bw-08311000", "type": "ChargingSummary", "ags": "08311000", "liveEvse": 120, "availableEvse": 45},
+      {"id": "urn:ngsi-ld:ChargingSummary:bw-08222000", "type": "ChargingSummary", "ags": "08222000", "liveEvse": 210, "availableEvse": 180},
+      {"id": "urn:ngsi-ld:ChargingSummary:bw-08421000", "type": "ChargingSummary", "ags": "08421000", "liveEvse": 0, "availableEvse": 0},
+      {"id": "urn:ngsi-ld:ChargingSummary:bw-08317057", "type": "ChargingSummary", "ags": "08317057", "liveEvse": 12},
+      {"id": "urn:ngsi-ld:ChargingSummary:bw-08415971", "type": "ChargingSummary", "ags": "08415971", "liveEvse": 4, "availableEvse": 4},
+      {"id": "urn:ngsi-ld:ChargingSummary:bw-08336091", "type": "ChargingSummary", "ags": "08336091", "liveEvse": 7, "availableEvse": 2}
+    ],
+    "RoadWork": [
+      {"id": "urn:ngsi-ld:RoadWork:bw-svz-1001", "type": "RoadWork", "ags": "08311000", "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:RoadWork:bw-svz-1002", "type": "RoadWork", "ags": "08311000", "ageHours": 40, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:RoadWork:bw-svz-1003", "type": "RoadWork", "ags": "08311000", "ageHours": 2, "dateForm": "typed"},
+      {"id": "urn:ngsi-ld:RoadWork:bw-svz-1004", "type": "RoadWork", "ags": "08222000", "ageHours": 30, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:RoadWork:bw-svz-1005", "type": "RoadWork", "ags": "08222000", "ageHours": 30, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:RoadWork:bw-svz-1006", "type": "RoadWork", "ags": "08421000", "ageHours": 30, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:RoadWork:bw-kreis-08311-summary", "type": "RoadWork", "ags": "08311", "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:RoadWork:reutlingen-baustelle-1", "type": "RoadWork", "ags": "08311000", "ageHours": 1, "dateForm": "string"}
+    ],
+    "Alert": [
+      {"id": "urn:ngsi-ld:Alert:bw-kreis-08311", "type": "Alert", "ags": "08311", "maxSeverity": 2},
+      {"id": "urn:ngsi-ld:Alert:bw-kreis-08222", "type": "Alert", "ags": "08222", "maxSeverity": 5},
+      {"id": "urn:ngsi-ld:Alert:bw-kreis-08421", "type": "Alert", "ags": "08421", "maxSeverity": 1},
+      {"id": "urn:ngsi-ld:Alert:bw-kreis-08421-b", "type": "Alert", "ags": "08421", "maxSeverity": 3},
+      {"id": "urn:ngsi-ld:Alert:bw-kreis-08336", "type": "Alert", "ags": "08336", "maxSeverity": 0},
+      {"id": "urn:ngsi-ld:Alert:bw-kreis-08317", "type": "Alert", "ags": "08317"}
+    ]
+  }
+}
