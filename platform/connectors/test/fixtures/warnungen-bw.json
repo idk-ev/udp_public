@@ -1,0 +1,1140 @@
+{
+  "source": "https://api.brightsky.dev/alerts?lat=…&lon=… and https://warnung.bund.de/api31/dashboard/<krs>0000000.json",
+  "recordedAt": "2026-09-28T03:16:33.543Z",
+  "note": "Composite fixture, recorded with a one-off script (not record.js, which stores one response): the 88 responses of one fan-out (44 districts x DWD via BrightSky + BBK/NINA dashboard), requested with the URLs the old node udp-rt-bk-msgs builds from gui/public/bw-gemeinden.json (stand 2026-07-18), in that order. Each entry: kreis, quelle, url, statusCode and the body as the http request node (ret: obj) hands it on. Not trimmed. At the time of recording the DWD had no active warning anywhere in Germany (every alerts list is empty); the NINA dashboards of 08118 Ludwigsburg and 08215 Karlsruhe (district) carry one real MOWAS warning each. DWD alert items are therefore test inputs in the parity test, marked as such.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": [
+    {
+      "kreis": "08111",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.7746&lon=9.1720",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 708111001,
+          "name": "Stuttgart-West/Mitte",
+          "name_short": "Stuttgart-W/M",
+          "district": "Stuttgart",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08111",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081110000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08115",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.6652&lon=8.9407",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808115013,
+          "name": "Gemeinde Ehningen",
+          "name_short": "Ehningen",
+          "district": "Böblingen",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08115",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081150000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08116",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.6444&lon=9.3725",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808116050,
+          "name": "Gemeinde Oberboihingen",
+          "name_short": "Oberboihingen",
+          "district": "Esslingen",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08116",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081160000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08117",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.6656&lon=9.6772",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808117020,
+          "name": "Gemeinde Eschenbach",
+          "name_short": "Eschenbach",
+          "district": "Göppingen",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08117",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081170000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08118",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.9465&lon=9.1495",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808118079,
+          "name": "Stadt Bietigheim-Bissingen",
+          "name_short": "Bietigheim-Bis.",
+          "district": "Ludwigsburg",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08118",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081180000000.json",
+      "statusCode": 200,
+      "body": [
+        {
+          "id": "mow.DE-BW-LB-W026-20260921-000",
+          "payload": {
+            "version": 20,
+            "type": "ALERT",
+            "id": "mow.DE-BW-LB-W026-20260921-000",
+            "hash": "2070509093580434517aa5d4bd3cc763c364bc05698e778399b2352a774f31ac",
+            "data": {
+              "headline": "Trinkwasserverunreinigung - Winzerhausen Holzweiler Hof",
+              "provider": "MOWAS",
+              "severity": "Minor",
+              "urgency": "Immediate",
+              "msgType": "Update",
+              "transKeys": {
+                "event": "BBK-EVC-069"
+              },
+              "area": {
+                "type": "GRID",
+                "data": "369866+1,370478+2,371091+1,500001"
+              },
+              "valid": true
+            }
+          },
+          "i18nTitle": {
+            "de": "Trinkwasserverunreinigung - Winzerhausen Holzweiler Hof",
+            "en": "Contaminated drinking water",
+            "ar": "تلوث مياه الشرب",
+            "es": "Contaminación de agua potable",
+            "fr": "Pollution de l'eau potable",
+            "pl": "Zanieczyszczenie wody pitnej",
+            "ru": "Загрязнение питьевой воды",
+            "tr": "İçme suyu kirlenmesi"
+          },
+          "sent": "2026-09-21T18:18:43+02:00"
+        }
+      ]
+    },
+    {
+      "kreis": "08119",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.8957&lon=9.4723",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808119003,
+          "name": "Gemeinde Allmersbach im Tal",
+          "name_short": "Allmersbach/Tal",
+          "district": "Rems-Murr-Kreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08119",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081190000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08121",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.1527&lon=9.1823",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808121000,
+          "name": "Stadt Heilbronn",
+          "name_short": "Heilbronn",
+          "district": "Heilbronn",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08121",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081210000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08125",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.1688&lon=9.2049",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808121000,
+          "name": "Stadt Heilbronn",
+          "name_short": "Heilbronn",
+          "district": "Heilbronn",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08125",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081250000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08126",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.2694&lon=9.6100",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808126060,
+          "name": "Stadt Niedernhall",
+          "name_short": "Niedernhall",
+          "district": "Hohenlohekreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08126",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081260000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08127",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.1274&lon=9.8958",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808127089,
+          "name": "Stadt Vellberg",
+          "name_short": "Vellberg",
+          "district": "Schwäbisch Hall",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08127",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081270000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08128",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.5703&lon=9.7086",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808128139,
+          "name": "Stadt Lauda-Königshofen",
+          "name_short": "Lauda-Königsh.",
+          "district": "Main-Tauber-Kreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08128",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081280000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08135",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.6458&lon=10.2014",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808135020,
+          "name": "Stadt Herbrechtingen",
+          "name_short": "Herbrechtingen",
+          "district": "Heidenheim",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08135",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081350000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08136",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.8798&lon=10.0347",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808136088,
+          "name": "Stadt Aalen",
+          "name_short": "Aalen",
+          "district": "Ostalbkreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08136",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/081360000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08211",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.7485&lon=8.2319",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808211000,
+          "name": "Stadt Baden-Baden",
+          "name_short": "Baden-Baden",
+          "district": "Baden-Baden",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08211",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082110000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08212",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.0113&lon=8.4127",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808212000,
+          "name": "Stadt Karlsruhe",
+          "name_short": "Karlsruhe",
+          "district": "Karlsruhe",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08212",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082120000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08215",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.0904&lon=8.5665",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808215009,
+          "name": "Stadt Bruchsal",
+          "name_short": "Bruchsal",
+          "district": "Karlsruhe",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08215",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082150000000.json",
+      "statusCode": 200,
+      "body": [
+        {
+          "id": "mow.DE-BW-KA-W138-20260925-000",
+          "payload": {
+            "version": 20,
+            "type": "ALERT",
+            "id": "mow.DE-BW-KA-W138-20260925-000",
+            "hash": "0cc654bc9ac3bfe3e8ca82aeaa9ee1100ae6139638745810fda0b6422778266d",
+            "data": {
+              "headline": "Verunreinigung des Trink- / Leitungswassers - Hambrücken",
+              "provider": "MOWAS",
+              "severity": "Minor",
+              "urgency": "Immediate",
+              "msgType": "Update",
+              "transKeys": {
+                "event": "BBK-EVC-081"
+              },
+              "area": {
+                "type": "ZGEM",
+                "data": "10799,100001"
+              },
+              "valid": true
+            }
+          },
+          "i18nTitle": {
+            "de": "Verunreinigung des Trink- / Leitungswassers - Hambrücken",
+            "en": "Health hazard",
+            "ar": "خطر على الصحة",
+            "es": "Riesgo para la salud",
+            "fr": "Risque sanitaire",
+            "pl": "Zagrożenie dla zdrowia",
+            "ru": "Опасность для здоровья",
+            "tr": "Sağlık tehlikesi"
+          },
+          "sent": "2026-09-25T09:01:07+02:00"
+        }
+      ]
+    },
+    {
+      "kreis": "08216",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.8042&lon=8.2249",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808211000,
+          "name": "Stadt Baden-Baden",
+          "name_short": "Baden-Baden",
+          "district": "Baden-Baden",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08216",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082160000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08221",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.4055&lon=8.6942",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808221000,
+          "name": "Stadt Heidelberg",
+          "name_short": "Heidelberg",
+          "district": "Heidelberg",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08221",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082210000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08222",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.4995&lon=8.5004",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808222000,
+          "name": "Stadt Mannheim",
+          "name_short": "Mannheim",
+          "district": "Mannheim",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08222",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082220000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08225",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.4247&lon=9.2148",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808225117,
+          "name": "Gemeinde Elztal",
+          "name_short": "Elztal",
+          "district": "Neckar-Odenwald-Kreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08225",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082250000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08226",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=49.3736&lon=8.7306",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808226022,
+          "name": "Gemeinde Gaiberg",
+          "name_short": "Gaiberg",
+          "district": "Rhein-Neckar-Kreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08226",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082260000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08231",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.8764&lon=8.7126",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808231000,
+          "name": "Stadt Pforzheim",
+          "name_short": "Pforzheim",
+          "district": "Pforzheim",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08231",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082310000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08235",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.6874&lon=8.6538",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808235084,
+          "name": "Stadt Bad Teinach-Zavelstein",
+          "name_short": "Bad Teinach",
+          "district": "Calw",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08235",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082350000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08236",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.9089&lon=8.7429",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808231000,
+          "name": "Stadt Pforzheim",
+          "name_short": "Pforzheim",
+          "district": "Pforzheim",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08236",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082360000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08237",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.4742&lon=8.5176",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808237019,
+          "name": "Stadt Dornstetten",
+          "name_short": "Dornstetten",
+          "district": "Freudenstadt",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08237",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/082370000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08311",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=47.9926&lon=7.8181",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 708311001,
+          "name": "Freiburg-West",
+          "name_short": "Freiburg-West",
+          "district": "Freiburg im Breisgau",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08311",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083110000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08315",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=47.9414&lon=7.8503",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808315056,
+          "name": "Gemeinde Horben",
+          "name_short": "Horben",
+          "district": "Breisgau-Hochschwarzwald",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08315",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083150000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08316",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.1461&lon=7.8427",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808316043,
+          "name": "Gemeinde Teningen",
+          "name_short": "Teningen",
+          "district": "Emmendingen",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08316",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083160000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08317",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.4101&lon=8.0083",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808317034,
+          "name": "Stadt Gengenbach",
+          "name_short": "Gengenbach",
+          "district": "Ortenaukreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08317",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083170000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08325",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.2420&lon=8.5236",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808325014,
+          "name": "Gemeinde Dunningen",
+          "name_short": "Dunningen",
+          "district": "Rottweil",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08325",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083250000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08326",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.0460&lon=8.3970",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808326074,
+          "name": "Stadt Villingen-Schwenningen",
+          "name_short": "Villingen-S.",
+          "district": "Schwarzwald-Baar-Kreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08326",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083260000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08327",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.0568&lon=8.7998",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808327011,
+          "name": "Gemeinde Dürbheim",
+          "name_short": "Dürbheim",
+          "district": "Tuttlingen",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08327",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083270000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08335",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=47.7822&lon=8.9086",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808335077,
+          "name": "Gemeinde Steißlingen",
+          "name_short": "Steißlingen",
+          "district": "Konstanz",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08335",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083350000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08336",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=47.7035&lon=7.7675",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808336107,
+          "name": "Gemeinde Kleines Wiesental",
+          "name_short": "Kl. Wiesental",
+          "district": "Lörrach",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08336",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083360000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08337",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=47.6794&lon=8.2177",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808337118,
+          "name": "Gemeinde Weilheim",
+          "name_short": "Weilheim",
+          "district": "Waldshut",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08337",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/083370000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08415",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.4438&lon=9.3436",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808415093,
+          "name": "Gemeinde St. Johann",
+          "name_short": "St. Johann",
+          "district": "Reutlingen",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08415",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084150000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08416",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.4721&lon=9.0097",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808416041,
+          "name": "Stadt Tübingen",
+          "name_short": "Tübingen",
+          "district": "Tübingen",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08416",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084160000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08417",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.2502&lon=8.8880",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808417002,
+          "name": "Stadt Balingen",
+          "name_short": "Balingen",
+          "district": "Zollernalbkreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08417",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084170000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08421",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.3909&lon=9.9500",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808421000,
+          "name": "Stadt Ulm",
+          "name_short": "Ulm",
+          "district": "Ulm",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08421",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084210000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08425",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.3837&lon=9.8532",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808425141,
+          "name": "Gemeinde Blaustein",
+          "name_short": "Blaustein",
+          "district": "Alb-Donau-Kreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08425",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084250000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08426",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.1040&lon=9.7770",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808426021,
+          "name": "Stadt Biberach an der Riß",
+          "name_short": "Biberach/Riß",
+          "district": "Biberach",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08426",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084260000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08435",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=47.7208&lon=9.3809",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808435034,
+          "name": "Stadt Markdorf",
+          "name_short": "Markdorf",
+          "district": "Bodenseekreis",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08435",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084350000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08436",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=47.8408&lon=9.6741",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808436012,
+          "name": "Gemeinde Baindt",
+          "name_short": "Baindt",
+          "district": "Ravensburg",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08436",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084360000000.json",
+      "statusCode": 200,
+      "body": []
+    },
+    {
+      "kreis": "08437",
+      "quelle": "dwd",
+      "url": "https://api.brightsky.dev/alerts?lat=48.0513&lon=9.2254",
+      "statusCode": 200,
+      "body": {
+        "alerts": [],
+        "location": {
+          "warn_cell_id": 808437104,
+          "name": "Stadt Sigmaringen",
+          "name_short": "Sigmaringen",
+          "district": "Sigmaringen",
+          "state": "Baden-Württemberg",
+          "state_short": "BW"
+        }
+      }
+    },
+    {
+      "kreis": "08437",
+      "quelle": "nina",
+      "url": "https://warnung.bund.de/api31/dashboard/084370000000.json",
+      "statusCode": 200,
+      "body": []
+    }
+  ]
+}
