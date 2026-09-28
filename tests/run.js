@@ -24,7 +24,17 @@ const PARITY = path.join(__dirname, "..", "platform", "connectors", "dist", "tes
 const dirs = [path.join(__dirname, "static")]
   .concat(fs.existsSync(PARITY) ? [PARITY] : [])
   .concat(live ? [path.join(__dirname, "live")] : []);
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, finished = false;
+
+// A test that awaits nothing but an unref'd timer lets the event loop run dry:
+// Node then exits with code 0 in the middle of the suite and prints no
+// failure. That is a silent pass, so an exit before the summary is a failure.
+process.on("exit", () => {
+  if (!finished) {
+    console.error(`\n✗ runner exited before finishing (${pass} passed, ${fail} failed so far) — a test left no pending work`);
+    process.exitCode = 1;
+  }
+});
 
 (async () => {
   for (const dir of dirs) {
@@ -48,6 +58,7 @@ let pass = 0, fail = 0;
       }
     }
   }
+  finished = true;
   console.log(`\n${pass} bestanden, ${fail} fehlgeschlagen${live ? " (inkl. live)" : " (statisch)"}`);
   process.exit(fail ? 1 : 0);
 })();
