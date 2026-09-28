@@ -104,6 +104,12 @@ server {
         proxy_cache udpapi;
         proxy_cache_valid 200 300s;
         proxy_cache_key $request_uri;
+        proxy_cache_lock on;
+        # Node-RED runs as a single instance: while it restarts (rollout,
+        # node drain) the last good calendar is served instead of an error,
+        # and an expired entry is refreshed in the background.
+        proxy_cache_use_stale updating error timeout http_500 http_502 http_503 http_504;
+        proxy_cache_background_update on;
         add_header X-Cache $upstream_cache_status always;
     }
 
@@ -180,6 +186,14 @@ server {
         proxy_cache_valid 404 502 503 30s;
         proxy_cache_key $request_uri;
         proxy_cache_lock on;
+        # While Node-RED is briefly unavailable (single instance: rollout,
+        # node drain) the last good answer of this stop is served instead of
+        # an error – with X-Cache: STALE. Departures carry clock times and a
+        # "stand" timestamp, so a stale answer is visibly old rather than
+        # wrong. Stops without a cached answer still get the (briefly cached)
+        # error.
+        proxy_cache_use_stale updating error timeout http_500 http_502 http_503 http_504;
+        proxy_cache_background_update on;
         add_header X-Cache $upstream_cache_status always;
     }
 

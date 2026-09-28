@@ -91,7 +91,7 @@ spec:
             # IOTA_MONGO_URI aus – IOTA_MONGO_HOST/PORT/DB werden ignoriert und
             # configureDb() bricht mit "MONGODB-003: No URI found for MongoDB
             # driver" ab (verifiziert an 3.14.0-distroless).
-            - { name: IOTA_MONGO_URI, value: {{ .Values.iotAgentJson.mongoUri | default (printf "mongodb://mongo.%s.svc.cluster.local:27017/iotagentjson" .Release.Namespace) | quote }} }
+            - { name: IOTA_MONGO_URI, value: {{ .Values.iotAgentJson.mongoUri | default (include "udp.mongoUri" (dict "ctx" . "db" "iotagentjson")) | quote }} }
             - { name: IOTA_HTTP_PORT, value: "7896" }
             - { name: IOTA_PROVIDER_URL, value: "http://iot-agent-json:4041" }
             - { name: IOTA_MQTT_HOST, value: mosquitto }

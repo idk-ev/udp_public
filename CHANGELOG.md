@@ -2,6 +2,18 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Hochverfügbarkeit des öffentlichen Pfads
+
+- **MongoDB als Replica Set** (`mongo.replicaSet.enabled`, `mongo.replicas: 3`):
+  Failover in Sekunden, PDB, Verbindungsstring mit allen Mitgliedern für
+  Orion-LD, IoT-Agent und Index-Job. Bestehende Installationen werden per
+  `helm upgrade` umgestellt, `mongo-0` behält seine Daten (DEPLOY.md §10b).
+- **Journaling** für MongoDB immer an (vorher `--nojournal`).
+- **Verteilung** konfigurierbar: `global.spread.mode: required` hält
+  Replikate auf verschiedenen Knoten, auch nach einem Drain.
+- **Cockpit** liefert `/abfahrten` und `/warnungen.ics` bei kurzem
+  Node-RED-Ausfall aus dem Cache weiter.
+
 ## Unveröffentlicht — Datenqualität der Gemeindeseiten
 
 Objekte außerhalb Baden-Württembergs landeten in der nächstgelegenen

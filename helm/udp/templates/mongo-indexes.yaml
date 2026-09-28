@@ -40,6 +40,10 @@ spec:
           env:
             - name: UDP_INDEXES
               value: {{ .Values.mongo.indexes.entities | toJson | quote }}
+            # Replica set: all members + set name, so createIndex goes to the
+            # primary (the driver waits up to 2 min for one to be elected).
+            - name: MONGO_URI
+              value: {{ ternary (printf "%s&serverSelectionTimeoutMS=120000" (include "udp.mongoUri" (dict "ctx" . "db" "admin"))) "mongodb://mongo:27017/admin" .Values.mongo.replicaSet.enabled | quote }}
           command:
             - bash
             - -c
@@ -47,7 +51,7 @@ spec:
               until timeout 2 bash -c "echo > /dev/tcp/mongo/27017" 2>/dev/null; do
                 echo "waiting for mongo:27017"; sleep 2
               done
-              exec mongosh --quiet mongodb://mongo:27017/admin --eval '
+              exec mongosh --quiet "$MONGO_URI" --eval '
                 const specs = JSON.parse(process.env.UDP_INDEXES);
                 const names = db.adminCommand({ listDatabases: 1, nameOnly: true }).databases
                   .map(d => d.name).filter(n => /^orion(-.+)?$/.test(n));

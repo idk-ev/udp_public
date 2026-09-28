@@ -29,6 +29,9 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- $mongoClients := list "orion-ld" "iot-agent-json" }}
 {{- /* Index hook job (templates/mongo-indexes.yaml). */}}
 {{- if .Values.mongo.indexes.enabled }}{{ $mongoClients = append $mongoClients "mongo-indexes" }}{{ end }}
+{{- /* Replica set members among each other (replication, heartbeats,
+     elections) and the replset sidecar reaching the other members. */}}
+{{- if .Values.mongo.replicaSet.enabled }}{{ $mongoClients = append $mongoClients "mongo" }}{{ end }}
 {{- $timescaleClients := list "orion-ld" "mintaka" "frost" "keycloak" "node-red" }}
 {{- if .Values.ckan.enabled }}{{ $timescaleClients = append $timescaleClients "ckan" }}{{ end }}
 {{- if .Values.backup.enabled }}{{ $timescaleClients = append $timescaleClients "db-backup" }}{{ end }}

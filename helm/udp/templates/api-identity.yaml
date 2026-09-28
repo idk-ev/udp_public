@@ -24,7 +24,7 @@ spec:
         checksum/config: {{ (print (tpl (.Files.Get "files/apisix/apisix.yaml.tpl") .) (tpl (.Files.Get "files/apisix/config.yaml.tpl") .)) | sha256sum }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.apisix) | nindent 6 }}
-      {{- include "udp.spread" (dict "component" "apisix" "cfg" .Values.apisix) | nindent 6 }}
+      {{- include "udp.spread" (dict "ctx" . "component" "apisix" "cfg" .Values.apisix) | nindent 6 }}
       containers:
         - name: apisix
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.apisix.image) }}

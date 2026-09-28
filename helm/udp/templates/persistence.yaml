@@ -3,7 +3,29 @@
 
 # =============================================================================
 # Persistenzschicht: MongoDB (Orion-LD). PostgreSQL: templates/timescale.yaml
+#
+# Standalone (default) or replica set (mongo.replicaSet.enabled). Both use the
+# same StatefulSet "mongo" with the same headless Service and volume template
+# – its immutable fields never change, so switching an existing install to a
+# replica set is a plain "helm upgrade" (DEPLOY.md §10b).
 # =============================================================================
+{{- $m := .Values.mongo }}
+{{- $rs := $m.replicaSet.enabled }}
+{{- if and (not $rs) (gt (int $m.replicas) 1) }}
+{{- fail "mongo.replicas > 1 needs mongo.replicaSet.enabled: several standalone instances would each hold a different part of the data" }}
+{{- end }}
+{{- if $rs }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-replset
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mongo") | nindent 4 }}
+data:
+  replset.js: |
+{{ .Files.Get "files/mongo/replset.js" | indent 4 }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -12,7 +34,7 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "mongo") | nindent 4 }}
 spec:
   serviceName: mongo
-  replicas: 1
+  replicas: {{ $m.replicas }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "mongo" | nindent 6 }}
@@ -20,26 +42,79 @@ spec:
     metadata:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "mongo") | nindent 8 }}
+      {{- if $rs }}
+      annotations:
+        checksum/replset: {{ .Files.Get "files/mongo/replset.js" | sha256sum }}
+      {{- end }}
     spec:
-      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.mongo) | nindent 6 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" $m) | nindent 6 }}
+      {{- with include "udp.spread" (dict "ctx" . "component" "mongo" "cfg" $m) }}
+      {{- . | nindent 6 }}
+      {{- end }}
       containers:
         - name: mongo
-          image: {{ include "udp.image" (dict "ctx" . "image" .Values.mongo.image) }}
-          args: ["--nojournal", "--quiet"]
+          image: {{ include "udp.image" (dict "ctx" . "image" $m.image) }}
+          # Journaling stays on (mongod default): replica set members need
+          # it, and a standalone without it loses the writes since the last
+          # checkpoint on every unclean stop.
+          {{- if $rs }}
+          args: ["--replSet", {{ $m.replicaSet.name | quote }}, "--quiet"]
+          {{- else }}
+          args: ["--quiet"]
+          {{- end }}
           ports: [{ containerPort: 27017 }]
           securityContext:
-            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.mongo.containerSecurityContext) | nindent 12 }}
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" $m.containerSecurityContext) | nindent 12 }}
           volumeMounts:
             - { name: data, mountPath: /data/db }
           resources:
-            {{- toYaml .Values.mongo.resources | nindent 12 }}
-          {{- include "udp.probes" .Values.mongo.probes | nindent 10 }}
+            {{- toYaml $m.resources | nindent 12 }}
+          {{- include "udp.probes" $m.probes | nindent 10 }}
+        {{- if $rs }}
+        # Initiates the set and keeps its members in line with mongo.replicas
+        # (files/mongo/replset.js). Its readiness reflects the member state
+        # (PRIMARY/SECONDARY), which the plain TCP probes of mongod cannot.
+        - name: replset
+          image: {{ include "udp.image" (dict "ctx" . "image" $m.image) }}
+          command: ["mongosh", "--nodb", "--quiet", "/scripts/replset.js"]
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - { name: NAMESPACE, value: {{ .Release.Namespace | quote }} }
+            - { name: RS_NAME, value: {{ $m.replicaSet.name | quote }} }
+            - { name: RS_MEMBERS, value: {{ $m.replicas | quote }} }
+            - { name: INTERVAL_SECONDS, value: {{ $m.replicaSet.reconciler.intervalSeconds | quote }} }
+            - { name: READY_FILE, value: /run/replset/ready }
+            # mongosh keeps its config and log under $HOME – the image's home
+            # directory is not writable for uid 999.
+            - { name: HOME, value: /run/replset }
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" $m.containerSecurityContext) | nindent 12 }}
+          volumeMounts:
+            - { name: replset-script, mountPath: /scripts, readOnly: true }
+            - { name: replset-state, mountPath: /run/replset }
+          readinessProbe:
+            # Fresh file = the loop is alive and the member is usable.
+            exec: { command: ["sh", "-c", "test -n \"$(find /run/replset/ready -mmin -1 2>/dev/null)\""] }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml $m.replicaSet.reconciler.resources | nindent 12 }}
+        {{- end }}
+      {{- if $rs }}
+      volumes:
+        - name: replset-script
+          configMap: { name: mongo-replset }
+        - name: replset-state
+          emptyDir: { sizeLimit: 64Mi }
+      {{- end }}
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:
         accessModes: [ReadWriteOnce]
-        {{- include "udp.storageClass" (dict "ctx" . "override" .Values.mongo.persistence.storageClass) | nindent 8 }}
-        resources: { requests: { storage: {{ .Values.mongo.persistence.size }} } }
+        {{- include "udp.storageClass" (dict "ctx" . "override" $m.persistence.storageClass) | nindent 8 }}
+        resources: { requests: { storage: {{ $m.persistence.size }} } }
 ---
 apiVersion: v1
 kind: Service
@@ -49,6 +124,12 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "mongo") | nindent 4 }}
 spec:
   clusterIP: None
+  {{- if $rs }}
+  # Members must resolve each other (and themselves) by their pod DNS name
+  # before they are ready: a member in initial sync is not ready, yet the
+  # primary has to reach it.
+  publishNotReadyAddresses: true
+  {{- end }}
   selector:
     {{- include "udp.selectorLabels" "mongo" | nindent 4 }}
   ports: [{ port: 27017 }]

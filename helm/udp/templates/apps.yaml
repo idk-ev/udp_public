@@ -93,7 +93,7 @@ spec:
         checksum/config: {{ include "udp.cockpitConfigJs" . | sha256sum }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.cockpit) | nindent 6 }}
-      {{- include "udp.spread" (dict "component" "cockpit" "cfg" .Values.cockpit) | nindent 6 }}
+      {{- include "udp.spread" (dict "ctx" . "component" "cockpit" "cfg" .Values.cockpit) | nindent 6 }}
       containers:
         - name: cockpit
           image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.cockpit.image) }}

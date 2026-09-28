@@ -60,6 +60,19 @@ global:
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
+  # Node anti-affinity of every replicated component (orion-ld, mintaka,
+  # apisix, cockpit, mongo with replicas > 1), s. udp.spread in
+  # templates/_helpers.tpl. Per component: <component>.spread.mode.
+  #   preferred  replicas avoid sharing a node but may (single-node clusters,
+  #              too few nodes). After a node drain they can all end up on one
+  #              node – the next drain of THAT node takes the service down.
+  #   required   never two replicas of a component on one node. Needs at
+  #              least as many schedulable nodes as replicas, and one more for
+  #              rolling updates of Deployments (maxSurge 1) – otherwise the
+  #              extra pod stays Pending and the rollout waits.
+  # An explicit <component>.affinity replaces the generated one entirely.
+  spread:
+    mode: preferred
 
 # -----------------------------------------------------------------------------
 # Sicherheits-Defaults (werden pro Komponente gemerged/überschrieben)
@@ -247,6 +260,48 @@ ingress:
 # ---------- Persistenz ----------
 mongo:
   image: { repository: mongo, tag: "5.0" }
+  # Number of mongod instances (StatefulSet "mongo"). More than 1 only with
+  # replicaSet.enabled – several standalone instances behind one Service
+  # would each hold a different part of the data.
+  replicas: 1
+  # MongoDB replica set: one primary, the other members replicate and one of
+  # them takes over within seconds when the primary's node is drained or lost.
+  # With replicas 3 the set keeps a primary while any ONE member is down.
+  # replicas 2 gives no failover (a single survivor is no majority) – use 1 or
+  # at least 3.
+  #
+  # Switching an existing standalone install on (enabled true + replicas 3) is
+  # an in-place upgrade: mongo-0 keeps its volume, restarts once as a member
+  # and becomes the primary, the new members copy the data (initial sync).
+  # Steps, downtime, scale-down and rollback: DEPLOY.md §10b.
+  #
+  # The members are configured by a small sidecar (files/mongo/replset.js)
+  # instead of a Helm hook: "helm upgrade --wait/--atomic" waits for Orion-LD
+  # to become ready, which needs a primary – a post-upgrade hook creating the
+  # primary would only run after that wait and never be reached.
+  # Clients (Orion-LD, IoT agent, index job) get a connection string with
+  # all members and the set name automatically.
+  #
+  # No authentication, as in standalone mode: mongod is reachable only from
+  # the listed clients and the other members (NetworkPolicy allow-mongo), so
+  # no keyfile is needed for member-to-member traffic either.
+  replicaSet:
+    enabled: false
+    # Name of the set (mongod --replSet). Fixed once initiated: changing it
+    # later makes the members refuse their existing config.
+    name: rs0
+    # Sidecar "replset". mongosh is a Node process (~165 MiB resident); it
+    # starts once and then checks every intervalSeconds without restarting.
+    # Its readiness goes stale after 60 s without a check – keep the interval
+    # well below that.
+    reconciler:
+      intervalSeconds: 5
+      resources:
+        requests: { cpu: 10m,  memory: 192Mi }
+        limits:   { cpu: 250m, memory: 320Mi }
+  # Only rendered with replicas > 1: at most one member may be down
+  # voluntarily (drain), so a three-member set always keeps its majority.
+  pdb: { maxUnavailable: 1 }
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     # Two cores: every dashboard request that misses the cockpit cache is a
@@ -281,9 +336,11 @@ mongo:
     runAsUser: 999        # mongodb
     runAsGroup: 999
     fsGroup: 999
-  # mongod flushes and closes its files on SIGTERM. The Kubernetes default of
-  # 30 s is tight for a loaded instance running with --nojournal: a SIGKILL
-  # loses everything since the last checkpoint.
+  # mongod flushes and closes its files on SIGTERM (a primary steps down
+  # first). The Kubernetes default of 30 s is tight for a loaded instance.
+  # Journaling is always on (it used to run with --nojournal): replica set
+  # members require it, and without it a SIGKILL or node crash lost every
+  # write since the last checkpoint (up to 60 s).
   terminationGracePeriodSeconds: 60
   # mongosh is a Node CLI and needs about a second just to start. With the
   # Kubernetes default (timeoutSeconds: 1) the probe fails on its own start-up
@@ -513,7 +570,8 @@ iotAgentJson:
   image: { repository: fiware/iotagent-json, tag: "3.14.0-distroless" }
   # Geraeteregister. iotagent-node-lib wertet nur noch eine vollstaendige URI
   # aus (IOTA_MONGO_HOST/PORT/DB werden ignoriert). Leer -> mongo im
-  # Release-Namespace, Datenbank "iotagentjson".
+  # Release-Namespace, Datenbank "iotagentjson" (with mongo.replicaSet.enabled:
+  # all members + replicaSet=<name>).
   mongoUri: ""
   # Gateway-Routen /iot (Geräte-Provisionierung, Admin-API) und /ingest
   # (schreibender Sensor-Pfad) veröffentlichen. Standardmäßig AUS: beide sind
