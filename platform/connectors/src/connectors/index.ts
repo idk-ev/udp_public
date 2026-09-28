@@ -19,19 +19,24 @@
 import { connector as abfahrtenOnDemand } from "./abfahrten-on-demand.js";
 import { connector as ausflugBw } from "./ausflug-bw.js";
 import { connector as baustellenBw } from "./baustellen-bw.js";
+import { connector as ecoBw } from "./eco-bw.js";
 import { connector as efaAbfahrten } from "./efa-abfahrten.js";
+import { connector as feinstaubBw } from "./feinstaub-bw.js";
 import { connector as grenzenBw } from "./grenzen-bw.js";
 import { connector as hitzeBw } from "./hitze-bw.js";
 import { connector as hystreet } from "./hystreet.js";
+import { connector as mastrBw } from "./mastr-bw.js";
 import { connector as opsHost } from "./ops-host.js";
 import { connector as pegelBw } from "./pegel-bw.js";
 import { connector as pegelLubw } from "./pegel-lubw.js";
 import { connector as poiBw } from "./poi-bw.js";
+import { connector as pulsBw } from "./puls-bw.js";
 import { connector as pollenBw } from "./pollen-bw.js";
 import { connector as rathausBw } from "./rathaus-bw.js";
 import { connector as stammdatenBw } from "./stammdaten-bw.js";
 import { connector as troeRetention } from "./troe-retention.js";
 import { connector as troeStats } from "./troe-stats.js";
+import { connector as ubaBw } from "./uba-bw.js";
 import { connector as vorhersageBw } from "./vorhersage-bw.js";
 import { connector as warnungenBw } from "./warnungen-bw.js";
 import { connector as wetterBw } from "./wetter-bw.js";
@@ -60,6 +65,12 @@ const MODULES: readonly ConnectorRunner[] = [
   rathausBw,
   ausflugBw,
   poiBw,
+  // F · air & energy
+  ubaBw,
+  feinstaubBw,
+  ecoBw,
+  mastrBw,
+  pulsBw,
   // G · public transport & endpoints
   efaAbfahrten,
   abfahrtenOnDemand,
