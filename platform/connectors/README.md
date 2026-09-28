@@ -37,7 +37,7 @@ The full migration plan with phases and work split is in
     src/kernel/env.ts          environment access (env.get of the flows), COCKPIT_URL
     src/kernel/parse.ts        narrowing building blocks for foreign data
     src/kernel/ngsi.ts         cleanText, observed (P), dateObserved
-    src/kernel/fetcher.ts      fetch with timeout, retry, User-Agent
+    src/kernel/fetcher.ts      fetch with timeout, retry, User-Agent, body cap, redirect policy
     src/kernel/rate-limit.ts   token bucket per host (the delay nodes), optional concurrency cap
     src/kernel/state.ts        ctx.state: per-connector state (stateKey, optionally persisted)
     src/kernel/persistence.ts  state store: load before the first run, write-through, one writer
@@ -48,7 +48,7 @@ The full migration plan with phases and work split is in
     src/kernel/prune.ts        removal of stale own entities, with its guards
     src/kernel/scheduler.ts    interval/cron, delayed start
     src/kernel/http.ts         HTTP server (used twice: public and admin port)
-    src/kernel/admin.ts        admin routes: /healthz, /trigger/:id with cooldown
+    src/kernel/admin.ts        admin routes: /healthz, /trigger/:id (loopback only) with cooldown
     src/kernel/db.ts           TimescaleDB sessions for troe-stats / troe-retention
     src/kernel/log.ts          [warn]/[error] lines for scripts/healthcheck.sh
     src/connectors/index.ts    the ported connectors, by registry id
@@ -211,10 +211,12 @@ src/kernel/http.ts). Routes see the request headers, names lowercased.
 
 `/trigger` on the public port is a 404: it makes the service fetch a source and
 write to Orion, which must not be reachable from the internet. A trigger within
-`UDP_TRIGGER_COOLDOWN_SECONDS` (60) of the previous one, or while a run is
-active, answers 429 with a `Retry-After` instead of starting another run. The
-admin host defaults to all interfaces so container probes reach it; phase 5
-points `scripts/trigger-connector.sh` at the admin port.
+`UDP_TRIGGER_COOLDOWN_SECONDS` (60, never less) of the previous one, or while a
+run is active, answers 429 with a `Retry-After` instead of starting another run.
+The admin host defaults to all interfaces so container probes reach `/healthz`;
+`/trigger` itself answers only a loopback peer (403 otherwise), so phase 5 runs
+`scripts/trigger-connector.sh` inside the container (`docker exec` /
+`kubectl exec`). No route reads a request body.
 
 ## Developing
 

@@ -11,9 +11,25 @@
  * good number from Switzerland, Alsace and Bavaria. Which of their vehicles
  * count is decided per vehicle or station by the strict municipality lookup,
  * never by the system.
+ *
+ * ## Feed URLs are foreign data (security review)
+ *
+ * The feed URLs come out of the list as the providers registered them, and
+ * the old nodes fetched them as given — so the list could aim the service at
+ * anything it can reach: Orion, the admin port, the cloud metadata address.
+ * A feed is fetched only if {@link allowedFeedUrl} accepts it: `https:`, no IP
+ * literal in a private, loopback, link-local or otherwise special range, and
+ * no single-label or cluster-internal host name. Redirects are followed
+ * (third-party hosts move their feeds) under the same rule for every hop
+ * ({@link FEED_FETCH}). A refused feed is skipped and counted; the connectors
+ * report the count as ONE `[warn]` per run ({@link SkippedFeeds}). A host
+ * name that RESOLVES to a private address is not caught here — that needs a
+ * check at connect time (network policy / egress proxy).
  */
 
+import { FetchUrlRefusedError } from "../kernel/fetcher.js";
 import { isFiniteNumber, isRecord, isString } from "../kernel/parse.js";
+import type { FetchOptions, Log } from "../kernel/types.js";
 
 /** The `http request` node "GBFS-Systeme" of both flows. */
 export const SYSTEMS_URL = "https://api.mobidata-bw.de/sharing/gbfs";
@@ -48,6 +64,104 @@ export function parseSystems(raw: unknown): readonly GbfsSystem[] | null {
 /** `s.url.replace(/\/gbfs$/, '/<feed>')`. */
 export function feedUrl(system: GbfsSystem, feed: string): string {
   return system.url.replace(/\/gbfs$/, `/${feed}`);
+}
+
+/* ------------------------------------------------------------------ URL policy */
+
+/** IPv4 ranges a feed must not point into: base address and prefix length. */
+const BLOCKED_V4: readonly (readonly [base: readonly number[], bits: number])[] = [
+  [[0, 0, 0, 0], 8], // "this network"
+  [[10, 0, 0, 0], 8], // private
+  [[100, 64, 0, 0], 10], // carrier-grade NAT
+  [[127, 0, 0, 0], 8], // loopback
+  [[169, 254, 0, 0], 16], // link-local, cloud metadata
+  [[172, 16, 0, 0], 12], // private
+  [[192, 0, 0, 0], 24], // IETF protocol assignments
+  [[192, 168, 0, 0], 16], // private
+  [[198, 18, 0, 0], 15], // benchmarking
+  [[224, 0, 0, 0], 3], // multicast, reserved, broadcast
+];
+
+/** Host name suffixes that only resolve inside a cluster or host. */
+const INTERNAL_SUFFIXES: readonly string[] = [".localhost", ".local", ".svc", ".internal"];
+
+function v4Octets(host: string): readonly number[] | null {
+  const parts = host.split(".");
+  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part))) return null;
+  const octets = parts.map((part) => Number.parseInt(part, 10));
+  return octets.every((octet) => octet <= 255) ? octets : null;
+}
+
+function blockedV4(octets: readonly number[]): boolean {
+  const value = octets.reduce((sum, octet) => sum * 256 + octet, 0);
+  return BLOCKED_V4.some(([base, bits]) => {
+    const start = base.reduce((sum, octet) => sum * 256 + octet, 0);
+    const size = 2 ** (32 - bits);
+    return value >= start && value < start + size;
+  });
+}
+
+/**
+ * Whether a GBFS feed URL may be fetched. The WHATWG parser has already
+ * normalised the host: lowercase, IPv4 in dotted form (`2130706433` and
+ * `0x7f.1` arrive as `127.0.0.1`), IPv6 in brackets.
+ */
+export function allowedFeedUrl(url: URL): boolean {
+  if (url.protocol !== "https:") return false;
+  if (url.username !== "" || url.password !== "") return false;
+  const host = url.hostname.replace(/\.$/, "");
+  if (host.startsWith("[")) {
+    // IPv6 literal: only global unicast (2000::/3). Loopback, link-local,
+    // unique-local, multicast and IPv4-mapped addresses all lie outside it.
+    const first = Number.parseInt(host.slice(1).split(":")[0] ?? "", 16);
+    return Number.isFinite(first) && first >= 0x2000 && first <= 0x3fff;
+  }
+  const v4 = v4Octets(host);
+  if (v4 !== null) return !blockedV4(v4);
+  if (!host.includes(".")) return false; // `localhost`, Compose service names
+  return !INTERNAL_SUFFIXES.some((suffix) => host.endsWith(suffix));
+}
+
+/** Whether a feed URL string may be fetched; an unparseable one may not. */
+export function feedAllowed(url: string): boolean {
+  try {
+    return allowedFeedUrl(new URL(url));
+  } catch {
+    return false;
+  }
+}
+
+/** Options of every feed request: redirects followed, every hop under the URL policy. */
+export const FEED_FETCH: FetchOptions = { redirect: "follow", allowUrl: allowedFeedUrl };
+
+/** Feeds a run skipped under the URL policy, reported once at the end of the run. */
+export class SkippedFeeds {
+  #count = 0;
+  #first = "";
+
+  note(url: string): void {
+    if (this.#count === 0) this.#first = url;
+    this.#count += 1;
+  }
+
+  /** Records `error` if it is a refusal by the URL policy (a redirect hop); says whether it was. */
+  noteRefusal(error: unknown): boolean {
+    if (!(error instanceof FetchUrlRefusedError)) return false;
+    this.note(error.target);
+    return true;
+  }
+
+  get count(): number {
+    return this.#count;
+  }
+
+  /** One `[warn]` for the whole run, if anything was skipped. */
+  report(log: Log, label: string): void {
+    if (this.#count === 0) return;
+    log.warn(
+      `${label}: ${String(this.#count)} feed URLs refused by the URL policy and skipped (first: ${this.#first})`,
+    );
+  }
 }
 
 /**

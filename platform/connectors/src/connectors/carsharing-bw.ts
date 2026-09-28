@@ -72,6 +72,10 @@
  *    (old: `sys::undefined`); a non-numeric capacity counts 0, a non-numeric
  *    `num_bikes_available` counts 0 (old: string arithmetic); a vehicle type
  *    that is not an object is skipped (old: TypeError). None occurs in GBFS.
+ *  * Feed URLs from the system list are fetched only under the URL policy of
+ *    src/connectors/gbfs.ts (https, no private IP literal, no internal host
+ *    name, the same for every redirect hop); refused feeds are skipped and
+ *    counted in one `[warn]` per run. The old nodes fetched them as given.
  *  * Log texts are English.
  */
 
@@ -101,7 +105,15 @@ import type {
   Property,
   UpsertPlan,
 } from "../kernel/types.js";
-import { feedUrl, parseSystems, SYSTEMS_URL, systemKey } from "./gbfs.js";
+import {
+  FEED_FETCH,
+  feedAllowed,
+  feedUrl,
+  parseSystems,
+  SkippedFeeds,
+  SYSTEMS_URL,
+  systemKey,
+} from "./gbfs.js";
 import type { GbfsSystem } from "./gbfs.js";
 
 export const ID = "carsharing-bw";
@@ -419,11 +431,16 @@ export const STATIONS = stateKey<StationCache | null>("csStationen", () => null)
 export const FORM_FACTORS = stateKey("csBauform", () => new Map<string, string>());
 
 /** Body of a feed request, or `null` where the old node got nothing usable. */
-async function feedBody(ctx: Ctx, url: string): Promise<unknown> {
+async function feedBody(ctx: Ctx, url: string, skipped: SkippedFeeds): Promise<unknown> {
+  if (!feedAllowed(url)) {
+    skipped.note(url);
+    return null;
+  }
   try {
-    const response = await ctx.fetch.json(url);
+    const response = await ctx.fetch.json(url, FEED_FETCH);
     return response.status >= 400 ? null : response.body;
-  } catch {
+  } catch (error) {
+    skipped.noteRefusal(error);
     return null;
   }
 }
@@ -438,8 +455,8 @@ function quietly<T>(parseFeed: () => T): T | null {
   }
 }
 
-async function masterData(ctx: Ctx, system: GbfsSystem): Promise<void> {
-  const infoBody = await feedBody(ctx, feedUrl(system, "station_information"));
+async function masterData(ctx: Ctx, system: GbfsSystem, skipped: SkippedFeeds): Promise<void> {
+  const infoBody = await feedBody(ctx, feedUrl(system, "station_information"), skipped);
   const info = quietly(() => parse({ system: system.id, payload: infoBody }));
   if (info !== null) {
     const geo = ctx.geo.forRun("Carsharing");
@@ -453,15 +470,20 @@ async function masterData(ctx: Ctx, system: GbfsSystem): Promise<void> {
       }
     }
   }
-  const typesBody = await feedBody(ctx, feedUrl(system, "vehicle_types"));
+  const typesBody = await feedBody(ctx, feedUrl(system, "vehicle_types"), skipped);
   const types = quietly(() => formFactorOf({ system: system.id, payload: typesBody }));
   if (types !== null && types.formFactor !== null) {
     ctx.state.slot(FORM_FACTORS).get().set(types.system, types.formFactor);
   }
 }
 
-async function status(ctx: Ctx, cache: StationCache, system: GbfsSystem): Promise<void> {
-  const body = await feedBody(ctx, feedUrl(system, "station_status"));
+async function status(
+  ctx: Ctx,
+  cache: StationCache,
+  system: GbfsSystem,
+  skipped: SkippedFeeds,
+): Promise<void> {
+  const body = await feedBody(ctx, feedUrl(system, "station_status"), skipped);
   const feed = quietly(() => parseStatus({ system: system.id, payload: body }));
   if (feed === null) return;
   const built = buildStatus(feed, cache, ctx.state.slot(FORM_FACTORS).get(), ctx.now());
@@ -495,10 +517,12 @@ export async function run(ctx: Ctx): Promise<void> {
   }
   // Master data: two feeds per system, stations and vehicle types.
   ctx.log.status(`${String(systems.length)} systems, ${String(systems.length * 2)} requests`);
-  for (const system of systems) await masterData(ctx, system);
+  const skipped = new SkippedFeeds();
+  for (const system of systems) await masterData(ctx, system, skipped);
 
   const cache = ctx.state.slot(STATIONS).get();
   if (cache === null) {
+    skipped.report(ctx.log, "Carsharing");
     ctx.log.warn("Carsharing: master data not loaded yet — run skipped");
     return;
   }
@@ -531,7 +555,8 @@ export async function run(ctx: Ctx): Promise<void> {
     intervalMs: ctx.intervalMs(),
   });
 
-  for (const system of systems) await status(ctx, cache, system);
+  for (const system of systems) await status(ctx, cache, system, skipped);
+  skipped.report(ctx.log, "Carsharing");
 }
 
 /** Checked against the contract by the compiler. */

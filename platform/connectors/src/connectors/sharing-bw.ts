@@ -61,6 +61,10 @@
  *    `Number(…)`; the old node assigned it the same way and then threw on
  *    `b.lat.toFixed`, losing the whole system's run. A vehicle that is not an
  *    object is skipped (old: TypeError). Neither occurs in GBFS 2.x.
+ *  * Feed URLs from the system list are fetched only under the URL policy of
+ *    src/connectors/gbfs.ts (https, no private IP literal, no internal host
+ *    name, the same for every redirect hop); refused feeds are skipped and
+ *    counted in one `[warn]` per run. The old node fetched them as given.
  *  * Log texts are English.
  */
 
@@ -80,7 +84,15 @@ import type {
   SignatureValue,
   UpsertPlan,
 } from "../kernel/types.js";
-import { feedUrl, parseSystems, SYSTEMS_URL, systemKey } from "./gbfs.js";
+import {
+  FEED_FETCH,
+  feedAllowed,
+  feedUrl,
+  parseSystems,
+  SkippedFeeds,
+  SYSTEMS_URL,
+  systemKey,
+} from "./gbfs.js";
 
 export const ID = "sharing-bw";
 
@@ -235,16 +247,22 @@ export function dropVanishedTables(ctx: Ctx, activeSystems: readonly string[]): 
   }
 }
 
-async function runSystem(ctx: Ctx, system: string, url: string): Promise<void> {
+async function runSystem(ctx: Ctx, system: string, url: string, skipped: SkippedFeeds): Promise<void> {
+  if (!feedAllowed(url)) {
+    skipped.note(url);
+    return;
+  }
   let body: unknown;
   try {
-    const response = await ctx.fetch.json(url);
+    const response = await ctx.fetch.json(url, FEED_FETCH);
     // `msg.statusCode >= 400 || !msg.payload …` -> return null, no warning.
     if (response.status >= 400) return;
     body = response.body;
-  } catch {
+  } catch (error) {
     // The http request node handed a transport error on as a string payload,
-    // which failed the same check silently.
+    // which failed the same check silently. A redirect the URL policy
+    // refused is counted instead.
+    skipped.noteRefusal(error);
     return;
   }
   let feed: FreeBikeFeed;
@@ -297,9 +315,11 @@ export async function run(ctx: Ctx): Promise<void> {
     status,
   });
 
+  const skipped = new SkippedFeeds();
   for (const system of systems) {
-    await runSystem(ctx, system.id, feedUrl(system, "free_bike_status"));
+    await runSystem(ctx, system.id, feedUrl(system, "free_bike_status"), skipped);
   }
+  skipped.report(ctx.log, "GBFS-BW");
 }
 
 /** Checked against the contract by the compiler. */

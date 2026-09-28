@@ -30,10 +30,23 @@
  *  * One write per run through `ctx.orion.upsert` — ungated, as the old
  *    `upsert` node had no commit node behind it.
  *  * Warning texts are English (the code language of this service).
+ *  * Security review: redirects are refused (`redirect: "error"` — the token
+ *    must not follow a `Location`; the node followed), the location id is
+ *    URL-encoded as a path segment, and a `__proto__` key in the detail
+ *    stays a key.
  */
 
 import { cleanText, dateObserved } from "../kernel/ngsi.js";
-import { field, isArray, isBoolean, isFiniteNumber, isRecord, isString, isTruthy } from "../kernel/parse.js";
+import {
+  field,
+  isArray,
+  isBoolean,
+  isFiniteNumber,
+  isRecord,
+  isString,
+  isTruthy,
+  nullPrototypeRecord,
+} from "../kernel/parse.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   ConnectorModule,
@@ -104,7 +117,8 @@ function jsonValue(value: unknown): JsonValue | undefined {
     return items;
   }
   if (isRecord(value)) {
-    const out: Record<string, JsonValue> = {};
+    // Keys come from the source: a `__proto__` key must stay a key (see nullPrototypeRecord).
+    const out = nullPrototypeRecord<JsonValue>();
     for (const [key, item] of Object.entries(value)) {
       const checked = jsonValue(item);
       if (checked === undefined) return undefined;
@@ -133,8 +147,9 @@ export function findLocation(payload: unknown): string | null {
   return id !== undefined && isTruthy(id) ? String(id) : null;
 }
 
+/** Encoded as a path segment; the numeric ids hystreet hands out stay byte-identical. */
 export function locationUrl(id: string): string {
-  return `${LOCATIONS_URL}/${id}`;
+  return `${LOCATIONS_URL}/${encodeURIComponent(id)}`;
 }
 
 /** `const d = msg.payload.data || msg.payload; const stats = d.statistics || {};` */
@@ -181,7 +196,8 @@ export function build(
 async function load(ctx: Ctx, url: string, token: string): Promise<{ payload: unknown; status: string }> {
   let response: HttpResponse;
   try {
-    response = await ctx.fetch.text(url, { headers: requestHeaders(token), retries: 0 });
+    // Never follow a redirect: the token would travel to wherever it points.
+    response = await ctx.fetch.text(url, { headers: requestHeaders(token), retries: 0, redirect: "error" });
   } catch (error) {
     return { payload: null, status: failureText(error) };
   }

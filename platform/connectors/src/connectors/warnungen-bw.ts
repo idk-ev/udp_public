@@ -57,13 +57,26 @@
  *  * In the calendar, an Alert whose `headlines` is neither a list nor a
  *    string (or an entry that is null) is skipped; the old node threw, and the
  *    request hung without an answer until the proxy gave up.
+ *
+ * ## Deliberate deviations of the calendar (security review)
+ *
+ *  * TEXT escaping turns a lone `\r` into `\n` as well and drops the other
+ *    control characters ({@link esc}); the old node passed a lone `\r`
+ *    through, which let a headline forge `URL:` lines or whole events.
+ *  * Content lines are folded at 75 octets (RFC 5545, {@link foldLine}); the
+ *    old node sent them unfolded. Unfolded, the bytes are the old ones.
+ *  * A failed Orion read is a `[warn]` at most once a minute (the rest at
+ *    debug), no longer an `[error]` per request: public requests must not be
+ *    able to drive the health check's counters.
  */
 
 import { parse as parseMunicipalities } from "./stammdaten-bw.js";
 import { COCKPIT_URL } from "../kernel/env.js";
 import { weakEtag } from "../kernel/http.js";
+import { WarnThrottle } from "../kernel/log.js";
 import { cleanText, dateObserved } from "../kernel/ngsi.js";
 import { field, isArray, isFiniteNumber, isRecord, isString, isTruthy, ParseError } from "../kernel/parse.js";
+import { stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   ConnectorModule,
@@ -561,9 +574,53 @@ function text(value: unknown): string {
   return "[object Object]";
 }
 
-/** iCalendar TEXT escaping as in the old node: `, ; \` escaped, `\r\n`/`\n` as `\n`. */
-function esc(value: string): string {
-  return value.replace(/([,;\\])/g, "\\$1").replace(/\r?\n/g, "\\n");
+/**
+ * iCalendar TEXT escaping (RFC 5545, 3.3.11): `, ; \` escaped as in the old
+ * node, and EVERY line break — `\r\n`, `\n` and a lone `\r` — as `\n`. The old
+ * node let a lone `\r` through, so a headline with `\rURL:…` or
+ * `\rBEGIN:VEVENT` forged a property or an event of its own for a lenient
+ * parser. The other control characters (CONTROL of RFC 5545: U+0000–U+0008,
+ * U+000A–U+001F, U+007F) are dropped; a tab stays, TEXT allows it.
+ */
+export function esc(value: string): string {
+  const escaped = value.replace(/([,;\\])/g, "\\$1").replace(/\r\n|\r|\n/g, "\\n");
+  let out = "";
+  for (const char of escaped) {
+    const code = char.charCodeAt(0);
+    if ((code < 0x20 && code !== 0x09) || code === 0x7f) continue;
+    out += char;
+  }
+  return out;
+}
+
+/** RFC 5545, 3.1: content lines longer than this many octets are folded. */
+export const FOLD_OCTETS = 75;
+
+/**
+ * Folds one content line at {@link FOLD_OCTETS} octets of UTF-8: CRLF plus a
+ * space before each continuation, the space counting towards its line; never
+ * inside a code point. The old node did not fold; unfolding (removing every
+ * CRLF followed by a space) gives its line back.
+ */
+export function foldLine(line: string): string {
+  if (Buffer.byteLength(line, "utf8") <= FOLD_OCTETS) return line;
+  const parts: string[] = [];
+  let current = "";
+  let size = 0;
+  let limit = FOLD_OCTETS;
+  for (const char of line) {
+    const bytes = Buffer.byteLength(char, "utf8");
+    if (size + bytes > limit) {
+      parts.push(current);
+      current = "";
+      size = 0;
+      limit = FOLD_OCTETS - 1;
+    }
+    current += char;
+    size += bytes;
+  }
+  parts.push(current);
+  return parts.join("\r\n ");
 }
 
 /** `a.headlines || []` iterated as the old `for…of` did: a list, or a string's characters. */
@@ -623,7 +680,7 @@ export function renderCalendar(kreis: string, alerts: readonly unknown[], now: I
     );
   }
   lines.push("END:VCALENDAR");
-  return `${lines.join("\r\n")}\r\n`;
+  return `${lines.map(foldLine).join("\r\n")}\r\n`;
 }
 
 /**
@@ -648,6 +705,21 @@ export const UNAVAILABLE_TEXT = "Warnungen derzeit nicht abrufbar.";
  */
 const CALENDAR_READ: OrionReadOptions = { retries: 0 };
 
+/** A failing calendar read is a `[warn]` at most this often. */
+export const CALENDAR_WARN_MS = 60_000;
+
+const CALENDAR_FAILURES = stateKey("icsFailureLog", () => new WarnThrottle(CALENDAR_WARN_MS));
+
+/**
+ * Logs a failed calendar read. Every request of the public can cause one, and
+ * the health check counts `[warn]`/`[error]` lines — so at most one `[warn]`
+ * per {@link CALENDAR_WARN_MS}, the rest at debug (security review). The old
+ * node logged an `[error]` per request.
+ */
+function calendarFailure(ctx: Ctx, message: string): void {
+  ctx.state.slot(CALENDAR_FAILURES).get().warn(ctx.log, message, Date.parse(ctx.now()));
+}
+
 export async function calendarResponse(ctx: Ctx, request: RouteRequest): Promise<RouteResponse> {
   const kreis = kreisParameter(request.query);
   if (!/^\d{5}$/.test(kreis)) {
@@ -664,14 +736,17 @@ export async function calendarResponse(ctx: Ctx, request: RouteRequest): Promise
     if (!response.ok || !isArray(response.body)) {
       // Deliberate deviation: the old node read an error answer as "no
       // alerts" and served "Keine amtlichen Warnungen" while Orion was down.
-      ctx.log.warn(`/warnungen.ics: Orion answered HTTP ${String(response.status)} — 503`);
+      calendarFailure(ctx, `/warnungen.ics: Orion answered HTTP ${String(response.status)} — 503`);
       return sendText(503, "text/plain; charset=utf-8", UNAVAILABLE_TEXT);
     }
     alerts = response.body;
   } catch (error) {
-    // As before an `[error]` (the http request node reported the fault), but
-    // no longer a 200 calendar claiming there are no warnings.
-    ctx.log.error("/warnungen.ics: Orion query failed", error);
+    // No longer a 200 calendar claiming there are no warnings. A `[warn]`,
+    // throttled, instead of the old `[error]` per request (see calendarFailure).
+    calendarFailure(
+      ctx,
+      `/warnungen.ics: Orion query failed (${error instanceof Error ? error.message : String(error)}) — 503`,
+    );
     return sendText(503, "text/plain; charset=utf-8", UNAVAILABLE_TEXT);
   }
   return sendText(200, "text/calendar; charset=utf-8", renderCalendar(kreis, alerts, ctx.now()));

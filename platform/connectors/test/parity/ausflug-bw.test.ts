@@ -25,6 +25,7 @@
 import assert from "node:assert/strict";
 import { build, parse, QUERIES, run } from "../../src/connectors/ausflug-bw.js";
 import {
+  OVERPASS_MAX_BYTES,
   OVERPASS_MAX_CONCURRENT,
   OVERPASS_MIN_INTERVAL_MS,
   OVERPASS_TIMEOUT_MS,
@@ -255,6 +256,7 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   assert.equal(rig.maxInFlight(), 1, "Overpass requests overlapped");
   for (const request of rig.overpass()) {
     assert.deepEqual(normalize(request.options), {
+      maxBytes: OVERPASS_MAX_BYTES,
       maxConcurrent: OVERPASS_MAX_CONCURRENT,
       minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
       retries: 0,

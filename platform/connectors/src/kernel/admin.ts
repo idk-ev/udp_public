@@ -27,17 +27,51 @@
  * (UDP_TRIGGER_COOLDOWN_SECONDS, default 60) or while a run is still active
  * answers 429 with the reason and a `Retry-After`, instead of starting another
  * run against the same source. That is logged at info level — a refused
- * trigger is not a fault of the service.
+ * trigger is not a fault of the service. The cooldown cannot be switched off:
+ * below {@link MIN_TRIGGER_COOLDOWN_SECONDS} it is raised to it, and 0, a
+ * negative value or NaN fall back to the default ({@link triggerCooldownMs}).
+ *
+ * ## Loopback only (decided with the security review)
+ *
+ * The port listens on all interfaces so that probes reach `/healthz`. The
+ * trigger answers only a TCP peer on loopback (`127.0.0.1`, `::1`,
+ * `::ffff:127.0.0.1`) — the peer address of the socket, never a forwarded
+ * header — and everything else with 403, logged at info level: a refused
+ * stranger is not a fault of the service either. `scripts/trigger-connector.sh`
+ * runs it inside the container (`docker exec` / `kubectl exec`, phase 5).
+ * The route reads no request body; one that is sent anyway stays unread.
  */
 
 import { jsonResponse, textResponse } from "./http.js";
 import type { Kernel } from "./context.js";
 import { runtimeOf } from "./registry.js";
-import type { RouteDefinition, RouteResponse } from "./types.js";
+import type { Env, RouteDefinition, RouteResponse } from "./types.js";
 
 export const DEFAULT_ADMIN_PORT = 1881;
 export const DEFAULT_ADMIN_HOST = "0.0.0.0";
 export const DEFAULT_TRIGGER_COOLDOWN_SECONDS = 60;
+
+/** The cooldown cannot be set below this. */
+export const MIN_TRIGGER_COOLDOWN_SECONDS = 60;
+
+/**
+ * `UDP_TRIGGER_COOLDOWN_SECONDS` in milliseconds: at least
+ * {@link MIN_TRIGGER_COOLDOWN_SECONDS}; 0, negative or not a number is the
+ * default.
+ */
+export function triggerCooldownMs(env: Env): number {
+  const seconds = env.number("UDP_TRIGGER_COOLDOWN_SECONDS", DEFAULT_TRIGGER_COOLDOWN_SECONDS);
+  if (!Number.isFinite(seconds) || seconds <= 0) return DEFAULT_TRIGGER_COOLDOWN_SECONDS * 1000;
+  return Math.max(MIN_TRIGGER_COOLDOWN_SECONDS, seconds) * 1000;
+}
+
+/** Peer addresses the trigger answers: loopback, in the three spellings Node reports. */
+const LOOPBACK: ReadonlySet<string> = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+/** Whether a TCP peer address is loopback. `undefined` (unknown) is not. */
+export function isLoopback(address: string | undefined): boolean {
+  return address !== undefined && LOOPBACK.has(address);
+}
 
 export interface AdminOptions {
   readonly version: string;
@@ -88,6 +122,13 @@ function triggerRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
     path: "/trigger/:id",
     handle(request): Promise<RouteResponse> {
       const id = request.params.id ?? "";
+      if (!isLoopback(request.remoteAddress)) {
+        // info, not warn: whoever can reach the port can produce this line.
+        kernel.log.info(`${id}: trigger refused, peer ${request.remoteAddress ?? "unknown"} is not loopback`);
+        return Promise.resolve(
+          textResponse(403, "trigger only from loopback (docker exec / kubectl exec)\n"),
+        );
+      }
       const result = kernel.scheduler.trigger(id, options.cooldownMs);
       switch (result.outcome) {
         case "started":

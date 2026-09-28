@@ -55,6 +55,8 @@
  *  * Malformed registry params (coordinates that are not two numbers, an
  *    entity id without the `urn:ngsi-ld:` prefix) fall back to "no location"
  *    resp. the default id; the generator pasted them into the code verbatim.
+ *  * The stop id is URL-encoded in the request (`:` kept), the old node
+ *    concatenated it; identical bytes for every configured id.
  *  * Warning texts are English (the code language of this service).
  */
 
@@ -215,12 +217,22 @@ export function stopsFromParams(
   return { stops, missing };
 }
 
-/** URL of the old `http request` node: stop id concatenated as is, 20 departures. */
+/**
+ * URL of the old `http request` node, 20 departures. The node concatenated the
+ * stop id as is; it is URL-encoded now, with `:` kept — legal in a query and
+ * the separator of every real id (`de:08111:6115`), so today's URLs stay byte
+ * for byte what the node sent.
+ */
 export function departuresUrl(stop: StopConfig): string {
   return (
-    `${EFA_DM_URL}?outputFormat=rapidJSON&type_dm=any&name_dm=${stop.stopId}` +
+    `${EFA_DM_URL}?outputFormat=rapidJSON&type_dm=any&name_dm=${stopIdParam(stop.stopId)}` +
     "&mode=direct&useRealtime=1&limit=20"
   );
+}
+
+/** `encodeURIComponent` that leaves `:` alone. */
+export function stopIdParam(stopId: string): string {
+  return encodeURIComponent(stopId).replace(/%3A/gi, ":");
 }
 
 /* ------------------------------------------------------------------ Parse */

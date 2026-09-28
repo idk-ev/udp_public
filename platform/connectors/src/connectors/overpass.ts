@@ -72,6 +72,14 @@ export const OVERPASS_MAX_CONCURRENT = 1;
 /** Node-RED's default `httpRequestTimeout`, which the `http request` nodes ran with. */
 export const OVERPASS_TIMEOUT_MS = 120_000;
 
+/**
+ * Body cap of one Overpass answer (security review; the nodes read without a
+ * limit). `out tags center` is compact, but a tile or quadrant of dense
+ * tourism/amenity data runs into tens of MB: the recorded fixtures extrapolate
+ * to ~25 MB for the densest ausflug-bw quadrant. 128 MiB is five times that.
+ */
+export const OVERPASS_MAX_BYTES = 128 * 1024 * 1024;
+
 /** `'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query)`. */
 export function overpassUrl(query: string): string {
   return OVERPASS_INTERPRETER + encodeURIComponent(query);
@@ -242,6 +250,7 @@ export async function fetchOverpass(ctx: Ctx, url: string): Promise<OverpassResp
       retries: 0,
       minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
       maxConcurrent: OVERPASS_MAX_CONCURRENT,
+      maxBytes: OVERPASS_MAX_BYTES,
     });
     const detail = `HTTP ${String(response.status)}`;
     if (response.status >= 400) return { status: response.status, body: undefined, detail };

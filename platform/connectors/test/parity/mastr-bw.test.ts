@@ -23,6 +23,8 @@ import {
   build,
   COUNTS,
   countsOf,
+  failedMunicipalities,
+  pageFailed,
   parse,
   plan,
   POSITION,
@@ -285,10 +287,62 @@ async function twoNightsLikeTheOldChain(): Promise<void> {
   assert.deepEqual(log.warnings(), []);
 }
 
+async function failedPagesKeepTheLastValue(): Promise<void> {
+  // DELIBERATE DEVIATION (data review): the old chain wrote a municipality
+  // with a failed page as 0 plants, 0 kW, complete — and cached the count 0.
+  // Now it is left out: no entity, no cache update, one [warn] per run.
+  assert.equal(pageFailed(500, { Data: [] }), true);
+  assert.equal(pageFailed(null, null), true);
+  assert.equal(pageFailed(200, { Total: 3 }), true, "no Data array");
+  assert.equal(pageFailed(200, "maintenance"), true);
+  assert.equal(pageFailed(200, { Data: [], Total: 0 }), false, "an empty page is an answer");
+  const requests: MastrRequest[] = [
+    { url: "", ags: "08000001", name: "A", page: 1 },
+    { url: "", ags: "08000001", name: "A", page: 2 },
+    { url: "", ags: "08000002", name: "B", page: 1 },
+    { url: "", ags: "08000003", name: "C", page: 1 },
+  ];
+  assert.deepEqual(
+    [...failedMunicipalities(requests, [false, true, false, undefined])],
+    ["08000001", "08000003"],
+    "a failed page and a page never requested (aborted run) both count",
+  );
+
+  const geo = fixtureGeo();
+  const broker = new Broker();
+  // Münstertal (446 plants): page 1 answers, page 2 of the ten fails.
+  // Sölden: every page answers.
+  const failing = "Münstertal/Schwarzwald";
+  const respond = (request: SeenRequest): HttpResponse | Error => {
+    if (request.url.host !== "www.marktstammdatenregister.de") return broker.respond(request);
+    const filter = request.url.searchParams.get("filter") ?? "";
+    const name = /Gemeinde~eq~'(.*)'~and~Betriebs/.exec(filter)?.[1] ?? "";
+    const page = Number(request.url.searchParams.get("page"));
+    if (name === failing && page === 2) return httpResponse(503, "<html>busy</html>");
+    return httpResponse(200, JSON.stringify(source({ name, page })));
+  };
+  const { ctx, log } = testCtx("mastr-bw", sharedGeo(geo), respond);
+  const failingAgs = rows().find((row) => row[1] === failing)?.[0];
+  const fineAgs = rows().find((row) => row[1] === "Sölden")?.[0];
+  assert.ok(failingAgs !== undefined && fineAgs !== undefined);
+  await run(ctx);
+
+  const written = new Set(broker.upserts.flat().map((entity) => (isRecord(entity) ? String(entity.id) : "")));
+  assert.equal(written.has(`urn:ngsi-ld:EnergyMonitor:bw-${failingAgs}`), false, "no zeros written");
+  assert.equal(written.has(`urn:ngsi-ld:EnergyMonitor:bw-${fineAgs}`), true);
+  const counts = ctx.state.slot(COUNTS).get();
+  assert.equal(counts.has(failingAgs), false, "no page count cached from a failed municipality");
+  assert.equal(counts.get(fineAgs), 203);
+  assert.deepEqual(log.warnings(), [
+    "MaStR-BW: 1 municipalities with failed pages skipped — they keep their last value and page count",
+  ]);
+}
+
 export {
   rotationIsIdentical as "mastr-bw: old rotation node and plan() request the same pages and move on alike",
   slimmingIsIdentical as "mastr-bw: old slimming node and slimPage() agree on real, failed and odd pages",
   aggregationIsIdentical as "mastr-bw: old aggregation and ported build() agree, incl. holes, pre-2000 and unknown years",
   aDriftedCapacityFails as "mastr-bw: a drifted capacity fails the comparison with its path",
   twoNightsLikeTheOldChain as "mastr-bw: two nights of run(ctx) match the old chain — pages, entities, rotation, cached counts",
+  failedPagesKeepTheLastValue as "mastr-bw: a municipality with a failed page is skipped, not written as zero, count not cached (deliberate)",
 };

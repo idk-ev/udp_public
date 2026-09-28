@@ -46,6 +46,16 @@
  *
  * No `dateObserved` and no change gate, as before; no prune (the rotation
  * never sees the whole stock in one run).
+ *
+ * ## Deliberate deviation (decided with the data review): failed pages
+ *
+ * The old wrap node turned a failed page (HTTP error, timeout, no `Data`)
+ * into an empty page with total 0, and the build wrote the municipality with
+ * plant count 0, capacity 0 and `complete: true` — a week of zeros until the
+ * rotation came back — and cached the count 0, so the next visit fetched a
+ * single page. Now a municipality with ANY failed page is left out of the run
+ * ({@link failedMunicipalities}): no entity (Orion keeps the last value), no
+ * cache update. One `[warn]` per run names how many were skipped.
  */
 
 import { observed } from "../kernel/ngsi.js";
@@ -87,6 +97,13 @@ const MAX_IN_FLIGHT = 8;
 
 /** Node-RED's default socket timeout of the `http request` node. */
 const REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * Body cap per page (security review; the node read without a limit). A full
+ * page carries 2,000 plants of ~100 fields each, a few MB; 64 MiB is an order
+ * of magnitude above that.
+ */
+export const PAGE_MAX_BYTES = 64 * 1024 * 1024;
 
 /** Additions per year kept (`additions.slice(-27)`): 1999 (= before 2000) onwards. */
 const YEARS_KEPT = 27;
@@ -187,6 +204,15 @@ function yearOf(value: unknown): number {
   const match = /\/Date\((\d+)\)\//.exec(text);
   const ms = match?.[1];
   return ms === undefined ? 0 : new Date(Number.parseInt(ms, 10)).getUTCFullYear();
+}
+
+/**
+ * A page that did not deliver: status ≥ 400, no response (`null`), no object
+ * body or no `Data` array. What `udp-rt-bx-wrap` turned into an empty page.
+ */
+export function pageFailed(status: number | null, body: unknown): boolean {
+  const data = isRecord(body) ? body.Data : undefined;
+  return (status !== null && status >= 400) || !isRecord(body) || !isArray(data);
 }
 
 /**
@@ -332,6 +358,21 @@ export const POSITION = stateKey("mastrPos", () => 0, persisted.number);
 /** `mastrCount` of the global context: the plant count per municipality of its last run. */
 export const COUNTS = stateKey("mastrCount", () => new Map<Ags, number>(), persisted.numberMap);
 
+/**
+ * Municipalities of `requests` whose pages did not all arrive: a page failed
+ * (`failed[i]`) or was never requested (aborted run, `undefined`).
+ */
+export function failedMunicipalities(
+  requests: readonly MastrRequest[],
+  failed: readonly (boolean | undefined)[],
+): ReadonlySet<Ags> {
+  const out = new Set<Ags>();
+  requests.forEach((request, index) => {
+    if (failed[index] !== false) out.add(request.ags);
+  });
+  return out;
+}
+
 /** At most `limit` in flight, results in item order; stops starting new ones once aborted. */
 async function inOrder<T, R>(
   items: readonly T[],
@@ -372,13 +413,33 @@ export async function run(ctx: Ctx): Promise<void> {
 
   const answers = await inOrder(rotation.requests, MAX_IN_FLIGHT, ctx.signal, async (request) => {
     try {
-      const response = await ctx.fetch.json(request.url, { retries: 0, timeoutMs: REQUEST_TIMEOUT_MS });
-      return slimPage(request, response.status, response.body);
+      const response = await ctx.fetch.json(request.url, {
+        retries: 0,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        maxBytes: PAGE_MAX_BYTES,
+      });
+      return {
+        page: slimPage(request, response.status, response.body),
+        failed: pageFailed(response.status, response.body),
+      };
     } catch {
-      return slimPage(request, null, null);
+      return { page: slimPage(request, null, null), failed: true };
     }
   });
-  const pages = answers.filter((page): page is MastrPage => page !== undefined);
+  // A municipality with a missing page keeps its last value (see the header).
+  const skipped = failedMunicipalities(
+    rotation.requests,
+    answers.map((answer) => answer?.failed),
+  );
+  if (skipped.size > 0) {
+    ctx.log.warn(
+      `${LABEL}: ${String(skipped.size)} municipalities with failed pages skipped — ` +
+        "they keep their last value and page count",
+    );
+  }
+  const pages = answers
+    .map((answer) => answer?.page)
+    .filter((page): page is MastrPage => page !== undefined && !skipped.has(page.ags));
 
   const entities = build(pages, geo, ctx.now());
   if (entities.length === 0) return;

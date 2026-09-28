@@ -24,7 +24,7 @@
  */
 
 import { COCKPIT_URL } from "../kernel/env.js";
-import { isArray, isFiniteNumber, isRecord } from "../kernel/parse.js";
+import { isArray, isFiniteNumber, isRecord, nullPrototypeRecord } from "../kernel/parse.js";
 import type { BoundaryEntry, BoundarySet, ConnectorModule, Ctx, GeoIndex, IsoTime } from "../kernel/types.js";
 
 export const ID = "grenzen-bw";
@@ -80,7 +80,8 @@ function parseEntry(raw: unknown): BoundaryEntry | null {
  */
 export function parse(raw: unknown): BoundaryFile {
   if (!isRecord(raw)) throw new Error("bw-grenzen.json: expected an object keyed by AGS");
-  const boundaries: Record<string, BoundaryEntry> = {};
+  // Keys come from the file: a `__proto__` entry must stay a key (see nullPrototypeRecord).
+  const boundaries = nullPrototypeRecord<BoundaryEntry>();
   let skipped = 0;
   for (const [ags, value] of Object.entries(raw)) {
     const entry = parseEntry(value);

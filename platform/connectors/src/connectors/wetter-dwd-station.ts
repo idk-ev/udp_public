@@ -44,6 +44,8 @@
  *  * Malformed data only: a source entry that is not an object, coordinates
  *    that are not numbers, a name that is not a string, and measured values
  *    that are not numbers count as absent.
+ *  * The station id is URL-encoded in the request (the old node concatenated
+ *    it); identical bytes for every real id.
  *  * Warning texts are English (the code language of this service).
  */
 
@@ -79,8 +81,12 @@ export const ID = "wetter-dwd-station";
 /** BrightSky source list around the middle of BW (radius 200 km). */
 export const SOURCES_URL = "https://api.brightsky.dev/sources?lat=48.6&lon=9.0&max_dist=200000";
 
+/**
+ * The station id comes out of the source list, so it is URL-encoded (the old
+ * node concatenated it). The real ids are digits and letters — unchanged bytes.
+ */
 export function weatherUrl(stationId: string): string {
-  return `https://api.brightsky.dev/current_weather?dwd_station_id=${stationId}`;
+  return `https://api.brightsky.dev/current_weather?dwd_station_id=${encodeURIComponent(stationId)}`;
 }
 
 /** Box around Baden-Württemberg the old node filtered the sources with. */

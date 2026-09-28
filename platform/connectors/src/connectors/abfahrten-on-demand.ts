@@ -65,12 +65,30 @@
  *    stored whatever truthy value came. An entry without a string `stopId` is
  *    a 404 in both.
  *  * Transport failures towards EFA are logged as `[warn]` (the http request
- *    node logged them as an error of its own); the client gets the 502 either
+ *    node logged them as an error of its own), at most one per
+ *    {@link FAILURE_WARN_MS} — public requests must not drive the health
+ *    check's counters; the rest go to debug. The client gets the 502 either
  *    way.
+ *  * Load shedding (security review). The nginx cache used to be bypassable
+ *    with extra query parameters, and every bypass reached EFA-BW through the
+ *    bucket `efa-abfahrten` shares — enough to starve the periodic run. Now:
+ *     - concurrent requests for the same stop share ONE upstream request, and
+ *       its answer (success or failure) is reused for {@link COALESCE_MS};
+ *     - the endpoint has its own slots ({@link ON_DEMAND_CONCURRENCY} in
+ *       flight, {@link ON_DEMAND_QUEUE} waiting), so it holds at most two
+ *       places in the host bucket and can never fill its queue; beyond that
+ *       it answers 503 (`Retry-After: 30`) at once, logged at debug;
+ *     - when every client waiting for an upstream request has disconnected,
+ *       the request is aborted.
+ *    The `stand` of a reused answer is the time EFA answered, not the time of
+ *    the page view. The old path had none of this: one unpaced EFA request
+ *    per nginx cache miss.
  */
 
 import { COCKPIT_URL } from "../kernel/env.js";
+import { FetchAbortedError } from "../kernel/fetcher.js";
 import { weakEtag } from "../kernel/http.js";
+import { WarnThrottle } from "../kernel/log.js";
 import { isRecord, isString, isTruthy, ParseError, requireRecord } from "../kernel/parse.js";
 import { stateKey } from "../kernel/state.js";
 import type {
@@ -295,18 +313,202 @@ export function departuresResponse(halt: Halt, upstream: Upstream, now: IsoTime)
   });
 }
 
+/* ------------------------------------------------------------------ Load shedding */
+
+/** How long an upstream answer per stop is reused (success and failure alike). */
+export const COALESCE_MS = 30_000;
+
+/** On-demand EFA requests in flight at once. */
+export const ON_DEMAND_CONCURRENCY = 2;
+
+/** On-demand requests waiting for a slot; one more is answered 503 at once. */
+export const ON_DEMAND_QUEUE = 8;
+
+/** A transport failure towards EFA is a `[warn]` at most this often. */
+export const FAILURE_WARN_MS = 60_000;
+
+/** Answer when the on-demand queue is full (the EFA-BW load is shed here, not upstream). */
+export const BUSY_TEXT = "Auskunft ausgelastet, bitte gleich erneut versuchen";
+
+/** An upstream answer, or why there is none to show. */
+type FlightResult =
+  | { readonly kind: "upstream"; readonly upstream: Upstream; readonly stand: IsoTime }
+  | { readonly kind: "aborted" };
+
+/** One upstream request for a stop, shared by every client asking for it. */
+interface Flight {
+  readonly result: Promise<FlightResult>;
+  readonly abort: AbortController;
+  /** Clients waiting for `result`; when the last one leaves, the request is aborted. */
+  waiters: number;
+  /** Epoch ms the result arrived; `null` while in flight. */
+  settledAt: number | null;
+}
+
+/** Slots and the shared flights of the endpoint — per connector, in `ctx.state`. */
+export class OnDemandGate {
+  readonly flights = new Map<string, Flight>();
+  inFlight = 0;
+  readonly #queue: (() => void)[] = [];
+
+  /** A slot, `"busy"` when the queue is full, `"aborted"` when `signal` fired first. */
+  async slot(signal: AbortSignal): Promise<"ok" | "busy" | "aborted"> {
+    if (this.inFlight < ON_DEMAND_CONCURRENCY) {
+      this.inFlight += 1;
+      return "ok";
+    }
+    if (this.#queue.length >= ON_DEMAND_QUEUE) return "busy";
+    return new Promise((resolve) => {
+      const wake = (): void => {
+        signal.removeEventListener("abort", leave);
+        this.inFlight += 1;
+        resolve("ok");
+      };
+      const leave = (): void => {
+        const at = this.#queue.indexOf(wake);
+        if (at >= 0) this.#queue.splice(at, 1);
+        resolve("aborted");
+      };
+      signal.addEventListener("abort", leave, { once: true });
+      this.#queue.push(wake);
+    });
+  }
+
+  release(): void {
+    this.inFlight -= 1;
+    this.#queue.shift()?.();
+  }
+
+  /** Whether a new flight could start or queue right now. */
+  hasRoom(): boolean {
+    return this.inFlight < ON_DEMAND_CONCURRENCY || this.#queue.length < ON_DEMAND_QUEUE;
+  }
+
+  /** Drops settled flights older than {@link COALESCE_MS}. */
+  expire(nowMs: number): void {
+    for (const [stopId, flight] of this.flights) {
+      if (flight.settledAt !== null && nowMs - flight.settledAt >= COALESCE_MS) this.flights.delete(stopId);
+    }
+  }
+}
+
+/** The endpoint's gate — shared by all its requests, invisible to other connectors. */
+export const ON_DEMAND = stateKey("abfahrtenGate", () => new OnDemandGate());
+
+const FAILURE_LOG = stateKey("abfahrtenFailureLog", () => new WarnThrottle(FAILURE_WARN_MS));
+
+function nowMsOf(ctx: Ctx): number {
+  return Date.parse(ctx.now());
+}
+
+function startFlight(ctx: Ctx, gate: OnDemandGate, stopId: string, url: string): Flight {
+  const abort = new AbortController();
+  const flight: Flight = {
+    abort,
+    waiters: 0,
+    settledAt: null,
+    result: (async (): Promise<FlightResult> => {
+      const slot = await gate.slot(abort.signal);
+      if (slot !== "ok") return { kind: "aborted" };
+      try {
+        const response = await ctx.fetch.text(url, {
+          minIntervalMs: EFA_MIN_INTERVAL_MS,
+          retries: 0,
+          signal: abort.signal,
+        });
+        return {
+          kind: "upstream",
+          upstream: { status: response.status, payload: nodePayload(response) },
+          stand: ctx.now(),
+        };
+      } catch (error) {
+        if (error instanceof FetchAbortedError) return { kind: "aborted" };
+        ctx.state
+          .slot(FAILURE_LOG)
+          .get()
+          .warn(ctx.log, `EFA-BW on demand ${stopId}: request failed (${failureText(error)})`, nowMsOf(ctx));
+        return { kind: "upstream", upstream: { status: null, payload: null }, stand: ctx.now() };
+      } finally {
+        gate.release();
+      }
+    })(),
+  };
+  void flight.result.then((result) => {
+    // An aborted flight is nobody's answer; the next request starts afresh.
+    if (result.kind === "aborted") {
+      if (gate.flights.get(stopId) === flight) gate.flights.delete(stopId);
+    } else flight.settledAt = nowMsOf(ctx);
+  });
+  return flight;
+}
+
+/**
+ * Waits for `flight` on behalf of one client. When the client disconnects it
+ * stops waiting; when the LAST waiter of a flight still in progress leaves,
+ * the upstream request is aborted.
+ */
+async function waitFor(flight: Flight, signal: AbortSignal | undefined): Promise<FlightResult> {
+  if (signal?.aborted === true) return { kind: "aborted" };
+  flight.waiters += 1;
+  if (signal === undefined) {
+    try {
+      return await flight.result;
+    } finally {
+      flight.waiters -= 1;
+    }
+  }
+  let waiting = true;
+  const done = (): void => {
+    if (!waiting) return;
+    waiting = false;
+    flight.waiters -= 1;
+  };
+  let leave: () => void = done;
+  const left = new Promise<FlightResult>((resolve) => {
+    leave = (): void => {
+      done();
+      if (flight.waiters === 0 && flight.settledAt === null) flight.abort.abort();
+      resolve({ kind: "aborted" });
+    };
+    signal.addEventListener("abort", leave, { once: true });
+  });
+  try {
+    return await Promise.race([flight.result, left]);
+  } finally {
+    signal.removeEventListener("abort", leave);
+    done();
+  }
+}
+
 async function answer(ctx: Ctx, request: RouteRequest): Promise<RouteResponse> {
   const resolution = resolve(ctx.state.slot(DIRECTORY).get(), request.query);
   if (resolution.kind === "answer") return resolution.response;
-  let upstream: Upstream;
-  try {
-    const response = await ctx.fetch.text(resolution.url, { minIntervalMs: EFA_MIN_INTERVAL_MS, retries: 0 });
-    upstream = { status: response.status, payload: nodePayload(response) };
-  } catch (error) {
-    ctx.log.warn(`EFA-BW on demand ${resolution.stopId}: request failed (${failureText(error)})`);
-    upstream = { status: null, payload: null };
+
+  const gate = ctx.state.slot(ON_DEMAND).get();
+  gate.expire(nowMsOf(ctx));
+  let flight = gate.flights.get(resolution.stopId);
+  if (flight === undefined) {
+    if (!gate.hasRoom()) {
+      // Public traffic, not an operator's problem: debug, never [warn].
+      ctx.log.debug(`EFA-BW on demand ${resolution.stopId}: queue full, 503`);
+      return busy();
+    }
+    flight = startFlight(ctx, gate, resolution.stopId, resolution.url);
+    gate.flights.set(resolution.stopId, flight);
   }
-  return departuresResponse(resolution.halt, upstream, ctx.now());
+  const result = await waitFor(flight, request.signal);
+  if (result.kind === "aborted") {
+    // The client is gone (nothing is sent), or the flight it joined was dropped.
+    ctx.log.debug(`EFA-BW on demand ${resolution.stopId}: client gone, request dropped`);
+    return busy();
+  }
+  return departuresResponse(resolution.halt, result.upstream, result.stand);
+}
+
+/** 503 of the shed load, with a hint when to come back. */
+function busy(): RouteResponse {
+  const response = nodeRedJson(503, { fehler: BUSY_TEXT });
+  return { ...response, headers: { ...response.headers, "Retry-After": "30" } };
 }
 
 export function routes(ctx: Ctx): readonly RouteDefinition[] {

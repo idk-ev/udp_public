@@ -43,6 +43,13 @@
  * attribute row into TRoE twice; the next run resends what was not confirmed
  * anyway. Reads (`find`, `list`) keep the fetcher's retries.
  *
+ * ## Write timeout
+ *
+ * Writes wait {@link WRITE_TIMEOUT_MS} (120 s, as the old nodes), reads keep
+ * the fetcher's 30 s. Fixed in the data review: the port had given writes the
+ * 30 s default, and a timed-out chunk that Orion still completed was sent
+ * again next run.
+ *
  * ## Rate limiting
  *
  * WRITES (upsert, delete) go through the ordinary fetcher and therefore
@@ -90,6 +97,16 @@ export const DEFAULT_CHUNK_SIZE = 150;
 
 /** As FN_RW_EXPIRE: `msg.payload = ids.slice(0, 200)`. */
 export const DELETE_CHUNK_SIZE = 200;
+
+/**
+ * Timeout of an upsert or delete chunk: 120 s, Node-RED's default
+ * `httpRequestTimeout`, which the old upsert and delete nodes ran with — not
+ * the fetcher's 30 s. A chunk that times out on the client while Orion-LD
+ * still completes it drops its signatures, so the next run writes the same
+ * values again: duplicate TRoE rows, every run, exactly when the broker is
+ * slow. The generous timeout keeps a slow write a confirmed one.
+ */
+export const WRITE_TIMEOUT_MS = 120_000;
 
 /** Page size of both old pagers. */
 export const LIST_PAGE_SIZE = 1000;
@@ -245,6 +262,7 @@ class OrionClient implements Orion {
           headers: { "Content-Type": "application/ld+json" },
           body: JSON.stringify(part),
           retries: 0,
+          timeoutMs: WRITE_TIMEOUT_MS,
           redirect: "error",
         });
       } catch (error) {
@@ -320,6 +338,7 @@ class OrionClient implements Orion {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(part),
           retries: 0,
+          timeoutMs: WRITE_TIMEOUT_MS,
           redirect: "error",
         });
       } catch (error) {

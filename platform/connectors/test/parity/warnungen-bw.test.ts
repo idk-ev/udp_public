@@ -26,6 +26,9 @@ import { createHash } from "node:crypto";
 import {
   build,
   calendarResponse,
+  esc,
+  FOLD_OCTETS,
+  foldLine,
   CHUNK_SIZE,
   fanIn,
   GATE_KEY,
@@ -406,6 +409,14 @@ function unstamped(text: string): string {
   return text.replace(STAMP, "<stamp>");
 }
 
+/**
+ * RFC 5545 unfolding: a CRLF followed by a space goes. The port folds long
+ * lines (deliberate), the old node did not; unfolded, the bytes must agree.
+ */
+function unfolded(text: string): string {
+  return text.replace(/\r\n /g, "");
+}
+
 function routeRequest(search: string): RouteRequest {
   return {
     method: "GET",
@@ -517,7 +528,7 @@ async function calendarBytesAgree(): Promise<void> {
     const oldBody = legacy.returned.payload;
     assert.ok(isString(oldBody));
     const newBody = renderCalendar("08111", isArray(alerts) ? alerts : [], new Date().toISOString());
-    assert.equal(unstamped(newBody), unstamped(oldBody));
+    assert.equal(unstamped(unfolded(newBody)), unstamped(oldBody));
     assert.equal(legacy.returned.statusCode, 200);
     assert.deepEqual(normalize(legacy.returned.headers), { "Content-Type": "text/calendar; charset=utf-8" });
   }
@@ -542,7 +553,7 @@ async function routeServesTheCalendar(): Promise<void> {
     msg: { _msgid: "parity", krs: "08111", payload: parseJson(answer.body) },
   });
   assert.ok(isRecord(legacy.returned) && isString(legacy.returned.payload));
-  assert.equal(unstamped(response.body), unstamped(legacy.returned.payload));
+  assert.equal(unstamped(unfolded(response.body)), unstamped(legacy.returned.payload));
   // One read; unpaced and without retry (src/kernel/orion.ts), the nginx in front gives up after 60 s.
   const reads = r.seen.filter((request) => request.url.pathname === "/ngsi-ld/v1/entities");
   assert.equal(reads.length, 1);
@@ -554,11 +565,13 @@ async function orionFailureIsA503(): Promise<void> {
   // amtlichen Warnungen" while the broker was down. Now: 503, which the
   // cockpit nginx does not cache and a calendar client answers by keeping its
   // last events.
-  const failures: readonly [HttpResponse | Error, string][] = [
-    [httpResponse(500, JSON.stringify({ type: "InternalError" })), "warn"],
-    [new Error("connect ECONNREFUSED 10.0.0.1:1026"), "error"],
+  // A refused connection is a (throttled) [warn] now, no longer an [error] per
+  // request — see calendarFailureLogIsThrottled.
+  const failures: readonly [HttpResponse | Error, RegExp][] = [
+    [httpResponse(500, JSON.stringify({ type: "InternalError" })), /Orion answered HTTP 500/],
+    [new Error("connect ECONNREFUSED 10.0.0.1:1026"), /Orion query failed/],
   ];
-  for (const [answer, level] of failures) {
+  for (const [answer, expected] of failures) {
     const r = rig("warnungen-bw", () => answer);
     const [route] = routes(r.ctx);
     assert.ok(route !== undefined);
@@ -567,12 +580,64 @@ async function orionFailureIsA503(): Promise<void> {
     assert.equal(response.contentType, "text/plain; charset=utf-8");
     assert.equal(response.body, UNAVAILABLE_TEXT);
     assert.equal(response.headers?.ETag, weakEtagOf(response.body));
-    if (level === "warn") assert.match(r.log.warnings().join("\n"), /Orion answered HTTP 500/);
-    else {
-      const errors = r.log.lines.filter((line) => line.level === "error").map((line) => line.text);
-      assert.match(errors.join("\n"), /Orion query failed/);
-    }
+    assert.match(r.log.warnings().join("\n"), expected);
+    assert.deepEqual(
+      r.log.lines.filter((line) => line.level === "error"),
+      [],
+      "no [error] for a public request",
+    );
   }
+}
+
+async function calendarFailureLogIsThrottled(): Promise<void> {
+  // DELIBERATE DEVIATION (security review): every public request could log a
+  // counted line; now at most one [warn] a minute, the rest at debug.
+  const r = rig("warnungen-bw", () => new Error("connect ECONNREFUSED 10.0.0.1:1026"));
+  const [route] = routes(r.ctx);
+  assert.ok(route !== undefined);
+  for (let i = 0; i < 25; i += 1) {
+    assert.equal((await route.handle(routeRequest("kreis=08111"))).status, 503);
+  }
+  assert.equal(r.log.warnings().length, 1, "one [warn] for 25 failing requests");
+  assert.equal(r.log.lines.filter((line) => line.level === "error").length, 0);
+  assert.equal(
+    r.log.lines.filter((line) => line.level === "debug" && line.text.includes("Orion")).length,
+    24,
+  );
+}
+
+function escapingNeutralisesEveryLineBreak(): void {
+  // DELIBERATE DEVIATION (security review): a lone CR passed the old escaping
+  // and let a headline forge a property or a whole event.
+  const forged = "Sturm\rURL:https://evil.example/\rEND:VEVENT\r\nBEGIN:VEVENT\nX";
+  assert.equal(esc(forged), "Sturm\\nURL:https://evil.example/\\nEND:VEVENT\\nBEGIN:VEVENT\\nX");
+  assert.equal(esc("a\u0000b\u0007c\u001bd\u007fe\tf"), "abcde\tf", "controls dropped, the tab kept");
+  assert.equal(esc("x,y;z\\"), "x\\,y\\;z\\\\", "the old escapes are unchanged");
+
+  const body = renderCalendar(
+    "08111",
+    [{ id: "urn:ngsi-ld:Alert:a-dwd", headlines: [{ headline: forged, description: "d" }] }],
+    "2026-09-01T00:00:00.000Z",
+  );
+  const lines = unfolded(body).split("\r\n");
+  assert.equal(lines.filter((line) => line.startsWith("URL:")).length, 0);
+  assert.equal(lines.filter((line) => line === "BEGIN:VEVENT").length, 1, "no forged event");
+  assert.equal(body.includes("\r") && /\r(?!\n)/.test(body), false, "no lone CR anywhere");
+}
+
+function longLinesAreFoldedAt75Octets(): void {
+  const long = "Ä".repeat(60) + "x".repeat(100) + "🌩".repeat(20);
+  const folded = foldLine(`SUMMARY:${long}`);
+  const lines = folded.split("\r\n");
+  assert.ok(lines.length > 3);
+  for (const [index, line] of lines.entries()) {
+    assert.ok(Buffer.byteLength(line, "utf8") <= FOLD_OCTETS, `line ${String(index)} too long`);
+    if (index > 0) assert.ok(line.startsWith(" "), "continuation starts with a space");
+    assert.ok(!line.includes("\ufffd"), "no split code point");
+  }
+  assert.equal(folded.replace(/\r\n /g, ""), `SUMMARY:${long}`, "unfolding restores the line");
+  assert.equal(foldLine("SHORT:line"), "SHORT:line");
+  assert.equal(foldLine("x".repeat(75)), "x".repeat(75), "exactly 75 octets stay one line");
 }
 
 export {
@@ -587,4 +652,7 @@ export {
   calendarBytesAgree as "warnungen-bw: calendar bytes agree with FN_WARN_ICS_BUILD (escaping, fallbacks, empty)",
   routeServesTheCalendar as "warnungen-bw: the route answers 200 with the old calendar from one Orion read",
   orionFailureIsA503 as "warnungen-bw: Orion unreachable or failing is a 503, not a calendar without warnings (deliberate deviation)",
+  calendarFailureLogIsThrottled as "warnungen-bw: failing calendar reads log at most one [warn] a minute, never [error] (deliberate)",
+  escapingNeutralisesEveryLineBreak as "warnungen-bw: calendar escaping turns a lone CR into \\n and drops control characters (deliberate)",
+  longLinesAreFoldedAt75Octets as "warnungen-bw: calendar lines are folded at 75 octets, UTF-8 safe (deliberate)",
 };

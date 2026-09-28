@@ -190,3 +190,18 @@ export function isEntityId(value: unknown): value is `urn:ngsi-ld:${string}` {
 export function isAgs(value: unknown): value is string {
   return isString(value) && /^\d{8}$/.test(value);
 }
+
+/* ------------------------------------------------------------------ Dictionaries */
+
+/**
+ * An empty object WITHOUT a prototype, for dictionaries filled from foreign
+ * keys. On a plain `{}`, `out["__proto__"] = x` does not store a key — it
+ * replaces the prototype, and every later lookup of a missing key falls
+ * through to `x`; `out["constructor"]` answers a function. Here both are
+ * ordinary keys. `JSON.stringify` and `Object.entries` treat it as any object.
+ */
+export function nullPrototypeRecord<T>(): Record<string, T> {
+  const out: Record<string, T> = {};
+  Object.setPrototypeOf(out, null);
+  return out;
+}

@@ -21,6 +21,26 @@
  * The old node bound a JavaScript array to `$1::text[]`; so does the port
  * (`SqlParam` takes a string array), and node-postgres serialises it exactly
  * as it did for the old node.
+ *
+ * ## Deliberate deviations (decided with the data review; fixed in the port only)
+ *
+ * Two steps of the old node deleted live history every night:
+ *
+ *  * The old-scheme cleanup took EVERY `ParkingSite`/`BikeParking` whose id
+ *    does not start with `parkapi-` — which includes the municipal B+R
+ *    stations (slug-prefixed ids, own `dataProvider`) that parken-bw's Orion
+ *    prune explicitly protects. Their whole TRoE history went, night after
+ *    night. The port deletes only what is provably parken-bw's legacy: of the
+ *    candidates, only ids that carried `dataProvider` =
+ *    {@link LEGACY_PROVIDER} in a row written before the switch to
+ *    `parkapi-` ids ({@link LEGACY_SWITCH}, 25.08.2026 01:28:11 UTC) — the
+ *    same ownership rule as parken-bw's `legacyParkApi` (provider and
+ *    creation before the switch), read from TRoE ({@link SQL_LEGACY_OWN_IDS}).
+ *    If that check fails, the cleanup is skipped with a `[warn]`; the rest
+ *    of the night runs.
+ *  * The one-off `OffStreetParking` cleanup deleted every OffStreetParking
+ *    row, whoever writes that type today. Dropped: its one intended run is
+ *    long done, and every later run could only hit someone else's data.
  */
 
 import { isFiniteNumber, ParseError, requireRecord, requireString } from "../kernel/parse.js";
@@ -81,15 +101,6 @@ export const SQL_DELETE_SHORT_TIER =
   "  OR entityid LIKE 'urn:ngsi-ld:AirQualityObserved:bw-sensor-%')";
 
 /**
- * Orphaned remains of the retired Reutlingen parking pipeline: OffStreetParking
- * is not written anywhere any more but still lies in the temporal store (not
- * in the broker). Cleaned up idempotently — takes effect on the first run,
- * 0 rows afterwards.
- */
-export const SQL_DELETE_ORPHANED =
-  "DELETE FROM attributes WHERE entityid LIKE 'urn:ngsi-ld:OffStreetParking:%'";
-
-/**
  * Old-scheme remains of parken-bw: until Sprint 2.9 the entity id came from the
  * slugged site name, since then from the ParkAPI key (`parkapi-<id>`). The old
  * rows do not grow back — their entities are never written again — but since
@@ -107,6 +118,29 @@ export const SQL_OLD_SCHEME_IDS =
   "SELECT DISTINCT id FROM entities" +
   " WHERE (id LIKE 'urn:ngsi-ld:ParkingSite:%' AND id NOT LIKE 'urn:ngsi-ld:ParkingSite:parkapi-%')" +
   "    OR (id LIKE 'urn:ngsi-ld:BikeParking:%' AND id NOT LIKE 'urn:ngsi-ld:BikeParking:parkapi-%')";
+
+/** `dataProvider` of parken-bw (`PROVIDER` there). */
+export const LEGACY_PROVIDER = "MobiData BW ParkAPI";
+
+/** Switch of parken-bw to `parkapi-` ids (`LEGACY_MIGRATION_MS` there), as a TRoE timestamp (UTC). */
+export const LEGACY_SWITCH = "2026-08-25 01:28:11";
+
+/**
+ * Which of the candidates are parken-bw's own legacy entities: a
+ * `dataProvider` row with its provider value, written before the switch.
+ * TRoE stores the attribute under its expanded name (hence the suffix match)
+ * and a string value in `text`. Index: attributes_entityid_ts_idx
+ * (`entityid = ANY`, `ts <`). Candidates whose rows are already gone cost an
+ * index probe each.
+ */
+export const SQL_LEGACY_OWN_IDS =
+  "SELECT DISTINCT entityid AS id FROM attributes" +
+  " WHERE entityid = ANY($1::text[])" +
+  `  AND ts < timestamp '${LEGACY_SWITCH}'` +
+  "  AND id LIKE '%dataProvider' AND text = $2";
+
+/** Candidates per ownership query. */
+export const LEGACY_CHECK_BATCH = 500;
 
 export const SQL_DELETE_BY_IDS = "DELETE FROM attributes WHERE entityid = ANY($1::text[])";
 
@@ -139,7 +173,7 @@ export const SQL_FILL_TYPE_STATS =
 
 /** What a run deleted, as the old node reported it (`a`, `s`). */
 export interface RetentionCounts {
-  /** All attribute rows deleted: 12 months, short tier, orphans, old scheme. */
+  /** All attribute rows deleted: 12 months, short tier, old scheme. */
   readonly attributes: number;
   readonly subattributes: number;
 }
@@ -175,10 +209,6 @@ export function shortTierWarning(rows: number): string | null {
   return rows === 0 ? null : `Retention: ${String(rows)} rows of single sites removed (3-month tier)`;
 }
 
-export function orphanedWarning(rows: number): string | null {
-  return rows === 0 ? null : `Retention: ${String(rows)} orphaned OffStreetParking rows removed`;
-}
-
 export function oldSchemeWarning(rows: number, idsDone: number, idsTotal: number): string | null {
   if (rows === 0) return null;
   return (
@@ -199,6 +229,29 @@ function deleted(result: DbQueryResult): number {
   return result.rowCount ?? 0;
 }
 
+/**
+ * The candidates that are parken-bw's own legacy entities, in candidate order;
+ * none (after a `[warn]`) when the check cannot be made — deleting on a
+ * guess is what the old step did.
+ */
+async function legacyOwnIds(db: DbSession, candidates: readonly string[], log: Log): Promise<string[]> {
+  const own = new Set<string>();
+  try {
+    for (let at = 0; at < candidates.length; at += LEGACY_CHECK_BATCH) {
+      const batch = candidates.slice(at, at + LEGACY_CHECK_BATCH);
+      const result = await db.query(SQL_LEGACY_OWN_IDS, [batch, LEGACY_PROVIDER]);
+      result.rows.forEach((row, index) => own.add(requireString(row.id, `legacy ids[${String(index)}].id`)));
+    }
+  } catch (error) {
+    log.warn(
+      `Retention: ownership check of the old-scheme parking ids failed, cleanup skipped ` +
+        `(${error instanceof Error ? error.message : String(error)})`,
+    );
+    return [];
+  }
+  return candidates.filter((id) => own.has(id));
+}
+
 async function retain(db: DbSession, log: Log): Promise<RetentionCounts> {
   await db.query(SQL_INDEX_ATTRIBUTES_TS);
   await db.query(SQL_INDEX_SUBATTRIBUTES_TS);
@@ -213,14 +266,10 @@ async function retain(db: DbSession, log: Log): Promise<RetentionCounts> {
   const shortTierText = shortTierWarning(shortTier);
   if (shortTierText !== null) log.warn(shortTierText);
 
-  const orphaned = deleted(await db.query(SQL_DELETE_ORPHANED));
-  const orphanedText = orphanedWarning(orphaned);
-  if (orphanedText !== null) log.warn(orphanedText);
-  attributes += orphaned;
-
-  const oldIds = (await db.query(SQL_OLD_SCHEME_IDS)).rows.map((row, index) =>
+  const candidates = (await db.query(SQL_OLD_SCHEME_IDS)).rows.map((row, index) =>
     requireString(row.id, `old scheme ids[${String(index)}].id`),
   );
+  const oldIds = await legacyOwnIds(db, candidates, log);
   let oldRows = 0;
   let oldIndex = 0;
   while (oldIndex < oldIds.length && oldRows < OLD_SCHEME_CAP) {

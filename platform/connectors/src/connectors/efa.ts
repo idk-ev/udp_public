@@ -32,7 +32,10 @@
  * The cap is deliberately small for a second reason: the on-demand endpoint
  * queues in the same bucket. With at most two waiters from the periodic run, a
  * dashboard request waits about a second behind it, not the ~11 s a fully
- * queued run would cost.
+ * queued run would cost. The reverse holds as well: the endpoint keeps its own
+ * small queue in front of the bucket and never holds more than two places in
+ * it, so public traffic cannot fill the bucket's queue and starve the
+ * periodic run (see abfahrten-on-demand.ts).
  */
 
 import { field, isArray, isRecord, isString, isTruthy, ParseError, path } from "../kernel/parse.js";

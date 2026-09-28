@@ -16,7 +16,8 @@
  *    it, so it faces the internet. `/trigger` does not exist here.
  *  * admin — UDP_CONNECTORS_ADMIN_PORT, default 1881, bound to
  *    UDP_CONNECTORS_ADMIN_HOST (default 0.0.0.0): `GET /healthz` and
- *    `POST /trigger/:id`. Never to be mapped by nginx, APISIX or an ingress;
+ *    `POST /trigger/:id`, the latter answering loopback peers only (403
+ *    otherwise). Never to be mapped by nginx, APISIX or an ingress;
  *    in Compose published on the host at most on 127.0.0.1. Phase 5 points
  *    `scripts/trigger-connector.sh` here.
  *
@@ -36,12 +37,7 @@
  */
 
 import { CONNECTORS } from "./connectors/index.js";
-import {
-  adminRoutes,
-  DEFAULT_ADMIN_HOST,
-  DEFAULT_ADMIN_PORT,
-  DEFAULT_TRIGGER_COOLDOWN_SECONDS,
-} from "./kernel/admin.js";
+import { adminRoutes, DEFAULT_ADMIN_HOST, DEFAULT_ADMIN_PORT, triggerCooldownMs } from "./kernel/admin.js";
 import { createCtx, createKernel, runConnector } from "./kernel/context.js";
 import type { Kernel } from "./kernel/context.js";
 import { DEFAULT_PORT } from "./kernel/http.js";
@@ -117,7 +113,7 @@ async function main(): Promise<void> {
   for (const route of adminRoutes(kernel, {
     version: VERSION,
     started,
-    cooldownMs: kernel.env.number("UDP_TRIGGER_COOLDOWN_SECONDS", DEFAULT_TRIGGER_COOLDOWN_SECONDS) * 1000,
+    cooldownMs: triggerCooldownMs(kernel.env),
   })) {
     kernel.adminHttp.register(route);
   }

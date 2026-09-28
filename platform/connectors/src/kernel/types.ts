@@ -16,7 +16,10 @@
  * widened it once, where the ports had pinched: {@link ConnectorState},
  * `Ctx.rowBudget`, `RegistryEntry.sensorDetailFor`, request headers, the
  * concurrency cap, unpaced Orion reads and array SQL parameters. Persisting
- * the kernel state added one optional piece: {@link StateCodec}.
+ * the kernel state added one optional piece: {@link StateCodec}. The security
+ * review added, all optional: `FetchOptions.maxBytes`/`signal`/`allowUrl` (and
+ * `redirect: "error"` as the default), `RouteRequest.remoteAddress`/`signal`
+ * and `RouteDefinition.readsBody`.
  *
  * Two rules carry the whole design:
  *
@@ -387,11 +390,37 @@ export interface FetchOptions {
    */
   readonly bucket?: string | null | undefined;
   /**
-   * Default `"follow"`, as the `http request` nodes did for the sources. Writes
-   * to Orion use `"error"`: a redirected POST would silently turn into a GET
-   * somewhere else, and a delete must never be re-aimed.
+   * Default `"error"`: a 3xx answer throws a `FetchRedirectError` naming the
+   * target. The `http request` nodes followed every redirect; the service
+   * does so only where a source is known to redirect and says so per call
+   * (`uba-bw`, the GBFS feeds). A request carrying credentials (hystreet's
+   * `X-API-Token`) must never follow — the token would travel to wherever the
+   * `Location` points — and writes to Orion never do either: a redirected POST
+   * would silently turn into a GET somewhere else, and a delete must never be
+   * re-aimed. `"follow"` is followed hop by hop by the fetcher (at most 5),
+   * each target checked against {@link allowUrl}.
    */
   readonly redirect?: "follow" | "error" | undefined;
+  /**
+   * Cap on the DECOMPRESSED body in bytes. Default 32 MiB. An announced
+   * `Content-Length` above it is refused before reading; a body that grows
+   * past it aborts the request. Either way a `FetchTooLargeError`, no retry —
+   * a gzip body of 0.4 MB can inflate to 400 MB. The large sources set their
+   * own, measured, finite cap.
+   */
+  readonly maxBytes?: number | undefined;
+  /**
+   * Aborts the request (and the wait for its rate-limit token) — e.g. when the
+   * client of a public route disconnects. An abort throws a
+   * `FetchAbortedError` and is not retried.
+   */
+  readonly signal?: AbortSignal | undefined;
+  /**
+   * Checked for the request URL and for every redirect target before it is
+   * contacted; `false` throws a `FetchUrlRefusedError` without a request. For
+   * URLs that come out of foreign data (the GBFS system list).
+   */
+  readonly allowUrl?: ((url: URL) => boolean) | undefined;
 }
 
 export interface HttpResponse {
@@ -994,7 +1023,19 @@ export interface RouteRequest {
    * header joined with `", "`. Read-only.
    */
   readonly headers: Readonly<Record<string, string>>;
+  /** Empty unless the route declares {@link RouteDefinition.readsBody}. */
   readonly body: string;
+  /**
+   * Peer address of the TCP connection as Node reports it (`127.0.0.1`,
+   * `::1`, `::ffff:10.0.0.7`, …) — NOT a forwarded header, so a client cannot
+   * choose it. `undefined` when unknown; a check on it must then refuse.
+   */
+  readonly remoteAddress?: string | undefined;
+  /**
+   * Aborted when the client goes away before the answer is sent. Hand it to
+   * `FetchOptions.signal` so an upstream request nobody waits for is dropped.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 export interface RouteResponse {
@@ -1018,6 +1059,13 @@ export interface RouteDefinition {
   readonly method: HttpMethod;
   /** Pattern with `:name` segments, e.g. `/trigger/:id`. */
   readonly path: string;
+  /**
+   * `true` to receive the request body (at most 1 MB, beyond that 413).
+   * Default `false`: the body is never read, and a request that carries one is
+   * answered with `Connection: close` so nothing is left on the socket.
+   * None of today's routes needs a body.
+   */
+  readonly readsBody?: boolean | undefined;
   handle(request: RouteRequest): Promise<RouteResponse>;
 }
 

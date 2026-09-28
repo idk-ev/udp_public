@@ -124,6 +124,12 @@ export const PAGE_SIZE = 500;
  * the same error as the offset bug with the opposite sign.
  */
 export const MAX_PAGES = 120;
+/**
+ * Body cap per page (security review; the old node read without a limit). A
+ * page of 500 sites measured 0.3 MB decompressed (2026-09); 16 MiB is ~50 times
+ * that and still finite.
+ */
+export const PAGE_MAX_BYTES = 16 * 1024 * 1024;
 /** `PAUSE_MS`: politeness towards MobiData BW, as the former 1-request/s node. */
 export const PAGE_INTERVAL_MS = 1000;
 
@@ -387,6 +393,7 @@ export async function fetchInventory(fetcher: Fetcher, log: Log): Promise<ParkIn
       const response = await fetcher.text(url, {
         headers: { Accept: "application/json" },
         minIntervalMs: PAGE_INTERVAL_MS,
+        maxBytes: PAGE_MAX_BYTES,
       });
       status = response.status;
       text = response.body;

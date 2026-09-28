@@ -48,6 +48,14 @@
  *
  * No change gate and no prune: the old build node wrote every station in full
  * every hour and carried no `dateObserved` (freshness comes from `observedAt`).
+ *
+ * ## Redirects
+ *
+ * The one source that redirects today: www.umweltbundesamt.de answers both
+ * URLs with a 301 to luftdaten.umweltbundesamt.de (checked 2026-09-28). The
+ * fetcher refuses redirects by default, so both requests opt in with
+ * `redirect: "follow"`; they carry no credentials. The URLs stay the old
+ * ones, byte for byte, as the parity tests pin them.
  */
 
 import { cleanText, observed } from "../kernel/ngsi.js";
@@ -414,7 +422,7 @@ async function inOrder<T, R>(
 export async function run(ctx: Ctx): Promise<void> {
   let list: JsonResponse;
   try {
-    list = await ctx.fetch.json(STATIONS_URL);
+    list = await ctx.fetch.json(STATIONS_URL, { redirect: "follow" });
   } catch (error) {
     ctx.log.warn(
       `${LABEL}: station list not loadable (${error instanceof Error ? error.message : String(error)})`,
@@ -430,7 +438,7 @@ export async function run(ctx: Ctx): Promise<void> {
 
   const answers = await inOrder(requests, MAX_IN_FLIGHT, ctx.signal, async (request) => {
     try {
-      const response = await ctx.fetch.json(request.url, { retries: 0 });
+      const response = await ctx.fetch.json(request.url, { retries: 0, redirect: "follow" });
       return wrapResponse(request.station, response.status, response.body);
     } catch {
       // Timeout, refused connection, or a body that is not JSON: the old

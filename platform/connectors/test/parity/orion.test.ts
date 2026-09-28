@@ -178,5 +178,5 @@ export {
   dedupeAndTheCountCheck as "orion: list dedupe collapses repeats and still catches a skipped entity",
   listingQueryIsByteIdenticalToTheOldPager as "orion: listing query is byte-identical to the one PRUNE_HELPER sent",
   chunkSizeMustBeAPositiveInteger as "orion: chunk size must be a positive integer, else the default",
-  writesRefuseRedirects as "orion: upsert and delete refuse redirects, reads follow them",
+  writesRefuseRedirects as "orion: upsert and delete refuse redirects explicitly, reads keep the fetcher default (refuse as well)",
 };

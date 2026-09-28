@@ -38,6 +38,14 @@
  *  * `res.send` answered a `GET`/`HEAD` with 304 and no body when the request
  *    was fresh against the response's `ETag` ({@link isFresh}, the `fresh`
  *    package). Routes that set an ETag get the same.
+ *
+ * ## Request bodies, peers, disconnects (security review)
+ *
+ * A body is read only for a route that declares `readsBody` (none does), at
+ * most {@link MAX_BODY_BYTES}; more is a 413, never a 500 with an `[error]`
+ * line. A body nobody reads is left unread and the connection closed after the
+ * answer. Every route sees the TCP peer (`remoteAddress`, what the trigger's
+ * loopback check reads) and a `signal` that aborts when the client disconnects.
  */
 
 import { createHash } from "node:crypto";
@@ -81,8 +89,25 @@ function decodeSegment(segment: string): string {
   }
 }
 
+/**
+ * A body larger than a route that reads bodies accepts. The client's doing, so
+ * a 413 — not a 500 with an `[error]` line (a 2 MB POST used to produce both).
+ */
+class PayloadTooLargeError extends Error {
+  constructor() {
+    super("request body too large");
+    this.name = "PayloadTooLargeError";
+  }
+}
+
 /** Guard against an endpoint being fed a large body; the routes take none. */
-const MAX_BODY_BYTES = 1_000_000;
+export const MAX_BODY_BYTES = 1_000_000;
+
+/** Whether the request announces or streams a body (`Content-Length` > 0 or chunked). */
+function carriesBody(request: IncomingMessage): boolean {
+  const length = Number.parseInt(request.headers["content-length"] ?? "", 10);
+  return (Number.isFinite(length) && length > 0) || request.headers["transfer-encoding"] !== undefined;
+}
 
 interface CompiledRoute {
   readonly method: HttpMethod;
@@ -118,12 +143,14 @@ function match(
 }
 
 async function readBody(request: IncomingMessage): Promise<string> {
+  const announced = Number.parseInt(request.headers["content-length"] ?? "", 10);
+  if (Number.isFinite(announced) && announced > MAX_BODY_BYTES) throw new PayloadTooLargeError();
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
     size += buffer.length;
-    if (size > MAX_BODY_BYTES) throw new Error("request body too large");
+    if (size > MAX_BODY_BYTES) throw new PayloadTooLargeError();
     chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString("utf8");
@@ -222,13 +249,17 @@ export function weakEtag(body: string): string {
  * `Content-Length` (Express removed both); a `HEAD` answer carries the headers
  * of the `GET` answer, `Content-Length` included, and no body.
  */
-function send(response: ServerResponse, result: RouteResponse, head: boolean): void {
+function send(response: ServerResponse, result: RouteResponse, head: boolean, close = false): void {
+  if (response.headersSent || response.destroyed) return;
   const bodyless = result.status === 204 || result.status === 304;
   response.writeHead(result.status, {
     ...(bodyless
       ? {}
       : { "Content-Type": result.contentType, "Content-Length": String(Buffer.byteLength(result.body)) }),
     ...result.headers,
+    // An unread request body stays on the socket; closing it after the answer
+    // is cheaper than reading (and discarding) whatever the client sends.
+    ...(close ? { Connection: "close" } : {}),
   });
   if (bodyless || head) response.end();
   else response.end(result.body);
@@ -309,17 +340,28 @@ class KernelHttpServer implements HttpServer {
     // A route handler must never take the process down: the server also answers
     // /healthz, and an endpoint fault must not look like a dead container.
     const head = request.method === "HEAD";
-    void this.#route(request)
+    // Aborted when the client goes away before the answer is written, so a
+    // route can drop an upstream request nobody waits for.
+    const gone = new AbortController();
+    response.on("close", () => {
+      if (!response.writableFinished) gone.abort();
+    });
+    const state = { bodyRead: false };
+    void this.#route(request, gone.signal, state)
       .then((result) => {
-        send(response, result, head);
+        send(response, result, head, !state.bodyRead && carriesBody(request));
       })
       .catch((error: unknown) => {
         if (error instanceof MalformedRequestError) {
-          send(response, textResponse(400, `bad request: ${error.message}\n`), head);
+          send(response, textResponse(400, `bad request: ${error.message}\n`), head, carriesBody(request));
+          return;
+        }
+        if (error instanceof PayloadTooLargeError) {
+          send(response, textResponse(413, "request body too large\n"), head, true);
           return;
         }
         this.#log.error(`request ${request.method ?? "?"} ${request.url ?? "?"} failed`, error);
-        send(response, textResponse(500, "internal error\n"), head);
+        send(response, textResponse(500, "internal error\n"), head, carriesBody(request));
       });
   }
 
@@ -341,7 +383,11 @@ class KernelHttpServer implements HttpServer {
     };
   }
 
-  async #route(request: IncomingMessage): Promise<RouteResponse> {
+  async #route(
+    request: IncomingMessage,
+    signal: AbortSignal,
+    state: { bodyRead: boolean },
+  ): Promise<RouteResponse> {
     let url: URL;
     try {
       url = new URL(request.url ?? "/", "http://localhost");
@@ -359,7 +405,12 @@ class KernelHttpServer implements HttpServer {
       const params = match(route, lookup, segments);
       if (params === null) continue;
       const headers = headersOf(request);
-      const body = readOnly ? "" : await readBody(request);
+      // Only a route that asks for it gets the body read (at most
+      // MAX_BODY_BYTES); none of today's does, `/trigger` included.
+      const wantsBody = !readOnly && route.definition.readsBody === true;
+      const body = wantsBody ? await readBody(request) : "";
+      state.bodyRead = wantsBody;
+      const remoteAddress = request.socket.remoteAddress;
       const routeRequest: RouteRequest = {
         method,
         path: url.pathname,
@@ -367,6 +418,8 @@ class KernelHttpServer implements HttpServer {
         params,
         headers,
         body,
+        signal,
+        ...(remoteAddress === undefined ? {} : { remoteAddress }),
       };
       const result = await route.definition.handle(routeRequest);
       if (readOnly && result.status !== 304 && isFresh(headers, result)) {

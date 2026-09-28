@@ -32,8 +32,9 @@ import type { Log, LogLevel } from "./types.js";
  * the sources — station names, error bodies, URLs. A line feed in there would
  * start a new line of the attacker's choosing, `… [error] [parken-bw] …`
  * included, and the health check counts lines by exactly those markers. So:
- * CR, LF and every other control character (plus the Unicode line and
- * paragraph separators) are written as escapes, and a `[warn]` / `[error]`
+ * CR, LF and every other control character — C0, DEL and C1 (U+0080–U+009F;
+ * NEL, U+0085, ends a line for some log viewers), plus the Unicode line and
+ * paragraph separators — are written as escapes, and a `[warn]` / `[error]`
  * inside the text is defused to `(warn)` / `(error)` so it cannot be counted
  * as a second marker either. Applied centrally in `#write`, so no call site can
  * forget it.
@@ -42,7 +43,8 @@ export function sanitizeLogText(text: string): string {
   let out = "";
   for (const char of text) {
     const code = char.charCodeAt(0);
-    if (code >= 0x20 && code !== 0x7f && code !== 0x2028 && code !== 0x2029) out += char;
+    const control = code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029;
+    if (!control) out += char;
     else if (char === "\n") out += "\\n";
     else if (char === "\r") out += "\\r";
     else if (char === "\t") out += "\\t";
@@ -138,6 +140,37 @@ class ConsoleLog implements Log {
 
   child(component: string): Log {
     return new ConsoleLog(`${this.#component}:${component}`, this.#threshold);
+  }
+}
+
+/**
+ * At most one `[warn]` per window for a fault that PUBLIC requests can
+ * trigger (`/abfahrten`, `/warnungen.ics`): the health check counts `[warn]`
+ * lines, and a stranger's request rate must not be able to drive the
+ * counters. The first occurrence in a window is a warning — the fault is real
+ * and the operator should see it — every further one goes to `debug`, and
+ * their number rides on the next warning. Keep one per fault class in
+ * `ctx.state`.
+ */
+export class WarnThrottle {
+  readonly #windowMs: number;
+  #last = Number.NEGATIVE_INFINITY;
+  #suppressed = 0;
+
+  constructor(windowMs: number) {
+    this.#windowMs = windowMs;
+  }
+
+  warn(log: Log, message: string, nowMs: number): void {
+    if (nowMs - this.#last < this.#windowMs) {
+      this.#suppressed += 1;
+      log.debug(message);
+      return;
+    }
+    const more = this.#suppressed === 0 ? "" : ` (${String(this.#suppressed)} more since the last warning)`;
+    this.#last = nowMs;
+    this.#suppressed = 0;
+    log.warn(`${message}${more}`);
   }
 }
 

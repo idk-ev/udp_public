@@ -27,6 +27,8 @@ import {
   build,
   CHUNK_SIZE,
   expiredIds,
+  expiryCap,
+  EXPIRY_ID_PATTERN,
   EXPIRY_MAX_DELETE,
   parse,
   run,
@@ -394,7 +396,9 @@ async function expiryMatchesTheOldNode(): Promise<void> {
   assert.deepEqual(normalize(payloadOf(legacy.returned)), ids.slice(0, EXPIRY_MAX_DELETE));
   assert.deepEqual(normalize(legacy.status), [{ text: "208 abgelaufene Baustellen gelöscht" }]);
 
-  // run(): the source is down, the expiry runs anyway and sends one delete of 200.
+  // run(): the source is down, the expiry runs anyway and sends one delete.
+  // DELIBERATE DEVIATION (data review): anchored pattern, and at most 30 % of
+  // the listed own road works per run — 63 of 212 here, not the old 200.
   const r = rig("baustellen-bw", (request) => {
     if (request.url.host === "api.mobidata-bw.de") return httpResponse(503, "busy");
     if (request.method === "GET") return httpResponse(200, JSON.stringify(listing));
@@ -404,16 +408,61 @@ async function expiryMatchesTheOldNode(): Promise<void> {
   const query = r.seen.find((request) => request.method === "GET" && request.url.host === "orion-ld:1026");
   assert.ok(query !== undefined);
   assert.equal(query.url.searchParams.get("type"), "RoadWork");
-  assert.equal(query.url.searchParams.get("idPattern"), "urn:ngsi-ld:RoadWork:bw-svz-.*");
+  assert.equal(query.url.searchParams.get("idPattern"), "^urn:ngsi-ld:RoadWork:bw-svz-[A-Za-z0-9_-]+$");
   assert.equal(query.url.searchParams.get("attrs"), "endDate");
   assert.equal(query.url.searchParams.get("limit"), "1000");
-  assert.deepEqual(deleteBodies(r.seen), [ids.slice(0, EXPIRY_MAX_DELETE)]);
+  assert.equal(expiryCap(listing.length), 63);
+  assert.deepEqual(deleteBodies(r.seen), [ids.slice(0, 63)]);
   assert.deepEqual(r.log.warnings(), ["BW roadworks: data incomplete (503)"]);
 
   // Nothing expired: no delete on either side.
   const none = await runFunctionNode(EXPIRE_NODE_ID, { msg: { statusCode: 200, payload: [] } });
   assert.equal(none.returned, null);
   assert.deepEqual(expiredIds([], new Date().toISOString()), []);
+}
+
+async function expiryIsAnchoredAndCapped(): Promise<void> {
+  // The cap: 30 % of the listed own road works, at least 3, at most the old 200.
+  assert.deepEqual([0, 1, 10, 11, 100, 666, 667, 1000].map(expiryCap), [3, 3, 3, 3, 30, 199, 200, 200]);
+  const pattern = new RegExp(EXPIRY_ID_PATTERN);
+  assert.ok(pattern.test("urn:ngsi-ld:RoadWork:bw-svz-1234_ab-c"));
+  for (const foreign of [
+    "urn:ngsi-ld:RoadWork:bw-svz-1:x",
+    "urn:ngsi-ld:RoadWork:reutlingen-bw-svz-1",
+    "urn:ngsi-ld:RoadWork:bw-kreis-08111-summary",
+    "urn:ngsi-ld:RoadWork:bw-svz-with.dot",
+  ]) {
+    assert.equal(pattern.test(foreign), false, foreign);
+  }
+
+  // A broker that answers with foreign ids as well: they are neither deleted
+  // nor counted into the share.
+  const ended = { type: "Property", value: "2020-01-01T00:00:00" };
+  const listing: unknown[] = [
+    ...Array.from({ length: 10 }, (_, i) => ({
+      id: `urn:ngsi-ld:RoadWork:bw-svz-own-${String(i)}`,
+      endDate: ended,
+    })),
+    ...Array.from({ length: 40 }, (_, i) => ({
+      id: `urn:ngsi-ld:RoadWork:stadt-x-${String(i)}`,
+      endDate: ended,
+    })),
+  ];
+  const r = rig("baustellen-bw", (request) => {
+    if (request.url.host === "api.mobidata-bw.de") return httpResponse(503, "busy");
+    if (request.method === "GET") return httpResponse(200, JSON.stringify(listing));
+    return httpResponse(204);
+  });
+  await run(r.ctx);
+  const [deleted] = deleteBodies(r.seen);
+  assert.deepEqual(deleted, [
+    "urn:ngsi-ld:RoadWork:bw-svz-own-0",
+    "urn:ngsi-ld:RoadWork:bw-svz-own-1",
+    "urn:ngsi-ld:RoadWork:bw-svz-own-2",
+  ]);
+  assert.ok(
+    r.log.lines.some((line) => line.level === "info" && line.text.includes("10 of 10 expired, 3 deleted")),
+  );
 }
 
 function statusTextIsTheOldOneInEnglish(): void {
@@ -435,6 +484,7 @@ export {
   invalidShareWarnsOnBothSides as "baustellen-bw: more than 5 % invalid coordinates warn identically",
   malformedGeometryIsCountedNotFatal as "baustellen-bw: a geometry without coordinates is counted, not fatal (deliberate)",
   pruneDeletesTheSameOnBothSides as "baustellen-bw: old and new prune delete the same stale own ids, foreign ids stay",
-  expiryMatchesTheOldNode as "baustellen-bw: expiry agrees with FN_RW_EXPIRE (ids, 200 cap) and runs when the feed is down",
+  expiryMatchesTheOldNode as "baustellen-bw: expiry agrees with FN_RW_EXPIRE (ids) and runs when the feed is down",
+  expiryIsAnchoredAndCapped as "baustellen-bw: expiry lists an anchored pattern, re-checks ids and deletes at most 30 % per run (deliberate)",
   statusTextIsTheOldOneInEnglish as "baustellen-bw: the status line is the old one, translated",
 };

@@ -33,6 +33,14 @@ proxy_cache_path /var/cache/nginx/udp levels=1:2 keys_zone=udpapi:10m
 proxy_cache_path /var/cache/nginx/nodered levels=1:2 keys_zone=udpnodered:2m
                  max_size=20m inactive=24h use_temp_path=off;
 
+# Per-client request limits for the two endpoints that reach the connector
+# service (and through it EFA-BW resp. Orion-LD). Keyed by the client address
+# after real_ip (see the server block), so the ingress hop does not share one
+# bucket. A dashboard asks /abfahrten once per page view and minute; a
+# calendar client polls /warnungen.ics every few hours. Beyond the burst: 429.
+limit_req_zone $binary_remote_addr zone=udp_abfahrten:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=udp_warnungen:10m rate=10r/m;
+
 server {
     # Client address behind the ingress controller / load balancer: take it
     # from X-Forwarded-For, skipping trusted proxy hops. The set_real_ip_from
@@ -102,14 +110,19 @@ server {
         try_files $uri =404;
     }
     # Warnungen als iCal-Abo (Node-RED). 5 min Cache — Kalender ziehen ohnehin selten.
+    # Cache key and upstream request carry ONLY kreis: extra or repeated
+    # parameters neither bypass the cache nor reach the upstream (one cache
+    # entry per district, whatever else a client appends).
     location = /warnungen.ics {
         limit_except GET HEAD OPTIONS { deny all; }
+        limit_req zone=udp_warnungen burst=10 nodelay;
+        limit_req_status 429;
         set $nodered http://${UDP_NODERED_UPSTREAM};
-        proxy_pass $nodered;
+        proxy_pass $nodered/warnungen.ics?kreis=$arg_kreis;
         proxy_set_header Host $host;
         proxy_cache udpnodered;
         proxy_cache_valid 200 300s;
-        proxy_cache_key $request_uri;
+        proxy_cache_key "$uri?kreis=$arg_kreis";
         proxy_cache_lock on;
         # Node-RED runs as a single instance: while it restarts (rollout,
         # node drain) the last good calendar is served instead of an error,
@@ -117,6 +130,10 @@ server {
         # Node-RED answers 404 until its flows are loaded after a restart.
         proxy_cache_use_stale updating error timeout http_404 http_500 http_502 http_503 http_504;
         proxy_cache_background_update on;
+        # add_header here replaces the server-level headers; repeated.
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
         add_header X-Cache $upstream_cache_status always;
     }
 
@@ -182,16 +199,21 @@ server {
     # die EFA-BW-Auskunft zusammengefasst.
     # Exakter Match (nicht Präfix): sonst reichte /abfahrten/<beliebig> in die
     # Node-RED-Instanz durch, die selbst keine Authentifizierung hat.
+    # Cache key and upstream request carry ONLY ags: `?ags=…&x=<random>` used
+    # to bypass the cache and hit EFA-BW on every request, and a repeated ags
+    # could plant a 404 under another request's key.
     location = /abfahrten {
         limit_except GET HEAD OPTIONS { deny all; }
+        limit_req zone=udp_abfahrten burst=30 nodelay;
+        limit_req_status 429;
         set $nodered http://${UDP_NODERED_UPSTREAM};
-        proxy_pass $nodered;
+        proxy_pass $nodered/abfahrten?ags=$arg_ags;
         proxy_set_header Host $host;
         proxy_cache udpnodered;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 60s;
         proxy_cache_valid 404 30s;
-        proxy_cache_key $request_uri;
+        proxy_cache_key "$uri?ags=$arg_ags";
         proxy_cache_lock on;
         # While Node-RED is briefly unavailable (single instance: rollout,
         # node drain) the last good answer of this stop is served instead of
@@ -205,6 +227,10 @@ server {
         # entry and still gets its (briefly cached) 404.
         proxy_cache_use_stale updating error timeout http_404 http_500 http_502 http_503 http_504;
         proxy_cache_background_update on;
+        # add_header here replaces the server-level headers; repeated.
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
         add_header X-Cache $upstream_cache_status always;
     }
 

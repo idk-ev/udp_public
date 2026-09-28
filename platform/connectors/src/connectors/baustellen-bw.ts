@@ -35,6 +35,12 @@
  *  * A failed request (DNS, timeout) warns "data incomplete" with the error;
  *    the old `http request` node passed the error text on, which failed the
  *    same check.
+ *  * Expiry (decided with the data review): the id pattern is anchored
+ *    (`^…bw-svz-[A-Za-z0-9_-]+$`, the prune's scheme; the old `bw-svz-.*` was
+ *    not) and re-checked on every listed id, and one run deletes at most 30 %
+ *    of the listed own road works (at least 3, at most the old 200) — see
+ *    {@link EXPIRY_MAX_FRACTION}. The old node deleted up to 200 per run with
+ *    no share limit.
  */
 
 import { cleanText, dateObserved, observed } from "../kernel/ngsi.js";
@@ -71,13 +77,30 @@ const LABEL = "BW roadworks";
 export const PRUNE_PATTERN = "^urn:ngsi-ld:RoadWork:bw-(svz-[A-Za-z0-9_-]+|kreis-[0-9]{5}-summary)$";
 
 /**
- * The expiry query of `udp-rt-brx-get`, unchanged: unanchored, one page of
- * 1000, only `endDate`. It reads, the ids it deletes come from its own answer.
+ * The expiry query of `udp-rt-brx-get` — one page of 1000, only `endDate` —
+ * with the id pattern ANCHORED, the road-work half of {@link PRUNE_PATTERN}.
+ * The old `urn:ngsi-ld:RoadWork:bw-svz-.*` also matched any id merely
+ * containing that text; every listed id is checked against it again locally,
+ * whatever the broker returns.
  */
-export const EXPIRY_ID_PATTERN = "urn:ngsi-ld:RoadWork:bw-svz-.*";
+export const EXPIRY_ID_PATTERN = "^urn:ngsi-ld:RoadWork:bw-svz-[A-Za-z0-9_-]+$";
 export const EXPIRY_LIMIT = 1000;
 /** FN_RW_EXPIRE: `msg.payload = ids.slice(0, 200)` — one request per run. */
 export const EXPIRY_MAX_DELETE = 200;
+/**
+ * Share of the listed own road works one run may expire, as the prunes' 30 %
+ * (at least {@link EXPIRY_MIN_DELETE}). The end dates are the source's own, so
+ * a mass expiry can be real — but it is also what a clock far off, or a
+ * broker answering nonsense, looks like. Capped, a real one drains over a few
+ * runs (every 6 h); a wrong one costs at most this share.
+ */
+export const EXPIRY_MAX_FRACTION = 0.3;
+export const EXPIRY_MIN_DELETE = 3;
+
+/** How many of `listed` own road works one run may delete. */
+export function expiryCap(listed: number): number {
+  return Math.min(EXPIRY_MAX_DELETE, Math.max(EXPIRY_MIN_DELETE, Math.floor(listed * EXPIRY_MAX_FRACTION)));
+}
 
 /** A road work feature, narrowed to what the connector reads. */
 export interface RoadworkFeature {
@@ -390,14 +413,27 @@ async function expire(ctx: Ctx): Promise<void> {
     ctx.log.warn(`${LABEL} expiry: query failed (${String(response.status)})`);
     return;
   }
-  const ids = expiredIds(response.body, ctx.now());
+  // Only own road works, whatever the broker returned for the pattern.
+  const own = new RegExp(EXPIRY_ID_PATTERN);
+  const listing = response.body.filter((entity) => {
+    const id = field(entity, "id");
+    return isString(id) && own.test(id);
+  });
+  const ids = expiredIds(listing, ctx.now());
   if (ids.length === 0) {
     ctx.log.status("nothing expired");
     return;
   }
-  ctx.log.status(`${String(ids.length)} expired roadworks deleted`);
-  // One request of at most 200 per run; the rest follows in the next one.
-  await ctx.orion.delete(ids.slice(0, EXPIRY_MAX_DELETE), {
+  const cap = expiryCap(listing.length);
+  ctx.log.status(`${String(ids.length)} expired roadworks, ${String(Math.min(cap, ids.length))} deleted`);
+  if (ids.length > cap) {
+    ctx.log.info(
+      `${LABEL} expiry: ${String(ids.length)} of ${String(listing.length)} expired, ` +
+        `${String(cap)} deleted this run, the rest follows`,
+    );
+  }
+  // One request per run, capped; the rest follows in the next one.
+  await ctx.orion.delete(ids.slice(0, cap), {
     chunkSize: EXPIRY_MAX_DELETE,
     label: `${LABEL} expiry`,
   });

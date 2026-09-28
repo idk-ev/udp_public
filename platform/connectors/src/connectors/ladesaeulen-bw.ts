@@ -97,6 +97,12 @@ export const COUNT_URL = `${QUERY}&limit=1&offset=0`;
 export const PAGE_SIZE = 1000;
 /** `OC_MAX_SEITEN`. */
 export const MAX_PAGES = 60;
+/**
+ * Body cap per page (security review; the node read without a limit). A page
+ * of 1,000 locations measured 1.5 MB decompressed (2026-09); 32 MiB is ~20
+ * times that.
+ */
+export const PAGE_MAX_BYTES = 32 * 1024 * 1024;
 /** The delay node "1 Anfrage/3s" in front of the page requests. */
 export const PAGE_INTERVAL_MS = 3000;
 /** As the old build node: `emitChunks(node, msg, entities, 100)`. */
@@ -472,7 +478,10 @@ export async function fetchRun(ctx: Ctx): Promise<OcpdbRun | null> {
   const parts: PagePart[] = [];
   for (let page = 0; page < pages; page += 1) {
     try {
-      const response = await ctx.fetch.json(pageUrl(page), { minIntervalMs: PAGE_INTERVAL_MS });
+      const response = await ctx.fetch.json(pageUrl(page), {
+        minIntervalMs: PAGE_INTERVAL_MS,
+        maxBytes: PAGE_MAX_BYTES,
+      });
       parts.push(wrapPage(response.status, response.body));
     } catch {
       parts.push(wrapPage(null, undefined));
