@@ -1,0 +1,3060 @@
+{
+  "source": "https://overpass-api.de/api/interpreter?data=%5Bout%3Ajson%5D%5Btimeout%3A120%5D%5Bbbox%3A47.55%2C7.55%2C47.65%2C7.7%5D%3B(nwr%5B%22tourism%22~%22%5E(attraction%7Cviewpoint%7Cmuseum%7Cartwork%7Cgallery%7Ctheme_park%7Czoo%7Caquarium)%24%22%5D%5B%22name%22%5D%3Bnwr%5B%22historic%22~%22%5E(castle%7Cmonument%7Cruins%7Cmemorial%7Carchaeological_site%7Cfort%7Ctower)%24%22%5D%5B%22name%22%5D%3Bnwr%5B%22leisure%22~%22%5E(nature_reserve%7Cgarden)%24%22%5D%5B%22name%22%5D%3Bnwr%5B%22natural%22~%22%5E(peak%7Cwaterfall%7Ccave_entrance)%24%22%5D%5B%22name%22%5D%3B)%3Bout%20tags%20center%3B",
+  "recordedAt": "2026-09-28T03:11:55.993Z",
+  "note": "Recorded from overpass-api.de with the connector's own query, but with the bounding box reduced from the quadrant 47.5,7.4,48.7,9.0 (Q3) to 47.55,7.55,47.65,7.7 (the tri-border area Loerrach / Weil am Rhein / Basel / Alsace), so a single modest request suffices and the points fall into the municipalities of test/fixtures/grenzen-bw.json or just outside the state. Trimmed from 416 to 204 elements: every element that lies in a fixture municipality is kept (so the top-25 selection and zielCount are those of the real answer), of the others (Basel, Riehen, Alsace) every fourth in answer order. Element order and content verbatim; the envelope (version, generator, osm3s) untouched.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip"
+  },
+  "format": "json",
+  "payload": {
+    "version": 0.6,
+    "generator": "Overpass API 0.7.62.11 87bfad18",
+    "osm3s": {
+      "timestamp_osm_base": "2026-09-28T03:10:18Z",
+      "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+    },
+    "elements": [
+      {
+        "type": "node",
+        "id": 241748857,
+        "lat": 47.6381692,
+        "lon": 7.6680329,
+        "tags": {
+          "castle_type": "defensive",
+          "historic": "castle",
+          "name": "Burg Rötteln",
+          "name:en": "Rötteln Castle",
+          "name:fr": "Château de Rothelin",
+          "ruins": "yes",
+          "website": "https://www.burgruine-roetteln.de/",
+          "wheelchair": "no",
+          "wikidata": "Q885098",
+          "wikipedia": "de:Burg Rötteln"
+        }
+      },
+      {
+        "type": "node",
+        "id": 321633295,
+        "lat": 47.5587519,
+        "lon": 7.6463735,
+        "tags": {
+          "name": "Hornfelsen",
+          "tourism": "viewpoint"
+        }
+      },
+      {
+        "type": "node",
+        "id": 321816648,
+        "lat": 47.558395,
+        "lon": 7.6554196,
+        "tags": {
+          "name": "Fasnachtsfeuer",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "node",
+        "id": 428878237,
+        "lat": 47.5852035,
+        "lon": 7.6182627,
+        "tags": {
+          "name": "Trinationales Umweltzentrum",
+          "tourism": "attraction",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "type": "node",
+        "id": 429506075,
+        "lat": 47.5528854,
+        "lon": 7.6876699,
+        "tags": {
+          "name": "Känzele",
+          "tourism": "viewpoint"
+        }
+      },
+      {
+        "type": "node",
+        "id": 454150076,
+        "lat": 47.6230564,
+        "lon": 7.6231329,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "9",
+          "addr:postcode": "79576",
+          "addr:street": "Zur alten Schmiede",
+          "name": "Museum Dorfstube",
+          "opening_hours": "Su,PH 14:00-17:00; Dec-Feb off",
+          "operator": "Verein zur Förderung der Dorfstube Ötlingen e.V.",
+          "phone": "+49 7621 64194",
+          "source": "http://www.museen-weil-am-rhein.de/dorfstube.html",
+          "tourism": "museum",
+          "website": "http://www.museen-weil-am-rhein.de/dorfstube.html",
+          "wikidata": "Q76632302"
+        }
+      },
+      {
+        "type": "node",
+        "id": 475844438,
+        "lat": 47.5537658,
+        "lon": 7.5910322,
+        "tags": {
+          "addr:city": "Basel",
+          "addr:country": "CH",
+          "addr:housenumber": "7",
+          "addr:postcode": "4001",
+          "addr:street": "Steinenberg",
+          "check_date": "2025-12-22",
+          "fee": "yes",
+          "name": "Schweizerisches Architekturmuseum",
+          "opening_hours": "Tu-Fr 11:00-18:00; Th 11:00-20:30; Sa,Su 11:00-17:00",
+          "tourism": "museum",
+          "website": "https://www.sam-basel.org/",
+          "wheelchair": "yes",
+          "wikidata": "Q692040"
+        }
+      },
+      {
+        "type": "node",
+        "id": 475862033,
+        "lat": 47.557094,
+        "lon": 7.583227,
+        "tags": {
+          "addr:city": "Basel",
+          "addr:country": "CH",
+          "addr:housenumber": "11",
+          "addr:postcode": "4051",
+          "addr:street": "Spalenvorstadt",
+          "email": "bf-museum@jsd.bs.ch",
+          "fee": "yes",
+          "museum": "history;local;technology",
+          "name": "Schweizerisches Feuerwehrmuseum",
+          "opening_hours": "Su 14:00-17:00",
+          "phone": "+41 61 268 14 00",
+          "subject:wikidata": "Q1664487",
+          "tourism": "museum",
+          "website": "https://www.rettung.bs.ch/feuerwehr/fw-museum.html",
+          "wikidata": "Q1664487"
+        }
+      },
+      {
+        "type": "node",
+        "id": 532777887,
+        "lat": 47.5543563,
+        "lon": 7.593141,
+        "tags": {
+          "addr:city": "Basel",
+          "addr:housenumber": "5",
+          "addr:postcode": "4051",
+          "addr:street": "St. Alban-Graben",
+          "fee": "yes",
+          "name": "Antikenmuseum Basel und Sammlung Ludwig",
+          "opening_hours": "Tu,We 11:00-17:00, Th,Fr 11:00-22:00, Sa,Su 11:00-17:00",
+          "tourism": "museum",
+          "website": "https://www.antikenmuseumbasel.ch/",
+          "wheelchair": "limited",
+          "wikidata": "Q576081"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1019487792,
+        "lat": 47.5870025,
+        "lon": 7.6504397,
+        "tags": {
+          "artist:wikidata": "Q544899",
+          "artist_name": "Ellsworth Kelly",
+          "artwork_type": "sculpture",
+          "name": "White Curves",
+          "start_date": "2001",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1028864276,
+        "lat": 47.6126439,
+        "lon": 7.6634171,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "statue",
+          "name": "Hebel-Denkmal",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1045650231,
+        "lat": 47.6148025,
+        "lon": 7.6649667,
+        "tags": {
+          "artist_name": "Giancarlo Sangregorios",
+          "artwork_type": "sculpture",
+          "material": "rock",
+          "name": "Triade",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1045650387,
+        "lat": 47.6103649,
+        "lon": 7.6602021,
+        "tags": {
+          "artist_name": "Konrad Winzer",
+          "name": "Existenzielle Not",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1047246811,
+        "lat": 47.6172857,
+        "lon": 7.666781,
+        "tags": {
+          "artist_name": "Franz Bernhard",
+          "name": "Lörracher Sitzende",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1047303202,
+        "lat": 47.6138243,
+        "lon": 7.6607062,
+        "tags": {
+          "artist_name": "Stephan Balkenhol",
+          "artwork_type": "statue",
+          "description": "Nachfolger der Holzskulptur von 1997",
+          "material": "bronze",
+          "name": "Große Säulenfigur",
+          "start_date": "2017",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1051542709,
+        "lat": 47.6124898,
+        "lon": 7.6718807,
+        "tags": {
+          "ele": "403",
+          "name": "Hünerberg",
+          "natural": "peak"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1085539537,
+        "lat": 47.6310006,
+        "lon": 7.694169,
+        "tags": {
+          "historic": "memorial",
+          "name": "Ehrenmal für die Opfer beider Weltkriege",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1103238948,
+        "lat": 47.6014889,
+        "lon": 7.6397396,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "sculpture",
+          "name": "Hindenburg-Denkmal"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1103238955,
+        "lat": 47.6035643,
+        "lon": 7.6397534,
+        "tags": {
+          "historic": "memorial",
+          "inscription": "Zur Erinnerung an den Sieg des Markgrafen Ludw. Wilhelm bei Tüllingen-Friedlingen am 14. Oktober 1702. ......",
+          "memorial": "war_memorial",
+          "name": "Markgraf Ludwig Wilhelm von Baden-Baden"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1116506004,
+        "lat": 47.5889392,
+        "lon": 7.6919016,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "war_memorial",
+          "name": "Gefallenendenkmal"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1291522099,
+        "lat": 47.6011179,
+        "lon": 7.6790964,
+        "tags": {
+          "name": "Erlebniskletterwald",
+          "sport": "climbing_adventure",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1378494300,
+        "lat": 47.5811146,
+        "lon": 7.6168509,
+        "tags": {
+          "artwork_type": "sculpture",
+          "name": "Trias",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1378508815,
+        "lat": 47.5854592,
+        "lon": 7.6210172,
+        "tags": {
+          "name": "Kieswerk",
+          "tourism": "artwork",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1393710447,
+        "lat": 47.6400272,
+        "lon": 7.6991067,
+        "tags": {
+          "designation": "Heißer Stein",
+          "historic": "monument",
+          "name": "Heißer Stein"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1409404351,
+        "lat": 47.6350208,
+        "lon": 7.6806164,
+        "tags": {
+          "artist_name": "Luigi Colani",
+          "name": "Tropfen",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1409886285,
+        "lat": 47.6165651,
+        "lon": 7.6684835,
+        "tags": {
+          "name": "Milka-Kühe",
+          "panoramax": "af244203-8dcd-40a9-a4ab-b35c518d75bf",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1440836170,
+        "lat": 47.5992173,
+        "lon": 7.6504707,
+        "tags": {
+          "name": "Wassersäule",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1440836200,
+        "lat": 47.5998901,
+        "lon": 7.6504075,
+        "tags": {
+          "name": "Tropfen",
+          "panoramax": "0f7529b5-107e-4733-ad11-ede37ceb86ec",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1501971988,
+        "lat": 47.6372982,
+        "lon": 7.6679686,
+        "tags": {
+          "name": "Burg Rötteln",
+          "tourism": "attraction",
+          "website": "https://www.burgroetteln.de"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1515347402,
+        "lat": 47.5729365,
+        "lon": 7.6801334,
+        "tags": {
+          "designation": "Alpenpanorama St. Chrischona",
+          "name": "St. Chrischona",
+          "tourism": "viewpoint"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1596370431,
+        "lat": 47.5659463,
+        "lon": 7.5525873,
+        "tags": {
+          "leisure": "garden",
+          "name": "Familiengärtnerverein Lachenweg"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1717809394,
+        "lat": 47.589524,
+        "lon": 7.6076585,
+        "tags": {
+          "artist_name": "Alessandro Mendini",
+          "artwork_type": "sculpture",
+          "description": "Maxistuhl",
+          "name": "Lassù",
+          "start_date": "1999",
+          "tourism": "artwork",
+          "url": "https://w-wt.de/de/tourismus/stadt-der-stuehle/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1796072301,
+        "lat": 47.5566771,
+        "lon": 7.5927782,
+        "tags": {
+          "description": "Die Informationsstelle ist mit einem Schlüssel gesichert. Dieser ist bei der Information im Innern des Basler Münsters erhältlich.",
+          "designation": "Informationsstelle der archäologischen Bodenforschung Basel",
+          "historic": "archaeological_site",
+          "name": "Aussenkrypta des Münsters",
+          "opening_hours": "Apr-Sep: 10:00-17:00; Oct-Mar: 11:00-16:00; SH off",
+          "source": "local knowledge",
+          "website": "https://www.archaeologie.bs.ch",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1796368372,
+        "lat": 47.5559263,
+        "lon": 7.5863968,
+        "tags": {
+          "designation": "Informationsstelle der archäologischen Bodenforschung Basel",
+          "historic": "archaeological_site",
+          "name": "Stadtmauern im Hotel Restaurant Teufelhof",
+          "source": "local knowledge"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1796380132,
+        "lat": 47.5581731,
+        "lon": 7.5863828,
+        "tags": {
+          "access": "yes",
+          "description": "Die Umrisse der einstigen Kapelle sind auf dem Andreasplatz durch rote Pflastersteine markiert.",
+          "designation": "Informationsstelle der archäologischen Bodenforschung Basel",
+          "historic": "archaeological_site",
+          "historic:civilization": "medieval_christianity",
+          "name": "Andreaskapelle",
+          "source": "local knowledge",
+          "website": "https://www.bs.ch/pd/kultur/museen-und-andere-dienststellen/archaeologie/vermittlung/infostellen/andreaskapelle"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1796396414,
+        "lat": 47.5583533,
+        "lon": 7.5866399,
+        "tags": {
+          "designation": "Informationsstelle der archäologischen Bodenforschung Basel",
+          "historic": "archaeological_site",
+          "name": "Wohn- und Wehrturm Schneidergasse",
+          "source": "local knowledge"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1883619888,
+        "lat": 47.6197513,
+        "lon": 7.6355603,
+        "tags": {
+          "ele": "452",
+          "name": "Tüllinger Berg",
+          "natural": "peak",
+          "wikidata": "Q94358445"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1912070306,
+        "lat": 47.6376621,
+        "lon": 7.6668164,
+        "tags": {
+          "checkpoint": "hiking",
+          "checkpoint:type": "stamp",
+          "image": "File:Westwegportal Lörrach.JPG",
+          "name": "Westwegportal \"Dreiländereck\" Lörrach",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1988267792,
+        "lat": 47.5933769,
+        "lon": 7.5779056,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "war_memorial",
+          "name": "Monument aux Morts",
+          "wikimedia_commons": "File:Huningue, Monument aux morts.jpg"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2028874903,
+        "lat": 47.6040743,
+        "lon": 7.5615202,
+        "tags": {
+          "historic": "memorial",
+          "name": "Stèle Commémorative de la Brigade du Languedoc"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2069512583,
+        "lat": 47.6015229,
+        "lon": 7.6196688,
+        "tags": {
+          "artist:wikidata": "Q156731",
+          "artist:wikipedia": "en:Claes Oldenburg",
+          "artist_name": "Claes Oldenburg",
+          "artwork_type": "sculpture",
+          "name": "Balancing Tools",
+          "start_date": "1984",
+          "tourism": "artwork",
+          "wikidata": "Q18084719"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2099527906,
+        "lat": 47.5620972,
+        "lon": 7.5896315,
+        "tags": {
+          "fee": "yes",
+          "name": "Museum Kleines Klingental",
+          "opening_hours": "We,Sa 14:00-17:00; Su 10:00-17:00",
+          "tourism": "museum",
+          "website": "https://www.mkk.ch/",
+          "wheelchair": "no",
+          "wikidata": "Q1397203",
+          "wikipedia": "de:Museum Kleines Klingental"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2513404254,
+        "lat": 47.5672391,
+        "lon": 7.586501,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "colour": "darkgreen",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskenbrunnen",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wikidata": "Q72951303",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Unterer Rheinweg/Oetlingerstrasse)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 3802309509,
+        "lat": 47.5509045,
+        "lon": 7.5800193,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "bottle": "yes",
+          "colour": "darkgreen",
+          "direction": "200",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskenbrunnen",
+          "panoramax": "e7a4d9b0-219a-4035-9005-3a10b3a8c347",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wikidata": "Q72951196",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Steinenring)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4346495956,
+        "lat": 47.6064351,
+        "lon": 7.6753265,
+        "tags": {
+          "ele": "420",
+          "name": "Schädelberg",
+          "natural": "peak",
+          "wikidata": "Q108282155"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4573960391,
+        "lat": 47.5885409,
+        "lon": 7.5897715,
+        "tags": {
+          "historic": "monument",
+          "name": "Dreiländermonument"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4942252049,
+        "lat": 47.5952368,
+        "lon": 7.6593263,
+        "tags": {
+          "leisure": "garden",
+          "name": "Kräutergarten Lörrach"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5289755914,
+        "lat": 47.571421,
+        "lon": 7.6849767,
+        "tags": {
+          "artwork_type": "installation",
+          "name": "Hörrohr",
+          "tourism": "artwork",
+          "website": "https://generationenparcours.ch/stationen/hoerrohr-generationenparcoursch/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5357812658,
+        "lat": 47.5912802,
+        "lon": 7.5925832,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "plaque",
+          "name": "Passerelle des trois pays Dreiländerbrücke",
+          "support": "pedestal"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5357812660,
+        "lat": 47.5912717,
+        "lon": 7.5925809,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "plaque",
+          "name": "FÖRDERVEREIN BÜRGERBRÜCKE E.V. WEIL AM RHEIN HUNINGUE",
+          "support": "pedestal"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5357812662,
+        "lat": 47.5915286,
+        "lon": 7.5899312,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "plaque",
+          "name": "Dreiländerbrücke - Passerelle des Trois Pays",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5696408427,
+        "lat": 47.6036218,
+        "lon": 7.6385666,
+        "tags": {
+          "historic": "memorial",
+          "inscription": "Den 1914 - 1918 gefallenen Kameraden.\n8. Landw. Div.",
+          "material": "stone",
+          "memorial": "war_memorial",
+          "name": "Denkmal für die Gefallenen des 1. Weltkriegs"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5746263878,
+        "lat": 47.5604471,
+        "lon": 7.5717191,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "colour": "darkgreen",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskenbrunnen",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wikidata": "Q72950967",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Hegenheimerstrasse/Colmarerstrasse)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5838490895,
+        "lat": 47.5516369,
+        "lon": 7.6606315,
+        "tags": {
+          "check_date": "2025-08-16",
+          "name": "Plots Art",
+          "tourism": "gallery"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5884561389,
+        "lat": 47.592178,
+        "lon": 7.6155427,
+        "tags": {
+          "artist_name": "Aldo Rossi",
+          "artwork_type": "sculpture",
+          "description": "Maxistuhl",
+          "name": "\"Parigi\"",
+          "tourism": "artwork",
+          "wikimedia_commons": "File:Maxistuhl Parigi von Aldo Rossi in Weil am Rhein.jpg"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5884561390,
+        "lat": 47.5912015,
+        "lon": 7.593761,
+        "tags": {
+          "artwork_type": "sculpture",
+          "name": "Maxistuhl",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5884561391,
+        "lat": 47.5909045,
+        "lon": 7.5956435,
+        "tags": {
+          "artwork_type": "sculpture",
+          "name": "Maxistuhl",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5884632125,
+        "lat": 47.6164581,
+        "lon": 7.6181468,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "8",
+          "addr:postcode": "79576",
+          "addr:street": "Winzerweg",
+          "addr:suburb": "Haltingen",
+          "artist_name": "Jasper Morrison",
+          "artwork_type": "sculpture",
+          "description": "Maxistuhl",
+          "name": "Ply Chair",
+          "tourism": "artwork",
+          "wikimedia_commons": "File:Maxistuhl Ply Chair von Jasper Morrison in Weil am Rhein- Haltingen, Winzerweg 8.jpg"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6058418879,
+        "lat": 47.5617392,
+        "lon": 7.5857089,
+        "tags": {
+          "artist_name": "Otto Charles Bänninger",
+          "artwork_type": "sculpture",
+          "description": "Janus is the ancient Roman god of gates, doors, beginnings, endings and time. Usually he is depicted with two heads or two faces looking in opposite directions; the future and the past. However, this Janus has his second head lying at his feet.",
+          "material": "bronze",
+          "name": "Janus",
+          "tourism": "artwork",
+          "year": "1962"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6114275469,
+        "lat": 47.5914025,
+        "lon": 7.6001824,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "23",
+          "addr:postcode": "79576",
+          "addr:street": "Am Kesselhaus",
+          "name": "Museum Weiler Textilgeschichte",
+          "opening_hours": "Su 14:00-18:00",
+          "operator": "Kulturamt Stadt Weil am Rhein",
+          "operator:type": "public",
+          "phone": "+49 7621 704416",
+          "tourism": "museum",
+          "website": "https://www.museen-weil-am-rhein.de/textilmuseum.html"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6208479037,
+        "lat": 47.5592707,
+        "lon": 7.6113559,
+        "tags": {
+          "artist:wikidata": "Q168704",
+          "artist_name": "Niki de Saint Phalle",
+          "artwork_type": "statue",
+          "material": "plastic",
+          "name": "Nana Gwendolyn",
+          "start_date": "1966",
+          "tourism": "artwork",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6372546486,
+        "lat": 47.5557653,
+        "lon": 7.5882265,
+        "tags": {
+          "fee": "no",
+          "level": "0",
+          "name": "Galerie Lokal",
+          "opening_hours": "Tu-Fr 13:00-17:00; Sa 11:00-16:00",
+          "tourism": "gallery",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6516055552,
+        "lat": 47.5549604,
+        "lon": 7.595111,
+        "tags": {
+          "artist:wikidata": "Q64821696",
+          "artist_name": "Willy Hege",
+          "artwork_type": "statue",
+          "description": "Schlange, Willy Hege, 1955",
+          "material": "bronze",
+          "name": "Schlange",
+          "statue": "animal",
+          "tourism": "artwork",
+          "wikidata": "Q138504069",
+          "wikimedia_commons": "Category:Schlange (Willy Hege)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6660580883,
+        "lat": 47.5570179,
+        "lon": 7.6021216,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "colour": "darkgreen",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskenbrunnen",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wikidata": "Q72951396",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Schaffhauserrheinweg)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6751326331,
+        "lat": 47.566677,
+        "lon": 7.5927499,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "colour": "darkgreen",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskenbrunnen",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wikidata": "Q72951212",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Feldbergstrasse/Müllheimerstrasse)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6784798776,
+        "lat": 47.5682055,
+        "lon": 7.5616496,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "colour": "darkgreen",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskenbrunnen",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wikidata": "Q72951359",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Burgfelderstrasse/Waldighoferstrasse)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6800087745,
+        "lat": 47.5619403,
+        "lon": 7.5856312,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "bottle": "yes",
+          "check_date": "2024-07-16",
+          "colour": "darkgreen",
+          "dog": "yes",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "material": "metal",
+          "name": "Basiliskenbrunnen",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wheelchair": "yes",
+          "wikidata": "Q74367814",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Totentanz)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6803072529,
+        "lat": 47.5590428,
+        "lon": 7.6104918,
+        "tags": {
+          "artist:wikidata": "Q461165",
+          "artist_name": "Bernhard Luginbühl",
+          "artwork_type": "sculpture",
+          "material": "steel",
+          "name": "Dickfigur Beteigeuze",
+          "start_date": "1996",
+          "tourism": "artwork",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6943125123,
+        "lat": 47.5682009,
+        "lon": 7.583008,
+        "tags": {
+          "artist_name": "Shen Lieyi",
+          "artwork_type": "sculpture",
+          "material": "metal",
+          "name": "Zhou",
+          "tourism": "artwork",
+          "website": "https://kunscht.zbasel.ch/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6944692061,
+        "lat": 47.5702631,
+        "lon": 7.5804312,
+        "tags": {
+          "artist_name": "Hannes Vogels",
+          "artwork_type": "mural_painting",
+          "description": "the painting is on the high chimney. ",
+          "name": "Wegzeichen",
+          "start_date": "1981",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7173841394,
+        "lat": 47.6323021,
+        "lon": 7.6228599,
+        "tags": {
+          "archaeological_site": "building",
+          "historic": "archaeological_site",
+          "historic:civilization": "medieval",
+          "name": "Schloss Binzen",
+          "source": "local knowledge;Wikipedia",
+          "wikidata": "Q22693781",
+          "wikipedia": "de:Schloss Binzen"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7173892969,
+        "lat": 47.608645,
+        "lon": 7.5978787,
+        "tags": {
+          "archaeological_site": "fortification",
+          "historic": "archaeological_site",
+          "historic:civilization": "medieval",
+          "name": "Wasserschloss Hiltelingen",
+          "wikidata": "Q19963073",
+          "wikipedia": "de:Wasserschloss Hiltelingen"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7297438306,
+        "lat": 47.6491198,
+        "lon": 7.6835893,
+        "tags": {
+          "ele": "445",
+          "name": "Berg",
+          "natural": "peak",
+          "source": "Historische Messtischblätter TK25 (validiert)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7297479700,
+        "lat": 47.6439926,
+        "lon": 7.6860765,
+        "tags": {
+          "ele": "429",
+          "name": "Lingert",
+          "natural": "peak",
+          "source": "Historische Messtischblätter TK25 (validiert)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7420396509,
+        "lat": 47.6105194,
+        "lon": 7.6597234,
+        "tags": {
+          "archaeological_site": "fortification",
+          "description": "abgegangene Wasserburg aus dem 13. Jahrhundert, 1867 abgebrochen, Namensgeber des Burghofes",
+          "historic": "archaeological_site",
+          "historic:civilization": "medieval",
+          "name": "Schloss Lörrach",
+          "source": "alleburgen.de",
+          "wikidata": "Q85338316",
+          "wikipedia": "de:Schloss Lörrach"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7817480818,
+        "lat": 47.5686423,
+        "lon": 7.6438355,
+        "tags": {
+          "artist_name": "Ludwig Stocker",
+          "artwork_type": "sculpture",
+          "name": "Doryphoros",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7871628319,
+        "lat": 47.5533265,
+        "lon": 7.6125725,
+        "tags": {
+          "artwork_type": "sculpture",
+          "material": "marble",
+          "name": "Lichtung",
+          "tourism": "artwork",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7902606719,
+        "lat": 47.6129839,
+        "lon": 7.6608422,
+        "tags": {
+          "artist_name": "Bernd Goering",
+          "name": "Unterbrochener Kreislauf der Natur",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7902606720,
+        "lat": 47.6142632,
+        "lon": 7.6620975,
+        "tags": {
+          "artist_name": "Bernd Goering",
+          "name": "9. November",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7902606721,
+        "lat": 47.6147875,
+        "lon": 7.6620734,
+        "tags": {
+          "artist_name": "Nigel Hall",
+          "name": "Lörrach rising",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7902606724,
+        "lat": 47.6097571,
+        "lon": 7.6609616,
+        "tags": {
+          "artist_name": "Ralf Johannes Kratz",
+          "name": "Suche der Stadt Bestes",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 8932149893,
+        "lat": 47.5944288,
+        "lon": 7.6807228,
+        "tags": {
+          "ele": "477",
+          "name": "Maienbühl",
+          "natural": "peak"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9178412680,
+        "lat": 47.5658275,
+        "lon": 7.6072688,
+        "tags": {
+          "addr:city": "Basel",
+          "addr:housenumber": "171",
+          "addr:postcode": "4058",
+          "addr:street": "Schwarzwaldallee",
+          "fee": "no",
+          "name": "Beurret & Bailly Auktionen, Galerie Widmer",
+          "tourism": "gallery"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9289686801,
+        "lat": 47.5662828,
+        "lon": 7.5716777,
+        "tags": {
+          "historic": "memorial",
+          "image": "https://spark.adobe.com/page/uax1gH482SWHL/images/aac9c914-bf1b-4305-a91b-7493166ef899.jpg",
+          "material": "stone",
+          "memorial": "obelisk",
+          "memorial:conflict": "Franco-Prussian_War;WW1;WW2",
+          "name": "Bourbaki-Denkmal und 1914-18, 1939-45 Basel",
+          "name:de": "Bourbaki-Denkmal und 1914-18, 1939-45 Basel",
+          "name:fr": "Mémorial Bourbaki et 1914-18, 1939-45 Basel",
+          "ref:FR:MemorialGenWeb": "31791",
+          "start_date": "1871",
+          "url": "https://www.vtg.admin.ch/fr/inventario-3",
+          "war_memorial": "yes",
+          "website": "https://www.docker.ch/dominique/bourbaki-memoriaux/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9397193044,
+        "lat": 47.601073,
+        "lon": 7.6214741,
+        "tags": {
+          "artist_name": "Dieter Thiel",
+          "name": "Hommage à Verner Panton",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9508472732,
+        "lat": 47.6055247,
+        "lon": 7.6293095,
+        "tags": {
+          "artist_name": "Tobias Rehberger",
+          "artwork_type": "sculpture",
+          "check_date": "2025-12-14",
+          "material": "metal",
+          "name": "Baum",
+          "tourism": "artwork",
+          "website": "https://www.24stops.info/de/objekte/baum/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9517443227,
+        "lat": 47.5540885,
+        "lon": 7.5942299,
+        "tags": {
+          "artist:wikidata": "Q30755",
+          "artist_name": "Auguste Rodin",
+          "artwork_type": "sculpture",
+          "material": "bronze",
+          "name": "Bürger von Calais",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9540471741,
+        "lat": 47.5742758,
+        "lon": 7.6081838,
+        "tags": {
+          "attraction": "animal",
+          "name": "Jurawald",
+          "tourism": "attraction",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9784848094,
+        "lat": 47.5732577,
+        "lon": 7.6203808,
+        "tags": {
+          "artist_name": "Paul Suter",
+          "artwork_type": "sculpture",
+          "name": "Amenocal",
+          "start_date": "1999",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9881967818,
+        "lat": 47.5569709,
+        "lon": 7.604461,
+        "tags": {
+          "leisure": "swimming_area",
+          "name": "Einstiegstelle Basler Rheinschwimmen",
+          "name:fr": "Départ pour la descente du Rhin à la nage",
+          "sport": "swimming",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9883960632,
+        "lat": 47.6086423,
+        "lon": 7.6626138,
+        "tags": {
+          "addr:city": "Lörrach",
+          "addr:country": "DE",
+          "addr:housenumber": "16",
+          "addr:postcode": "79540",
+          "addr:street": "Baumgartnerstraße",
+          "name": "Ibenthaler-Haus",
+          "opening_hours": "Sa 14:00-17:00; Su 15:00-17:00",
+          "operator": "Ibenthaler-Stiftung",
+          "survey:date": "2022-05-27",
+          "tourism": "gallery",
+          "website": "https://ibenthaler-stiftung.jimdofree.com/das-ibenthaler-haus/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9997552800,
+        "lat": 47.6070591,
+        "lon": 7.6670292,
+        "tags": {
+          "artwork_type": "statue",
+          "name": "Hermes Statue",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10025621849,
+        "lat": 47.5869205,
+        "lon": 7.6506779,
+        "tags": {
+          "artist_name": "Fischli/Weiss",
+          "artwork_type": "installation",
+          "material": "water",
+          "name": "Snowman",
+          "tourism": "artwork",
+          "website": "https://www.fondationbeyeler.ch/ausstellungen/snowman"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10025656754,
+        "lat": 47.6006458,
+        "lon": 7.62997,
+        "tags": {
+          "artist_name": "Tobias Rehberger",
+          "artwork_type": "sculpture",
+          "check_date": "2025-12-14",
+          "material": "metal",
+          "name": "Fernglas",
+          "tourism": "artwork",
+          "website": "https://www.24stops.info/de/objekte/fernglas/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10049607707,
+        "lat": 47.5954225,
+        "lon": 7.6127794,
+        "tags": {
+          "artist_name": "Volker Scheurer",
+          "artwork_type": "sculpture",
+          "name": "Die im Dialog",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10073155061,
+        "lat": 47.6268191,
+        "lon": 7.6618896,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stone",
+          "name": "zur Erinnerung an den Flugplatz Lörrach"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10075552477,
+        "lat": 47.6422035,
+        "lon": 7.6152494,
+        "tags": {
+          "description": "Gedenkstein an die Flurbereinigung Binzen",
+          "historic": "memorial",
+          "memorial": "stone",
+          "name": "Hinkelstein"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10290545905,
+        "lat": 47.5981004,
+        "lon": 7.6982967,
+        "tags": {
+          "ele": "485",
+          "name": "Buttenberg",
+          "natural": "peak",
+          "source": "LGL, www.lgl-bw.de"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10964124728,
+        "lat": 47.5536033,
+        "lon": 7.5906723,
+        "tags": {
+          "artwork_type": "sculpture",
+          "name": "dr Schuufler",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10964124732,
+        "lat": 47.5536717,
+        "lon": 7.5906877,
+        "tags": {
+          "artwork_type": "sculpture",
+          "name": "dr Waggler",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10964124736,
+        "lat": 47.55369,
+        "lon": 7.5906143,
+        "tags": {
+          "artwork_type": "sculpture",
+          "name": "dr Suuser",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11148366110,
+        "lat": 47.5654873,
+        "lon": 7.5943527,
+        "tags": {
+          "check_date": "2023-08-27",
+          "name": "Filiale",
+          "tourism": "gallery"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11412858261,
+        "lat": 47.6020716,
+        "lon": 7.6162534,
+        "tags": {
+          "architect": "Renzo Piano",
+          "building": "yes",
+          "name": "Diogene",
+          "tourism": "attraction",
+          "website": "https://www.vitra.com/de-ch/campus/architecture/architecture-diogene"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11469029948,
+        "lat": 47.5529465,
+        "lon": 7.603216,
+        "tags": {
+          "historic": "memorial",
+          "inscription": "Ratsherr Karl Sarasin, 1815-1886, Begründer der Anlagen auf dem Gebiet der äusseren Stadtgräben",
+          "memorial": "bust",
+          "name": "Karl Sarasin"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11841698537,
+        "lat": 47.555284,
+        "lon": 7.6037184,
+        "tags": {
+          "direction": "S-E",
+          "name": "St. Alban Pfalz",
+          "name:en": "St. Alban Palatine",
+          "name:gsw": "Dalbe Pfalz",
+          "tourism": "viewpoint",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12042040410,
+        "lat": 47.6021064,
+        "lon": 7.6159961,
+        "tags": {
+          "architect": "Marina Tabassum",
+          "building": "hut",
+          "name": "Khudi Bari",
+          "tourism": "attraction",
+          "website": "https://www.vitra.com/de-de/magazine/details/khudi-bari-by-marina-tabassum"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12154214054,
+        "lat": 47.5585919,
+        "lon": 7.6113442,
+        "tags": {
+          "artist_name": "Carl Gutknecht",
+          "artwork_type": "statue",
+          "material": "metal",
+          "name": "Knabenfigur",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12270674318,
+        "lat": 47.5546648,
+        "lon": 7.5901034,
+        "tags": {
+          "email": "historisches.museum@bs.ch",
+          "fee": "yes",
+          "internet_access": "wlan",
+          "internet_access:fee": "no",
+          "internet_access:ssid": "HMB",
+          "name": "Historisches Museum Basel – Barfüsserkirche",
+          "name:en": "Basel Historical Museum – Barfüsserkirche",
+          "name:fr": "Musée historique de Bâle – Barfüsserkirche",
+          "opening_hours": "Tu-Su 10:00-17:00",
+          "operator": "Historisches Museum Basel",
+          "payment:american_express": "yes",
+          "payment:coins": "yes",
+          "payment:contactless": "yes",
+          "payment:credit_cards": "yes",
+          "payment:debit_cards": "yes",
+          "payment:maestro": "yes",
+          "payment:mastercard": "yes",
+          "payment:notes": "yes",
+          "payment:visa": "yes",
+          "phone": "+41 61 205 86 00",
+          "start_date": "1894-04-21",
+          "tourism": "museum",
+          "website": "https://www.hmb.ch/",
+          "wheelchair": "yes",
+          "wikidata": "Q386286",
+          "wikipedia": "de:Historisches Museum Basel"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12620245357,
+        "lat": 47.5527907,
+        "lon": 7.6604485,
+        "tags": {
+          "fixme": "exact position",
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Anna Bloch",
+          "wikimedia_commons": "File:Stolperstein Anna Bloch Grenzach.jpg"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12661018671,
+        "lat": 47.5701547,
+        "lon": 7.6023929,
+        "tags": {
+          "addr:city": "Basel",
+          "addr:housenumber": "55",
+          "addr:postcode": "4058",
+          "addr:street": "Erlenmattstrasse",
+          "check_date": "2026-06-18",
+          "check_date:currency:XBT": "2026-06-18",
+          "check_date:opening_hours": "2026-06-18",
+          "contact:instagram": "thegreatprint",
+          "contact:linkedin": "https://www.linkedin.com/company/94264514/",
+          "contact:pinterest": "https://www.pinterest.com/thegreatprint/",
+          "contact:twitter": "thegreatprint",
+          "currency:XBT": "yes",
+          "description": "Physical Bitcoin Art (Pen drawings, Sculptures, Frames, Posters) that is created with low time preference.",
+          "email": "hello@thegreatprint.net",
+          "name": "The Great Print",
+          "opening_hours": "\"nach Vereinbarung\"",
+          "operator": "Bartosz Lewicki",
+          "payment:lightning": "yes",
+          "payment:lightning_contactless": "no",
+          "payment:onchain": "yes",
+          "tourism": "gallery",
+          "website": "https://www.thegreatprint.net/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12834713768,
+        "lat": 47.5945681,
+        "lon": 7.6325315,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "10/1",
+          "addr:postcode": "79576",
+          "addr:street": "Bläsiring",
+          "name": "Landwirtschaftsmuseum",
+          "opening_hours": "Apr-Oct Su,PH 14:00-18:00",
+          "operator": "Kulturamt Stadt Weil am Rhein",
+          "operator:type": "public",
+          "phone": "+49 7621 704416",
+          "tourism": "museum",
+          "website": "https://www.museen-weil-am-rhein.de/landwirtschaftsmuseum.html",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12889520305,
+        "lat": 47.58696,
+        "lon": 7.6510756,
+        "tags": {
+          "name": "Künstlerhaus",
+          "opening_hours": "We-Su 11:00-18:30",
+          "operator": "Claire Ochsner",
+          "tourism": "gallery",
+          "website": "http://www.claire-ochsner.ch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12997638856,
+        "lat": 47.6331341,
+        "lon": 7.6911958,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Pauline Kropf",
+          "start_date": "2025--07-11"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12997638857,
+        "lat": 47.6331362,
+        "lon": 7.6911995,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Stanislaw Zasada",
+          "start_date": "2025--07-11"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13026998529,
+        "lat": 47.6487465,
+        "lon": 7.5696048,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Henriette Olesheimer"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13026998530,
+        "lat": 47.6482642,
+        "lon": 7.568798,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Lina Weil"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13026998531,
+        "lat": 47.6468549,
+        "lon": 7.5686584,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Paula Epstein"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13026998532,
+        "lat": 47.6473472,
+        "lon": 7.5665279,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Rosa Moses"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045401350,
+        "lat": 47.6473469,
+        "lon": 7.5665357,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Samuel Moses I"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045401351,
+        "lat": 47.6473466,
+        "lon": 7.5665428,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Norbert Moses"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045401352,
+        "lat": 47.6473454,
+        "lon": 7.5665499,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Siegfried Moses"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045401353,
+        "lat": 47.6473466,
+        "lon": 7.566557,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Thekla Bloch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045401354,
+        "lat": 47.6473448,
+        "lon": 7.5665641,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "David Bloch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404737,
+        "lat": 47.6468413,
+        "lon": 7.5686581,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Sophie Bloch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404738,
+        "lat": 47.6468333,
+        "lon": 7.5686593,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Alexander Bloch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404739,
+        "lat": 47.6482609,
+        "lon": 7.5688034,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Emma Olesheimer"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404740,
+        "lat": 47.6482564,
+        "lon": 7.5688058,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Jonas Olesheimer"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404741,
+        "lat": 47.6482524,
+        "lon": 7.5688046,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Ida Bräunlin"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404742,
+        "lat": 47.6482492,
+        "lon": 7.5688094,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Herbert Bräunlin"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404743,
+        "lat": 47.6487381,
+        "lon": 7.5696114,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Leopold Braunschweig"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404744,
+        "lat": 47.6487308,
+        "lon": 7.5696092,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Rebekka Braunschweig"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404745,
+        "lat": 47.6487249,
+        "lon": 7.5696136,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Margot Braunschweig"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13045404746,
+        "lat": 47.6487167,
+        "lon": 7.5696092,
+        "tags": {
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "name": "Johanna Marque"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13063562803,
+        "lat": 47.5735562,
+        "lon": 7.6084275,
+        "tags": {
+          "attraction": "animal",
+          "name": "Laubfrösche",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13156005590,
+        "lat": 47.6002917,
+        "lon": 7.6506007,
+        "tags": {
+          "artist_name": "Max Meinrad Geiger",
+          "artwork_type": "sculpture",
+          "material": "stone",
+          "name": "Stern",
+          "panoramax": "0c3a7660-d7cb-4e7f-be8f-866b37611ce0",
+          "start_date": "2010",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13200717369,
+        "lat": 47.5627546,
+        "lon": 7.5893164,
+        "tags": {
+          "addr:housenumber": "8",
+          "addr:street": "Kasernenhof",
+          "check_date": "2025-10-07",
+          "name": "khaus",
+          "name:de": "K-Haus",
+          "opening_hours": "Mo-Su 09:00-21:00",
+          "tourism": "museum",
+          "website": "https://www.khaus.ch/de/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13246439710,
+        "lat": 47.6065268,
+        "lon": 7.6584628,
+        "tags": {
+          "description": "Ehemaliges Waschhaus, genutzt bis in die 1950er Jahre; Teil der Stadtführung „Stadt am Fluss – Von Waschfrauen, Seifensiedern und Halunken“",
+          "email": "tourismus@loerrach.de",
+          "historic": "memorial",
+          "name": "Historisches Waschhaus",
+          "operator": "Touristinformation Lörrach",
+          "panoramax": "c599f90d-f6ca-4535-9108-3278d870b31d",
+          "phone": "+49 7621 415120",
+          "website": "https://www.loerrach.de/stadtfuehrungen"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13246439727,
+        "lat": 47.6122245,
+        "lon": 7.66078,
+        "tags": {
+          "artwork_type": "sculpture",
+          "material": "bronze",
+          "name": "Brunnenfiguren mit Tieren",
+          "panoramax": "c552d409-8616-4c4d-b84b-b2fba84ccdfc",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13248281771,
+        "lat": 47.5586216,
+        "lon": 7.5827965,
+        "tags": {
+          "access": "yes",
+          "artist:wikidata": "Q670924",
+          "artist_name": "Coghuf",
+          "artwork_type": "mosaic",
+          "covered": "yes",
+          "name": "Kennen und Erkennen",
+          "tourism": "artwork",
+          "wikidata": "Q138710710",
+          "wikimedia_commons": "Category:Kennen und Erkennen (Mosaic by Coghuf)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13293392357,
+        "lat": 47.5632599,
+        "lon": 7.6130983,
+        "tags": {
+          "description:de": "Bezieht sich auf die Adresse Bäumlihofstrasse 39",
+          "historic": "memorial",
+          "inscription": "Hier wohnte|Erwin Lüscher|Jg. 1905|im Widerstand|verhaftet|Deutschland|verurteilt 1940|’Vorbereitung Hochverrat’|Zuchthaus Ludwigsburg|entlassen November 1944",
+          "memorial": "stolperstein",
+          "name": "Erwin Lüscher",
+          "start_date": "2025-09-18",
+          "subject": "Erwin Lüscher",
+          "subject:wikidata": "Q136329359",
+          "wikidata": "Q136092403",
+          "wikimedia_commons": "Category:Stolperstein für Erwin Lüscher (Basel)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13306106507,
+        "lat": 47.6390175,
+        "lon": 7.6117121,
+        "tags": {
+          "historic": "memorial",
+          "inscription": "Franz Preiß 1934 - 2024",
+          "material": "granite",
+          "memorial": "stele",
+          "name": "Gedenkstele für Franz Preiß",
+          "start_date": "2025-11-14"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13424820698,
+        "lat": 47.5784022,
+        "lon": 7.5543298,
+        "tags": {
+          "artist_name": "Gunter Demnig",
+          "historic": "memorial",
+          "inscription": "À Saint-Louis habitait|Benjamin Bloch|né 1904|arrêté 1942|interné Drancy|déporté 22.6.1942|interné Auschwitz|assassiné 25.7.1942",
+          "material": "brass",
+          "memorial": "stolperstein",
+          "name": "Benjamin Bloch",
+          "object:city": "Saint-Louis",
+          "object:housenumber": "53",
+          "object:postcode": "68300",
+          "object:street": "Rue du Docteur Marcel Hurst",
+          "person:date_of_birth": "1904",
+          "person:date_of_death": "1942-07-25",
+          "start_date": "2025-12-13"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13639406547,
+        "lat": 47.5578405,
+        "lon": 7.5841398,
+        "tags": {
+          "artist:wikidata": "Q63655646",
+          "artist_name": "Carl Gutknecht",
+          "artwork_type": "relief",
+          "direction": "90",
+          "level": "1",
+          "material": "stone",
+          "name": "Jüngling mit Pegasus",
+          "start_date": "1939",
+          "tourism": "artwork",
+          "wikidata": "Q138646501",
+          "wikimedia_commons": "Category:Jüngling mit Pegasus (Carl Gutknecht)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13671182357,
+        "lat": 47.5595595,
+        "lon": 7.5883587,
+        "tags": {
+          "artist:wikidata": "Q132228827",
+          "artist_name": "Rosa Bratteler",
+          "artwork_type": "statue",
+          "direction": "70",
+          "name": "Lällekönig",
+          "tourism": "artwork",
+          "wikidata": "Q138767787",
+          "wikimedia_commons": "Category:Lällekönig (Rosa Bratteler, 1941)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13717241986,
+        "lat": 47.5570309,
+        "lon": 7.5866562,
+        "tags": {
+          "historic": "memorial",
+          "inscription": "Hier wohnte|Armin Weiss|Jg. 1895|nach Deutschland|abgeschoben 12.12.1939|ermordet 16.3.1940|Sachsenhausen",
+          "memorial": "stolperstein",
+          "name": "Armin Weiss",
+          "start_date": "2021-11-02",
+          "subject": "Armin Weiss",
+          "subject:wikipedia": "Q135767231",
+          "wikidata": "Q135419694",
+          "wikimedia_commons": "Category:Stolperstein für Armin Weiss (Basel)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13858238206,
+        "lat": 47.61541,
+        "lon": 7.664423,
+        "tags": {
+          "description": "Stolpersteine für die Familie Denz",
+          "historic": "memorial",
+          "memorial": "stolperstein",
+          "memorial:subject": "Holocaust victims",
+          "name": "Stolpersteine Familie Denz",
+          "panoramax": "d706d828-d51d-4836-94a0-41b6655115bb",
+          "person": "Oskar Denz;Anna Denz;Walter Denz"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13989679362,
+        "lat": 47.5568089,
+        "lon": 7.6643166,
+        "tags": {
+          "addr:city": "Grenzach-Wyhlen",
+          "addr:housenumber": "1a",
+          "addr:postcode": "79639",
+          "addr:street": "Hauptstr.",
+          "historic": "memorial",
+          "name": "Gedenkstein Wladislaw Wielgo"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13989729912,
+        "lat": 47.5557877,
+        "lon": 7.6561784,
+        "tags": {
+          "addr:city": "Grenzach-Wyhlen",
+          "addr:housenumber": "40",
+          "addr:postcode": "79639",
+          "addr:street": "Schloßgasse",
+          "description": "https://heimatgeschichte-gw.de/trotte.htm",
+          "museum": "history",
+          "name": "Trotte",
+          "opening_hours": "\"auf Anfrage\"",
+          "operator": "Verein für Heimatgeschichte e.V.",
+          "operator:type": "private_non_profit",
+          "tourism": "museum"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13989740578,
+        "lat": 47.5555269,
+        "lon": 7.6561831,
+        "tags": {
+          "addr:city": "Grenzach-Wyhlen",
+          "addr:housenumber": "37",
+          "addr:postcode": "79639",
+          "addr:street": "Schloßgasse",
+          "museum": "history",
+          "name": "Emilianum",
+          "opening_hours": "Su 15:00-17:00",
+          "operator": "Verein für Heimatgeschichte Grenzach-Wyhlen e.V.",
+          "operator:type": "private_non_profit",
+          "tourism": "museum",
+          "website": "https://heimatgeschichte-gw.de/emilianum.htm"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14007240366,
+        "lat": 47.5543364,
+        "lon": 7.597899,
+        "tags": {
+          "addr:city": "Basel",
+          "addr:housenumber": "52",
+          "addr:postcode": "4052",
+          "addr:street": "St. Alban-Vorstadt",
+          "name": "Galerie HILT",
+          "tourism": "gallery"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14121921961,
+        "lat": 47.5564975,
+        "lon": 7.5904297,
+        "tags": {
+          "artist_name": "Ernest Bolens",
+          "artwork_type": "mural",
+          "name": "Jagdszene (1923)",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14180637366,
+        "lat": 47.5747105,
+        "lon": 7.6078699,
+        "tags": {
+          "attraction": "animal",
+          "barrier": "fence",
+          "name": "Wolf",
+          "name:en": "Wolf",
+          "name:fr": "Loup gris",
+          "name:la": "Canis lupus",
+          "name:sk": "Vlk dravý",
+          "species:wikidata": "Q18498",
+          "species:wikipedia": "en:Wolf",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14207688045,
+        "lat": 47.5544888,
+        "lon": 7.5884182,
+        "tags": {
+          "historic": "building",
+          "historic:period": "medieval",
+          "name": "Lohnhof",
+          "tourism": "attraction",
+          "wikidata": "Q1420034",
+          "wikipedia": "de:Lohnhof"
+        }
+      },
+      {
+        "type": "way",
+        "id": 24218258,
+        "center": {
+          "lat": 47.6002388,
+          "lon": 7.6145238
+        },
+        "tags": {
+          "architect": "Zaha Hadid",
+          "architect:wikidata": "Q47780",
+          "architect:wikipedia": "en:Zaha Hadid",
+          "building": "yes",
+          "building:colour": "gray",
+          "building:levels": "1",
+          "building:material": "concrete",
+          "name": "Feuerwehrhaus",
+          "name:en": "fire station",
+          "roof:colour": "black",
+          "roof:material": "tar_paper",
+          "roof:shape": "flat",
+          "start_date": "1993",
+          "tourism": "attraction",
+          "website": "https://www.vitra.com/de-ch/campus/architecture/architecture-fire-station",
+          "wikidata": "Q54988948",
+          "wikipedia": "en:Zaha Hadid#Vitra Fire Station (1991–1993)"
+        }
+      },
+      {
+        "type": "way",
+        "id": 26524771,
+        "center": {
+          "lat": 47.5741941,
+          "lon": 7.6083565
+        },
+        "tags": {
+          "addr:city": "Basel",
+          "addr:housenumber": "110",
+          "addr:postcode": "4058",
+          "addr:street": "Erlenparkweg",
+          "alt_name": "Zoo Basel Nord mini",
+          "fee": "no",
+          "leisure": "park",
+          "name": "Tierpark Lange Erlen",
+          "phone": "+41 61 6814344",
+          "tourism": "zoo",
+          "website": "https://www.erlen-verein.ch/",
+          "wikidata": "Q1693413"
+        }
+      },
+      {
+        "type": "way",
+        "id": 64739211,
+        "center": {
+          "lat": 47.6376015,
+          "lon": 7.6681185
+        },
+        "tags": {
+          "building": "yes",
+          "name": "Landschreiberei - Burgmuseum",
+          "subject": "history",
+          "tourism": "museum"
+        }
+      },
+      {
+        "type": "way",
+        "id": 87660417,
+        "center": {
+          "lat": 47.5880473,
+          "lon": 7.6509932
+        },
+        "tags": {
+          "building": "yes",
+          "building:levels": "1",
+          "check_date": "2023-08-06",
+          "email": "info@fondationbeyeler.ch",
+          "fee": "yes",
+          "name": "Fondation Beyeler",
+          "opening_hours": "10:00-18:00; We 10:00-20:00",
+          "phone": "+41 61 6459700",
+          "roof:shape": "flat",
+          "tourism": "museum",
+          "website": "https://www.fondationbeyeler.ch/",
+          "wheelchair": "yes",
+          "wikidata": "Q673833",
+          "wikipedia": "de:Fondation Beyeler"
+        }
+      },
+      {
+        "type": "way",
+        "id": 89619122,
+        "center": {
+          "lat": 47.6098842,
+          "lon": 7.6598947
+        },
+        "tags": {
+          "addr:city": "Lörrach",
+          "addr:country": "DE",
+          "addr:housenumber": "143",
+          "addr:postcode": "79539",
+          "addr:street": "Basler Straße",
+          "building": "yes",
+          "contact:email": "museum@loerrach.de",
+          "contact:instagram": "3lm_loerrach",
+          "lastcheck": "2016-02-28",
+          "name": "Dreiländermuseum Lörrach",
+          "opening_hours": "Tu-Su 11:00-18:00",
+          "phone": "+49 7621 415150",
+          "tourism": "museum",
+          "website": "https://www.dreilaendermuseum.eu/",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 90188564,
+        "center": {
+          "lat": 47.6140465,
+          "lon": 7.664322
+        },
+        "tags": {
+          "artist_name": "Karl-Henning Seemann",
+          "artwork_type": "sculpture",
+          "name": "Der Heiner und der Brassenheimer Müller",
+          "tourism": "artwork",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 90188566,
+        "center": {
+          "lat": 47.611137,
+          "lon": 7.6596593
+        },
+        "tags": {
+          "artist_name": "Bruce Nauman",
+          "name": "Truncated Pyramid Room",
+          "tourism": "artwork",
+          "wikidata": "Q54914109"
+        }
+      },
+      {
+        "type": "way",
+        "id": 90188568,
+        "center": {
+          "lat": 47.6117728,
+          "lon": 7.6611567
+        },
+        "tags": {
+          "artist:wikidata": "Q543440",
+          "artist_name": "Ulrich Rückriem",
+          "artwork_type": "sculpture",
+          "name": "Granit Rosa Porriño",
+          "tourism": "artwork",
+          "wikidata": "Q123048220"
+        }
+      },
+      {
+        "type": "way",
+        "id": 90792567,
+        "center": {
+          "lat": 47.6384234,
+          "lon": 7.6681175
+        },
+        "tags": {
+          "building": "yes",
+          "name": "Bergfried Burg Rötteln",
+          "tourism": "viewpoint"
+        }
+      },
+      {
+        "type": "way",
+        "id": 91875514,
+        "center": {
+          "lat": 47.5859786,
+          "lon": 7.6202961
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "1",
+          "addr:postcode": "79576",
+          "addr:street": "Mattrain",
+          "alt_name": "LF One",
+          "architect": "Zaha Hadid",
+          "building": "yes",
+          "name": "Landscape Formation One (Hadid-Pavillon)",
+          "tourism": "attraction",
+          "wheelchair": "limited",
+          "wikidata": "Q1778951",
+          "wikipedia": "de:Landscape Formation One"
+        }
+      },
+      {
+        "type": "way",
+        "id": 93556962,
+        "center": {
+          "lat": 47.6344564,
+          "lon": 7.693554
+        },
+        "tags": {
+          "building": "yes",
+          "historic": "castle",
+          "name": "Brombacher Schlössli",
+          "wheelchair": "yes",
+          "wikidata": "Q14544559",
+          "wikipedia": "de:Brombacher Schloss"
+        }
+      },
+      {
+        "type": "way",
+        "id": 93770097,
+        "center": {
+          "lat": 47.5736349,
+          "lon": 7.6049328
+        },
+        "tags": {
+          "attraction": "carousel",
+          "building": "yes",
+          "name": "Rösslirytti",
+          "tourism": "attraction",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "way",
+        "id": 100784190,
+        "center": {
+          "lat": 47.5944339,
+          "lon": 7.6323222
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "10",
+          "addr:postcode": "79576",
+          "addr:street": "Bläsiring",
+          "building": "yes",
+          "museum": "art",
+          "name": "Stapflehus",
+          "opening_hours": "Sa 15:00-18:00; Su,PH 14:00-18:00; Mo-Fr off",
+          "operator": "Stadt Weil am Rhein",
+          "operator:type": "public",
+          "tourism": "museum",
+          "website": "https://www.museen-weil-am-rhein.de/stapflehus.html",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "way",
+        "id": 100789486,
+        "center": {
+          "lat": 47.5943285,
+          "lon": 7.6314456
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:housenumber": "1",
+          "addr:postcode": "79576",
+          "addr:street": "Lindenplatz",
+          "building": "yes",
+          "museum": "history",
+          "name": "Museum am Lindenplatz",
+          "opening_hours": "Sa 15:00-18:00; Su,PH 14:00-18:00; Mo-Fr off",
+          "operator": "Kulturamt Stadt Weil am Rhein",
+          "operator:type": "public",
+          "tourism": "museum",
+          "website": "https://www.museen-weil-am-rhein.de/museum_am_lindenplatz.html",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "way",
+        "id": 105035693,
+        "center": {
+          "lat": 47.5521029,
+          "lon": 7.5913516
+        },
+        "tags": {
+          "addr:city": "Basel",
+          "addr:housename": "Haus zum Kirschgarten",
+          "addr:housenumber": "27",
+          "addr:postcode": "4051",
+          "addr:street": "Elisabethenstrasse",
+          "building": "yes",
+          "building:levels": "5",
+          "check_date": "2024-07-25",
+          "check_date:opening_hours": "2023-05-08",
+          "email": "historisches.museum@bs.ch",
+          "fee": "yes",
+          "internet_access": "wlan",
+          "internet_access:fee": "no",
+          "internet_access:ssid": "HMB",
+          "name": "Historisches Museum Basel – Haus zum Kirschgarten",
+          "name:en": "Basel Historical Museum – Haus zum Kirschgarten",
+          "name:fr": "Musée historique de Bâle – Haus zum Kirschgarten",
+          "opening_hours": "We-Su 11:00-17:00",
+          "operator": "Historisches Museum Basel",
+          "payment:american_express": "yes",
+          "payment:coins": "yes",
+          "payment:contactless": "yes",
+          "payment:credit_cards": "yes",
+          "payment:debit_cards": "yes",
+          "payment:maestro": "yes",
+          "payment:mastercard": "yes",
+          "payment:notes": "yes",
+          "payment:visa": "yes",
+          "phone": "+41 61 205 86 00",
+          "source": "Geodaten Kanton Basel-Stadt",
+          "start_date": "1951-02-24",
+          "tourism": "museum",
+          "website": "https://www.hmb.ch/museen/haus-zum-kirschgarten/",
+          "wheelchair": "no",
+          "wikidata": "Q1590942",
+          "wikipedia": "de:Haus zum Kirschgarten"
+        }
+      },
+      {
+        "type": "way",
+        "id": 127304958,
+        "center": {
+          "lat": 47.6315233,
+          "lon": 7.6781672
+        },
+        "tags": {
+          "area": "yes",
+          "name": "Zirkusplatz",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "way",
+        "id": 127353516,
+        "center": {
+          "lat": 47.6091066,
+          "lon": 7.6591148
+        },
+        "tags": {
+          "artist_name": "Beatrix Sassen",
+          "name": "Licht im Kopf",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "way",
+        "id": 138808506,
+        "center": {
+          "lat": 47.55414,
+          "lon": 7.6624937
+        },
+        "tags": {
+          "addr:city": "Grenzach-Wyhlen",
+          "addr:housenumber": "25",
+          "addr:postcode": "79639",
+          "addr:street": "Hauptstraße",
+          "building": "public",
+          "museum": "history",
+          "name": "Regionalmuseum  Römervilla",
+          "opening_hours": "Apr-Oct PH Su 15:00-18:00; Jul-Aug We 17:00-19:00",
+          "operator": "Verein für Heimatgeschichte Grenzach-Wyhlen",
+          "operator:type": "association",
+          "source": "Bing;local knowledge",
+          "tourism": "museum",
+          "website": "http://vfhg-grenzach-wyhlen.de/roemervilla/",
+          "wikidata": "Q1412221"
+        }
+      },
+      {
+        "type": "way",
+        "id": 142648170,
+        "center": {
+          "lat": 47.587071,
+          "lon": 7.561736
+        },
+        "tags": {
+          "addr:city": "Saint-Louis",
+          "addr:housenumber": "12",
+          "addr:postcode": "68300",
+          "addr:street": "Rue Theo Bachmann",
+          "artwork_type": "Cité Danzas",
+          "building": "yes",
+          "name": "Cité des metiers d'art et rares",
+          "office": "educational_institution",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2011",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "way",
+        "id": 147634217,
+        "center": {
+          "lat": 47.5563189,
+          "lon": 7.5862018
+        },
+        "tags": {
+          "addr:city": "Basel",
+          "addr:housenumber": "8",
+          "addr:postcode": "4051",
+          "addr:street": "Gemsberg",
+          "building": "retail",
+          "name": "Galerie Carzaniga",
+          "opening_hours": "Mo-Fr 09:00-18:00; Sa 10:00-16:00",
+          "operator": "Galerie Carzaniga GmbH",
+          "tourism": "gallery",
+          "website": "https://www.carzaniga.ch/",
+          "wikidata": "Q131937401"
+        }
+      },
+      {
+        "type": "way",
+        "id": 193281518,
+        "center": {
+          "lat": 47.5592934,
+          "lon": 7.5816831
+        },
+        "tags": {
+          "leisure": "garden",
+          "name": "Farnschlucht"
+        }
+      },
+      {
+        "type": "way",
+        "id": 196642513,
+        "center": {
+          "lat": 47.6019481,
+          "lon": 7.6185212
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "1",
+          "addr:postcode": "79576",
+          "addr:street": "Charles-Eames-Straße",
+          "architect": "Frank Gehry",
+          "building": "yes",
+          "name": "Vitra Design Museum Gallery",
+          "start_date": "2011",
+          "tourism": "gallery",
+          "website": "https://www.vitra.com/de-ch/campus/architecture/architecture-vitra-design-museum-gallery"
+        }
+      },
+      {
+        "type": "way",
+        "id": 196642543,
+        "center": {
+          "lat": 47.6029755,
+          "lon": 7.6177782
+        },
+        "tags": {
+          "architect": "Herzog & de Meuron",
+          "building": "yes",
+          "description": "Ausstellungshaus der Vitra Home Collection, erbaut von den Architekten Herzog & de Meuron.",
+          "name": "Vitra Haus",
+          "opening_hours": "Mo-Su 10:00-18:00",
+          "operator": "Vitra GmbH",
+          "shop": "furniture",
+          "tourism": "attraction",
+          "website": "https://www.vitra.com",
+          "wheelchair": "yes",
+          "wikidata": "Q20038854"
+        }
+      },
+      {
+        "type": "way",
+        "id": 208410276,
+        "center": {
+          "lat": 47.601666,
+          "lon": 7.6188877
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "2",
+          "addr:postcode": "79576",
+          "addr:street": "Charles-Eames-Straße",
+          "architect": "Frank Gehry",
+          "building": "yes",
+          "email": "info@design-museum.de",
+          "fee": "yes",
+          "name": "Vitra Design Museum, Frank Gehry (1989)",
+          "opening_hours": "Mo-Su 10:00-18:00",
+          "phone": "+49 7621 7023200",
+          "source": "Bing",
+          "tourism": "museum",
+          "website": "https://design-museum.de/",
+          "wheelchair": "yes",
+          "wikidata": "Q700747",
+          "wikipedia": "en:Vitra Design Museum"
+        }
+      },
+      {
+        "type": "way",
+        "id": 244478102,
+        "center": {
+          "lat": 47.6018076,
+          "lon": 7.6175265
+        },
+        "tags": {
+          "building": "shed",
+          "name": "Tankstelle, Jean Prouvé (1953/2003)",
+          "roof:orientation": "along",
+          "roof:shape": "skillion",
+          "start_date": "1953/2003",
+          "tourism": "attraction",
+          "wikidata": "Q110313351"
+        }
+      },
+      {
+        "type": "way",
+        "id": 245305727,
+        "center": {
+          "lat": 47.6080094,
+          "lon": 7.66589
+        },
+        "tags": {
+          "check_date": "2025-12-02",
+          "name": "Tiergehege im Rosenfelspark",
+          "opening_hours": "PH,Mo-Su 00:00-24:00",
+          "tourism": "zoo"
+        }
+      },
+      {
+        "type": "way",
+        "id": 275053236,
+        "center": {
+          "lat": 47.6269669,
+          "lon": 7.627079
+        },
+        "tags": {
+          "leisure": "garden",
+          "name": "Zahndsche Gärten"
+        }
+      },
+      {
+        "type": "way",
+        "id": 336935062,
+        "center": {
+          "lat": 47.5592131,
+          "lon": 7.5823197
+        },
+        "tags": {
+          "leisure": "garden",
+          "name": "Pflanzenfamilien"
+        }
+      },
+      {
+        "type": "way",
+        "id": 475152224,
+        "center": {
+          "lat": 47.6387442,
+          "lon": 7.6513886
+        },
+        "tags": {
+          "boundary": "protected_area",
+          "leisure": "nature_reserve",
+          "name": "Rümminger Moos",
+          "protect_class": "4",
+          "protection_title": "Naturschutzgebiet",
+          "short_protection_title": "NSG",
+          "wikidata": "Q28742050",
+          "wikipedia": "de:Rümminger Moos"
+        }
+      },
+      {
+        "type": "way",
+        "id": 480527591,
+        "center": {
+          "lat": 47.6252906,
+          "lon": 7.6131816
+        },
+        "tags": {
+          "artist_name": "Reinhard Bombsch",
+          "artwork_type": "installation",
+          "name": "Dreispitz",
+          "tourism": "artwork",
+          "wikidata": "Q65128038"
+        }
+      },
+      {
+        "type": "way",
+        "id": 525176105,
+        "center": {
+          "lat": 47.5586183,
+          "lon": 7.5898316
+        },
+        "tags": {
+          "check_date": "2026-06-07",
+          "leisure": "garden",
+          "name": "Garten der Alten Universität",
+          "opening_hours": "08:00-20:00",
+          "website": "https://www.bs.ch/themen/kultur-sport-und-freizeit/parks-und-rhein/parks-und-gruenanlagen/garten-der-alten-universitaet"
+        }
+      },
+      {
+        "type": "way",
+        "id": 590139773,
+        "center": {
+          "lat": 47.6402926,
+          "lon": 7.6646911
+        },
+        "tags": {
+          "archaeological_site": "fortification",
+          "description": "Reste von Verschanzungen aus dem 30-jährigen Krieg",
+          "fixme": "Hier ist nur die nördliche Bastion eingezeichnet, Begehung nötig. Westliche Bastion und südl. Bauteil sind im LiDAR gut zu erkennen (c). https://geoportal.regiodata-service.de/index.php?mod=main&act=main",
+          "fortification_type": "sconce",
+          "historic": "archaeological_site",
+          "name": "Schanze Röttlerwald"
+        }
+      },
+      {
+        "type": "way",
+        "id": 592852965,
+        "center": {
+          "lat": 47.6030423,
+          "lon": 7.6534924
+        },
+        "tags": {
+          "access": "private",
+          "leisure": "garden",
+          "name": "Schulgarten"
+        }
+      },
+      {
+        "type": "way",
+        "id": 603901815,
+        "center": {
+          "lat": 47.5999386,
+          "lon": 7.6147891
+        },
+        "tags": {
+          "architect": "Herzog & de Meuron",
+          "building": "yes",
+          "fee": "yes",
+          "name": "Vitra Schaudepot",
+          "opening_hours": "Mo-Su 10:00-18:00",
+          "operator": "Vitra",
+          "start_date": "2016",
+          "tourism": "museum",
+          "website": "https://www.vitra.com/de-ch/campus/architecture/architecture-vitra-schaudepot"
+        }
+      },
+      {
+        "type": "way",
+        "id": 944003088,
+        "center": {
+          "lat": 47.5593571,
+          "lon": 7.5820611
+        },
+        "tags": {
+          "leisure": "garden",
+          "name": "Mediterrangarten"
+        }
+      },
+      {
+        "type": "way",
+        "id": 965089665,
+        "center": {
+          "lat": 47.5616028,
+          "lon": 7.6853378
+        },
+        "tags": {
+          "boundary": "protected_area",
+          "leisure": "nature_reserve",
+          "name": "Ruschbachtal",
+          "protect_class": "4",
+          "protection_title": "Naturschutzgebiet",
+          "ref:DE-BW": "3.150",
+          "ref:WDPA": "165263",
+          "short_protection_title": "NSG",
+          "start_date": "1985-09-23",
+          "website": "http://www2.lubw.baden-wuerttemberg.de/public/abt2/dokablage/oac_12/vo/3/3150.htm",
+          "wikidata": "Q47482357",
+          "wikipedia": "de:Ruschbachtal"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1002015403,
+        "center": {
+          "lat": 47.6024752,
+          "lon": 7.6168065
+        },
+        "tags": {
+          "architect": "Piet Oudolf",
+          "leisure": "garden",
+          "name": "Oudolf-Garten",
+          "start_date": "2020",
+          "website": "https://www.vitra.com/de-ch/campus/oudolf-garten"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1004786427,
+        "center": {
+          "lat": 47.5748087,
+          "lon": 7.6068092
+        },
+        "tags": {
+          "attraction": "miniature_cars",
+          "name": "Kinder-Autobahn",
+          "tourism": "attraction",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1024016478,
+        "center": {
+          "lat": 47.5733746,
+          "lon": 7.6091083
+        },
+        "tags": {
+          "attraction": "animal",
+          "name": "Uhu",
+          "natural": "scrub",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1024134559,
+        "center": {
+          "lat": 47.5734301,
+          "lon": 7.6078541
+        },
+        "tags": {
+          "attraction": "animal",
+          "name": "Gämse",
+          "natural": "grassland",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1073827000,
+        "center": {
+          "lat": 47.5743124,
+          "lon": 7.6078003
+        },
+        "tags": {
+          "attraction": "animal",
+          "name": "Kappuzineräffchen",
+          "tourism": "attraction"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1296809748,
+        "center": {
+          "lat": 47.5794691,
+          "lon": 7.6215299
+        },
+        "tags": {
+          "artist_name": "Barbara Maria Meyer; Markus Gadient",
+          "description": "Ich bin ein Baum und zugleich das Kind, das darauf klettert",
+          "name": "Haingedicht",
+          "natural": "tree_row",
+          "tourism": "artwork"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1318946341,
+        "center": {
+          "lat": 47.585881,
+          "lon": 7.6279613
+        },
+        "tags": {
+          "boundary": "protected_area",
+          "leisure": "nature_reserve",
+          "name": "Kiesgrube Käppelin",
+          "protect_class": "4",
+          "protection_title": "Naturschutzgebiet",
+          "short_protection_title": "NSG",
+          "start_date": "2003-03-07"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1368675074,
+        "center": {
+          "lat": 47.5863533,
+          "lon": 7.641977
+        },
+        "tags": {
+          "access": "private",
+          "leisure": "nature_reserve",
+          "name": "Eisweiher"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1447793972,
+        "center": {
+          "lat": 47.6007451,
+          "lon": 7.6200062
+        },
+        "tags": {
+          "architect": "Balkrishna Doshi, Khushnu Panthaki Hoof, Sönke Hoof",
+          "artist_name": "Balkrishna Doshi, Khushnu Panthaki Hoof, Sönke Hoof",
+          "building": "yes",
+          "name": "Doshi Retreat",
+          "tourism": "artwork",
+          "website": "https://www.vitra.com/de-de/campus/news/details/doshi-retreat",
+          "year_of_construction": "2025"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1456584615,
+        "center": {
+          "lat": 47.5908276,
+          "lon": 7.6946512
+        },
+        "tags": {
+          "boundary": "protected_area",
+          "iucn_level": "IV",
+          "leisure": "nature_reserve",
+          "name": "Buttenberghalde",
+          "protect_class": "4",
+          "protection_title": "Naturschutzgebiet",
+          "ref:WDPA": "162665",
+          "short_protection_title": "NSG",
+          "start_date": "1996-10-30",
+          "wikidata": "Q47457105"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1547176596,
+        "center": {
+          "lat": 47.5561632,
+          "lon": 7.5931402
+        },
+        "tags": {
+          "leisure": "garden",
+          "name": "Pfarreigarten"
+        }
+      },
+      {
+        "type": "relation",
+        "id": 1386884,
+        "center": {
+          "lat": 47.5867751,
+          "lon": 7.6971736
+        },
+        "tags": {
+          "building": "yes",
+          "castle_type": "stately",
+          "historic": "castle",
+          "historic:civilization": "medieval",
+          "name": "Inzlinger Wasserschloß",
+          "type": "multipolygon",
+          "wikidata": "Q1671861",
+          "wikipedia": "de:Inzlinger Wasserschloss"
+        }
+      },
+      {
+        "type": "relation",
+        "id": 4589061,
+        "center": {
+          "lat": 47.6644912,
+          "lon": 7.6331645
+        },
+        "tags": {
+          "from": "Kandern",
+          "name": "Kandertalbahn",
+          "operator": "Kandertalbahn e.V.",
+          "ref": "731",
+          "route": "train",
+          "service": "tourism",
+          "to": "Haltingen",
+          "tourism": "attraction",
+          "type": "route",
+          "website": "https://kandertalbahn.de/",
+          "wikidata": "Q897250",
+          "wikipedia": "de:Kandertalbahn"
+        }
+      },
+      {
+        "type": "relation",
+        "id": 8400342,
+        "center": {
+          "lat": 47.6039621,
+          "lon": 7.6026963
+        },
+        "tags": {
+          "boundary": "protected_area",
+          "leisure": "nature_reserve",
+          "name": "Krebsbachtal",
+          "protect_class": "4",
+          "protection_title": "Naturschutzgebiet",
+          "short_protection_title": "NSG",
+          "start_date": "1990-12-27",
+          "type": "boundary"
+        }
+      },
+      {
+        "type": "relation",
+        "id": 16381754,
+        "center": {
+          "lat": 47.5589624,
+          "lon": 7.6684539
+        },
+        "tags": {
+          "boundary": "protected_area",
+          "leisure": "nature_reserve",
+          "name": "Buchswald bei Grenzach",
+          "protect_class": "4",
+          "protection_title": "Naturschutzgebiet",
+          "ref:DE-BW": "3.180",
+          "ref:WDPA": "81484",
+          "short_protection_title": "NSG",
+          "start_date": "1939-04-03",
+          "type": "boundary",
+          "website": "https://rips-dienste.lubw.baden-wuerttemberg.de/rips/ripsservices/apps/naturschutz/schutzgebiete/steckbrief.aspx?id=909001000212",
+          "wikidata": "Q998859",
+          "wikipedia": "de:Buchswald bei Grenzach"
+        }
+      }
+    ]
+  }
+}
