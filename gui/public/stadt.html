@@ -489,11 +489,14 @@ async function render() {
 
   if (val(pulse, "pulseIndex") != null) {
     const p = val(pulse, "pulseIndex");
+    // Hourly connector: older than 3 h (or without timestamp) is no current state.
+    const pStand = staleStand(pulse, 3 * 3600e3);
     D.puls = { kind: "chart", title: "Puls-Verlauf", noSpark: true, explain: "Gewichteter Zustandsindex (0–100, höher = besser).",
       head: { type: "gauge", label: "Puls", v: p, min: 0, max: 100, unit: "/100", state: p >= 75 ? "gut" : p >= 50 ? "mäßig" : "schlecht", stops: PULS_STOPS, flip: true },
       series: [{ id: pulse.id, attr: "pulseIndex", name: "Puls" }] };
-    tiles += tile("Puls", p, "/100", { detail: "puls", status: p >= 75 ? css("--status-good") : p >= 50 ? css("--status-warn") : css("--status-serious"),
-      mini: { v: p, min: 0, max: 100, stops: PULS_STOPS, flip: true }, hint: "Gesamtzustand", explain: "Gewichteter Zustandsindex aus Luft, Verfügbarkeiten, Baustellen und Warnlage (0–100, höher = besser)." });
+    tiles += tile("Puls", p, "/100", { detail: "puls",
+      status: pStand ? css("--text-muted") : p >= 75 ? css("--status-good") : p >= 50 ? css("--status-warn") : css("--status-serious"),
+      mini: { v: p, min: 0, max: 100, stops: PULS_STOPS, flip: true }, hint: pStand ? "Gesamtzustand · " + pStand : "Gesamtzustand", explain: "Gewichteter Zustandsindex aus Luft, Verfügbarkeiten, Baustellen und Warnlage (0–100, höher = besser)." });
   }
   // 7-Tage-Vorhersagestreifen für die Temperatur-Detailkarte (aus der kommunenspezifischen Vorhersage).
   const fcStrip = fcDays.slice(0, 7).map((d, i) =>
@@ -1217,7 +1220,7 @@ async function render() {
     { name: "Parken", color: MAP_C.parken, detail: D.parken && D.parken.kind === "stations" ? "parken" : null,
       items: parkPts.map(p => ({ lat: p.lat, lon: p.lon, name: p.name, extra: esc(p.extra) })) },
     { name: "Pegel", color: MAP_C.pegel, detail: D.pegel ? "pegel" : null, items: pegelListe.map(e => ({ ...pos(e), name: "Pegel " + (val(e, "name") || ""),
-        extra: (val(e, "water") || "") + ": " + (val(e, "level") ?? "?") + " cm · " + (val(e, "measuredAt") || "") })).filter(i => i.lat) },
+        extra: esc((val(e, "water") || "") + ": " + (val(e, "level") ?? "?") + " cm · " + (val(e, "measuredAt") || "")) })).filter(i => i.lat) },
     { name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) },
     { name: "Familie & Versorgung", color: "#e11d48", detail: D.versorgung ? "versorgung" : null,
       items: versorgItems.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) },

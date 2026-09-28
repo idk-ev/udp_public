@@ -83,7 +83,12 @@ async function render(krow, members) {
 
   const warnCount = (val(alertDwd, "activeCount") || 0) + (val(alertNina, "activeCount") || 0);
   const maxSev = Math.max(val(alertDwd, "maxSeverity") || 0, val(alertNina, "maxSeverity") || 0);
-  const pulsVals = pulse.filter(e => e.pulseIndex != null);
+  // Only current pulses (hourly connector, at most 3 h old). keyValues renders
+  // dateObserved as string or { "@type", "@value" }; without it a pulse is an
+  // old one from before the timestamp was added and not counted.
+  const kvZeit = e => { const v = e && e.dateObserved; const t = Date.parse(v && typeof v === "object" ? v["@value"] : v); return isFinite(t) ? t : 0; };
+  const pulseAktuell = pulse.filter(e => Date.now() - kvZeit(e) <= 3 * 3600e3);
+  const pulsVals = pulseAktuell.filter(e => e.pulseIndex != null);
   const pulsAvg = pulsVals.length ? Math.round(sum(pulsVals, "pulseIndex") / pulsVals.length) : null;
   const radSums = rad.filter(e => String(e.id).endsWith("-summary"));
 
@@ -127,7 +132,7 @@ async function render(krow, members) {
 
   // Gemeinde-Tabelle (Puls je Gemeinde, sofern vorhanden)
   const pulsByAgs = {};
-  pulse.forEach(e => { if (e.ags) pulsByAgs[e.ags] = e.pulseIndex; });
+  pulseAktuell.forEach(e => { if (e.ags) pulsByAgs[e.ags] = e.pulseIndex; });
   $("#gems tbody").innerHTML = members
     .slice().sort((a, b) => (b[6] || 0) - (a[6] || 0))
     .map(g => `<tr><td><a href="/${encodeURIComponent(g[8])}">${esc(g[1])}</a></td><td class="num">${fmtN(g[6])}</td>
