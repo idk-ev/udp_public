@@ -2,6 +2,23 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Datenqualität der Gemeindeseiten
+
+Objekte außerhalb Baden-Württembergs landeten in der nächstgelegenen
+BW-Gemeinde (Leihräder aus Basel, Feinstaubsensoren aus dem Elsass).
+
+- **Strikte Gemeindezuordnung** per Punkt-in-Polygon ohne Zentroid-Fallback
+  für Sharing, Feinstaub, Parken, Baustellen und Radzähler; kleine Toleranz
+  für Lücken zwischen den vereinfachten Grenzen. Ohne Grenzen-Cache wird der
+  Lauf übersprungen statt geraten.
+- **Baustellen**: Zuordnung per Polygon statt nächstem Gemeindezentrum,
+  vertauschte Koordinaten werden korrigiert.
+- **Automatisches Aufräumen** veralteter eigener Entitäten nach vollständigen
+  Läufen, mit Schutz: Karenzzeit bzw. zweifache Bestätigung, höchstens 30 %
+  des Bestands, nur eigene ID-Muster.
+- **Compose**: Node-RED lädt Stammdaten über `http://cockpit:8080` (vorher
+  Port 80, dort lauscht das Cockpit nicht); Helm-Service zusätzlich auf 8080.
+
 ## Unveröffentlicht — Lastkapazität des Dashboards
 
 Ein Lasttest zeigte: Schon wenige gleichzeitige Besucher brachten die
