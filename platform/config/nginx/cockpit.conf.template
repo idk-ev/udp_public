@@ -113,8 +113,9 @@ server {
         proxy_cache_lock on;
         # Node-RED runs as a single instance: while it restarts (rollout,
         # node drain) the last good calendar is served instead of an error,
-        # and an expired entry is refreshed in the background.
-        proxy_cache_use_stale updating error timeout http_500 http_502 http_503 http_504;
+        # and an expired entry is refreshed in the background. http_404:
+        # Node-RED answers 404 until its flows are loaded after a restart.
+        proxy_cache_use_stale updating error timeout http_404 http_500 http_502 http_503 http_504;
         proxy_cache_background_update on;
         add_header X-Cache $upstream_cache_status always;
     }
@@ -189,16 +190,20 @@ server {
         proxy_cache udpnodered;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 60s;
-        proxy_cache_valid 404 502 503 30s;
+        proxy_cache_valid 404 30s;
         proxy_cache_key $request_uri;
         proxy_cache_lock on;
         # While Node-RED is briefly unavailable (single instance: rollout,
         # node drain) the last good answer of this stop is served instead of
         # an error – with X-Cache: STALE. Departures carry clock times and a
         # "stand" timestamp, so a stale answer is visibly old rather than
-        # wrong. Stops without a cached answer still get the (briefly cached)
-        # error.
-        proxy_cache_use_stale updating error timeout http_500 http_502 http_503 http_504;
+        # wrong. Stops without a cached answer get the error itself – not
+        # cached, so the next request after recovery is answered again.
+        # http_404 is in the list because Node-RED answers
+        # 404 while its flows are still loading after a restart – that must
+        # not overwrite the last good answer; an unknown stop has no stale
+        # entry and still gets its (briefly cached) 404.
+        proxy_cache_use_stale updating error timeout http_404 http_500 http_502 http_503 http_504;
         proxy_cache_background_update on;
         add_header X-Cache $upstream_cache_status always;
     }

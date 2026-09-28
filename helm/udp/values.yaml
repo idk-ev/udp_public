@@ -581,6 +581,12 @@ orionLd:
 mintaka:
   image: { repository: fiware/mintaka, tag: "0.7.0" }
   replicas: 2
+  # A new pod must stay ready this long before the rollout removes the next
+  # old one. Without it the old pod was deleted the moment its replacement
+  # turned ready – before the ingress controller had picked up the new
+  # endpoint – and with maxSurge 0 (spread mode required) the Service was
+  # briefly empty (seen as ~3 s of 503 on every route during a rollout).
+  minReadySeconds: 10
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { cpu: 500m, memory: 768Mi }
@@ -875,6 +881,12 @@ masterportal:
 apisix:
   image: { repository: apache/apisix, tag: "3.17.0-debian" }
   replicas: 2
+  # A new pod must stay ready this long before the rollout removes the next
+  # old one. Without it the old pod was deleted the moment its replacement
+  # turned ready – before the ingress controller had picked up the new
+  # endpoint – and with maxSurge 0 (spread mode required) the Service was
+  # briefly empty (seen as ~3 s of 503 on every route during a rollout).
+  minReadySeconds: 10
   resources:
     requests: { cpu: 250m, memory: 256Mi }
     limits:   { cpu: "1",  memory: 1Gi }
@@ -1009,6 +1021,12 @@ cockpit:
   # registry/tag leer -> global.udpRegistry / global.udpTag.
   image: { name: cockpit, registry: "", tag: "" }
   replicas: 2
+  # A new pod must stay ready this long before the rollout removes the next
+  # old one. Without it the old pod was deleted the moment its replacement
+  # turned ready – before the ingress controller had picked up the new
+  # endpoint – and with maxSurge 0 (spread mode required) the Service was
+  # briefly empty (seen as ~3 s of 503 on every route during a rollout).
+  minReadySeconds: 10
   # nginx im Cockpit proxyt /gateway/ und /abfahrten intern weiter und löst die
   # Upstreams zur Laufzeit auf (Gateway-Neustart erzwingt so keinen
   # Cockpit-Neustart). Diese Namen müssen VOLL QUALIFIZIERT sein: auf Namen, die
