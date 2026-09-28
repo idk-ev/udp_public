@@ -1,0 +1,618 @@
+{
+  "source": "https://www.efa-bw.de/nvbw/XML_DM_REQUEST?outputFormat=rapidJSON&type_dm=any&name_dm=de:08111:6115&mode=direct&useRealtime=1&limit=20",
+  "recordedAt": "2026-09-28T03:12:45.248Z",
+  "note": "Trimmed by hand: top-level serverInfo, systemMessages and locations removed; in every stop event only the fields listed here are kept (isCancelled, realtimeStatus, isRealtimeControlled, location.{id,name,type,properties}, departureTimePlanned/BaseTimetable/Estimated, transportation.{id,name,disassembledName,number,destination}). Neither the old function node nor the port reads anything else. All 20 stop events are kept, values verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip"
+  },
+  "format": "json",
+  "payload": {
+    "version": "11.0.6.72",
+    "stopEvents": [
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:8:16",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "stopId": "5006115",
+            "area": "8",
+            "platform": "16",
+            "platformName": "Gleis 16",
+            "plannedPlatformName": "Gleis 16"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:12:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:12:00Z",
+        "departureTimeEstimated": "2026-09-28T03:12:00Z",
+        "transportation": {
+          "id": "ddb:98X11:P:H:j26",
+          "name": "ICE 699 InterCityExpress",
+          "number": "699",
+          "destination": {
+            "id": "91000100",
+            "name": "München Hbf",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:4:7",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "4",
+            "platform": "7",
+            "platformName": "7",
+            "plannedPlatformName": "7"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:14:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:14:00Z",
+        "departureTimeEstimated": "2026-09-28T03:14:00Z",
+        "transportation": {
+          "id": "ddb:90T17:A:H:j26",
+          "name": "Metropolexpress MEX17a",
+          "disassembledName": "MX17a",
+          "number": "MEX17a",
+          "destination": {
+            "id": "7000090",
+            "name": "Karlsruhe Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:7:14",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "7",
+            "platform": "14",
+            "platformName": "14",
+            "plannedPlatformName": "14"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:19:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:19:00Z",
+        "departureTimeEstimated": "2026-09-28T03:19:00Z",
+        "transportation": {
+          "id": "ddb:90T13: :H:j26",
+          "name": "Metropolexpress MEX13",
+          "disassembledName": "MEX13",
+          "number": "MEX13",
+          "destination": {
+            "id": "9301000",
+            "name": "Aalen, Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:8:15",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "8",
+            "platform": "15",
+            "platformName": "15",
+            "plannedPlatformName": "15"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:24:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:24:00Z",
+        "departureTimeEstimated": "2026-09-28T03:24:00Z",
+        "transportation": {
+          "id": "ddb:90T18:S:H:j26",
+          "name": "Metropolexpress MEX18",
+          "disassembledName": "MEX18",
+          "number": "MEX18",
+          "destination": {
+            "id": "8011000",
+            "name": "Tübingen Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:3:6",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "3",
+            "platform": "6",
+            "platformName": "6",
+            "plannedPlatformName": "6"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:32:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:32:00Z",
+        "departureTimeEstimated": "2026-09-28T03:32:00Z",
+        "transportation": {
+          "id": "ddb:90T01: :R:j26",
+          "name": "R-Bahn RE 1",
+          "disassembledName": "RE1",
+          "number": "RE 1",
+          "destination": {
+            "id": "7000090",
+            "name": "Karlsruhe Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:6:12",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "6",
+            "platform": "12",
+            "platformName": "12",
+            "plannedPlatformName": "12"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:34:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:34:00Z",
+        "departureTimeEstimated": "2026-09-28T03:34:00Z",
+        "transportation": {
+          "id": "ddb:90T16: :H:j26",
+          "name": "Metropolexpress MEX16",
+          "disassembledName": "MEX16",
+          "number": "MEX16",
+          "destination": {
+            "id": "9001008",
+            "name": "Ulm Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:8:16",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "8",
+            "platform": "16",
+            "platformName": "16",
+            "plannedPlatformName": "16"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:39:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:39:00Z",
+        "departureTimeEstimated": "2026-09-28T03:39:00Z",
+        "transportation": {
+          "id": "ddb:90T05: :H:j26",
+          "name": "R-Bahn RE 5",
+          "disassembledName": "RE5",
+          "number": "RE 5",
+          "destination": {
+            "id": "7744002",
+            "name": "Friedrichshafen Stadtbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:8:15",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "8",
+            "platform": "15",
+            "platformName": "15",
+            "plannedPlatformName": "15"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:46:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:46:00Z",
+        "departureTimeEstimated": "2026-09-28T03:46:00Z",
+        "transportation": {
+          "id": "ddb:90T12:S:H:j26",
+          "name": "Metropolexpress MEX12",
+          "disassembledName": "MEX12",
+          "number": "MEX12",
+          "destination": {
+            "id": "8011000",
+            "name": "Tübingen Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:5:9",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "stopId": "5006115",
+            "area": "5",
+            "platform": "9",
+            "platformName": "9",
+            "plannedPlatformName": "9"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:49:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:49:00Z",
+        "transportation": {
+          "id": "ddb:98X42:W:R:j26",
+          "name": "ICE 616 InterCityExpress",
+          "number": "616",
+          "destination": {
+            "id": "28580953",
+            "name": "Altona",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:7:14",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "7",
+            "platform": "14",
+            "platformName": "14",
+            "plannedPlatformName": "14"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:49:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:49:00Z",
+        "departureTimeEstimated": "2026-09-28T03:49:00Z",
+        "transportation": {
+          "id": "ddb:90T13: :H:j26",
+          "name": "Metropolexpress MEX13",
+          "disassembledName": "MEX13",
+          "number": "MEX13",
+          "destination": {
+            "id": "9421001",
+            "name": "Crailsheim",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:7:13",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "stopId": "5006115",
+            "area": "7",
+            "platform": "13",
+            "platformName": "13",
+            "plannedPlatformName": "13"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:55:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:55:00Z",
+        "departureTimeEstimated": "2026-09-28T03:55:00Z",
+        "transportation": {
+          "id": "ddb:90T90:D:R:j26",
+          "name": "Metropolexpress MEX90",
+          "disassembledName": "MEX90",
+          "number": "MEX90",
+          "destination": {
+            "id": "9421001",
+            "name": "Crailsheim",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08111:6115:6:12",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "6",
+            "platform": "12",
+            "platformName": "12",
+            "plannedPlatformName": "12"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:02:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:02:00Z",
+        "departureTimeEstimated": "2026-09-28T04:02:00Z",
+        "transportation": {
+          "id": "ddb:90T16: :H:j26",
+          "name": "Metropolexpress MEX16",
+          "disassembledName": "MEX16",
+          "number": "MEX16",
+          "destination": {
+            "id": "9001008",
+            "name": "Ulm Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:2:4",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "FEW_SEATS",
+            "stopId": "5006115",
+            "area": "2",
+            "platform": "4",
+            "platformName": "4",
+            "plannedPlatformName": "4"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:03:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:03:00Z",
+        "transportation": {
+          "id": "ddb:90T06:A:H:j26",
+          "name": "R-Bahn RE 6",
+          "disassembledName": "RE6",
+          "number": "RE 6",
+          "destination": {
+            "id": "7701000",
+            "name": "Aulendorf Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:5:10",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "stopId": "5006115",
+            "area": "5",
+            "platform": "10",
+            "platformName": "10",
+            "plannedPlatformName": "10"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:05:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:05:00Z",
+        "transportation": {
+          "id": "ddb:98X62: :R:j26",
+          "name": "ICE 1098 InterCityExpress",
+          "number": "1098",
+          "destination": {
+            "id": "10000010",
+            "name": "Frankfurt (Main) Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:8:16",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "stopId": "5006115",
+            "area": "8",
+            "platform": "16",
+            "platformName": "16",
+            "plannedPlatformName": "16"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:05:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:05:00Z",
+        "transportation": {
+          "id": "ddb:96X61: :H:j26",
+          "name": "IC 2063 InterCity",
+          "number": "2063",
+          "destination": {
+            "id": "80001020",
+            "name": "Nürnberg Hbf",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:3:5",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "3",
+            "platform": "5",
+            "platformName": "5",
+            "plannedPlatformName": "5"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:09:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:09:00Z",
+        "transportation": {
+          "id": "ddb:90T17:A:H:j26",
+          "name": "Metropolexpress MEX17a",
+          "disassembledName": "MX17a",
+          "number": "MEX17a",
+          "destination": {
+            "id": "7900050",
+            "name": "Pforzheim Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:7:14",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5006115",
+            "area": "7",
+            "platform": "14",
+            "platformName": "14",
+            "plannedPlatformName": "14"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:12:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:12:00Z",
+        "transportation": {
+          "id": "ddb:90T90:D:R:j26",
+          "name": "Metropolexpress MEX90",
+          "disassembledName": "MEX90",
+          "number": "MEX90",
+          "destination": {
+            "id": "9420015",
+            "name": "Schwäbisch Hall-Hessental",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:2:3",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "stopId": "5006115",
+            "area": "2",
+            "platform": "3",
+            "platformName": "3",
+            "plannedPlatformName": "3"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:14:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:14:00Z",
+        "transportation": {
+          "id": "ddb:96X87: :H:j26",
+          "name": "IC 181 InterCity",
+          "number": "181",
+          "destination": {
+            "id": "53000800",
+            "name": "Zürich HB",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:2:3",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "stopId": "5006115",
+            "area": "2",
+            "platform": "3",
+            "platformName": "3",
+            "plannedPlatformName": "3"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:14:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:14:00Z",
+        "transportation": {
+          "id": "ddb:90X87: :H:j26",
+          "name": "R-Bahn RE 87",
+          "disassembledName": "RE 87",
+          "number": "RE 87",
+          "destination": {
+            "id": "8706588",
+            "name": "Singen (Htw) Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08111:6115:3:6",
+          "name": "Stuttgart Hauptbahnhof (oben)",
+          "type": "platform",
+          "properties": {
+            "stopId": "5006115",
+            "area": "3",
+            "platform": "6",
+            "platformName": "Gleis 6",
+            "plannedPlatformName": "Gleis 6"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:15:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:15:00Z",
+        "transportation": {
+          "id": "bus:01A00:0:H:f6a",
+          "name": "FlixTrain (Sondertarif) FLX10",
+          "disassembledName": "FLX10",
+          "number": "FLX10",
+          "destination": {
+            "id": "28510950",
+            "name": "Hamburg Hbf",
+            "type": "stop"
+          }
+        }
+      }
+    ]
+  }
+}

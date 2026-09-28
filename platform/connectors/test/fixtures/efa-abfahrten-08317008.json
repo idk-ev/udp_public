@@ -1,0 +1,594 @@
+{
+  "source": "https://www.efa-bw.de/nvbw/XML_DM_REQUEST?outputFormat=rapidJSON&type_dm=any&name_dm=de:08317:14450&mode=direct&useRealtime=1&limit=20",
+  "recordedAt": "2026-09-28T03:12:47.555Z",
+  "note": "Trimmed by hand: top-level serverInfo, systemMessages and locations removed; in every stop event only the fields listed here are kept (isCancelled, realtimeStatus, isRealtimeControlled, location.{id,name,type,properties}, departureTimePlanned/BaseTimetable/Estimated, transportation.{id,name,disassembledName,number,destination}). Neither the old function node nor the port reads anything else. All 20 stop events are kept, values verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip"
+  },
+  "format": "json",
+  "payload": {
+    "version": "11.0.6.72",
+    "stopEvents": [
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:25:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:25:00Z",
+        "departureTimeEstimated": "2026-09-28T03:31:12Z",
+        "transportation": {
+          "id": "ddb:90T02:O:H:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414460",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:14:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:14:00Z",
+        "departureTimeEstimated": "2026-09-28T04:14:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:R:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414506",
+            "name": "Offenburg Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T04:36:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T04:36:00Z",
+        "departureTimeEstimated": "2026-09-28T04:37:30Z",
+        "transportation": {
+          "id": "ddb:90T02:O:H:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414460",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "FEW_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T05:05:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T05:05:00Z",
+        "departureTimeEstimated": "2026-09-28T05:05:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:R:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414506",
+            "name": "Offenburg Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:2:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "stopId": "7414450",
+            "area": "2",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T05:50:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T05:50:00Z",
+        "transportation": {
+          "id": "rvs:01137: :H:j26",
+          "name": "Regionalbus 7137",
+          "disassembledName": "7137",
+          "number": "7137",
+          "destination": {
+            "id": "7414463",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T06:01:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T06:01:00Z",
+        "departureTimeEstimated": "2026-09-28T06:01:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:H:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414460",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T06:18:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T06:18:00Z",
+        "departureTimeEstimated": "2026-09-28T06:18:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:R:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414506",
+            "name": "Offenburg Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:2:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "stopId": "7414450",
+            "area": "2",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T06:30:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T06:30:00Z",
+        "transportation": {
+          "id": "rvs:01137: :R:j26",
+          "name": "Regionalbus 7137",
+          "disassembledName": "7137",
+          "number": "7137",
+          "destination": {
+            "id": "7414500",
+            "name": "Offenburg/ZOB",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T06:41:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T06:41:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:H:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414460",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T07:18:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T07:18:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:R:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414506",
+            "name": "Offenburg Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T07:41:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T07:41:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:H:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414460",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T08:18:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T08:18:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:R:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414506",
+            "name": "Offenburg Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T08:41:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T08:41:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:H:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414460",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T09:18:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T09:18:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:R:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414506",
+            "name": "Offenburg Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T09:41:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T09:41:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:H:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414460",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T10:18:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T10:18:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:R:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414506",
+            "name": "Offenburg Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T10:41:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T10:41:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:H:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414460",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:2:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "stopId": "7414450",
+            "area": "2",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T10:44:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T10:44:00Z",
+        "transportation": {
+          "id": "rvs:01137: :H:j26",
+          "name": "Regionalbus 7137",
+          "disassembledName": "7137",
+          "number": "7137",
+          "destination": {
+            "id": "7414463",
+            "name": "Bad Griesbach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:2:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "stopId": "7414450",
+            "area": "2",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T11:09:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T11:09:00Z",
+        "transportation": {
+          "id": "rvs:01137: :R:j26",
+          "name": "Regionalbus 7137",
+          "disassembledName": "7137",
+          "number": "7137",
+          "destination": {
+            "id": "7414020",
+            "name": "Oberkirch Bf",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08317:14450:1:1",
+          "name": "Bad Peterstal",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "7414450",
+            "area": "1",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T11:18:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T11:18:00Z",
+        "transportation": {
+          "id": "ddb:90T02:O:R:j26",
+          "name": "Regio S-Bahn RS 2",
+          "disassembledName": "RS2",
+          "number": "RS 2",
+          "destination": {
+            "id": "7414506",
+            "name": "Offenburg Bahnhof",
+            "type": "stop"
+          }
+        }
+      }
+    ]
+  }
+}

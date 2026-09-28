@@ -1,0 +1,58 @@
+{
+  "source": "https://api.brightsky.dev/current_weather?dwd_station_id=04160",
+  "recordedAt": "2026-09-28T03:13:27.831Z",
+  "note": "Verbatim response of BrightSky current_weather for the station; nothing trimmed.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "weather": {
+      "source_id": 18712,
+      "timestamp": "2026-09-28T03:00:00+00:00",
+      "cloud_cover": null,
+      "condition": null,
+      "dew_point": 7.68,
+      "solar_10": null,
+      "solar_30": null,
+      "solar_60": null,
+      "precipitation_10": 0,
+      "precipitation_30": 0,
+      "precipitation_60": 0,
+      "pressure_msl": null,
+      "relative_humidity": 62,
+      "visibility": null,
+      "wind_direction_10": null,
+      "wind_direction_30": null,
+      "wind_direction_60": null,
+      "wind_speed_10": null,
+      "wind_speed_30": null,
+      "wind_speed_60": null,
+      "wind_gust_direction_10": null,
+      "wind_gust_direction_30": null,
+      "wind_gust_direction_60": null,
+      "wind_gust_speed_10": null,
+      "wind_gust_speed_30": null,
+      "wind_gust_speed_60": null,
+      "sunshine_30": null,
+      "sunshine_60": null,
+      "temperature": 14.8,
+      "icon": "clear-night"
+    },
+    "sources": [
+      {
+        "id": 18712,
+        "dwd_station_id": "04160",
+        "observation_type": "synop",
+        "lat": 48.7425,
+        "lon": 8.92397,
+        "height": 478,
+        "station_name": "Renningen-Ihinger Ho",
+        "wmo_station_id": "Q440",
+        "first_record": "2026-09-26T20:30:00+00:00",
+        "last_record": "2026-09-28T03:00:00+00:00"
+      }
+    ]
+  }
+}

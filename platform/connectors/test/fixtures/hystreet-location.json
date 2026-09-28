@@ -1,0 +1,16 @@
+{
+  "source": "https://hystreet.com/api/locations/245",
+  "recordedAt": "2026-09-28T03:30:00.000Z",
+  "note": "SYNTHETIC — not a recorded response (no API token available; see hystreet-locations.json). Shaped exactly like the old FN_HY_BUILD node expects: a location with a name and statistics.today_count / statistics.last_hour_count. All values are invented.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "id": 245,
+    "name": "Wilhelmstraße",
+    "city": "Reutlingen",
+    "statistics": { "today_count": 8421, "last_hour_count": 612, "timestamp": "2026-09-28T05:00:00.000+02:00" }
+  }
+}

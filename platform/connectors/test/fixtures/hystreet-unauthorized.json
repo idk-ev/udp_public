@@ -1,0 +1,14 @@
+{
+  "source": "https://hystreet.com/api/locations",
+  "recordedAt": "2026-09-28T03:15:51.690Z",
+  "note": "Recorded without a token, verbatim: this is what the location list answers when HYSTREET_API_TOKEN is wrong or missing — the error path of the old FN_HY_FIND node.",
+  "statusCode": 401,
+  "headers": {
+    "content-type": "application/json; charset=utf-8",
+    "content-encoding": "br"
+  },
+  "format": "json",
+  "payload": {
+    "error": "X-API-TOKEN"
+  }
+}
