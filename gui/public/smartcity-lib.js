@@ -18,6 +18,30 @@
   const fmtT = t => new Date(t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
   const fmtDay = d => d ? new Date(String(d).slice(0, 10) + "T12:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) : "–";
   const val = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
+  // Newest observation time of an entity in ms (dateObserved or the observedAt
+  // of any property), null if it carries none.
+  const obsTime = e => {
+    if (!e || typeof e !== "object") return null;
+    let t = null;
+    const see = v => { const x = Date.parse(v); if (isFinite(x) && (t === null || x > t)) t = x; };
+    for (const k of Object.keys(e)) {
+      const a = e[k];
+      if (!a || typeof a !== "object" || Array.isArray(a)) continue;
+      if (k === "dateObserved") see(a.value && typeof a.value === "object" ? a.value["@value"] : a.value);
+      if (a.observedAt) see(a.observedAt);
+    }
+    return t;
+  };
+  // "" while the newest observation of the entity/entities is at most maxAgeMs
+  // old, otherwise "Stand: TT.MM. HH:MM" (or "Stand unbekannt"). Values with a
+  // non-empty result must not be labelled as realtime.
+  const staleStand = (ents, maxAgeMs) => {
+    const ts = [].concat(ents).map(obsTime).filter(x => x != null);
+    const t = ts.length ? Math.max(...ts) : null;
+    if (t != null && Date.now() - t <= maxAgeMs) return "";
+    return t == null ? "Stand unbekannt" : "Stand: " + new Date(t).toLocaleString("de-DE",
+      { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(", ", " ");
+  };
   // HTML-Maskierung für alles, was aus dem Broker (oder einer anderen entfernten
   // Quelle) in Markup interpoliert wird. Deckt Text- UND Attributkontext ab, weil
   // mehrere Senken in doppelt bzw. einfach quotierten Attributen sitzen.
@@ -830,7 +854,7 @@
 
   // Nur die von den Seiten genutzte Oberfläche exportieren; Interna (SLOT, Themes,
   // Modal-Innereien, navLinks) bleiben privat.
-  w.SC = { GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, asArray,
+  w.SC = { GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
            jget, entities, entity, byAgs, hist, series, asRows,
            tile, grade, chart, barSvg, stackBar, popupHtml, groupColor, pos, baseLayer,
            themeSelector, modalOpen, wireTileDetails, openDetailByKey, markerIcon,

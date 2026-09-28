@@ -56,6 +56,51 @@ def upsert(nid, z, wires, y, x=890):
         "x": x, "y": y, "wires": [wires],
     })
 
+# Commit change signatures after the upsert (see CHUNK_HELPER: sigPending).
+# The upsert nodes run with senderr off: HTTP errors, timeouts and refused
+# connections all arrive here as a message, the latter two with a non-numeric
+# statusCode. Only what the broker confirmed is committed.
+SIG_COMMIT = r'''// Commit pending change signatures (msg.sigCommit) for confirmed entities only
+const sc = msg.sigCommit;
+delete msg.sigCommit;
+if (!Array.isArray(sc) || !sc.length) return msg;
+const st = msg.statusCode;
+let ok = null;   // null = nothing confirmed, true = whole batch, Set = these ids
+if (st === 207) {
+    // Multi-status: per entity. "success" lists the confirmed ids; without it,
+    // everything not listed in "errors" counts. Unreadable body: nothing.
+    try {
+        const b = typeof msg.payload === 'string' ? JSON.parse(msg.payload || '{}') : (msg.payload || {});
+        const idOf = x => typeof x === 'string' ? x : (x && (x.entityId || x.id));
+        if (Array.isArray(b.success)) ok = new Set(b.success.map(idOf));
+        else if (Array.isArray(b.errors)) {
+            const bad = new Set(b.errors.map(idOf));
+            ok = new Set(sc.map(p => p[3]).filter(id => !bad.has(id)));
+        }
+    } catch (e) { ok = null; }
+} else if (typeof st === 'number' && st >= 200 && st < 300) ok = true;
+const tables = {};
+let kept = 0, dropped = 0;
+for (const [key, field, value, id] of sc) {
+    if (ok !== true && !(ok && ok.has(id))) { dropped++; continue; }
+    const t = tables[key] = tables[key] || flow.get(key) || {};
+    if (value === null) delete t[field]; else t[field] = value;
+    kept++;
+}
+for (const key of Object.keys(tables)) flow.set(key, tables[key]);
+if (dropped) {
+    node.warn('Upsert not confirmed (' + st + '): ' + dropped + ' change signatures dropped, entities will be sent again'
+              + (typeof msg.payload === 'string' ? ' — ' + msg.payload.slice(0, 200) : ''));
+}
+node.status({ fill: dropped ? 'yellow' : 'green', shape: 'dot', text: kept + ' committed' + (dropped ? ', ' + dropped + ' dropped' : '') + ' (' + st + ')' });
+return msg;'''
+
+def upsert_commit(nid, z, wires, y, x=890):
+    """Upsert followed by the signature commit node (<prefix>-commit)."""
+    cid = nid[:-len("-post")] + "-commit" if nid.endswith("-post") else nid + "-commit"
+    upsert(nid, z, [cid], y, x=x)
+    func(cid, z, "Signaturen bestätigen", SIG_COMMIT, wires, y + 40, x=x + 160)
+
 def http_in(nid, z, url, wires, y, x=150):
     nodes.append({
         "id": nid, "type": "http in", "z": z, "name": "", "url": url, "method": "get",
@@ -240,7 +285,10 @@ const nearestOrCentroid = (lat, lon) => {
 #   * liveMs:      age-only mode: at least one entity must have been written
 #                  recently, otherwise the connector itself is down -> skip;
 #   * maxFraction: never delete more than this share of the existing entities
-#                  (default 30 %, at least 3) -> node.warn and skip.
+#                  (default 30 %, at least 3) -> node.warn and skip;
+#   * exclude / accept: optional regex / predicate (id, listed entity) that
+#                  narrow the own ids further, e.g. by dataProvider (request
+#                  it via attrs) or for legacy id schemes.
 # Only ids the broker confirms as deleted (204, or the success part of a 207)
 # count and lose their change signature. TRoE history is left untouched.
 PRUNE_LIBS = [{"var": "http", "module": "http"}]
@@ -248,6 +296,7 @@ PRUNE_HELPER = r'''
 async function pruneStale(o) {
     const BASE = 'http://orion-ld:1026/ngsi-ld/v1/';
     const re = new RegExp(o.pattern);
+    const ex = o.exclude ? new RegExp(o.exclude) : null;
     const frac = o.maxFraction || 0.3;
     const now = Date.now();
     const skip = (why, quiet) => {
@@ -318,6 +367,8 @@ async function pruneStale(o) {
     let cand = [];
     for (const e of existing) {
         if (!e || typeof e.id !== 'string' || !re.test(e.id)) continue;   // never touch foreign ids
+        if (ex && ex.test(e.id)) continue;                                 // excluded sub-scheme
+        if (o.accept && !o.accept(e.id, e)) continue;                      // extra ownership check
         mine++;
         const t = tsOf(e);
         if (t > newest) newest = t;
@@ -325,6 +376,8 @@ async function pruneStale(o) {
         if (o.graceMs && (!t || now - t < o.graceMs)) continue;
         cand.push(e.id);
     }
+    // Result of a complete listing, for callers that act on it (o.listed)
+    o.listed = { mine: mine, candidates: cand.length };
     if (o.liveMs && now - newest > o.liveMs) {
         return skip('no entity written within the last ' + Math.round(o.liveMs / 3600000) + ' h — connector down?');
     }
@@ -662,14 +715,16 @@ msg.payload = [Object.assign({
 const ent = msg.payload[0];
 const sigKey = 'oepnvSig:' + ent.id;
 const prevSig = flow.get(sigKey) || {};
-const nextSig = {};
+const table = {};
+const pending = [];
 for (const k of Object.keys(ent)) {
     if (k === 'id' || k === 'type' || k === '@context' || k === 'dateObserved') continue;
     const s = JSON.stringify(ent[k].value);
-    nextSig[k] = s;
-    if (prevSig[k] === s) delete ent[k];
+    if (prevSig[k] === s) { table[k] = s; delete ent[k]; }
+    else pending.push([sigKey, k, s, ent.id]);   // committed after a confirmed upsert
 }
-flow.set(sigKey, nextSig);
+flow.set(sigKey, table);
+msg.sigCommit = pending.length ? pending : undefined;
 msg.headers = { 'Content-Type': 'application/ld+json' };
 return msg;'''
 
@@ -694,7 +749,7 @@ for _i, _ags in enumerate(REG["efa-abfahrten"].get("enabledFor") or []):
              ("https://www.efa-bw.de/nvbw/XML_DM_REQUEST?outputFormat=rapidJSON&type_dm=any&name_dm=" + _sid + "&mode=direct&useRealtime=1&limit=20"),
              [f"udp-rt-o{_sfx}-fn"], _y)
     func(f"udp-rt-o{_sfx}-fn", Z, "→ PublicTransportStop " + _ags, _fn, [f"udp-rt-o{_sfx}-post"], _y)
-    upsert(f"udp-rt-o{_sfx}-post", Z, [f"udp-rt-o{_sfx}-debug"], _y)
+    upsert_commit(f"udp-rt-o{_sfx}-post", Z, [f"udp-rt-o{_sfx}-debug"], _y)
     debug(f"udp-rt-o{_sfx}-debug", Z, "ÖPNV Ergebnis " + _ags, _y)
 catch("udp-rt-o-catch", Z, "udp-rt-o-errdebug", 180)
 debug("udp-rt-o-errdebug", Z, "Fehler", 180, x=380)
@@ -935,18 +990,44 @@ tab(Z, "BW: Stammdaten & Basisdaten",
 
 GEMEINDEN_URL = COCKPIT + "/bw-gemeinden.json"
 CHUNK_HELPER = r'''
+// Pending change signatures: [flowKey, field, value, entityId]. A signature
+// says "this value is in the broker". It must only take effect once the broker
+// confirmed the write: the "commit signatures" node behind the upsert (see
+// SIG_COMMIT in the generator) stores it for entities the broker accepted and
+// drops it otherwise, so the entity is sent again in the next run. Storing it
+// before the upsert froze entities for weeks whenever Orion-LD hung.
+const pendingSigs = [];
+function sigPending(key, field, value, id) { pendingSigs.push([key, field, value, id]); }
+// Pending signatures of the given entities, for msg.sigCommit.
+function sigsFor(entities) {
+    if (!pendingSigs.length) return undefined;
+    const ids = new Set(entities.map(e => e.id));
+    const out = pendingSigs.filter(p => ids.has(p[3]));
+    return out.length ? out : undefined;
+}
 // Entities in Batch-Chunks aufteilen (Orion-Payload-Limit)
 function emitChunks(node, msg, entities, size) {
     const out = [];
     for (let i = 0; i < entities.length; i += size) {
+        const chunk = entities.slice(i, i + size);
         out.push(Object.assign({}, msg, {
-            payload: entities.slice(i, i + size),
+            payload: chunk,
             headers: { 'Content-Type': 'application/ld+json' },
+            sigCommit: sigsFor(chunk),
             url: undefined,
             parts: undefined
         }));
     }
     return out;
+}
+// Stable per-entity rotation for freshness-only writes: with every = k, an
+// unchanged entity refreshes its dateObserved in one of k consecutive runs
+// (runs are periodMs apart), spreading the rows evenly over the runs.
+function freshTurn(id, every, periodMs) {
+    if (!every || every <= 1) return true;
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return (h + Math.floor(Date.now() / periodMs)) % every === 0;
 }
 // Änderungserkennung: Nur Entitäten mit geänderter Wertsignatur behalten. Orion-LD
 // schreibt bei options=update je Attribut eine TRoE-Zeile — unabhängig davon, ob
@@ -963,17 +1044,30 @@ function emitChunks(node, msg, entities, size) {
 // Signaturtabelle stehen. Der flow-Kontext liegt über contextStorage
 // (settings.js: localfilesystem) auch auf der Platte — das Leck wächst dort mit.
 // Solche Aufrufer setzen { replace: true } und speichern nur den aktuellen Stand.
+//
+// Changed entities do not get their new signature here: the old one is removed
+// and the new one is only pending (sigPending) until the commit node behind the
+// upsert has seen the broker accept the write. A failed or hanging upsert thus
+// leaves the entity "changed", and the next run sends it again.
+// opts.freshEvery / opts.periodMs: refresh dateObserved of unchanged entities
+// only in every k-th run (freshTurn) instead of every run.
 function gateChanged(node, entities, key, sigOf, opts) {
     const ersetzen = !!(opts && opts.replace);
+    const every = (opts && opts.freshEvery) || 1, period = (opts && opts.periodMs) || 3600e3;
     const prev = flow.get(key) || {};
-    const next = {};
+    const table = ersetzen ? {} : prev;
     const out = [];
     let changed = 0;
     for (const e of entities) {
         const s = sigOf(e);
-        next[e.id] = s;
-        if (prev[e.id] !== s) { out.push(e); changed++; }
-        else if (e.dateObserved) {
+        if (prev[e.id] !== s) {
+            delete table[e.id];
+            sigPending(key, e.id, s, e.id);
+            out.push(e); changed++;
+            continue;
+        }
+        table[e.id] = s;
+        if (e.dateObserved && freshTurn(e.id, every, period)) {
             // Unverändert: nur die Frische (dateObserved) auffrischen, NICHT die
             // vollen Messwerte. options=update ersetzt nur die mitgesendeten
             // Attribute — die Wert-Zeilen entfallen (Volumen gespart), aber
@@ -981,7 +1075,7 @@ function gateChanged(node, entities, key, sigOf, opts) {
             out.push({ id: e.id, type: e.type, dateObserved: e.dateObserved, '@context': e['@context'] });
         }
     }
-    flow.set(key, ersetzen ? next : Object.assign(prev, next));
+    flow.set(key, table);
     node.status({ text: changed + '/' + entities.length + ' geändert (Rest: nur Frische)' });
     return out;
 }
@@ -1032,7 +1126,7 @@ nodes.append({
 http_get("udp-rt-bm-get", Z, "bw-gemeinden.json", GEMEINDEN_URL, ["udp-rt-bm-fn"], 80)
 func("udp-rt-bm-fn", Z, "→ Municipality (Chunks)", FN_MUNI, ["udp-rt-bm-rate"], 80)
 delay_rate("udp-rt-bm-rate", Z, ["udp-rt-bm-post"], 140)
-upsert("udp-rt-bm-post", Z, ["udp-rt-bm-debug"], 140)
+upsert_commit("udp-rt-bm-post", Z, ["udp-rt-bm-debug"], 140)
 debug("udp-rt-bm-debug", Z, "Stammdaten Ergebnis", 140)
 
 FN_GRENZEN = r'''// Gemeindegrenzen in den global-Kontext (für Punkt-in-Polygon)
@@ -1360,7 +1454,7 @@ http_get("udp-rt-pe-get", Z, "PEGELONLINE Stationen",
          ["udp-rt-pe-fn"], 770)
 func("udp-rt-pe-fn", Z, "→ WaterLevelObserved (PiP)", FN_PEGEL, ["udp-rt-pe-rate"], 770)
 delay_rate("udp-rt-pe-rate", Z, ["udp-rt-pe-post"], 830)
-upsert("udp-rt-pe-post", Z, ["udp-rt-pe-debug"], 830)
+upsert_commit("udp-rt-pe-post", Z, ["udp-rt-pe-debug"], 830)
 debug("udp-rt-pe-debug", Z, "Pegel Ergebnis", 830)
 
 # PiP-Bausteine für Overpass-FNs (nur exakte Polygon-Treffer, kein Zentroid-Fallback)
@@ -1452,7 +1546,7 @@ nodes.append({
 })
 func("udp-rt-pl-fn", Z, "→ WaterLevelObserved (LUBW, PiP)", FN_PEGEL_LUBW, ["udp-rt-pl-rate"], 1250)
 delay_rate("udp-rt-pl-rate", Z, ["udp-rt-pl-post"], 1310)
-upsert("udp-rt-pl-post", Z, ["udp-rt-pl-debug"], 1310)
+upsert_commit("udp-rt-pl-post", Z, ["udp-rt-pl-debug"], 1310)
 debug("udp-rt-pl-debug", Z, "LUBW-Pegel Ergebnis", 1310)
 
 OVERPASS_UA = "UDP-BW-Dashboard/1.0 (kommunale Referenzplattform; tk@idkev.de)"
@@ -1774,7 +1868,7 @@ http_get("udp-rt-bk-http", Z, "DWD/NINA", "", ["udp-rt-bk-wrap"], 560, x=620)
 func("udp-rt-bk-wrap", Z, "bündeln", FN_WARN_WRAP, ["udp-rt-bk-join"], 560, x=840)
 join("udp-rt-bk-join", Z, 88, ["udp-rt-bk-build"], 620, x=400, timeout=180)
 func("udp-rt-bk-build", Z, "→ Alert je Kreis", FN_WARN_BUILD, ["udp-rt-bk-post"], 620)
-upsert("udp-rt-bk-post", Z, ["udp-rt-bk-debug"], 620)
+upsert_commit("udp-rt-bk-post", Z, ["udp-rt-bk-debug"], 620)
 debug("udp-rt-bk-debug", Z, "BW-Warnungen Ergebnis", 620)
 
 FN_RW_BW = r'''// SVZ-BW-Baustellen landesweit -> RoadWork:bw-svz-<id> mit Gemeinde-Zuordnung + Kreis-Summen
@@ -2120,7 +2214,7 @@ func("udp-rt-bs-fn", Z, "→ Median je Gemeinde", FN_SC_BW.replace(
     "__SENSOR_DETAIL_AGS__", json.dumps(REG["feinstaub-bw"].get("sensorDetailFor", []))),
     ["udp-rt-bs-rate"], 290, x=860, libs=PRUNE_LIBS)
 delay_rate("udp-rt-bs-rate", Z, ["udp-rt-bs-post"], 350)
-upsert("udp-rt-bs-post", Z, ["udp-rt-bs-debug"], 350)
+upsert_commit("udp-rt-bs-post", Z, ["udp-rt-bs-debug"], 350)
 debug("udp-rt-bs-debug", Z, "Feinstaub-BW Ergebnis", 350)
 
 # --- Parken landesweit (MobiData BW ParkAPI v3) -------------------------------
@@ -2276,7 +2370,7 @@ msg.parkVollstaendig = fertig && !(gesamt && gesehen.size < gesamt * 0.9);
 return msg;'''
 
 FN_PARK_BUILD = r'''// ParkAPI-Abzug -> ParkingSummary je Gemeinde + Einzelanlagen (Auto und Rad)
-''' + geo_helper("Parken-BW", require_boundaries=False) + PRUNE_HELPER + r'''
+''' + geo_helper("Parken-BW", require_boundaries=False) + PRUNE_HELPER + CHUNK_HELPER + r'''
 const anlagen = Array.isArray(msg.payload) ? msg.payload.filter(Array.isArray) : [];
 if (!anlagen.length) return null;
 
@@ -2359,7 +2453,7 @@ const belegung = flow.get('parkFrei') || {};
 const neueStatik = {}, neueBelegung = {};
 const entities = [];
 const ids = new Set();
-let voll = 0, nurFrei = 0, unveraendert = 0;
+let voll = 0, nurFrei = 0, frisch = 0, unveraendert = 0;
 const ANBIETER = 'MobiData BW ParkAPI';
 
 // Stabile Entitäts-IDs aus der ParkAPI-eigenen id (»parkapi-<id>«). Vorher
@@ -2373,18 +2467,21 @@ const anlegen = (typ, g, a) => {
     const lat = a[1], lon = a[2], kap = a[3], bez = a[5], frei = a[11];
     ids.add(kennung);
     const sig = hash64([g[0], bez, kap, lat.toFixed(5), lon.toFixed(5), a[7], a[8], a[4]].join('|'));
-    neueStatik[kennung] = sig;
-    if (frei >= 0) neueBelegung[kennung] = frei;
+    // Signatures of written values only take effect after a confirmed upsert
+    // (sigPending, commit node); unchanged ones are carried over directly.
+    const dateObserved = { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } };
     if (statik[kennung] !== sig) {
         // Erstsichtung oder echte Stammdatenänderung -> volle Entität
         voll++;
+        sigPending('parkStatik', kennung, sig, kennung);
+        if (frei >= 0) sigPending('parkFrei', kennung, frei, kennung);
         const e = {
             id: kennung,
             type: typ,
             ags: { type: 'Property', value: g[0] },
             name: { type: 'Property', value: bez || (typ === 'BikeParking' ? 'Radabstellanlage' : 'Parkplatz') },
             totalSpotNumber: { type: 'Property', value: kap, unitCode: 'C62' },
-            dateObserved: { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } },
+            dateObserved: dateObserved,
             dataProvider: { type: 'Property', value: ANBIETER },
             location: { type: 'GeoProperty', value: { type: 'Point', coordinates: [lon, lat] } },
             '@context': CTX
@@ -2400,14 +2497,23 @@ const anlegen = (typ, g, a) => {
         entities.push(e);
         return;
     }
+    neueStatik[kennung] = sig;
     // Stammdaten unverändert: nur die Belegung, und nur wenn sie sich bewegt hat.
-    // dateObserved wird hier bewusst NICHT aufgefrischt — das wäre je Anlage und
-    // Lauf eine Zeile (rund 255.000/Tag), und keine Ansicht wertet das Feld an
-    // der Einzelanlage aus.
+    // Freshness: sites with realtime occupancy refresh dateObserved in every run
+    // (about 370 sites × 8 runs ≈ 3,000 rows/day), so views can tell a current
+    // occupancy from a frozen one. Static-only sites (about 98 %) do not: their
+    // data are master data without an observation time, and refreshing them
+    // would cost about 200,000 rows/day. Their removal is handled by the prune.
     if (frei >= 0 && belegung[kennung] !== frei) {
         nurFrei++;
-        entities.push({ id: kennung, type: typ, availableSpotNumber: P(frei, 'C62'), '@context': CTX });
+        sigPending('parkFrei', kennung, frei, kennung);
+        entities.push({ id: kennung, type: typ, availableSpotNumber: P(frei, 'C62'), dateObserved: dateObserved, '@context': CTX });
         return;
+    }
+    if (frei >= 0) {
+        neueBelegung[kennung] = frei;
+        frisch++;
+        entities.push({ id: kennung, type: typ, dateObserved: dateObserved, '@context': CTX });
     }
     unveraendert++;
 };
@@ -2438,10 +2544,14 @@ const summen = Object.keys(byGem).map(ags => {
         totalCapacity: P(b.cap, 'C62'),
         '@context': CTX
     };
-    if (b.rtN) { e.realtimeFree = P(b.rtFree, 'C62'); e.realtimeSites = P(b.rtN, 'C62'); }
+    if (b.rtN) {
+        e.realtimeFree = P(b.rtFree, 'C62'); e.realtimeSites = P(b.rtN, 'C62');
+        // Freshness of the realtime sum: gateChanged refreshes dateObserved of
+        // unchanged sums (about 100 municipalities × 8 runs ≈ 800 rows/day).
+        e.dateObserved = { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } };
+    }
     return e;
 });
-''' + CHUNK_HELPER + r'''
 // Aggregate je Gemeinde: unverändert -> gar nicht schreiben. replace, weil dieser
 // Lauf den kompletten Landesbestand sieht (siehe gateChanged).
 for (const e of gateChanged(node, summen, 'parkSummenSig',
@@ -2450,7 +2560,7 @@ for (const e of gateChanged(node, summen, 'parkSummenSig',
         { replace: true })) entities.push(e);
 
 const statusText = anlagen.length + ' Anlagen · ' + Object.keys(byGem).length + ' Gemeinden · '
-              + voll + ' voll · ' + nurFrei + ' nur Belegung · ' + unveraendert + ' unverändert'
+              + voll + ' voll · ' + nurFrei + ' nur Belegung · ' + unveraendert + ' unverändert (' + frisch + ' Frische)'
               + ' · ' + frischeQuelle + ' mit frischem modified_at'
               + (ueberGeo ? ' · ' + ueberGeo + ' per Geo-Notnagel' : '')
               + (ausserhalb ? ' · ' + ausserhalb + ' außerhalb BW' : '')
@@ -2476,6 +2586,51 @@ if (msg.parkVollstaendig && PRUNE_OK && ids.size) {
                            pattern: '^urn:ngsi-ld:ParkingSummary:bw-[0-9]{8}$',
                            keep: summenIds, confirmKey: 'parkPruneSummary', confirmMs: 24 * 3600e3,
                            intervalMs: ''' + interval_ms("parken-bw") + r''', status: statusText });
+        // One-off cleanup of the legacy id scheme. Until August 2026 the ids
+        // were <municipality slug>-<slugged name or lat-lon>; nothing writes
+        // them any more (a static test forbids ParkingSite/BikeParking ids other
+        // than parkapi-<id> in every flow), so the share limit cannot apply:
+        // none of them is ever confirmed again. Instead:
+        //   * own pattern: [a-z0-9.-] only, the current parkapi- scheme is
+        //     excluded, the id must start with a known municipality slug AND
+        //     the entity must carry this connector's dataProvider (municipal
+        //     B+R connectors use the same slug-prefixed id style, see
+        //     docs/staedte-hinzufuegen.md, and must never be touched);
+        //   * untouched for 7 days (modifiedAt / observedAt / dateObserved;
+        //     an entity without timestamp is kept);
+        //   * only after a complete inventory run with plausible master data;
+        //   * at most once a day, and only if the previous daily check was
+        //     done (interval check), so a single snapshot never deletes.
+        // Once the legacy entities are gone, the daily check lists nothing.
+        //   * created before the switch to parkapi- ids (createdAt, system
+        //     attribute; commit of 25.08.2026 03:28 CEST), so nothing written
+        //     since can ever match;
+        //   * once a complete listing finds no legacy entity of either type
+        //     any more, the check switches itself off (parkLegacyDone).
+        if (!flow.get('parkLegacyDone') && Date.now() - (flow.get('parkLegacyLast') || 0) >= 20 * 3600e3) {
+            flow.set('parkLegacyLast', Date.now());
+            const SLUGS = new Set(GEM.map(r => r[8]).filter(Boolean));
+            const legacyOwn = id => {
+                const parts = id.split(':').slice(3).join(':').split('-');
+                for (let i = 1; i < parts.length; i++) if (SLUGS.has(parts.slice(0, i).join('-'))) return true;
+                return false;
+            };
+            const MIGRATION = Date.parse('2026-08-25T01:28:11Z');
+            const legacyParkApi = (id, e) => legacyOwn(id) && !!e && !!e.dataProvider && e.dataProvider.value === ANBIETER
+                && Date.parse(e.createdAt) < MIGRATION;
+            const legacy = typ => ({ label: 'Parken-BW legacy ' + typ, type: typ,
+                pattern: '^urn:ngsi-ld:' + typ + ':[a-z0-9][a-z0-9.-]*$',
+                attrs: 'ags,dataProvider', exclude: '^urn:ngsi-ld:' + typ + ':parkapi-', accept: legacyParkApi,
+                keep: ids, graceMs: 7 * 24 * 3600e3, maxFraction: 1,
+                intervalMs: 86400000, status: statusText });
+            const legacySite = legacy('ParkingSite'), legacyBike = legacy('BikeParking');
+            await pruneStale(legacySite);
+            await pruneStale(legacyBike);
+            if (legacySite.listed && legacyBike.listed && !legacySite.listed.mine && !legacyBike.listed.mine) {
+                flow.set('parkLegacyDone', true);
+                node.log('Parken-BW: no legacy parking ids left, cleanup switched off');
+            }
+        }
     })().catch(e => node.warn('Parken-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
 } else {
     // Incomplete run: candidates must be missing in CONSECUTIVE complete runs
@@ -2492,7 +2647,7 @@ func("udp-rt-bp-fetch", Z, "ParkAPI (Cursor-Seiten)", FN_PARK_FETCH, ["udp-rt-bp
 func("udp-rt-bp-build", Z, "→ ParkingSummary + Einzelanlagen", FN_PARK_BUILD, ["udp-rt-bp-rate"], 440, x=700,
      libs=PRUNE_LIBS)
 delay_rate("udp-rt-bp-rate", Z, ["udp-rt-bp-post"], 500)
-upsert("udp-rt-bp-post", Z, ["udp-rt-bp-debug"], 500)
+upsert_commit("udp-rt-bp-post", Z, ["udp-rt-bp-debug"], 500)
 debug("udp-rt-bp-debug", Z, "Parken-BW Ergebnis", 500)
 
 FN_GBFS_SYS = r'''// GBFS-Systemliste -> je System eine free_bike_status-Abfrage
@@ -2508,6 +2663,12 @@ const msgs = msg.payload.systems.map(s => ({
     url: s.url.replace(/\/gbfs$/, '/free_bike_status'),
     system: s.id
 }));
+// Zero tables (FN_GBFS_FF) of systems that left the list are dropped, so they
+// neither grow on disk nor zero a returning system's old municipalities.
+if (msgs.length && typeof flow.keys === 'function') {
+    const aktiv = new Set(msgs.map(m => 'ffLast:' + String(m.system).replace(/[^A-Za-z0-9_-]+/g, '-')));
+    for (const k of flow.keys()) if (k.startsWith('ffLast:') && !aktiv.has(k)) flow.set(k, undefined);
+}
 const statusText = msgs.length + ' Systeme';
 node.status({ text: statusText });
 // The per-system runs never see the complete inventory, so the free-floating
@@ -2515,6 +2676,8 @@ node.status({ text: statusText });
 // in full (no change gate), so one not refreshed for 24 h (24 hourly runs) is
 // no longer confirmed: the system left the list, or its vehicles are outside
 // BW and were assigned to a border municipality before the strict lookup.
+// A summary whose vehicles are gone is first set to 0 by its system run (see
+// FN_GBFS_FF) and then, no longer refreshed, removed here a day later.
 // Skipped if no summary at all was written within 3 h (connector down).
 if (PRUNE_OK) pruneStale({
     label: 'GBFS-BW', type: 'SharingSummary',
@@ -2527,7 +2690,7 @@ return [msgs];'''
 
 FN_GBFS_FF = r'''// free_bike_status -> SharingSummary je Gemeinde und System (frei flottierend)
 if (msg.statusCode >= 400 || !msg.payload || !msg.payload.data || !Array.isArray(msg.payload.data.bikes)) return null;
-''' + geo_helper("GBFS-BW") + r'''
+''' + geo_helper("GBFS-BW") + CHUNK_HELPER + r'''
 const byGem = {}, posByGem = {};
 for (const b of msg.payload.data.bikes) {
     if (b.is_disabled || b.is_reserved) continue;
@@ -2542,17 +2705,38 @@ for (const b of msg.payload.data.bikes) {
     if (arr.length < 400) arr.push([+b.lat.toFixed(5), +b.lon.toFixed(5)]);
 }
 const sys = String(msg.system).replace(/[^A-Za-z0-9_-]+/g, '-');
-const entities = Object.keys(byGem).map(ags => ({
+const summary = (ags, n, positions) => ({
     id: 'urn:ngsi-ld:SharingSummary:bw-' + ags + '-ff-' + sys,
     type: 'SharingSummary',
     ags: { type: 'Property', value: ags },
     system: { type: 'Property', value: sys },
-    availableVehicles: P(byGem[ags], 'C62'),
-    vehiclePositions: { type: 'Property', value: posByGem[ags] },
+    availableVehicles: P(n, 'C62'),
+    vehiclePositions: { type: 'Property', value: positions },
     '@context': CTX
-}));
+});
+const entities = Object.keys(byGem).map(ags => summary(ags, byGem[ags], posByGem[ags]));
+// Municipalities this system had vehicles in at the last confirmed write but
+// not now: write 0 (and no positions) once, instead of showing the old count
+// until the 24 h prune removes the summary. The zero keeps the history right;
+// the prune still removes the summary a day later. Table per system
+// ('ffLast:<sys>', ags -> count), committed only after a confirmed upsert; a
+// confirmed zero removes the entry. A feed without any vehicle at all is taken
+// as an outage of the provider, not as "all gone": no zeros then.
+const lastKey = 'ffLast:' + sys;
+const last = flow.get(lastKey) || {};
+if (msg.payload.data.bikes.length) {
+    for (const ags of Object.keys(last)) {
+        if (byGem[ags] || !(last[ags] > 0) || !GEMBYAGS[ags]) continue;
+        entities.push(summary(ags, 0, []));
+    }
+}
+for (const e of entities) {
+    const n = e.availableVehicles.value;
+    sigPending(lastKey, e.ags.value, n > 0 ? n : null, e.id);
+}
 if (!entities.length) return null;
 msg.payload = entities;
+msg.sigCommit = sigsFor(entities);
 msg.headers = { 'Content-Type': 'application/ld+json' };
 delete msg.url;
 return msg;'''
@@ -2563,7 +2747,7 @@ func("udp-rt-bg-msgs", Z, "Systeme (~110)", FN_GBFS_SYS, ["udp-rt-bg-rate"], 650
 delay_rate("udp-rt-bg-rate", Z, ["udp-rt-bg-get"], 710)
 http_get("udp-rt-bg-get", Z, "free_bike_status", "", ["udp-rt-bg-fn"], 710, x=620)
 func("udp-rt-bg-fn", Z, "→ SharingSummary", FN_GBFS_FF, ["udp-rt-bg-post"], 710, x=860)
-upsert("udp-rt-bg-post", Z, ["udp-rt-bg-debug"], 770)
+upsert_commit("udp-rt-bg-post", Z, ["udp-rt-bg-debug"], 770)
 debug("udp-rt-bg-debug", Z, "Sharing-BW Ergebnis", 770)
 
 # --- Stationsgebundenes Carsharing landesweit (Stufe-3-Baustein »carsharing-detail«)
@@ -2614,18 +2798,27 @@ const inBW = nearestStrict;
 const clean = s => String(s == null ? '' : s).replace(/'/g, '’').slice(0, 80);
 const sys = String(msg.system).replace(/[^A-Za-z0-9_-]+/g, '-');
 const cache = flow.get('csStationen') || {};
+// This response is the complete station list of the system: replace its
+// entries instead of merging, so vanished stations leave the cache. They are
+// then no longer written and the age-based prune removes them from the broker.
+// A list without a single station in BW is not taken as "all gone" (feed
+// error, or a system outside BW): the cache stays as it is.
+const neu = {};
 let n = 0;
 for (const st of msg.payload.data.stations) {
     const lat = parseFloat(st.lat), lon = parseFloat(st.lon);
     if (!isFinite(lat) || !isFinite(lon)) continue;
     const g = inBW(lat, lon);
     if (!g) continue;
-    cache[sys + '::' + st.station_id] = {
+    neu[sys + '::' + st.station_id] = {
         ags: g[0], slug: g[8], name: clean(st.name || st.station_id),
         lat: lat, lon: lon, kap: st.capacity || 0, sys: sys
     };
     n++;
 }
+if (!n) { node.status({ text: sys + ': keine Station in BW' }); return null; }
+for (const k of Object.keys(cache)) if (k.startsWith(sys + '::')) delete cache[k];
+Object.assign(cache, neu);
 flow.set('csStationen', cache);
 node.status({ text: sys + ': ' + n + ' Stationen' });
 return null;'''
@@ -2633,6 +2826,35 @@ return null;'''
 FN_CS_STATUS_MSGS = r'''// Systemliste -> je System eine station_status-Abfrage
 if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.systems)) return null;
 if (!flow.get('csStationen')) { node.warn('Carsharing: Stammdaten noch nicht geladen — Lauf übersprungen'); return null; }
+''' + PRUNE_HELPER + r'''
+const GEM = global.get('bwGemeinden');
+const GRZ = global.get('bwGrenzen') || null;
+''' + PRUNE_OK_JS + r'''
+// Like the free-floating summaries, the per-system runs never see the complete
+// inventory, so stations and fleets are pruned by age. Every station in the
+// cache is written at least every third run (change or freshness rotation),
+// every fleet in every run; one not written for 24 h has left its system's
+// station list (the daily master data run replaces the cache per system) or
+// its system left the list. Skipped if nothing was written within 3 h.
+// Only entities with this connector's dataProvider: municipal connectors may
+// write the same types with slug-prefixed ids.
+const ownGbfs = (id, e) => !!e && !!e.dataProvider && e.dataProvider.value === 'MobiData BW GBFS';
+if (PRUNE_OK) (async () => {
+    await pruneStale({
+        label: 'Carsharing stations', type: 'CarSharingStation',
+        pattern: '^urn:ngsi-ld:CarSharingStation:[A-Za-z0-9_-]+$',
+        attrs: 'ags,dateObserved,dataProvider', accept: ownGbfs,
+        graceMs: 24 * 3600e3, liveMs: 3 * 3600e3, sigKey: 'csSig',
+        intervalMs: ''' + interval_ms("carsharing-bw") + r'''
+    });
+    await pruneStale({
+        label: 'Carsharing fleets', type: 'FleetStatus',
+        pattern: '^urn:ngsi-ld:FleetStatus:[A-Za-z0-9_-]+$',
+        attrs: 'ags,dateObserved,dataProvider', accept: ownGbfs,
+        graceMs: 24 * 3600e3, liveMs: 3 * 3600e3,
+        intervalMs: ''' + interval_ms("carsharing-bw") + r'''
+    });
+})().catch(e => node.warn('Carsharing: prune failed (' + (e && e.message ? e.message : e) + ')'));
 return [msg.payload.systems.map(s => ({ url: s.url.replace(/\/gbfs$/, '/station_status'), system: s.id }))];'''
 
 FN_CS_STATUS = r'''// station_status -> CarSharingStation je Station + FleetStatus je Gemeinde
@@ -2648,25 +2870,21 @@ const anbieter = sys.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
 const now = new Date().toISOString();
 const ctx = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld';
 const P2 = (v, u) => ({ type: 'Property', value: v, unitCode: u, observedAt: now });
-const entities = [];
+''' + CHUNK_HELPER + r'''
+const stations = [];
 const byGem = {};
-// Wie bei den Ladesäulen: Nur schreiben, was sich geändert hat. Eine Station auf
-// dem Land steht Stunden unverändert da — ihr Zeitreihen-Eintrag wäre reine
-// Datenmenge ohne Aussage.
-const altStand = flow.get('csStand') || {};
-const neuStand = {};
+const altKey = {};   // entity id -> key of the former 'csStand' table
 for (const st of msg.payload.data.stations) {
     const info = cache[sys + '::' + st.station_id];
     if (!info) continue;                       // außerhalb BW oder ohne Stammdaten
     const frei = st.num_bikes_available != null ? st.num_bikes_available : 0;
-    const schl = sys + '::' + st.station_id;
-    neuStand[schl] = frei;
     const b0 = byGem[info.ags] = byGem[info.ags] || { frei: 0, kap: 0, n: 0, slug: info.slug };
     b0.frei += frei; b0.kap += info.kap; b0.n++;
-    if (altStand[schl] === frei) continue;     // unverändert -> kein Schreibvorgang
-    entities.push({
-        id: 'urn:ngsi-ld:CarSharingStation:' + info.slug + '-' + sys + '-'
-            + String(st.station_id).replace(/[^A-Za-z0-9_-]+/g, '-'),
+    const id = 'urn:ngsi-ld:CarSharingStation:' + info.slug + '-' + sys + '-'
+        + String(st.station_id).replace(/[^A-Za-z0-9_-]+/g, '-');
+    altKey[id] = sys + '::' + st.station_id;
+    stations.push({
+        id: id,
         type: 'CarSharingStation',
         ags: { type: 'Property', value: info.ags },
         name: { type: 'Property', value: info.name },
@@ -2680,12 +2898,45 @@ for (const st of msg.payload.data.stations) {
         '@context': ctx
     });
 }
-// Signaturen MERGEN statt ersetzen: Diese Funktion läuft je GBFS-System; ein
-// flow.set(neuStand) würde den Kontext bei jedem System auf dessen Stationen
-// reduzieren, sodass die Änderungserkennung nie greift und stündlich fast alle
-// ~4.000 Stationen neu geschrieben werden. altStand ist die gespeicherte
-// Referenz — Object.assign akkumuliert alle Systeme über die Läufe hinweg.
-flow.set('csStand', Object.assign(altStand, neuStand));
+// Wie bei den Ladesäulen: Nur schreiben, was sich geändert hat. Eine Station auf
+// dem Land steht Stunden unverändert da — ihr Zeitreihen-Eintrag wäre reine
+// Datenmenge ohne Aussage. MERGE mode (no replace): this function runs once per
+// GBFS system and only sees that system's stations.
+// Freshness: an unchanged station refreshes its dateObserved every third run
+// (freshTurn), i.e. about every 3 h: ~4,000 stations × 8 ≈ 32,000 rows/day.
+// Every run would be ~96,000. Signature keys are entity ids (so the prune can
+// forget them).
+//
+// Migration of the former table 'csStand' (system::station -> free count):
+// its values become the signatures, so the switch does not rewrite all
+// ~4,000 stations at once. But 'csStand' was stored BEFORE the write, so an
+// entry may describe a value that never reached the broker (the frozen-value
+// bug). Seeded entries are therefore marked and dropped again spread over 24
+// runs (freshTurn with 24), so every seeded station is written in full once
+// within a day, ~170 per hour instead of a burst.
+const alt = flow.get('csStand');
+if (alt) {
+    const sigT = flow.get('csSig') || {}, seeded = flow.get('csSigSeeded') || {};
+    for (const e of stations) {
+        const k = altKey[e.id];
+        if (k in alt && sigT[e.id] === undefined) { sigT[e.id] = String(alt[k]); seeded[e.id] = 1; }
+    }
+    for (const k of Object.keys(alt)) if (k.startsWith(sys + '::')) delete alt[k];
+    flow.set('csSig', sigT);
+    flow.set('csSigSeeded', seeded);
+    flow.set('csStand', Object.keys(alt).length ? alt : undefined);
+}
+const seeded = flow.get('csSigSeeded');
+if (seeded) {
+    const sigT = flow.get('csSig') || {};
+    for (const e of stations) {
+        if (seeded[e.id] && freshTurn(e.id, 24, 3600e3)) { delete sigT[e.id]; delete seeded[e.id]; }
+    }
+    flow.set('csSig', sigT);
+    flow.set('csSigSeeded', Object.keys(seeded).length ? seeded : undefined);
+}
+const entities = gateChanged(node, stations, 'csSig', e => String(e.availableVehicles.value),
+                             { freshEvery: 3, periodMs: 3600e3 });
 for (const ags of Object.keys(byGem)) {
     const b = byGem[ags];
     entities.push({
@@ -2705,6 +2956,7 @@ for (const ags of Object.keys(byGem)) {
 if (!entities.length) return null;
 node.status({ text: sys + ': ' + entities.length + ' Objekte' });
 msg.payload = entities;
+msg.sigCommit = sigsFor(entities);
 msg.headers = { 'Content-Type': 'application/ld+json' };
 delete msg.url;
 return msg;'''
@@ -2720,38 +2972,51 @@ func("udp-rt-cs-fn", Z, "Stammdaten in den Kontext", FN_CS_INFO, [], 890, x=860)
 # Belegung stündlich, versetzt zum Stammdatenlauf
 inject("udp-rt-cz-inject", Z, "stündlich", 3600, 900, ["udp-rt-cz-sys"], 950)
 http_get("udp-rt-cz-sys", Z, "GBFS-Systeme", "https://api.mobidata-bw.de/sharing/gbfs", ["udp-rt-cz-msgs"], 950)
-func("udp-rt-cz-msgs", Z, "station_status je System", FN_CS_STATUS_MSGS, ["udp-rt-cz-rate"], 950, x=860)
+func("udp-rt-cz-msgs", Z, "station_status je System", FN_CS_STATUS_MSGS, ["udp-rt-cz-rate"], 950, x=860, libs=PRUNE_LIBS)
 delay_rate("udp-rt-cz-rate", Z, ["udp-rt-cz-get"], 1010)
 http_get("udp-rt-cz-get", Z, "station_status", "", ["udp-rt-cz-fn"], 1010, x=620)
 func("udp-rt-cz-fn", Z, "→ CarSharingStation + FleetStatus", FN_CS_STATUS, ["udp-rt-cz-post"], 1010, x=860)
-upsert("udp-rt-cz-post", Z, ["udp-rt-cz-debug"], 1070)
+upsert_commit("udp-rt-cz-post", Z, ["udp-rt-cz-debug"], 1070)
 debug("udp-rt-cz-debug", Z, "Carsharing-BW Ergebnis", 1070)
 
 # OCPDB liefert bundesweit 90.572 Standorte; der frühere Vollabzug zog alle
 # 95 Seiten und warf 85 % davon weg. Eine Radius-Abfrage um die Landesmitte
-# deckt BW mit Reserve ab (Lörrach als entlegenster Punkt liegt bei 152 km)
-# und kommt mit 29 Seiten aus — erst dadurch ist ein 30-Minuten-Takt für den
-# landesweiten Livestatus vertretbar.
+# deckt BW mit Reserve ab (Lörrach als entlegenster Punkt liegt bei 152 km).
 #
-# OFFEN (24.08., bewusst NICHT in dieser Änderung behoben): Die Radius-Abfrage
-# meldet total_count 29.902, geholt werden 29 × 1000 = 29.000 Standorte — rund
-# 902 fallen also still unter den Tisch. Anders als bei der ParkAPI funktioniert
-# die offset-Pagination hier nachweislich, es fehlen schlicht Seiten. Der Fix ist
-# eine Zeile (OC_SEITEN hoch bzw. an next_path entlanglaufen), gehört aber in
-# eine eigene Änderung mit eigener Messung des Volumen-Effekts — 902 zusätzliche
-# Ladestandorte schreiben auch zusätzliche TRoE-Zeilen. Nicht vergessen.
-OC_SEITEN = 29
-FN_OC_KREISE = r'''// OCPDB-Abzug für BW paginiert (Radius 190 km um die Landesmitte)
-const msgs = [];
-for (let p = 0; p < __SEITEN__; p++) {
-    msgs.push({ url: 'https://api.mobidata-bw.de/ocpdb/api/public/v1/locations'
-                     + '?lat=48.65&lon=9.0&radius=190000&limit=1000&offset=' + (p * 1000),
-                parts: { id: msg._msgid, index: p, count: __SEITEN__ }, topic: 'oc' + p });
+# Pagination: the page count used to be a constant (29 pages). The radius query
+# has grown past that (total_count 31,462 in September 2026, 32 pages), so the
+# last pages – about 1,300 BW locations – were silently missing. Now a first
+# request with limit=1 reads total_count, and the fan-out covers all pages,
+# capped at OC_MAX_SEITEN with a warning. The build step knows how many pages
+# and locations to expect; only a complete run may prune.
+OC_MAX_SEITEN = 60
+OC_BASIS = "https://api.mobidata-bw.de/ocpdb/api/public/v1/locations?lat=48.65&lon=9.0&radius=190000"
+FN_OC_KREISE = r'''// total_count of the radius query -> one request per page of 1000
+if (msg.statusCode !== 200 || !msg.payload || typeof msg.payload.total_count !== 'number') {
+    node.warn('OCPDB: total_count not readable (' + msg.statusCode + ') — run skipped');
+    return null;
 }
-return [msgs];'''.replace("__SEITEN__", str(OC_SEITEN))
+const total = msg.payload.total_count;
+let seiten = Math.ceil(total / 1000);
+if (seiten > __MAX__) {
+    node.warn('OCPDB: ' + total + ' locations need ' + seiten + ' pages, capped at __MAX__ — raise OC_MAX_SEITEN');
+    seiten = __MAX__;
+}
+if (!seiten) { node.warn('OCPDB: total_count 0 — run skipped'); return null; }
+const msgs = [];
+for (let p = 0; p < seiten; p++) {
+    msgs.push({ url: '__BASIS__&limit=1000&offset=' + (p * 1000),
+                ocSeiten: seiten, ocGesamt: total,
+                parts: { id: msg._msgid, index: p, count: seiten }, topic: 'oc' + p });
+}
+node.status({ text: total + ' Standorte, ' + seiten + ' Seiten' });
+return [msgs];'''.replace("__MAX__", str(OC_MAX_SEITEN)).replace("__BASIS__", OC_BASIS)
 
-FN_OC_WRAP = r'''if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.items)) {
-    msg.payload = [];
+FN_OC_WRAP = r'''// Page -> { ok, items, rows }. A failed page is marked, not dropped silently:
+// the build step then treats the run as incomplete (no prune).
+const kopf = { ok: false, items: 0, seiten: msg.ocSeiten, gesamt: msg.ocGesamt, rows: [] };
+if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.items)) {
+    msg.payload = kopf;
     return msg;
 }
 // Apostroph bricht den TRoE-SQL-Insert (bekannter Orion-LD-Bug)
@@ -2767,7 +3032,9 @@ const imKasten = i => {
     const la = parseFloat(c.latitude), lo = parseFloat(c.longitude);
     return isFinite(la) && isFinite(lo) && la >= 47.4 && la <= 49.9 && lo >= 7.3 && lo <= 10.7;
 };
-msg.payload = msg.payload.items
+kopf.ok = true;
+kopf.items = msg.payload.items.length;
+kopf.rows = msg.payload.items
     .filter(i => i.coordinates && imKasten(i))
     .map(i => {
         let live = 0, frei = 0, laedt = 0, defekt = 0;
@@ -2786,14 +3053,27 @@ msg.payload = msg.payload.items
                 clean((i.address || '') + ', ' + (i.postal_code || '') + ' ' + (i.city || '')),
                 laedt];
     });
+msg.payload = kopf;
 return msg;'''
 
-FN_OC_BUILD = r'''// OCPDB-Kreisantworten -> ChargingSummary je Gemeinde (Dedupe über Standort-ID)
-''' + geo_helper("OCPDB") + r'''
+FN_OC_BUILD = r'''// OCPDB-Seiten -> ChargingSummary je Gemeinde + EVChargingStation (Dedupe über Standort-ID)
+''' + geo_helper("OCPDB") + PRUNE_HELPER + CHUNK_HELPER + r'''
 const seen = {};
+let okSeiten = 0, items = 0, erwartet = null, gesamt = null;
 for (const part of msg.payload) {
-    if (!Array.isArray(part)) continue;
-    for (const row of part) seen[row[0]] = row;
+    if (!part || !Array.isArray(part.rows)) continue;
+    if (part.ok) { okSeiten++; items += part.items; }
+    if (part.seiten) erwartet = part.seiten;
+    if (part.gesamt) gesamt = part.gesamt;
+    for (const row of part.rows) seen[row[0]] = row;
+}
+// Complete: every page arrived and answered, and together they hold what
+// total_count announced (small tolerance: the inventory can move between the
+// page requests). Only a complete run may prune.
+const vollstaendig = !!erwartet && okSeiten === erwartet && msg.payload.length === erwartet
+                     && !!gesamt && items >= gesamt * 0.98;
+if (!vollstaendig) {
+    node.warn('OCPDB: incomplete run (' + okSeiten + '/' + erwartet + ' pages, ' + items + '/' + gesamt + ' locations) — no prune');
 }
 // Strikte Zuordnung: nur echte Polygon-Treffer. Der Umkasten aus dem
 // Wrap-Schritt zieht auch Bayern, Hessen und die Schweiz herein; der
@@ -2807,7 +3087,7 @@ for (const id of Object.keys(seen)) {
     const b = byGem[g[0]] = byGem[g[0]] || { n: 0, evse: 0, live: 0, frei: 0, laedt: 0, defekt: 0 };
     b.n++; b.evse += evse; b.live += live; b.frei += frei; b.laedt += laedt; b.defekt += defekt;
 }
-const entities = Object.keys(byGem).map(ags => {
+const summen = Object.keys(byGem).map(ags => {
     const b = byGem[ags];
     const e = {
         id: 'urn:ngsi-ld:ChargingSummary:bw-' + ags,
@@ -2820,28 +3100,35 @@ const entities = Object.keys(byGem).map(ags => {
     if (b.live) {
         e.liveEvse = P(b.live, 'C62'); e.availableEvse = P(b.frei, 'C62');
         e.chargingEvse = P(b.laedt, 'C62'); e.defectEvse = P(b.defekt, 'C62');
+        // Freshness of the live sum (like ParkingSummary): unchanged sums only
+        // refresh dateObserved, ~900 × 24 ≈ 22,000 rows/day.
+        e.dateObserved = { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } };
     }
     return e;
 });
+const summenIds = new Set(summen.map(e => e.id));
 
 // --- Einzelstationen für JEDE Gemeinde (Stufe-3-Baustein »laden-detail«/»laden-live«) ---
 // Der Abzug enthält die Standorte ohnehin; sie zu verwerfen wäre die eigentliche
-// Verschwendung. Damit die Zeitreihen-DB nicht explodiert (ca. 13.000 Standorte
-// × 48 Läufe/Tag), wird nur upsertet, was sich seit dem letzten Lauf geändert
-// hat. Signatur = Statuswerte; Stammdaten ändern sich praktisch nie.
-const alt = flow.get('ocSignatur') || {};
-const neu = {};
-let geaendert = 0;
+// Verschwendung. Damit die Zeitreihen-DB nicht explodiert (ca. 12.500 Standorte
+// × 24 Läufe/Tag), wird nur upsertet, was sich seit dem letzten Lauf geändert
+// hat. Signatur = Statuswerte; Stammdaten ändern sich praktisch nie. The table
+// is keyed by entity id (the id carries the municipality slug, so a changed
+// assignment is a new entity and gets written); the former 'ocSignatur' table
+// keyed by OCPDB id is dropped, which rewrites all stations once.
+//
+// Freshness: stations with live status (about 6,100) carry dateObserved; an
+// unchanged one refreshes it every third run (freshTurn), about every 3 h:
+// ~6,100 × 8 ≈ 49,000 rows/day (every run: ~147,000). Register entries without
+// live status have no observation and get no dateObserved.
+if (flow.get('ocSignatur') !== undefined) flow.set('ocSignatur', undefined);
+const stations = [];
 for (const id of Object.keys(seen)) {
     const [, lat, lon, evse, live, frei, defekt, name, betreiber, adresse, laedt] = seen[id];
     const g = inBW(lat, lon);
     if (!g) continue;
     const slug = g[8];
     if (!slug) continue;
-    const sig = evse + '|' + live + '|' + frei + '|' + laedt + '|' + defekt;
-    neu[id] = sig;
-    if (alt[id] === sig) continue;      // unverändert -> kein Schreibvorgang
-    geaendert++;
     const e = {
         id: 'urn:ngsi-ld:EVChargingStation:' + slug + '-ocpdb-' + id,
         type: 'EVChargingStation',
@@ -2859,18 +3146,52 @@ for (const id of Object.keys(seen)) {
     if (live) {
         e.liveEvse = P(live, 'C62'); e.availableEvse = P(frei, 'C62');
         e.chargingEvse = P(laedt, 'C62'); e.defectEvse = P(defekt, 'C62');
+        e.dateObserved = { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } };
     }
-    entities.push(e);
+    stations.push(e);
 }
-flow.set('ocSignatur', neu);
+const stationIds = new Set(stations.map(e => e.id));
+// Municipal sums: written only on change (before: every sum, every hour, ~1,000
+// × 24 × 3–7 attributes). Replace mode only after a complete run.
+const entities = gateChanged(node, summen, 'ocSumSig',
+    e => [e.locationCount.value, e.evseCount.value, e.liveEvse ? e.liveEvse.value : '', e.availableEvse ? e.availableEvse.value : '',
+          e.chargingEvse ? e.chargingEvse.value : '', e.defectEvse ? e.defectEvse.value : ''].join('|'),
+    { replace: vollstaendig });
+// Replace mode only after a complete run; an incomplete one merges, so the
+// signatures of stations on a missing page survive.
+const geaendert = gateChanged(node, stations, 'ocSig',
+    e => [e.socketNumber.value, e.liveEvse ? e.liveEvse.value : 0, e.availableEvse ? e.availableEvse.value : 0,
+          e.chargingEvse ? e.chargingEvse.value : 0, e.defectEvse ? e.defectEvse.value : 0].join('|'),
+    { replace: vollstaendig, freshEvery: 3, periodMs: 3600e3 });
+const nSummen = entities.length;
+for (const e of geaendert) entities.push(e);
+const statusText = Object.keys(seen).length + ' Standorte → ' + Object.keys(byGem).length
+              + ' Gemeinden · ' + stations.length + ' Stationen, geschrieben: ' + geaendert.length + ' Stationen, ' + nSummen + ' Summen';
+node.status({ text: statusText });
+// Complete inventory: remove stations and municipal sums it no longer
+// contains. Register entries and sums without live data are never refreshed,
+// so an id must be missing in consecutive complete runs for 24 h (confirmKey).
+if (vollstaendig && PRUNE_OK && stationIds.size) {
+    (async () => {
+        await pruneStale({ label: 'OCPDB EVChargingStation', type: 'EVChargingStation',
+                           pattern: '^urn:ngsi-ld:EVChargingStation:[a-z0-9-]+-ocpdb-[A-Za-z0-9_-]+$',
+                           keep: stationIds, confirmKey: 'ocPruneStation', confirmMs: 24 * 3600e3,
+                           sigKey: 'ocSig', intervalMs: ''' + interval_ms("ladesaeulen-bw") + r''', status: statusText });
+        await pruneStale({ label: 'OCPDB ChargingSummary', type: 'ChargingSummary',
+                           pattern: '^urn:ngsi-ld:ChargingSummary:bw-[0-9]{8}$',
+                           keep: summenIds, confirmKey: 'ocPruneSummary', confirmMs: 24 * 3600e3,
+                           intervalMs: ''' + interval_ms("ladesaeulen-bw") + r''', status: statusText });
+    })().catch(e => node.warn('OCPDB: prune failed (' + (e && e.message ? e.message : e) + ')'));
+} else {
+    flow.set('ocPruneStation', {});
+    flow.set('ocPruneSummary', {});
+}
 if (!entities.length) return null;
-node.status({ text: Object.keys(seen).length + ' Standorte → ' + Object.keys(byGem).length
-              + ' Gemeinden · ' + geaendert + ' Stationen aktualisiert' });
-''' + CHUNK_HELPER + r'''
 return [emitChunks(node, msg, entities, 100)];'''
 
-inject("udp-rt-bo-inject", Z, "stündlich", 3600, 660, ["udp-rt-bo-msgs"], 860)
-func("udp-rt-bo-msgs", Z, f"OCPDB-Seiten ({OC_SEITEN})", FN_OC_KREISE, ["udp-rt-bo-rate"], 860, x=380)
+inject("udp-rt-bo-inject", Z, "stündlich", 3600, 660, ["udp-rt-bo-count"], 860)
+http_get("udp-rt-bo-count", Z, "OCPDB Anzahl", OC_BASIS + "&limit=1&offset=0", ["udp-rt-bo-msgs"], 860, x=300)
+func("udp-rt-bo-msgs", Z, "OCPDB-Seiten (total_count)", FN_OC_KREISE, ["udp-rt-bo-rate"], 860, x=520)
 # 3 s statt 1 s zwischen den Seiten: Jede Antwort ist ~3 MB groß; im Sekundentakt
 # überlappen die Downloads und einzelne Seiten kamen abgeschnitten an
 # ("JSON parse error", 11 in 70 min) — die Standorte dieser Seiten fehlten dann
@@ -2879,9 +3200,14 @@ delay_slow("udp-rt-bo-rate", Z, ["udp-rt-bo-get"], 920, 3)
 http_get("udp-rt-bo-get", Z, "OCPDB", "", ["udp-rt-bo-wrap"], 920, x=620)
 func("udp-rt-bo-wrap", Z, "verschlanken", FN_OC_WRAP, ["udp-rt-bo-join"], 920, x=840)
 # Betriebsregel: Join-Timeout >= Seitenzahl x Takt, plus Luft für die Downloads
+# (60 Seiten × 3 s = 180 s).
 join_parts("udp-rt-bo-join", Z, ["udp-rt-bo-build"], 980, x=400, timeout=420)
-func("udp-rt-bo-build", Z, "→ ChargingSummary", FN_OC_BUILD, ["udp-rt-bo-post"], 980)
-upsert("udp-rt-bo-post", Z, ["udp-rt-bo-debug"], 980)
+func("udp-rt-bo-build", Z, "→ ChargingSummary + Stationen", FN_OC_BUILD, ["udp-rt-bo-rate2"], 980, libs=PRUNE_LIBS)
+# Rate limit towards Orion like parken/puls: a full rewrite (first run, ~125
+# chunks) must not hit the broker at once, or timed-out chunks come back every
+# hour as the next burst.
+delay_rate("udp-rt-bo-rate2", Z, ["udp-rt-bo-post"], 1040)
+upsert_commit("udp-rt-bo-post", Z, ["udp-rt-bo-debug"], 1040)
 debug("udp-rt-bo-debug", Z, "Laden-BW Ergebnis", 980)
 
 FN_ECO_BW = r'''// Eco-Counter v2 (alle Kommunen) -> Zählstellen + Gemeinde-Summen
@@ -2964,7 +3290,7 @@ Z = "udp-rt-tab-bw3"
 tab(Z, "BW: Energie & Puls",
     "MaStR-PV-Rotation (150 Gemeinden je Nacht, Vollzyklus ~1 Woche; Fortschritt im "
     "global-Kontext 'mastrPos') und stündlicher Gemeinde-Puls für alle Gemeinden mit "
-    "mindestens 3 Datenkomponenten.")
+    "mindestens 3 Datenkomponenten (ohne die Kreis-Warnlage).")
 
 FN_MASTR_ROT = r'''// Rotation: 150 Gemeinden je Nacht, je 5 Seiten à 2000 (deckt bis 10.000 Anlagen)
 const GEM = global.get('bwGemeinden');
@@ -3066,73 +3392,124 @@ func("udp-rt-bx-build", Z, "→ EnergyMonitor je Gemeinde", FN_MASTR_ROT_BUILD, 
 upsert("udp-rt-bx-post", Z, ["udp-rt-bx-debug"], 200)
 debug("udp-rt-bx-debug", Z, "MaStR-BW Ergebnis", 200)
 
-FN_PULSE_BW_MSGS = r'''// Aggregat-Typen einsammeln (6 Abfragen)
-const Q = [
-    'type=PublicTransportStop&attrs=ags,avgDelayMinutes',
-    'type=BikeParking&attrs=ags,availableSpotNumber,totalSpotNumber',
-    'type=AirQualityObserved&idPattern=urn:ngsi-ld:AirQualityObserved:bw-.*&attrs=ags,pm25,pm10,airQualityIndex',
-    'type=ParkingSummary&attrs=ags,realtimeFree,realtimeSites',
-    'type=SharingSummary&attrs=ags,availableVehicles',
-    'type=ChargingSummary&attrs=ags,liveEvse,availableEvse',
-    'type=RoadWork&idPattern=urn:ngsi-ld:RoadWork:bw-svz-.*&attrs=ags',
-    'type=Alert&idPattern=urn:ngsi-ld:Alert:bw-kreis-.*&attrs=ags,maxSeverity,activeCount',
-];
-return [Q.map((q, i) => ({
-    url: 'http://orion-ld:1026/ngsi-ld/v1/entities?' + q + '&options=keyValues&limit=1000',
-    parts: { id: msg._msgid, index: i, count: Q.length }, topic: 'pq' + i
-}))];'''
-
-FN_PULSE_BW_BUILD = r'''// Gemeinde-Puls für alle Gemeinden mit >= 3 Komponenten
+FN_PULSE_BW_BUILD = r'''// Gemeinde-Puls: aggregates of the other connectors per municipality -> CityPulse
+//
+// Method (see docs/framework-dashboards.md, "Gemeinde-Puls"):
+//   * every query is paginated (count + limit/offset); a failed or incomplete
+//     query skips the whole run, instead of silently scoring on a partial
+//     picture (limit=1000 used to cut off ChargingSummary, ~1,100 entities);
+//   * feinstaub: citizen sensor median, only if observed within 2 h (as the
+//     dashboard); luftindex: UBA; laden: share of free live charge points;
+//     oepnv: median delay (only if observed within 2 h); br: free share of
+//     realtime bike parking of any connector (observed within 6 h);
+//   * sharing: free-floating vehicles per 1,000 inhabitants (5 or more = 100),
+//     so a small town is not scored against the raw count of a city;
+//   * baustellen: the SVZ roadworks feed covers the whole state, so a
+//     municipality without roadworks scores 100 – but only if the feed is
+//     alive (a roadwork observed within 24 h); otherwise the component is left
+//     out everywhere instead of rating every municipality "no roadworks";
+//   * warnungen: warning level of the district. It exists for every
+//     municipality, so it is weighted in but does not count towards the
+//     minimum: a pulse needs at least 3 OTHER components.
+// Municipalities below the minimum get no pulse, and their old one is pruned.
+const GEM = global.get('bwGemeinden');
+if (!Array.isArray(GEM)) { node.warn('Puls-BW: bwGemeinden not in context yet — run skipped'); return null; }
+const GRZ = global.get('bwGrenzen') || null;
+''' + PRUNE_OK_JS + PRUNE_HELPER + CHUNK_HELPER + r'''
 const NOW = new Date().toISOString();
 const CTX = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld';
+const H = 3600e3, jetzt = Date.now();
 const clamp = x => Math.max(0, Math.min(100, x));
-const gem = {};
-const G = (ags) => gem[ags] = gem[ags] || {};
-for (const list of msg.payload) {
-    if (!Array.isArray(list)) continue;
-    for (const e of list) {
-        const id = e.id || '';
-        const ags = e.ags;
-        if (!ags) continue;
-        if (id.includes(':PublicTransportStop:')) G(ags).delay = e.avgDelayMinutes;
-        else if (id.includes(':BikeParking:')) {
-            const g0 = G(ags);
-            g0.brFrei = (g0.brFrei || 0) + (e.availableSpotNumber || 0);
-            g0.brKap = (g0.brKap || 0) + (e.totalSpotNumber || 0);
-        }
-        else if (id.includes(':AirQualityObserved:bw-sc-')) {
-            // Gleiche Plausibilitätsgrenze wie beim Einlesen (SDS011 in Sättigung
-            // meldet ~500 µg/m³). Greift zusätzlich hier, weil Altbestände im
-            // Broker nicht überschrieben werden, solange kein Sensor mehr liefert.
-            const pm = e.pm25 ?? e.pm10;
-            if (typeof pm === 'number' && pm <= 400) G(ags).pm25 = pm;
-        }
-        else if (id.includes(':AirQualityObserved:bw-uba-')) G(ags).aqi = e.airQualityIndex;
-        else if (id.includes(':SharingSummary:')) G(ags).sharing = (G(ags).sharing || 0) + (e.availableVehicles || 0);
-        else if (id.includes(':ChargingSummary:') && e.liveEvse) G(ags).laden = (e.availableEvse || 0) / e.liveEvse;
-        else if (id.includes(':RoadWork:bw-svz-')) G(ags).baustellen = (G(ags).baustellen || 0) + 1;
-        else if (id.includes(':Alert:bw-kreis-')) {
-            // Kreis-Warnung auf alle Gemeinden des Kreises anwenden (Präfix)
-            G('K' + ags).warnSev = Math.max(G('K' + ags).warnSev || 0, e.maxSeverity || 0);
+const get = path => new Promise((resolve, reject) => {
+    const r = http.get('http://orion-ld:1026/ngsi-ld/v1/' + path, { headers: { Accept: 'application/json' } }, res => {
+        const parts = [];
+        res.on('data', d => parts.push(d));
+        res.on('error', reject);
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(parts).toString('utf8') }));
+    });
+    r.on('error', reject);
+    r.setTimeout(30000, () => r.destroy(new Error('timeout after 30 s')));
+});
+// Offset paging has no stable order while other flows write: an entity can
+// show up on two pages. Deduplicated by id; a skipped one fails the count check.
+async function alle(label, q) {
+    const byId = new Map();
+    let total = null;
+    for (let page = 0; page < 50; page++) {
+        const res = await get('entities?' + q + '&options=keyValues&count=true&limit=1000&offset=' + (page * 1000));
+        if (res.status !== 200) throw new Error(label + ': HTTP ' + res.status);
+        const list = JSON.parse(res.text);
+        if (!Array.isArray(list)) throw new Error(label + ': response is not an array');
+        if (total === null) total = parseInt(res.headers['ngsild-results-count'], 10);
+        for (const e of list) if (e && e.id) byId.set(e.id, e);
+        if (list.length < 1000) {
+            if (isFinite(total) && byId.size < total) throw new Error(label + ': incomplete (' + byId.size + '/' + total + ')');
+            return [...byId.values()];
         }
     }
+    throw new Error(label + ': more than 50 pages');
 }
+const idp = p => '&idPattern=' + encodeURIComponent(p);
+let d;
+try {
+    d = {
+        pt: await alle('PublicTransportStop', 'type=PublicTransportStop&attrs=ags,avgDelayMinutes,dateObserved'),
+        // all BikeParking (ParkAPI and municipal connectors); the 6 h age
+        // check below leaves out legacy and static entities
+        br: await alle('BikeParking', 'type=BikeParking&attrs=ags,availableSpotNumber,totalSpotNumber,dateObserved'),
+        aq: await alle('AirQualityObserved', 'type=AirQualityObserved' + idp('^urn:ngsi-ld:AirQualityObserved:bw-(sc|uba)-') + '&attrs=ags,pm25,pm10,airQualityIndex,dateObserved'),
+        sh: await alle('SharingSummary', 'type=SharingSummary&attrs=ags,availableVehicles'),
+        ch: await alle('ChargingSummary', 'type=ChargingSummary&attrs=ags,liveEvse,availableEvse'),
+        rw: await alle('RoadWork', 'type=RoadWork' + idp('^urn:ngsi-ld:RoadWork:bw-svz-') + '&attrs=ags,dateObserved'),
+        al: await alle('Alert', 'type=Alert' + idp('^urn:ngsi-ld:Alert:bw-kreis-') + '&attrs=ags,maxSeverity')
+    };
+} catch (e) {
+    node.warn('Puls-BW: query failed, run skipped (' + (e && e.message ? e.message : e) + ')');
+    return null;
+}
+// keyValues renders a DateTime either as string or as { '@type', '@value' }
+const zeit = e => { const v = e && e.dateObserved; const t = Date.parse(v && typeof v === 'object' ? v['@value'] : v); return isFinite(t) ? t : 0; };
+const frisch = (e, ms) => jetzt - zeit(e) <= ms;
+const gem = {};
+const G = ags => gem[ags] = gem[ags] || {};
+for (const e of d.pt) if (e.ags && typeof e.avgDelayMinutes === 'number' && frisch(e, 2 * H)) G(e.ags).delay = e.avgDelayMinutes;
+for (const e of d.br) {
+    if (!e.ags || !frisch(e, 6 * H) || typeof e.availableSpotNumber !== 'number') continue;
+    const g0 = G(e.ags);
+    g0.brFrei = (g0.brFrei || 0) + e.availableSpotNumber;
+    g0.brKap = (g0.brKap || 0) + (e.totalSpotNumber || 0);
+}
+for (const e of d.aq) {
+    if (!e.ags) continue;
+    if (String(e.id).includes(':AirQualityObserved:bw-sc-')) {
+        // Gleiche Plausibilitätsgrenze wie beim Einlesen (SDS011 in Sättigung
+        // meldet ~500 µg/m³); only current medians (the dashboard uses 2 h too).
+        const pm = e.pm25 ?? e.pm10;
+        if (typeof pm === 'number' && pm <= 400 && frisch(e, 2 * H)) G(e.ags).pm25 = pm;
+    } else if (typeof e.airQualityIndex === 'number') G(e.ags).aqi = e.airQualityIndex;
+}
+for (const e of d.sh) if (e.ags) G(e.ags).sharing = (G(e.ags).sharing || 0) + (e.availableVehicles || 0);
+for (const e of d.ch) if (e.ags && e.liveEvse) G(e.ags).laden = (e.availableEvse || 0) / e.liveEvse;
+const rwAktiv = d.rw.some(e => frisch(e, 24 * H));
+const baustellen = {};
+for (const e of d.rw) if (e.ags) baustellen[e.ags] = (baustellen[e.ags] || 0) + 1;
+const warnSev = {};
+for (const e of d.al) if (e.ags) warnSev[e.ags] = Math.max(warnSev[e.ags] || 0, e.maxSeverity || 0);
 const entities = [];
-for (const ags of Object.keys(gem)) {
-    if (ags.startsWith('K')) continue;
-    const d = gem[ags];
-    const kreis = gem['K' + ags.slice(0, 5)] || {};
+let unterMinimum = 0;
+for (const r of GEM) {
+    const ags = r[0], ew = r[6];
+    const x = gem[ags] || {};
     const comp = [];
-    if (d.pm25 != null) comp.push(['feinstaub', Math.round(clamp(100 - d.pm25 * 4)), 0.3]);
-    if (d.aqi != null) comp.push(['luftindex', Math.round(clamp((5 - d.aqi) * 25)), 0.2]);
-    if (d.sharing != null) comp.push(['sharing', Math.round(clamp(d.sharing)), 0.1]);
-    if (d.laden != null) comp.push(['laden', Math.round(d.laden * 100), 0.15]);
-    if (d.baustellen != null) comp.push(['baustellen', Math.round(clamp(100 - d.baustellen * 5)), 0.15]);
-    if (d.delay != null) comp.push(['oepnv', Math.round(clamp(100 - d.delay * 8)), 0.2]);
-    if (d.brKap) comp.push(['br', Math.round(clamp(d.brFrei / d.brKap * 100)), 0.05]);
-    const sev = kreis.warnSev || 0;
-    comp.push(['warnungen', [100, 80, 60, 30, 0][sev] ?? 0, 0.2]);
-    if (comp.length < 3) continue;
+    if (x.pm25 != null) comp.push(['feinstaub', Math.round(clamp(100 - x.pm25 * 4)), 0.3]);
+    if (x.aqi != null) comp.push(['luftindex', Math.round(clamp((5 - x.aqi) * 25)), 0.2]);
+    if (x.sharing != null && ew > 0) comp.push(['sharing', Math.round(clamp(x.sharing / ew * 1000 * 20)), 0.1]);
+    if (x.laden != null) comp.push(['laden', Math.round(x.laden * 100), 0.15]);
+    if (rwAktiv) comp.push(['baustellen', Math.round(clamp(100 - (baustellen[ags] || 0) * 5)), 0.15]);
+    if (x.delay != null) comp.push(['oepnv', Math.round(clamp(100 - x.delay * 8)), 0.2]);
+    if (x.brKap) comp.push(['br', Math.round(clamp(x.brFrei / x.brKap * 100)), 0.05]);
+    if (comp.length < 3) { unterMinimum++; continue; }   // warnungen does not count
+    comp.push(['warnungen', [100, 80, 60, 30, 0][warnSev[ags.slice(0, 5)] || 0] ?? 0, 0.2]);
     const wSum = comp.reduce((s, c) => s + c[2], 0);
     const index = Math.round(comp.reduce((s, c) => s + c[1] * c[2], 0) / wSum);
     entities.push({
@@ -3141,25 +3518,42 @@ for (const ags of Object.keys(gem)) {
         ags: { type: 'Property', value: ags },
         pulseIndex: { type: 'Property', value: index, observedAt: NOW },
         components: { type: 'Property', value: comp, observedAt: NOW },
+        dateObserved: { type: 'Property', value: { '@type': 'DateTime', '@value': NOW } },
         '@context': CTX
     });
 }
-if (!entities.length) return null;
-''' + CHUNK_HELPER + r'''
+const statusText = entities.length + ' Gemeinden mit Puls · ' + unterMinimum + ' unter 3 Komponenten'
+              + (rwAktiv ? '' : ' · Baustellen-Feed ohne aktuelle Daten');
+if (!entities.length) { node.warn('Puls-BW: no municipality with 3 components'); return null; }
+// Municipalities no longer reaching the minimum (or no longer in the master
+// data) lose their pulse. Every pulse produced is refreshed each run, so an
+// age of 24 h means "not produced for 24 runs".
+// Share limit 80 % instead of 30 %: a change of the method (like the stricter
+// minimum) can legitimately drop more than 30 % at once, and a prune that
+// skips forever would leave frozen pulses behind. CityPulse is derived data
+// (recomputed every hour, history stays in TRoE), and a run whose queries
+// failed or were incomplete never gets here.
+if (PRUNE_OK) pruneStale({
+    label: 'Puls-BW', type: 'CityPulse',
+    pattern: '^urn:ngsi-ld:CityPulse:bw-[0-9]{8}$',
+    attrs: 'ags,dateObserved', maxFraction: 0.8,
+    keep: new Set(entities.map(e => e.id)), graceMs: 24 * 3600e3, sigKey: 'pulseSig',
+    intervalMs: ''' + interval_ms("puls-bw") + r''', status: statusText
+}).catch(e => node.warn('Puls-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
 // Stündlicher Lauf, aber die meisten Komponenten ändern sich seltener — ohne Gate
 // schrieb jeder Lauf alle Gemeinde-Pulse erneut in die TRoE-Historie (~38k Zeilen/Tag).
+// Unchanged pulses only refresh dateObserved (one row per pulse and run).
 const geaendert = gateChanged(node, entities, 'pulseSig',
-    e => e.pulseIndex.value + '|' + JSON.stringify(e.components.value));
-if (!geaendert.length) { node.status({ text: 'unverändert (' + entities.length + ')' }); return null; }
+    e => e.pulseIndex.value + '|' + JSON.stringify(e.components.value), { replace: true });
+node.status({ text: statusText });
+if (!geaendert.length) return null;
 return [emitChunks(node, msg, geaendert, 100)];'''
 
-inject("udp-rt-bz-inject", Z, "stündlich", 3600, 840, ["udp-rt-bz-msgs"], 300)
-func("udp-rt-bz-msgs", Z, "Aggregat-Abfragen (6)", FN_PULSE_BW_MSGS, ["udp-rt-bz-rate"], 300, x=400)
-delay_rate("udp-rt-bz-rate", Z, ["udp-rt-bz-get"], 360)
-http_get("udp-rt-bz-get", Z, "Orion-Abfrage", "", ["udp-rt-bz-join"], 360, x=620)
-join_parts("udp-rt-bz-join", Z, ["udp-rt-bz-build"], 420, x=400, timeout=60)
-func("udp-rt-bz-build", Z, "→ CityPulse je Gemeinde", FN_PULSE_BW_BUILD, ["udp-rt-bz-post"], 420)
-upsert("udp-rt-bz-post", Z, ["udp-rt-bz-debug"], 420)
+inject("udp-rt-bz-inject", Z, "stündlich", 3600, 840, ["udp-rt-bz-build"], 300)
+func("udp-rt-bz-build", Z, "→ CityPulse je Gemeinde", FN_PULSE_BW_BUILD, ["udp-rt-bz-rate"], 300, x=400,
+     libs=PRUNE_LIBS)
+delay_rate("udp-rt-bz-rate", Z, ["udp-rt-bz-post"], 360)
+upsert_commit("udp-rt-bz-post", Z, ["udp-rt-bz-debug"], 420)
 debug("udp-rt-bz-debug", Z, "Puls-BW Ergebnis", 420)
 catch("udp-rt-bw3-catch", Z, "udp-rt-bw3-errdebug", 510)
 debug("udp-rt-bw3-errdebug", Z, "Fehler", 510, x=380)

@@ -252,7 +252,17 @@ zielten nur auf den kleineren Teil des Volumens:
    trägt die CityPulse-Aggregate (unveränderte Gemeinde-Pulse entfallen),
    und der ÖPNV-Abfahrtsmonitor dedupliziert je Attribut: Stammdaten wie
    `name`/`location`/`stopCode` gehen nur mit, wenn sie sich geändert haben
-   (`options=update` lässt den Broker-Rest unangetastet).
+   (`options=update` lässt den Broker-Rest unangetastet). Eine Signatur gilt
+   erst, wenn der Broker den Schreibvorgang bestätigt hat (2xx, bei 207 je
+   Entität); scheitert oder hängt der Upsert, geht der Wert im nächsten Lauf
+   erneut heraus. Vorher froren Werte bei Orion-Hängern wochenlang ein.
+   Unveränderte Einzelstandorte mit Echtzeitwerten frischen nur `dateObserved`
+   auf: Parkanlagen in jedem Lauf (~3.000 Zeilen/Tag, dazu ~800 für die
+   Parken-Summen), Ladesummen mit Livewerten stündlich (~22.000),
+   Carsharing-Stationen und Ladepunkte mit Livestatus reihum etwa alle 3 h
+   (~32.000 bzw. ~49.000 Zeilen/Tag). Reine Registereinträge ohne Echtzeitwert
+   bekommen keinen Zeitstempel. Die Ladesummen werden seither ebenfalls nur bei
+   Änderung voll geschrieben (vorher jede Summe stündlich mit allen Attributen).
 2. **Takt an den Nutzen angepasst.** Der OCPDB-Abzug läuft stündlich statt
    halbstündlich, die Feinstaub-Einzelsensoren stündlich statt alle 15 min
    (die Gemeindemediane bleiben im 15-Minuten-Takt).
@@ -275,7 +285,14 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
    Budgets aller Konnektoren und übergibt sie an die TRoE-Statistik
    (`troe-stats`, alle 10 Minuten); wer sein Tagesvolumen überschreitet,
    erscheint als Warnung im Node-RED-Log. Konnektoren ohne das Feld verhalten
-   sich unverändert.
+   sich unverändert. Budgets sind grob das Doppelte des geschätzten
+   Regelbetriebs und fangen nur Ausreißer: `EVChargingStation` 170.000
+   (Frische ~49.000 + Änderungen ~35.000), `ChargingSummary` 80.000
+   (~22.000 + ~17.000), `CarSharingStation` 200.000 (~32.000 Frische, die
+   Änderungsrate ist geschätzt), `CityPulse` 100.000 (bis 1.103 Gemeinden ×
+   24 Läufe × Frische plus Änderungen). Der erste Lauf nach einem Deploy mit
+   Vollschrieb (z. B. ~125.000 Zeilen für die Ladepunkte) löst einmalig eine
+   Warnung aus.
 5. **Lautes Scheitern statt stiller Lücken.** Der ParkAPI-Abruf prüft, ob sich
    zwei Seiten überschneiden, und bricht den Lauf mit `node.error` ab, statt
    denselben Ausschnitt erneut zu schreiben; ein erreichter Seitendeckel
@@ -309,18 +326,18 @@ sie nicht mehr von selbst weg. Zwei getrennte Aufräumschritte:
   Tabelle groß ist (dort 22 GB bei 17 GB frei).
 * **Broker** — die Entitäten selbst stehen in Orion-LD und werden von der
   Retention (nur `pg`) nicht angefasst. Sie tragen ein `ags` und erscheinen
-  daher als veraltete Doppelgänger auf den Parken-Karten. Einmalig entfernen:
-
-  ```sh
-  # IDs im Alt-Schema sammeln (Orion-LD kann »nicht parkapi-« nicht filtern)
-  curl -s 'http://orion-ld:1026/ngsi-ld/v1/entities?type=ParkingSite&limit=1000&attrs=ags' \
-    | jq -r '.[].id' | grep -v ':parkapi-' > alt-ids.txt
-  # in Stapeln zu 100 löschen (entityOperations/delete nimmt ein ID-Array)
-  split -l 100 alt-ids.txt stapel- && for f in stapel-*; do
-    jq -Rn '[inputs]' < "$f" | curl -s -X POST \
-      'http://orion-ld:1026/ngsi-ld/v1/entityOperations/delete' \
-      -H 'Content-Type: application/json' --data-binary @- ; done
-  ```
+  daher als veraltete Doppelgänger auf den Parken-Karten. Seit der
+  Datenfrische-Überarbeitung räumt `parken-bw` sie selbst ab, höchstens einmal
+  täglich und nur nach einem vollständigen Lauf: gelöscht werden nur IDs im
+  Alt-Schema (Zeichen `[a-z0-9.-]`, beginnend mit einem bekannten
+  Gemeinde-Slug, nicht `parkapi-`, Datenlieferant »MobiData BW ParkAPI«), die
+  seit mindestens 7 Tagen unverändert sind. Kommunale Konnektoren mit
+  Slug-Präfix-IDs bleiben dadurch unberührt, ebenso alles, was nach der
+  Umstellung am 25.08.2026 angelegt wurde (`createdAt`). Der sonst übliche
+  30-%-Deckel greift hier bewusst nicht – keine dieser
+  Entitäten wird je wieder bestätigt. Die erste tägliche Prüfung merkt sich nur
+  den Zeitpunkt, gelöscht wird ab der zweiten. Findet ein vollständiger Lauf
+  keine Alt-Entität mehr, schaltet sich die Prüfung ab.
 
   Ein Wiederauftreten ist ausgeschlossen: Der Konnektor bildet IDs nur noch aus
   dem ParkAPI-Schlüssel, und `tests/static/flow-invarianten.test.js` verbietet
