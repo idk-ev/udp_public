@@ -605,6 +605,13 @@ mongo:
       enabled: true
       nodeSelector: { node-role.kubernetes.io/control-plane: "true" }
       tolerations: [{ key: CriticalAddonsOnly, operator: Exists, effect: NoExecute }]
+      # empfohlen: nur Zonen ohne Datenknoten (s. „Arbiter“ unten)
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #         - matchExpressions:
+      #             - { key: topology.kubernetes.io/zone, operator: In, values: [<zone-c>] }
 ```
 
 Ein Primary braucht die Mehrheit der Stimmen; das Chart verlangt deshalb eine
@@ -642,12 +649,20 @@ die Treiber erfahren von ihm über das Set und überwachen ihn nur – die
 NetworkPolicy lässt das zu).
 
 - **Sidecar `replset`** je Datenmitglied (`files/mongo/replset.js`): initiiert
-  das Set, nimmt Mitglieder und Arbiter auf, entfernt überzählige.
+  das Set, nimmt Mitglieder und Arbiter auf, entfernt überzählige. `mongo-0`
+  initiiert nur, wenn **jedes** andere Datenmitglied antwortet und keinem Set
+  angehört – ein `mongo-0` mit leerem Volume legt so nie ein zweites Set an.
+  Den Arbiter nimmt es erst auf, wenn alle Datenmitglieder PRIMARY/SECONDARY
+  sind und ihren Initial Sync beendet haben (sonst wären die Stimmen während
+  des Syncs nur `mongo-0` + Arbiter).
 - **Readiness** eines Datenmitglieds: bereit nur als PRIMARY oder als SECONDARY
   mit höchstens `replicaSet.reconciler.maxLagSeconds` (30 s) Rückstand. Ein
   zurückkehrendes Mitglied ist während STARTUP2/RECOVERING, beim Warten auf
   seine Konfiguration und beim Aufholen **nicht** bereit (im Test nach einem
   Drain: „410 s Rückstand – nicht bereit“, bereit erst nach dem Aufholen).
+  Ohne sichtbaren Primary ist auch ein Secondary nicht bereit. Folge: ohne
+  Mehrheit bleibt ein StatefulSet-Rollout stehen (er ersetzt keinen nicht
+  bereiten Pod) – dann den betroffenen Pod von Hand löschen.
 - **PDB `mongo`** (`maxUnavailable: 1`) umfasst **alle Stimmen** –
   Datenmitglieder und Arbiter. Solange eine davon fehlt oder nicht bereit ist,
   blockiert es jeden weiteren Drain (im Test: Arbiter weg → Drain eines
@@ -655,12 +670,26 @@ NetworkPolicy lässt das zu).
   Stimmen weg, kein Primary. Kann der Arbiter dauerhaft nirgends laufen,
   blockiert das PDB die Drains der Datenknoten – gewollt, ein weiterer Ausfall
   hieße Stillstand.
-- **Arbiter:** eigene Scheduling-Werte (`replicaSet.arbiter.nodeSelector`,
+- **Arbiter:** eigene Werte (`replicaSet.arbiter.image`, `nodeSelector`,
   `tolerations`, `affinity`, `priorityClassName`, `resources`) und fest eine
-  harte Anti-Affinität gegen die Datenmitglieder. `emptyDir` statt Volume: nach
-  einem Neustart (auch auf einem anderen Knoten) holt er sich die Konfiguration
-  vom Primary. Readiness per TCP; bis die Konfiguration angekommen ist, vergehen
-  wenige Sekunden.
+  harte Anti-Affinität gegen die Datenmitglieder – je Knoten **und je Zone**
+  (`topology.kubernetes.io/zone`): ein Standortausfall darf nie Arbiter und
+  Datenmitglied zugleich treffen. Knoten ohne Zonen-Label fallen nicht unter die
+  Zonenregel (der Scheduler wertet ein fehlendes Label als „kein Konflikt“),
+  dort gilt nur die Knotenregel. Die Regel wirkt in beide Richtungen: Landet der
+  Arbiter in einer Zone, während deren Datenmitglied gerade weg ist, kann dieses
+  nicht zurück (Volume zonengebunden) – daher den Arbiter per
+  `arbiter.affinity.nodeAffinity` fest auf die Zone(n) **ohne** Datenknoten
+  legen. `emptyDir` statt Volume, Root-Dateisystem schreibgeschützt: nach einem
+  Neustart (auch auf einem anderen Knoten) holt er sich die Konfiguration vom
+  Primary; bereit erst im Zustand ARBITER (Probe mit der schlanken
+  `mongo`-Shell des Images).
+- **Image-Wechsel:** `replicaSet.arbiter.image` ist bewusst getrennt von
+  `mongo.image`. StatefulSet-Rollouts beachten keine PDBs – ein gemeinsamer
+  Wechsel startete Arbiter und erstes Datenmitglied gleichzeitig neu (zwei von
+  drei Stimmen weg). Erst `mongo.image` ändern und den Rollout abwarten, dann
+  in einem eigenen Upgrade `arbiter.image`. Das gilt ebenso für andere
+  Änderungen, die beide Pod-Vorlagen betreffen (z. B. `mongo.podSecurityContext`).
 - **Journaling** immer an (vorher `--nojournal`). Wie bisher ohne
   Authentifizierung – erreichbar nur für die freigegebenen Clients und die
   Mitglieder untereinander (NetworkPolicies `allow-mongo`,
@@ -716,23 +745,36 @@ muss gelöscht werden.
   Orion-LD und IoT-Agent rollen wegen des neuen Verbindungsstrings neu aus; die
   alten Pods können bis dahin Fehler liefern (lesend puffert der Cockpit-Cache).
   Schreibende Konnektoren holen das im nächsten Lauf nach.
-- Mit `--wait`/`--atomic` wartet Helm, bis alle Datenmitglieder den Initial
-  Sync beendet haben – bei großen Datenbeständen `--timeout` entsprechend
-  erhöhen.
+- **Als eigenes Upgrade mit `--wait`, nicht mit `--atomic`.** Helm wartet,
+  bis alle Datenmitglieder den Initial Sync beendet haben (`--timeout` bei
+  großen Beständen erhöhen). Ein automatisches Zurückrollen nach einem Timeout
+  setzte `mongo-0` wieder standalone, während `data-mongo-1…` die Kopie aus dem
+  Set behalten – beim nächsten Versuch könnten diese veralteten Kopien mit
+  einem frischen Arbiter die Mehrheit bilden und Primary werden.
 - Vorher sichern (Snapshot von `data-mongo-0` oder `mongodump`).
 
 ```bash
-helm upgrade udp <chart> -n udp -f values-prod.yaml --atomic --timeout 20m
+helm upgrade udp <chart> -n udp -f values-prod.yaml --wait --timeout 30m
 kubectl -n udp logs mongo-0 -c replset        # "initiated …", "added …", "in sync"
 kubectl -n udp exec mongo-0 -c mongo -- mongosh --quiet --eval \
   'rs.status().members.map(m => m.name + " " + m.stateStr)'
 ```
 
-**Zurück zum Standalone:** vorher sicherstellen, dass `mongo-0` Primary ist
-(sonst `rs.stepDown()` auf dem Primary), dann `mongo.replicaSet.enabled: false`,
-`mongo.replicas: 1` – `mongo-0` läuft mit seinen Daten als Einzelinstanz
-weiter, der Arbiter entfällt. Danach `kubectl -n udp delete pvc data-mongo-1 …`:
-veraltete Kopien würden beim erneuten Einschalten sonst wieder aufgenommen.
+**Zurück zum Standalone** (bewusst oder per `helm rollback`): vorher
+sicherstellen, dass `mongo-0` Primary ist (sonst `rs.stepDown()` auf dem
+Primary), dann `mongo.replicaSet.enabled: false`, `mongo.replicas: 1`. Ohne die
+übrigen Stimmen verliert `mongo-0` seine Mehrheit, ist nicht mehr bereit und
+der StatefulSet-Rollout bleibt stehen: `kubectl -n udp delete pod mongo-0`,
+danach läuft es mit seinen Daten als Einzelinstanz weiter.
+
+**Vor dem erneuten Einschalten** `kubectl -n udp delete pvc data-mongo-1 …`
+(alle außer `data-mongo-0`): diese Volumes kennen die Schreibvorgänge der
+Standalone-Zeit nicht (sie stehen in keinem Oplog). Das Chart verweigert das
+Einschalten, solange das laufende StatefulSet standalone ist und solche Volumes
+existieren; startet ein solches Mitglied trotzdem, hält das Sidecar es
+eingefroren und nicht bereit („STALE“ im Log). Beides im Test nachgestellt;
+nach dem Löschen lief die Umstellung sauber durch, inklusive der
+Standalone-Schreibvorgänge.
 
 **Verkleinern:** überzählige Mitglieder entfernt das Sidecar, solange die
 verbleibenden eine Mehrheit bilden. Auf ein einzelnes Mitglied fehlt diese

@@ -106,8 +106,8 @@ spec:
             # search-Domains aus /etc/resolv.conf NICHT an – im Cluster müssen
             # die Upstreams deshalb voll qualifiziert sein. Den Resolver selbst
             # ermittelt der Entrypoint aus /etc/resolv.conf.
-            - { name: UDP_GATEWAY_UPSTREAM, value: {{ .Values.cockpit.gatewayUpstream | default (printf "apisix.%s.svc.cluster.local:9080" .Release.Namespace) | quote }} }
-            - { name: UDP_NODERED_UPSTREAM, value: {{ .Values.cockpit.noderedUpstream | default (printf "node-red.%s.svc.cluster.local:1880" .Release.Namespace) | quote }} }
+            - { name: UDP_GATEWAY_UPSTREAM, value: {{ .Values.cockpit.gatewayUpstream | default (printf "apisix.%s.svc.%s:9080" .Release.Namespace .Values.global.clusterDomain) | quote }} }
+            - { name: UDP_NODERED_UPSTREAM, value: {{ .Values.cockpit.noderedUpstream | default (printf "node-red.%s.svc.%s:1880" .Release.Namespace .Values.global.clusterDomain) | quote }} }
             {{- with .Values.cockpit.trustedProxies }}
             # Proxy networks allowed to set the client address (rate limit key).
             - { name: UDP_TRUSTED_PROXIES, value: {{ join " " . | quote }} }

@@ -26,6 +26,12 @@
 # öffentlichem Traffic; 60 s Kontext / 300 s Zeitreihen genügen den Takten.
 proxy_cache_path /var/cache/nginx/udp levels=1:2 keys_zone=udpapi:10m
                  max_size=100m inactive=15m use_temp_path=off;
+# Node-RED routes (/abfahrten, /warnungen.ics): own zone with a long
+# "inactive" – the stale copy that bridges a Node-RED outage must still exist
+# then. Calendar clients poll /warnungen.ics only every hour or so; with the
+# 15 min of udpapi the entry would usually be gone exactly when it is needed.
+proxy_cache_path /var/cache/nginx/nodered levels=1:2 keys_zone=udpnodered:2m
+                 max_size=20m inactive=24h use_temp_path=off;
 
 server {
     # Client address behind the ingress controller / load balancer: take it
@@ -101,7 +107,7 @@ server {
         set $nodered http://${UDP_NODERED_UPSTREAM};
         proxy_pass $nodered;
         proxy_set_header Host $host;
-        proxy_cache udpapi;
+        proxy_cache udpnodered;
         proxy_cache_valid 200 300s;
         proxy_cache_key $request_uri;
         proxy_cache_lock on;
@@ -180,7 +186,7 @@ server {
         set $nodered http://${UDP_NODERED_UPSTREAM};
         proxy_pass $nodered;
         proxy_set_header Host $host;
-        proxy_cache udpapi;
+        proxy_cache udpnodered;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 60s;
         proxy_cache_valid 404 502 503 30s;

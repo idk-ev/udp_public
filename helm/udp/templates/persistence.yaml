@@ -26,6 +26,33 @@
 {{- if and $rs (or (gt $replicas 1) $arb) (or (lt $voters 3) (eq (mod $voters 2) 0)) }}
 {{- fail (printf "mongo: %d data member(s)%s = %d voters – a replica set needs an odd number of at least 3 voters: replicas 3, or replicas 2 with replicaSet.arbiter.enabled" $replicas (ternary " + arbiter" "" $arb) $voters) }}
 {{- end }}
+{{- if and $rs (not (regexMatch "^[A-Za-z0-9_-]+$" (toString $m.replicaSet.name))) }}
+{{- fail (printf "mongo.replicaSet.name %q: only letters, digits, \"_\" and \"-\" – it ends up in connection strings and mongod arguments" (toString $m.replicaSet.name)) }}
+{{- end }}
+{{- /* Stale copies after a way back to standalone (helm rollback, or
+     replicaSet.enabled false): the volumes data-mongo-1.. still hold the
+     OLD set config. Switching the set on again would start them first – with
+     a fresh arbiter they form a majority and elect a stale member primary,
+     and writes made on the standalone mongo-0 in the meantime are not in any
+     oplog, so they would be rolled back or silently missing. While the
+     running StatefulSet is standalone, the chart therefore refuses to enable
+     the set as long as such volumes exist (lookup: live install only). */}}
+{{- if $rs }}
+{{- $live := lookup "apps/v1" "StatefulSet" .Release.Namespace "mongo" }}
+{{- if $live }}
+{{- $liveArgs := list }}
+{{- range $live.spec.template.spec.containers }}{{ if eq .name "mongo" }}{{ $liveArgs = .args | default list }}{{ end }}{{ end }}
+{{- if not (has "--replSet" $liveArgs) }}
+{{- $stale := list }}
+{{- range (lookup "v1" "PersistentVolumeClaim" .Release.Namespace "").items | default list }}
+{{- if regexMatch "^data-mongo-[1-9][0-9]*$" .metadata.name }}{{ $stale = append $stale .metadata.name }}{{ end }}
+{{- end }}
+{{- if $stale }}
+{{- fail (printf "mongo runs standalone, but %s still hold(s) data of an earlier replica set. Enabling the set again would let these stale copies win. Delete them first (kubectl -n %s delete pvc %s), see DEPLOY.md §10b." (join ", " $stale) .Release.Namespace (join " " $stale)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if $rs }}
 apiVersion: v1
 kind: ConfigMap
@@ -103,6 +130,7 @@ spec:
             - name: POD_NAME
               valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - { name: NAMESPACE, value: {{ .Release.Namespace | quote }} }
+            - { name: CLUSTER_DOMAIN, value: {{ .Values.global.clusterDomain | quote }} }
             - { name: RS_NAME, value: {{ $m.replicaSet.name | quote }} }
             - { name: RS_MEMBERS, value: {{ $m.replicas | quote }} }
             # "" = no arbiter (an existing one is removed from the set).
@@ -162,13 +190,17 @@ spec:
 {{- $a := $m.replicaSet.arbiter }}
 {{- /* Scheduling knobs of the arbiter, pod security of the data members. */}}
 {{- $acfg := dict "podSecurityContext" $m.podSecurityContext "nodeSelector" $a.nodeSelector "tolerations" $a.tolerations "priorityClassName" $a.priorityClassName }}
-{{- /* User affinity plus a required anti-affinity against the data members:
-     an arbiter sharing a node with a data member would take two votes down
-     with that node. */}}
+{{- /* User affinity plus a required anti-affinity against the data members,
+     per node and per zone: an arbiter sharing a node or zone with a data
+     member would lose two votes with it. Nodes without a zone label are
+     outside the zone rule (the scheduler treats a missing topology key as
+     "no conflict") – the node rule still holds there. */}}
 {{- $aff := deepCopy ($a.affinity | default dict) }}
 {{- $anti := get $aff "podAntiAffinity" | default dict }}
 {{- $terms := get $anti "requiredDuringSchedulingIgnoredDuringExecution" | default list }}
-{{- $terms = append $terms (dict "topologyKey" "kubernetes.io/hostname" "labelSelector" (dict "matchLabels" (dict "app" "mongo"))) }}
+{{- range $key := list "kubernetes.io/hostname" "topology.kubernetes.io/zone" }}
+{{- $terms = append $terms (dict "topologyKey" $key "labelSelector" (dict "matchLabels" (dict "app" "mongo"))) }}
+{{- end }}
 {{- $_ := set $anti "requiredDuringSchedulingIgnoredDuringExecution" $terms }}
 {{- $_ := set $aff "podAntiAffinity" $anti }}
 ---
@@ -198,21 +230,37 @@ spec:
         {{- toYaml $aff | nindent 8 }}
       containers:
         - name: mongo
-          image: {{ include "udp.image" (dict "ctx" . "image" $m.image) }}
+          image: {{ include "udp.image" (dict "ctx" . "image" $a.image) }}
           args: ["--replSet", {{ $m.replicaSet.name | quote }}, "--wiredTigerCacheSizeGB", "0.25", "--quiet"]
           ports: [{ containerPort: 27017 }]
           securityContext:
-            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" $m.containerSecurityContext) | nindent 12 }}
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" (merge (dict "readOnlyRootFilesystem" true) ($m.containerSecurityContext | default dict))) | nindent 12 }}
           volumeMounts:
             - { name: data, mountPath: /data/db }
+            - { name: tmp, mountPath: /tmp }   # mongod's unix socket
           resources:
             {{- toYaml $a.resources | nindent 12 }}
-          # Plain TCP like the data members (s. mongo.probes): an arbiter that
-          # accepts connections can vote.
-          {{- include "udp.probes" $m.probes | nindent 10 }}
+          {{- with $m.probes.startup }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # Ready only once it has received the set config and acts as
+          # arbiter – a fresh arbiter accepts connections seconds before it
+          # can vote. The legacy "mongo" shell of the 5.0 image starts in a few
+          # milliseconds (mongosh would cost seconds of CPU per probe).
+          readinessProbe:
+            exec: { command: ["mongo", "--quiet", "--eval", "quit(db.isMaster().arbiterOnly ? 0 : 1)"] }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          {{- with $m.probes.liveness }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       volumes:
         - name: data
           emptyDir: { sizeLimit: 2Gi }
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }
 ---
 apiVersion: v1
 kind: Service

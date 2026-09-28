@@ -55,6 +55,9 @@ global:
   # StorageClass für alle PVCs. "" = Cluster-Default. Für Datenbanken eine
   # Klasse mit garantiertem IOPS/Backups empfohlen.
   storageClass: ""
+  # DNS domain of the cluster, used for the fully qualified service names
+  # (replica set member names, cockpit upstreams).
+  clusterDomain: cluster.local
   # Scheduling defaults for ALL workloads. Each component can override them
   # with its own priorityClassName / nodeSelector / tolerations / affinity.
   priorityClassName: ""
@@ -293,8 +296,8 @@ mongo:
   # no keyfile is needed for member-to-member traffic either.
   replicaSet:
     enabled: false
-    # Name of the set (mongod --replSet). Fixed once initiated: changing it
-    # later makes the members refuse their existing config.
+    # Name of the set (mongod --replSet, only [A-Za-z0-9_-]). Fixed once
+    # initiated: changing it later makes the members refuse their config.
     name: rs0
     # Sidecar "replset". mongosh is a Node process (~165 MiB resident); it
     # starts once and then checks every intervalSeconds without restarting.
@@ -339,16 +342,26 @@ mongo:
     arbiter:
       enabled: false
       disableFlowControl: true
+      # Own image value on purpose, NOT derived from mongo.image: a bump of
+      # mongo.image would otherwise restart the arbiter together with the
+      # first data member (StatefulSets ignore PDBs during rollouts) – two of
+      # three votes down at once, no primary for that moment. Bump one, let
+      # the rollout finish, then the other (DEPLOY.md §10b).
+      image: { repository: mongo, tag: "5.0" }
       # Scheduling of the arbiter only; empty -> global.nodeSelector etc.
       nodeSelector: {}
       tolerations: []
-      # Merged with the built-in anti-affinity against the data members.
+      # Merged with the built-in required anti-affinity against the data
+      # members per node AND per zone (topology.kubernetes.io/zone): a zone
+      # outage must never take the arbiter together with a data member.
+      # Nodes without a zone label are not covered by the zone rule – there
+      # only the node rule applies.
       affinity: {}
       priorityClassName: ""
       # WiredTiger cache pinned to its minimum (0.25 GB) – the arbiter stores
-      # only the replica set config.
+      # only the replica set config (~125 MiB resident in testing).
       resources:
-        requests: { cpu: 50m,  memory: 128Mi }
+        requests: { cpu: 50m,  memory: 160Mi }
         limits:   { cpu: 500m, memory: 512Mi }
   # One budget over ALL voters – data members and arbiter: at most one may be
   # down voluntarily (drain), so the set always keeps its majority. Separate
@@ -1002,8 +1015,8 @@ cockpit:
   # nginx über den resolver auflöst, wendet es die search-Domains aus
   # /etc/resolv.conf nicht an – "apisix" allein bliebe unauflösbar.
   # Den Resolver selbst ermittelt der Container-Entrypoint aus /etc/resolv.conf.
-  gatewayUpstream: ""     # leer -> apisix.<Release-Namespace>.svc.cluster.local:9080
-  noderedUpstream: ""     # leer -> node-red.<Release-Namespace>.svc.cluster.local:1880
+  gatewayUpstream: ""     # leer -> apisix.<Release-Namespace>.svc.<global.clusterDomain>:9080
+  noderedUpstream: ""     # leer -> node-red.<Release-Namespace>.svc.<global.clusterDomain>:1880
   # Proxy networks (ingress controller pods / load balancer) whose
   # X-Forwarded-For entries the cockpit trusts when resolving the client
   # address for the per-client rate limit (apisix.rateLimit). Empty -> all

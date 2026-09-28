@@ -36,7 +36,8 @@ metadata:
   labels:
     {{- include "udp.labels" (dict "ctx" . "component" "mongo") | nindent 4 }}
 spec:
-  maxUnavailable: {{ .Values.mongo.pdb.maxUnavailable | default 1 }}
+  {{- /* hasKey: an explicit 0 (no voluntary disruption at all) must stay 0. */}}
+  maxUnavailable: {{ ternary .Values.mongo.pdb.maxUnavailable 1 (hasKey (.Values.mongo.pdb | default dict) "maxUnavailable") }}
   selector:
     {{- if .Values.mongo.replicaSet.arbiter.enabled }}
     matchExpressions:

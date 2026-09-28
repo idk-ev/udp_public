@@ -14,8 +14,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - **Verteilung** konfigurierbar: `global.spread.mode: required` hält
   Replikate auf verschiedenen Knoten; Deployments rollen dann ohne Surge aus,
   damit es auch mit so vielen Knoten wie Replikaten geht.
-- **Cockpit** liefert `/abfahrten` und `/warnungen.ics` bei kurzem
-  Node-RED-Ausfall aus dem Cache weiter.
+- **Cockpit** liefert `/abfahrten` und `/warnungen.ics` bei
+  Node-RED-Ausfall aus dem Cache weiter (eigene Cache-Zone, 24 h).
+- `global.clusterDomain` für abweichende Cluster-DNS-Domänen.
 
 ## Unveröffentlicht — Datenqualität der Gemeindeseiten
 

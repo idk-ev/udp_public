@@ -456,7 +456,7 @@ The member list also ends up in the replica set config (files/mongo/replset.js)
 {{- $ns := .Release.Namespace -}}
 {{- $hosts := list -}}
 {{- range $i := until (int .Values.mongo.replicas) -}}
-{{- $hosts = append $hosts (printf "mongo-%d.mongo.%s.svc.cluster.local:27017" $i $ns) -}}
+{{- $hosts = append $hosts (printf "mongo-%d.mongo.%s.svc.%s:27017" $i $ns $.Values.global.clusterDomain) -}}
 {{- end -}}
 {{- join "," $hosts -}}
 {{- end -}}
@@ -467,7 +467,7 @@ Replica set arbiter (mongo.replicaSet.arbiter): StatefulSet + headless Service
 serves no data; drivers learn about it from the members and only monitor it.
 */}}
 {{- define "udp.mongoArbiterHost" -}}
-{{- printf "mongo-arbiter-0.mongo-arbiter.%s.svc.cluster.local:27017" .Release.Namespace -}}
+{{- printf "mongo-arbiter-0.mongo-arbiter.%s.svc.%s:27017" .Release.Namespace .Values.global.clusterDomain -}}
 {{- end -}}
 
 {{/*
@@ -479,7 +479,7 @@ Call: {{ include "udp.mongoUri" (dict "ctx" . "db" "iotagentjson") }}
 {{- if $m.replicaSet.enabled -}}
 {{- printf "mongodb://%s/%s?replicaSet=%s" (include "udp.mongoMembers" .ctx) .db $m.replicaSet.name -}}
 {{- else -}}
-{{- printf "mongodb://mongo.%s.svc.cluster.local:27017/%s" .ctx.Release.Namespace .db -}}
+{{- printf "mongodb://mongo.%s.svc.%s:27017/%s" .ctx.Release.Namespace .ctx.Values.global.clusterDomain .db -}}
 {{- end -}}
 {{- end -}}
 
