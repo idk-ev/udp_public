@@ -11,11 +11,13 @@ BW-Gemeinde (Leihräder aus Basel, Feinstaubsensoren aus dem Elsass).
   für Sharing, Feinstaub, Parken, Baustellen und Radzähler; kleine Toleranz
   für Lücken zwischen den vereinfachten Grenzen. Ohne Grenzen-Cache wird der
   Lauf übersprungen statt geraten.
+- DWD-Stationen, Pegel, Overpass-Daten, Ladesäulen und Carsharing nutzen
+  dieselbe Zuordnung mit kleiner Grenztoleranz.
 - **Baustellen**: Zuordnung per Polygon statt nächstem Gemeindezentrum,
   vertauschte Koordinaten werden korrigiert.
 - **Automatisches Aufräumen** veralteter eigener Entitäten nach vollständigen
-  Läufen, mit Schutz: Karenzzeit bzw. zweifache Bestätigung, höchstens 30 %
-  des Bestands, nur eigene ID-Muster.
+  Läufen, mit Schutz: plausible Stammdaten, lückenlose Vorläufe, Karenzzeit
+  bzw. 24 h Bestätigung, höchstens 30 % des Bestands, nur eigene ID-Muster.
 - **Compose**: Node-RED lädt Stammdaten über `http://cockpit:8080` (vorher
   Port 80, dort lauscht das Cockpit nicht); Helm-Service zusätzlich auf 8080.
 
