@@ -148,22 +148,47 @@ const agsStrict = (lat, lon) => {
 };
 '''
 
+# Master data plausibility for prunes (see geo_helper). Needs GEM and GRZ.
+PRUNE_OK_JS = r'''
+const PRUNE_OK = (() => {
+    if (!Array.isArray(GEM)) return false;
+    const prev = context.get('gemCount') || 0;
+    if (GEM.length < 1000 || GEM.length < prev * 0.95) return false;
+    context.set('gemCount', GEM.length);
+    if (!GRZ || typeof GRZ !== 'object') return false;
+    let covered = 0;
+    for (const r of GEM) if (GRZ[r[0]] && Array.isArray(GRZ[r[0]].r)) covered++;
+    return covered >= GEM.length * 0.99;
+})();
+'''
+
+def interval_ms(conn_id, runs=1):
+    """Run interval of a connector from the registry in ms (cron = daily)."""
+    c = REG[conn_id]
+    sec = c.get("intervalSeconds") if not c.get("cron") else 86400
+    return str(int((sec or 86400) * 1000 * runs))
+
 def geo_helper(label, require_boundaries=True):
     """JS prelude for connectors that assign objects to BW municipalities.
 
-    Provides GEM, GEMBYAGS, GRZ, GRZ_OK, pip, agsStrict, nearestStrict (row or
-    null), CTX, NOW and P. With require_boundaries the function skips the run
-    (node.warn) while the boundary cache is missing or implausibly small:
-    assigning by centroid instead is exactly the error this replaces."""
+    Provides GEM, GEMBYAGS, GRZ, GRZ_OK, PRUNE_OK, pip, agsStrict, nearestStrict
+    (row or null), CTX, NOW and P. With require_boundaries the function skips
+    the run (node.warn) while the boundary cache is missing: assigning by
+    centroid instead is exactly the error this replaces.
+
+    PRUNE_OK is stricter than what the lookup needs. Deleting entities relies
+    on the master data being complete: at least 1,000 municipalities, not fewer
+    than 95 % of the last plausible count (node context), and boundaries for at
+    least 99 % of their AGS (checked by key, not by count). If it fails, the
+    lookup still assigns, but no prune runs."""
     js = r'''
 const GEM = global.get('bwGemeinden');
 if (!Array.isArray(GEM)) { node.warn('bwGemeinden not in context yet — waiting for the master data flow'); return null; }
 const GRZ = global.get('bwGrenzen') || null;
-// An empty or truncated boundary file must not count as loaded
-const GRZ_OK = !!GRZ && typeof GRZ === 'object' && Object.keys(GRZ).length >= GEM.length * 0.9;
+const GRZ_OK = !!GRZ && typeof GRZ === 'object' && Object.keys(GRZ).length > 0;
 const GEMBYAGS = {};
 for (const r of GEM) GEMBYAGS[r[0]] = r;
-''' + STRICT_LOOKUP + r'''
+''' + PRUNE_OK_JS + STRICT_LOOKUP + r'''
 const nearestStrict = (lat, lon) => { const a = agsStrict(lat, lon); return a ? (GEMBYAGS[a] || null) : null; };
 const CTX = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld';
 const NOW = new Date().toISOString();
@@ -201,25 +226,42 @@ const nearestOrCentroid = (lat, lon) => {
 # is checked against the same pattern again), pages through them with
 # limit/offset (compared with NGSILD-Results-Count) and deletes the ids that
 # are not confirmed. Guards:
-#   * call site: only after a COMPLETE, successful source run with boundaries
-#     loaded and a non-empty result;
+#   * call site:   only after a COMPLETE, successful source run with plausible
+#                  master data (PRUNE_OK) and a non-empty result;
+#   * intervalMs:  the previous successful run of this prune must lie at most
+#                  2.5 intervals back (flow context), so a first run after an
+#                  outage or a lost context never acts on a single snapshot;
 #   * keep:        ids produced by this run are never deleted;
 #   * graceMs:     only entities whose newest timestamp (modifiedAt, observedAt,
-#                  dateObserved) is older than the grace period, so a gap of a
-#                  few runs never deletes anything; unknown timestamp = keep;
-#   * confirmKey:  alternatively an id must be a candidate in two consecutive
-#                  complete runs (flow context; a lost context only delays);
+#                  dateObserved) is older than the grace period; unknown = keep;
+#   * confirmKey + confirmMs: for sources without refreshed timestamps an id
+#                  must be a candidate in at least two consecutive runs AND
+#                  for confirmMs; any skipped run clears the candidates;
 #   * liveMs:      age-only mode: at least one entity must have been written
 #                  recently, otherwise the connector itself is down -> skip;
 #   * maxFraction: never delete more than this share of the existing entities
 #                  (default 30 %, at least 3) -> node.warn and skip.
-# The temporal (TRoE) history of deleted entities is left untouched.
+# Only ids the broker confirms as deleted (204, or the success part of a 207)
+# count and lose their change signature. TRoE history is left untouched.
 PRUNE_LIBS = [{"var": "http", "module": "http"}]
 PRUNE_HELPER = r'''
 async function pruneStale(o) {
     const BASE = 'http://orion-ld:1026/ngsi-ld/v1/';
     const re = new RegExp(o.pattern);
     const frac = o.maxFraction || 0.3;
+    const now = Date.now();
+    const skip = (why, quiet) => {
+        if (o.confirmKey) flow.set(o.confirmKey, {});   // "consecutive" means consecutive
+        if (quiet) node.log(o.label + ': prune skipped, ' + why);
+        else node.warn(o.label + ': prune skipped, ' + why);
+        return 0;
+    };
+    if (o.intervalMs) {
+        const key = 'pruneLastRun_' + o.label.replace(/[^A-Za-z0-9]+/g, '_');
+        const prev = flow.get(key);
+        flow.set(key, now);
+        if (!prev || now - prev > 2.5 * o.intervalMs) return skip('no successful run within the last 2.5 intervals', !prev);
+    }
     const req = (method, path, body) => new Promise((resolve, reject) => {
         const data = body ? Buffer.from(JSON.stringify(body)) : null;
         const headers = { 'Accept': 'application/json' };
@@ -252,24 +294,26 @@ async function pruneStale(o) {
     const PAGE = 1000, MAX_PAGES = 100;
     const existing = [];
     let total = null, done = false;
-    for (let page = 0; page < MAX_PAGES; page++) {
-        const res = await req('GET', 'entities?type=' + encodeURIComponent(o.type)
-            + '&idPattern=' + encodeURIComponent(o.pattern)
-            + '&attrs=' + encodeURIComponent(o.attrs || 'ags')
-            + '&options=sysAttrs&count=true&limit=' + PAGE + '&offset=' + (page * PAGE));
-        if (res.status !== 200) throw new Error('listing HTTP ' + res.status);
-        const list = JSON.parse(res.text);
-        if (!Array.isArray(list)) throw new Error('listing is not an array');
-        if (total === null) total = parseInt(res.headers['ngsild-results-count'], 10);
-        for (const e of list) existing.push(e);
-        if (list.length < PAGE) { done = true; break; }
+    try {
+        for (let page = 0; page < MAX_PAGES; page++) {
+            const res = await req('GET', 'entities?type=' + encodeURIComponent(o.type)
+                + '&idPattern=' + encodeURIComponent(o.pattern)
+                + '&attrs=' + encodeURIComponent(o.attrs || 'ags')
+                + '&options=sysAttrs&count=true&limit=' + PAGE + '&offset=' + (page * PAGE));
+            if (res.status !== 200) return skip('listing HTTP ' + res.status);
+            const list = JSON.parse(res.text);
+            if (!Array.isArray(list)) return skip('listing is not an array');
+            if (total === null) total = parseInt(res.headers['ngsild-results-count'], 10);
+            for (const e of list) existing.push(e);
+            if (list.length < PAGE) { done = true; break; }
+        }
+    } catch (e) {
+        return skip('listing failed (' + (e && e.message ? e.message : e) + ')');
     }
     if (!done || (isFinite(total) && existing.length < total)) {
-        node.warn(o.label + ': prune skipped, listing incomplete (' + existing.length + '/' + total + ')');
-        return 0;
+        return skip('listing incomplete (' + existing.length + '/' + total + ')');
     }
     // 2. Candidates: own ids, not confirmed by this run, old enough
-    const now = Date.now();
     let mine = 0, newest = 0;
     let cand = [];
     for (const e of existing) {
@@ -282,40 +326,59 @@ async function pruneStale(o) {
         cand.push(e.id);
     }
     if (o.liveMs && now - newest > o.liveMs) {
-        node.warn(o.label + ': prune skipped, no entity written within the last '
-                  + Math.round(o.liveMs / 3600000) + ' h — connector down?');
-        return 0;
+        return skip('no entity written within the last ' + Math.round(o.liveMs / 3600000) + ' h — connector down?');
     }
     const limit = Math.max(3, Math.floor(mine * frac));
+    if (cand.length > limit) {
+        return skip(cand.length + ' of ' + mine + ' entities would be deleted (limit ' + limit + ') — please check manually');
+    }
+    let confirm = null;
     if (o.confirmKey) {
-        const prev = new Set(flow.get(o.confirmKey) || []);
-        flow.set(o.confirmKey, cand.length <= limit ? cand : []);
-        cand = cand.filter(id => prev.has(id));
+        // { id: [first seen as candidate (ms), consecutive runs] }
+        const prev = flow.get(o.confirmKey) || {};
+        confirm = {};
+        for (const id of cand) {
+            const p = Array.isArray(prev[id]) ? prev[id] : [now, 0];
+            confirm[id] = [p[0], p[1] + 1];
+        }
+        cand = cand.filter(id => confirm[id][1] >= 2 && now - confirm[id][0] >= (o.confirmMs || 24 * 3600e3));
+        flow.set(o.confirmKey, confirm);
     }
     if (!cand.length) return 0;
-    if (cand.length > limit) {
-        node.warn(o.label + ': prune skipped, ' + cand.length + ' of ' + mine
-                  + ' entities would be deleted (limit ' + limit + ') — please check manually');
-        return 0;
-    }
-    // 3. Delete in batches
-    let deleted = 0;
+    // 3. Delete in batches; count only what the broker confirms
+    const deletedIds = [];
     for (let i = 0; i < cand.length; i += 100) {
         const chunk = cand.slice(i, i + 100);
-        const res = await req('POST', 'entityOperations/delete', chunk);
-        if (res.status === 204 || res.status === 200 || res.status === 207) deleted += chunk.length;
-        else node.warn(o.label + ': prune delete HTTP ' + res.status);
+        let res;
+        try { res = await req('POST', 'entityOperations/delete', chunk); }
+        catch (e) { node.warn(o.label + ': prune delete failed (' + (e && e.message ? e.message : e) + ')'); continue; }
+        let ok = [];
+        if (res.status === 204 || res.status === 200) ok = chunk;
+        else if (res.status === 207) {
+            try {
+                const b = JSON.parse(res.text || '{}');
+                const bad = new Set((b.errors || []).map(x => x && (x.entityId || x.id)));
+                ok = Array.isArray(b.success) ? chunk.filter(id => b.success.includes(id))
+                                              : chunk.filter(id => !bad.has(id));
+            } catch (e) { ok = []; }
+            if (ok.length < chunk.length) node.warn(o.label + ': prune delete, ' + (chunk.length - ok.length) + ' ids failed');
+        } else node.warn(o.label + ': prune delete HTTP ' + res.status);
+        for (const id of ok) deletedIds.push(id);
+    }
+    if (confirm) {
+        for (const id of deletedIds) delete confirm[id];
+        flow.set(o.confirmKey, confirm);
     }
     // Forget the change signatures of deleted entities, so a returning object
     // is written in full again instead of as a freshness-only update.
-    if (o.sigKey && deleted) {
+    if (o.sigKey && deletedIds.length) {
         const sig = flow.get(o.sigKey) || {};
-        for (const id of cand) delete sig[id];
+        for (const id of deletedIds) delete sig[id];
         flow.set(o.sigKey, sig);
     }
-    node.log(o.label + ': pruned ' + deleted + ' of ' + mine + ' entities');
-    node.status({ text: (o.status ? o.status + ' · ' : '') + 'pruned ' + deleted + '/' + mine });
-    return deleted;
+    node.log(o.label + ': pruned ' + deletedIds.length + ' of ' + mine + ' entities');
+    node.status({ text: (o.status ? o.status + ' · ' : '') + 'pruned ' + deletedIds.length + '/' + mine });
+    return deletedIds.length;
 }
 '''
 
@@ -1252,28 +1315,14 @@ const GRZ = global.get('bwGrenzen');
 if (!GRZ) { node.warn('PEGELONLINE: Grenzen-Cache fehlt — Lauf übersprungen'); return null; }
 const GEM = global.get('bwGemeinden') || [];
 const NAME = {}; for (const r of GEM) NAME[r[0]] = r[1];
-const pip = (lat, lon, rings) => {
-    for (const ring of rings) {
-        let ins = false;
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-            const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
-            if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) ins = !ins;
-        }
-        if (ins) return true;
-    }
-    return false;
-};
+""" + STRICT_LOOKUP + r"""
 const now = new Date().toISOString();
 const ctx = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld';
 const entities = [];
 for (const st of msg.payload) {
     const lat = st.latitude, lon = st.longitude;
     if (!lat || lat < 47.5 || lat > 49.85 || lon < 7.4 || lon > 10.6) continue;
-    let ags = null;
-    for (const a in GRZ) {
-        const g = GRZ[a], b = g.b;
-        if (lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3] && pip(lat, lon, g.r)) { ags = a; break; }
-    }
+    const ags = agsStrict(lat, lon);
     if (!ags) continue; // außerhalb BW (z. B. Main in Bayern) — bewusst verwerfen
     // Zwingend die Wasserstandsreihe W (cm) nehmen. Stationen mit Abflussmessung
     // führen Q (m³/s) an erster Stelle — die frühere Auswahl timeseries[0] hat
@@ -1797,28 +1846,29 @@ const statusText = entities.length + ' Objekte, ' + Object.keys(byKreis).length 
               + (ungueltig ? ', ' + ungueltig + ' ungültig' : '')
               + (ausserhalb ? ', ' + ausserhalb + ' außerhalb BW' : '');
 node.status({ text: statusText });
+const nFeatures = msg.payload.features.length;
+if (nFeatures && ungueltig > nFeatures * 0.05) {
+    node.warn('BW roadworks: ' + ungueltig + ' of ' + nFeatures + ' records with invalid coordinates — feed format changed?');
+}
 if (!entities.length) return null;
-// Complete feed, boundaries loaded, non-empty result -> remove own roadworks
-// and district sums this run no longer confirms (left the feed, outside BW).
-pruneStale({
+// Complete feed, plausible master data, non-empty result -> remove own
+// roadworks and district sums this run no longer confirms (left the feed,
+// outside BW).
+if (PRUNE_OK) pruneStale({
     label: 'BW roadworks', type: 'RoadWork',
     pattern: '^urn:ngsi-ld:RoadWork:bw-(svz-[A-Za-z0-9_-]+|kreis-[0-9]{5}-summary)$',
     attrs: 'ags,dateObserved,activeCount',
-    keep: new Set(entities.map(e => e.id)), graceMs: 24 * 3600e3, status: statusText
+    keep: new Set(entities.map(e => e.id)), graceMs: 24 * 3600e3,
+    intervalMs: ''' + interval_ms("baustellen-bw") + r''', status: statusText
 }).catch(e => node.warn('BW roadworks: prune failed (' + (e && e.message ? e.message : e) + ')'));
 ''' + CHUNK_HELPER + r'''
 return [emitChunks(node, msg, entities, 100)];'''
 
-FN_RW_PREP = r'''if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.gemeinden)) {
-    node.warn('BW-Baustellen: bw-gemeinden.json nicht ladbar');
-    return null;
-}
-msg.gemeinden = msg.payload.gemeinden;
+FN_RW_PREP = r'''// Municipalities and boundaries come from the global context (strict lookup)
 msg.url = 'https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json';
 return msg;'''
 
-inject("udp-rt-br-inject", Z, "alle 6 Stunden", 21600, 200, ["udp-rt-br-get"], 710)
-http_get("udp-rt-br-get", Z, "bw-gemeinden.json", GEMEINDEN_URL, ["udp-rt-br-prep"], 710)
+inject("udp-rt-br-inject", Z, "alle 6 Stunden", 21600, 200, ["udp-rt-br-prep"], 710)
 func("udp-rt-br-prep", Z, "Roadworks-URL", FN_RW_PREP, ["udp-rt-br-http"], 710)
 http_get("udp-rt-br-http", Z, "Baustellen SVZ-BW", "", ["udp-rt-br-fn"], 770, x=400)
 func("udp-rt-br-fn", Z, "→ RoadWork BW (Chunks)", FN_RW_BW, ["udp-rt-br-rate"], 770, libs=PRUNE_LIBS)
@@ -2047,13 +2097,13 @@ node.status({ text: statusText });
 // Hourly (detail run: medians AND single sensors produced): remove own
 // entities not confirmed for 24 h, e.g. sensors outside BW that were counted
 // in a border municipality before the strict lookup.
-if (detailLauf && nSensor) {
+if (detailLauf && PRUNE_OK) {
     pruneStale({
         label: 'sensor.community BW', type: 'AirQualityObserved',
         pattern: '^urn:ngsi-ld:AirQualityObserved:bw-(sc-[0-9]{8}|sensor-[0-9]{8}-[0-9]+)$',
         attrs: 'ags,dateObserved,pm10,pm25',
         keep: new Set(entities.map(e => e.id)), graceMs: 24 * 3600e3,
-        sigKey: 'feinstaubSig', status: statusText
+        sigKey: 'feinstaubSig', intervalMs: ''' + interval_ms("feinstaub-bw", 4) + r''', status: statusText
     }).catch(e => node.warn('sensor.community BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
 }
 ''' + CHUNK_HELPER + r'''
@@ -2409,20 +2459,27 @@ node.status({ text: statusText });
 // Prune sites and sums this complete run no longer contains (left the source,
 // or outside BW and formerly assigned by centroid). Site timestamps are not
 // refreshed on unchanged runs, so instead of a grace period an id must be
-// missing in two consecutive complete runs (confirmKey).
-if (msg.parkVollstaendig && GRZ_OK && ids.size) {
+// missing in consecutive complete runs for at least 24 h (confirmKey); a
+// bike site without realtime data for a few hours is not deleted.
+if (msg.parkVollstaendig && PRUNE_OK && ids.size) {
     const summenIds = new Set(summen.map(e => e.id));
     (async () => {
         await pruneStale({ label: 'Parken-BW ParkingSite', type: 'ParkingSite',
                            pattern: '^urn:ngsi-ld:ParkingSite:parkapi-[^:]+$',
-                           keep: ids, confirmKey: 'parkPruneSite', status: statusText });
+                           keep: ids, confirmKey: 'parkPruneSite', confirmMs: 24 * 3600e3,
+                           intervalMs: ''' + interval_ms("parken-bw") + r''', status: statusText });
         await pruneStale({ label: 'Parken-BW BikeParking', type: 'BikeParking',
                            pattern: '^urn:ngsi-ld:BikeParking:parkapi-[^:]+$',
-                           keep: ids, confirmKey: 'parkPruneBike', status: statusText });
+                           keep: ids, confirmKey: 'parkPruneBike', confirmMs: 24 * 3600e3,
+                           intervalMs: ''' + interval_ms("parken-bw") + r''', status: statusText });
         await pruneStale({ label: 'Parken-BW ParkingSummary', type: 'ParkingSummary',
                            pattern: '^urn:ngsi-ld:ParkingSummary:bw-[0-9]{8}$',
-                           keep: summenIds, confirmKey: 'parkPruneSummary', status: statusText });
+                           keep: summenIds, confirmKey: 'parkPruneSummary', confirmMs: 24 * 3600e3,
+                           intervalMs: ''' + interval_ms("parken-bw") + r''', status: statusText });
     })().catch(e => node.warn('Parken-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
+} else {
+    // Incomplete run: candidates must be missing in CONSECUTIVE complete runs
+    for (const k of ['parkPruneSite', 'parkPruneBike', 'parkPruneSummary']) flow.set(k, {});
 }
 if (!entities.length) return null;
 return [emitChunks(node, msg, entities, 100)];'''
@@ -2444,6 +2501,9 @@ if (msg.statusCode >= 400 || !msg.payload || !Array.isArray(msg.payload.systems)
     return null;
 }
 ''' + PRUNE_HELPER + r'''
+const GEM = global.get('bwGemeinden');
+const GRZ = global.get('bwGrenzen') || null;
+''' + PRUNE_OK_JS + r'''
 const msgs = msg.payload.systems.map(s => ({
     url: s.url.replace(/\/gbfs$/, '/free_bike_status'),
     system: s.id
@@ -2456,11 +2516,12 @@ node.status({ text: statusText });
 // no longer confirmed: the system left the list, or its vehicles are outside
 // BW and were assigned to a border municipality before the strict lookup.
 // Skipped if no summary at all was written within 3 h (connector down).
-pruneStale({
+if (PRUNE_OK) pruneStale({
     label: 'GBFS-BW', type: 'SharingSummary',
     pattern: '^urn:ngsi-ld:SharingSummary:bw-[0-9]{8}-ff-[A-Za-z0-9_-]+$',
     attrs: 'ags,availableVehicles',
-    graceMs: 24 * 3600e3, liveMs: 3 * 3600e3, status: statusText
+    graceMs: 24 * 3600e3, liveMs: 3 * 3600e3,
+    intervalMs: ''' + interval_ms("sharing-bw") + r''', status: statusText
 }).catch(e => node.warn('GBFS-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
 return [msgs];'''
 
@@ -2873,11 +2934,12 @@ node.status({ text: statusText });
 // Daily run over the complete feed: remove own counters and municipal sums not
 // confirmed for 60 h (2.5 runs), e.g. sums of a municipality that only had
 // counters by centroid proximity.
-pruneStale({
+if (PRUNE_OK) pruneStale({
     label: 'Eco-BW', type: 'TrafficFlowObserved',
     pattern: '^urn:ngsi-ld:TrafficFlowObserved:bw-(eco-[A-Za-z0-9_-]+|[0-9]{8}-summary)$',
     attrs: 'ags,dateObserved,dailyTotal',
-    keep: new Set(entities.map(e => e.id)), graceMs: 60 * 3600e3, status: statusText
+    keep: new Set(entities.map(e => e.id)), graceMs: 60 * 3600e3,
+    intervalMs: ''' + interval_ms("eco-bw") + r''', status: statusText
 }).catch(e => node.warn('Eco-BW: prune failed (' + (e && e.message ? e.message : e) + ')'));
 ''' + CHUNK_HELPER + r'''
 return [emitChunks(node, msg, entities, 100)];'''

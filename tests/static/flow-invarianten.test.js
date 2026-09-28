@@ -233,19 +233,147 @@ exports["Prune steps carry their safety guards"] = () => {
       assert(m[1].startsWith("^urn:ngsi-ld:") && m[1].endsWith("$"), `${wo}: prune pattern not anchored: ${m[1]}`);
       assert(!/\.\*/.test(m[1]), `${wo}: prune pattern with .* is too broad: ${m[1]}`);
       assert(/keep:/.test(c) || /liveMs:/.test(c), `${wo}: prune call neither with keep nor with liveMs`);
-      assert(/graceMs:/.test(c) || /confirmKey:/.test(c), `${wo}: prune call without grace period or confirmation`);
+      assert(/graceMs:/.test(c) || (/confirmKey:/.test(c) && /confirmMs: 24 \* 3600e3/.test(c)),
+        `${wo}: prune call without grace period or 24 h confirmation`);
+      assert(/intervalMs: [0-9]+/.test(c), `${wo}: prune call without interval check`);
     }
-    if (/keep:/.test(code)) {
-      assert(/if \(!GRZ_OK\)/.test(code) || /GRZ_OK &&/.test(code), `${wo}: prune without boundary guard`);
-    }
+    // Master data plausibility: every prune call is guarded by PRUNE_OK, which
+    // checks the municipality count and the boundary coverage by key.
+    assert(/PRUNE_OK &&|&& PRUNE_OK\) \{|if \(PRUNE_OK\) pruneStale/.test(code), `${wo}: prune without PRUNE_OK guard`);
+    assert(/GEM\.length < 1000 \|\| GEM\.length < prev \* 0\.95/.test(code), `${wo}: no municipality count floor`);
+    assert(/covered >= GEM\.length \* 0\.99/.test(code), `${wo}: boundary coverage not checked by key`);
   }
   const park = FUNCS.find(n => n.id === "udp-rt-bp-build");
-  assert(/if \(msg\.parkVollstaendig && GRZ_OK && ids\.size\)/.test(park.func),
+  assert(/if \(msg\.parkVollstaendig && PRUNE_OK && ids\.size\)/.test(park.func),
     "Parken-BW prunes without completeness guard");
+  assert(/else \{[^}]*parkPruneSite[^}]*flow\.set\(k, \{\}\)/.test(park.func),
+    "Parken-BW keeps its prune candidates across an incomplete run");
+  const sc = FUNCS.find(n => n.id === "udp-rt-bs-fn");
+  assert(/if \(detailLauf && PRUNE_OK\)/.test(sc.func), "sensor.community prune not tied to the detail run");
+};
+
+/* Behaviour of pruneStale() against a mocked broker and clock. */
+function loadPrune() {
+  const n = FUNCS.find(x => x.id === "udp-rt-bp-build");
+  const start = n.func.indexOf("async function pruneStale(o) {");
+  const endMark = "    return deletedIds.length;\n}";
+  const end = n.func.indexOf(endMark, start);
+  assert(start >= 0 && end > start, "pruneStale not found");
+  const code = n.func.slice(start, end + endMark.length);
+  return env => new Function("http", "flow", "node", "Date", code + "\nreturn pruneStale;")(
+    env.http, env.flow, env.node, env.Date);
+}
+
+function pruneEnv(entities) {
+  const ctx = {}, log = [], deleted = [];
+  const env = {
+    clock: Date.parse("2026-01-10T12:00:00Z"),
+    listStatus: 200,
+    deleteResponse: ids => ({ status: 204, text: "" }),
+    ctx, log, deleted
+  };
+  env.Date = { now: () => env.clock, parse: s => Date.parse(s) };
+  env.flow = { get: k => ctx[k], set: (k, v) => { ctx[k] = v; } };
+  env.node = { warn: m => log.push("warn " + m), log: m => log.push("log " + m), status() {} };
+  env.http = {
+    request(url, opts, cb) {
+      const u = new URL(url);
+      let body = "";
+      return {
+        on() {}, setTimeout() {}, write(d) { body += d; },
+        end() {
+          let r;
+          if (opts.method === "GET") {
+            const off = +u.searchParams.get("offset");
+            const page = entities.slice(off, off + 1000);
+            r = { status: env.listStatus, text: JSON.stringify(page), headers: { "ngsild-results-count": String(entities.length) } };
+          } else {
+            const ids = JSON.parse(body);
+            r = Object.assign({ headers: {} }, env.deleteResponse(ids));
+            if (r.status === 204) deleted.push(...ids);
+          }
+          const h = {};
+          cb({ statusCode: r.status, headers: r.headers || {}, on(ev, f) { h[ev] = f; } });
+          if (r.text) h.data(Buffer.from(r.text));
+          h.end();
+        }
+      };
+    }
+  };
+  return env;
+}
+
+const ents = n => Array.from({ length: n }, (_, i) =>
+  ({ id: "urn:ngsi-ld:ParkingSite:parkapi-" + i, type: "ParkingSite", modifiedAt: "2025-01-01T00:00:00Z" }));
+const H = 3600e3;
+const parkOpts = keep => ({ label: "t", type: "ParkingSite", pattern: "^urn:ngsi-ld:ParkingSite:parkapi-[^:]+$",
+  keep: keep, confirmKey: "c", confirmMs: 24 * H, intervalMs: 3 * H });
+
+exports["pruneStale: confirmation needs 24 h of consecutive runs"] = async () => {
+  const all = ents(20);
+  const env = pruneEnv(all);
+  const prune = loadPrune()(env);
+  const keep = new Set(all.slice(1).map(e => e.id));   // parkapi-0 is gone from the source
+  env.ctx["pruneLastRun_t"] = env.clock - 3 * H;
+  for (let run = 0; run < 8; run++) {                   // 8 runs à 3 h = 21 h
+    assert.strictEqual(await prune(parkOpts(keep)), 0, `deleted already after ${run * 3} h`);
+    env.clock += 3 * H;
+  }
+  env.clock += 3 * H;                                   // 27 h after first sighting
+  assert.strictEqual(await prune(parkOpts(keep)), 1);
+  assert.deepStrictEqual(env.deleted, ["urn:ngsi-ld:ParkingSite:parkapi-0"]);
+};
+
+exports["pruneStale: a skipped run resets the confirmation"] = async () => {
+  const all = ents(20);
+  const env = pruneEnv(all);
+  const prune = loadPrune()(env);
+  const keep = new Set(all.slice(1).map(e => e.id));
+  env.ctx["pruneLastRun_t"] = env.clock - 3 * H;
+  await prune(parkOpts(keep));                          // first sighting
+  env.clock += 3 * H; env.listStatus = 500;
+  await prune(parkOpts(keep));                          // broker error -> candidates cleared
+  env.listStatus = 200;
+  env.clock += 25 * H;                                  // long gap -> interval check skips too
+  assert.strictEqual(await prune(parkOpts(keep)), 0);
+  env.clock += 3 * H;
+  assert.strictEqual(await prune(parkOpts(keep)), 0, "deleted although only seen once since the reset");
+  assert(env.log.some(l => /listing HTTP 500/.test(l)), "broker error not logged");
+  assert.deepStrictEqual(env.deleted, []);
+};
+
+exports["pruneStale: first run and share limit skip"] = async () => {
+  const all = ents(20);
+  const env = pruneEnv(all);
+  const prune = loadPrune()(env);
+  const opts = { label: "g", type: "ParkingSite", pattern: "^urn:ngsi-ld:ParkingSite:parkapi-[^:]+$",
+    keep: new Set(all.slice(10).map(e => e.id)), graceMs: 24 * H, intervalMs: H };
+  assert.strictEqual(await prune(opts), 0, "first run without a previous timestamp must not delete");
+  env.clock += H;
+  assert.strictEqual(await prune(opts), 0, "50 % deletion passed the share limit");
+  assert(env.log.some(l => /would be deleted \(limit 6\)/.test(l)));
+  assert.deepStrictEqual(env.deleted, []);
+};
+
+exports["pruneStale: 207 counts only confirmed deletions"] = async () => {
+  const all = ents(20);
+  const env = pruneEnv(all);
+  const prune = loadPrune()(env);
+  env.deleteResponse = ids => ({ status: 207, text: JSON.stringify({
+    success: [ids[0]], errors: ids.slice(1).map(id => ({ entityId: id, error: { status: 500 } })) }) });
+  env.ctx.sig = { "urn:ngsi-ld:ParkingSite:parkapi-0": "a", "urn:ngsi-ld:ParkingSite:parkapi-1": "b" };
+  env.ctx["pruneLastRun_g"] = env.clock - H;
+  const opts = { label: "g", type: "ParkingSite", pattern: "^urn:ngsi-ld:ParkingSite:parkapi-[^:]+$",
+    keep: new Set(all.slice(2).map(e => e.id)), graceMs: 24 * H, intervalMs: H, sigKey: "sig" };
+  assert.strictEqual(await prune(opts), 1);
+  assert.deepStrictEqual(Object.keys(env.ctx.sig), ["urn:ngsi-ld:ParkingSite:parkapi-1"],
+    "signature of a failed deletion was dropped");
 };
 
 exports["Roadworks: strict lookup and coordinate check"] = () => {
   const rw = FUNCS.find(n => n.id === "udp-rt-br-fn");
   assert(/nearestStrict\(p\[1\], p\[0\]\)/.test(rw.func), "roadworks not assigned by the strict lookup");
   assert(/p = \[p\[1\], p\[0\]\]; getauscht\+\+/.test(rw.func), "roadworks without swapped-coordinate repair");
+  assert(/ungueltig > nFeatures \* 0\.05/.test(rw.func), "no warning on many invalid coordinates");
+  assert(!FLOWS.some(n => n.id === "udp-rt-br-get"), "roadworks still fetch bw-gemeinden.json");
 };
