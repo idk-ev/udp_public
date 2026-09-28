@@ -141,4 +141,9 @@ metadata:
 spec:
   selector:
     {{- include "udp.selectorLabels" "cockpit" | nindent 4 }}
-  ports: [{ port: 80, targetPort: 8080 }]
+  # 80 for the ingress; 8080 = container port, so Node-RED can use the same
+  # URL (http://cockpit:8080/...) as in Docker Compose. The NetworkPolicy
+  # already allows node-red -> cockpit:8080 (policies match the pod port).
+  ports:
+    - { name: http, port: 80, targetPort: 8080 }
+    - { name: http-internal, port: 8080, targetPort: 8080 }
