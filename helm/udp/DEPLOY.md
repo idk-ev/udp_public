@@ -577,94 +577,177 @@ Hypertables im Einsatz – das Skript bricht sonst ab), Datenprüfsummen an.
 ### 10b. Hochverfügbarkeit: Verteilung und MongoDB-Replica-Set
 
 Damit der öffentliche Pfad (Cockpit → APISIX → Orion-LD/Mintaka → Datenbanken)
-Knoten-Neustarts (z. B. kured, ein Knoten nach dem anderen) ohne Ausfall
-übersteht, braucht es zweierlei: Replikate auf **verschiedenen** Knoten und
-eine MongoDB ohne Single Point of Failure. Beides ist per Default aus, damit
+Knoten-Neustarts (z. B. kured, ein Knoten nach dem anderen) übersteht, braucht
+es zweierlei: Replikate auf **verschiedenen** Knoten und eine MongoDB ohne
+Single Point of Failure. Beides ist per Default aus, damit
 Ein-Knoten-Installationen weiter funktionieren.
 
+Zwei Varianten, je nach Zahl der Knoten für Daten:
+
 ```yaml
-global:
-  spread:
-    mode: required        # nie zwei Replikate einer Komponente auf einem Knoten
+# a) drei Daten-Knoten: drei Datenmitglieder (PSS)
+global: { spread: { mode: required } }
 mongo:
   replicas: 3
+  replicaSet: { enabled: true, name: rs0 }
+```
+
+```yaml
+# b) zwei Daten-Knoten + ein dritter Knoten für den Arbiter (PSA),
+#    z. B. ein Control-Plane-Knoten mit Taint
+global: { spread: { mode: required } }
+mongo:
+  replicas: 2
   replicaSet:
     enabled: true
     name: rs0
+    arbiter:
+      enabled: true
+      nodeSelector: { node-role.kubernetes.io/control-plane: "true" }
+      tolerations: [{ key: CriticalAddonsOnly, operator: Exists, effect: NoExecute }]
 ```
 
-**Verteilung** (`global.spread.mode`, pro Komponente `<komponente>.spread.mode`):
-`preferred` (Default) weicht nur aus, wenn Platz ist – nach einem Drain können
-alle Replikate auf einem Knoten landen, der nächste Drain trifft dann alle.
-`required` erzwingt verschiedene Knoten. Voraussetzungen: mindestens so viele
-Knoten wie Replikate, für Rolling Updates der Deployments (maxSurge 1) **einen
-Knoten mehr** – sonst bleibt der zusätzliche Pod `Pending` und der Rollout
-wartet. Ein explizites `<komponente>.affinity` ersetzt die Regel ganz.
+Ein Primary braucht die Mehrheit der Stimmen; das Chart verlangt deshalb eine
+ungerade Zahl von mindestens drei Stimmen (`replicas: 3` oder `replicas: 2` mit
+Arbiter) und bricht sonst ab. Beide Varianten überstehen den Ausfall **eines**
+Knotens.
 
-**MongoDB-Replica-Set:** drei Mitglieder `mongo-0..2` (StatefulSet `mongo`),
-ein Primary, zwei Secondaries; fällt der Primary weg (Drain, Absturz), wählen
-die übrigen binnen Sekunden einen neuen. Orion-LD, IoT-Agent und der
-Index-Job bekommen automatisch einen Verbindungsstring mit allen Mitgliedern.
-Ein Sidecar `replset` je Pod (`files/mongo/replset.js`) initiiert das Set und
-nimmt Mitglieder auf; seine Readiness zeigt den Mitgliedsstatus – ein
-Mitglied, das noch Daten kopiert, ist nicht bereit, und das PDB `mongo`
-(`maxUnavailable: 1`) lässt dann keinen weiteren Drain zu. `replicas: 2` bringt
-kein Failover (ein Überlebender ist keine Mehrheit): 1 oder mindestens 3.
-Journaling ist jetzt immer an (vorher `--nojournal`; Replica-Set-Mitglieder
-brauchen es, und ohne gingen bei jedem harten Stopp die letzten Schreibvorgänge
-verloren). Wie bisher ohne Authentifizierung – erreichbar nur für die
-freigegebenen Clients und die Mitglieder untereinander (NetworkPolicy
-`allow-mongo`), daher auch kein Keyfile.
+#### Verteilung und Rollouts
 
-Mit zonengebundenen Volumes gilt: ein Mitglied bleibt bei seinem Volume. Liegen
-zwei der drei Mitglieder in derselben Zone, überlebt das Set den Ausfall eines
-Knotens, nicht aber den der ganzen Zone.
+`global.spread.mode` (pro Komponente `<komponente>.spread.mode`): `preferred`
+(Default) weicht nur aus, wenn Platz ist – nach einem Drain können alle
+Replikate auf einem Knoten landen, der nächste Drain trifft dann alle.
+`required` erzwingt verschiedene Knoten; es braucht mindestens so viele Knoten
+wie Replikate. Ein explizites `<komponente>.affinity` ersetzt die Regel ganz.
 
-**Umstellung einer bestehenden Installation** (Standalone mit Daten in
-`data-mongo-0`): ein einziges `helm upgrade` mit den Werten oben – StatefulSet,
-Service und Volume-Vorlage bleiben dieselben, nichts muss gelöscht werden.
+Mit `required` rollen Deployments mit mehr als einem Replikat **ohne Surge**
+aus (`maxSurge: 0`, `maxUnavailable: 1`): Bei genau so vielen Knoten wie
+Replikaten fände ein zusätzlicher Pod keinen Platz, der Rollout hinge
+dauerhaft (im Test nachgestellt). Stattdessen wird ein Replikat nach dem
+anderen ersetzt; der Dienst läuft währenddessen mit einem Replikat weniger.
+Wer freie Knoten hat, holt den Surge pro Komponente zurück:
+`<komponente>.rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }`.
+
+Bei einem Drain wartet das verdrängte Replikat (`Pending`), bis sein Knoten
+zurück ist; die PDBs (`minAvailable: 1`) lassen den Drain zu.
+
+#### MongoDB-Replica-Set
+
+Datenmitglieder `mongo-0..n` (StatefulSet `mongo`), optional ein Arbiter
+`mongo-arbiter-0` (eigenes StatefulSet ohne Volume). Fällt der Primary weg,
+wählen die übrigen binnen Sekunden einen neuen. Orion-LD, IoT-Agent und
+Index-Job bekommen automatisch einen Verbindungsstring mit allen
+**Datenmitgliedern**; der Arbiter steht nicht darin (er liefert keine Daten,
+die Treiber erfahren von ihm über das Set und überwachen ihn nur – die
+NetworkPolicy lässt das zu).
+
+- **Sidecar `replset`** je Datenmitglied (`files/mongo/replset.js`): initiiert
+  das Set, nimmt Mitglieder und Arbiter auf, entfernt überzählige.
+- **Readiness** eines Datenmitglieds: bereit nur als PRIMARY oder als SECONDARY
+  mit höchstens `replicaSet.reconciler.maxLagSeconds` (30 s) Rückstand. Ein
+  zurückkehrendes Mitglied ist während STARTUP2/RECOVERING, beim Warten auf
+  seine Konfiguration und beim Aufholen **nicht** bereit (im Test nach einem
+  Drain: „410 s Rückstand – nicht bereit“, bereit erst nach dem Aufholen).
+- **PDB `mongo`** (`maxUnavailable: 1`) umfasst **alle Stimmen** –
+  Datenmitglieder und Arbiter. Solange eine davon fehlt oder nicht bereit ist,
+  blockiert es jeden weiteren Drain (im Test: Arbiter weg → Drain eines
+  Datenknotens verweigert). Getrennte Budgets ließen genau das zu: zwei von drei
+  Stimmen weg, kein Primary. Kann der Arbiter dauerhaft nirgends laufen,
+  blockiert das PDB die Drains der Datenknoten – gewollt, ein weiterer Ausfall
+  hieße Stillstand.
+- **Arbiter:** eigene Scheduling-Werte (`replicaSet.arbiter.nodeSelector`,
+  `tolerations`, `affinity`, `priorityClassName`, `resources`) und fest eine
+  harte Anti-Affinität gegen die Datenmitglieder. `emptyDir` statt Volume: nach
+  einem Neustart (auch auf einem anderen Knoten) holt er sich die Konfiguration
+  vom Primary. Readiness per TCP; bis die Konfiguration angekommen ist, vergehen
+  wenige Sekunden.
+- **Journaling** immer an (vorher `--nojournal`). Wie bisher ohne
+  Authentifizierung – erreichbar nur für die freigegebenen Clients und die
+  Mitglieder untereinander (NetworkPolicies `allow-mongo`,
+  `allow-mongo-arbiter`), daher auch kein Keyfile.
+
+**Besonderheiten mit Arbiter (PSA, MongoDB 5.0):**
+
+- **Write Concern:** Ein Arbiter ändert den impliziten Default von `majority`
+  auf `1`; MongoDB verweigert diese Änderung, solange kein clusterweiter
+  Default gesetzt ist (geprüft: „Reconfig attempted to install a config that
+  would change the implicit default write concern“). Das Sidecar setzt deshalb
+  vor dem Aufnehmen des Arbiters `setDefaultRWConcern {w: 1}` – nur wenn noch
+  keiner gesetzt ist. Folge: Schreiben läuft weiter, wenn ein Datenmitglied
+  fehlt (`majority` käme dann nie zustande, der Arbiter bestätigt keine
+  Schreibvorgänge). Preis: Stürzt der Primary ab, bevor ein Schreibvorgang
+  repliziert ist, wird dieser beim Failover zurückgerollt. Ein geordneter Drain
+  ist unkritisch (der Primary tritt beim Beenden zurück und lässt den Secondary
+  aufholen); Konnektoren schreiben ohnehin im nächsten Lauf erneut.
+- **Commit-Punkt:** Fehlt ein Datenmitglied, steht der „majority“-Commit-Punkt
+  still (`enableMajorityReadConcern` ist in 5.0 immer an). Der Primary hält bis
+  zur Rückkehr Historie in Cache und auf Platte. Für einen Neustart unkritisch;
+  fehlt ein Mitglied **Stunden**, es vorübergehend stimmlos machen und nach der
+  Rückkehr zurückstellen:
+  `cfg = rs.conf(); cfg.members[<i>].votes = 0; cfg.members[<i>].priority = 0; rs.reconfig(cfg)`.
+- **Flow Control** würde in dieser Lage jeden Schreibvorgang auf das Minimum
+  drosseln (gemessen: 5000 Inserts 2,5 s → 24,5 s), ohne Nutzen – es gibt
+  keinen Secondary, der aufholen könnte. Mit Arbiter daher abgeschaltet
+  (`replicaSet.arbiter.disableFlowControl`).
+
+**Bekannte Grenze – Orion-LD beim Failover:** Orion-LD 1.6.0 bricht beim
+Rücktritt des Primary mit einer unbehandelten Ausnahme seines alten
+C++-Treibers ab (`nextSafe(): not master and slaveOk=false`, Exit 139) und
+startet neu. Im Test (Drain des Primary-Knotens) war Orion-LD dadurch ~10 s
+nicht erreichbar; lesend überbrückt der Cockpit-Cache bereits gecachte
+Anfragen. Mit Orion-LDs `-mongocOnly` (experimentell, ohne alten Treiber) trat
+der Absturz im selben Test nicht auf – nur Schreibvorgänge scheiterten ~7 s
+während der Wahl –, der Schalter ist aber nicht für den vollen Funktionsumfang
+(u. a. Registrierungen) freigegeben und daher nicht Teil des Charts.
+
+#### Umstellung einer bestehenden Installation
+
+Standalone mit Daten in `data-mongo-0`: ein einziges `helm upgrade` mit den
+Werten oben – StatefulSet, Service und Volume-Vorlage bleiben dieselben, nichts
+muss gelöscht werden.
 
 - `mongo.persistence.size` darf dabei **nicht** geändert werden (die
   Volume-Vorlage eines StatefulSets ist unveränderlich, das Upgrade bräche ab).
-- Ablauf: `mongo-1`/`mongo-2` starten leer, danach startet `mongo-0` einmal
-  neu – mit seinen Daten, jetzt als Mitglied –, das Sidecar initiiert das Set
-  mit `mongo-0` als erstem Primary und nimmt die beiden anderen auf, die die
-  Daten kopieren (Initial Sync).
+- Ablauf: die neuen Datenmitglieder und der Arbiter starten leer, danach
+  startet `mongo-0` einmal neu – mit seinen Daten, jetzt als Mitglied –, das
+  Sidecar initiiert das Set mit `mongo-0` als erstem Primary und nimmt die
+  übrigen auf; neue Datenmitglieder kopieren die Daten (Initial Sync).
 - **Ausfall:** der Neustart von `mongo-0` bis zur Initiierung, im Test ~15 s.
-  Orion-LD und IoT-Agent rollen wegen des neuen Verbindungsstrings neu aus;
-  die alten Pods können bis dahin Fehler liefern (lesend puffert der
-  Cockpit-Cache). Schreibende Konnektoren holen das im nächsten Lauf nach.
-- Mit `--wait`/`--atomic` wartet Helm, bis alle Mitglieder den Initial Sync
-  beendet haben – bei großen Datenbeständen `--timeout` entsprechend erhöhen.
+  Orion-LD und IoT-Agent rollen wegen des neuen Verbindungsstrings neu aus; die
+  alten Pods können bis dahin Fehler liefern (lesend puffert der Cockpit-Cache).
+  Schreibende Konnektoren holen das im nächsten Lauf nach.
+- Mit `--wait`/`--atomic` wartet Helm, bis alle Datenmitglieder den Initial
+  Sync beendet haben – bei großen Datenbeständen `--timeout` entsprechend
+  erhöhen.
 - Vorher sichern (Snapshot von `data-mongo-0` oder `mongodump`).
 
 ```bash
 helm upgrade udp <chart> -n udp -f values-prod.yaml --atomic --timeout 20m
 kubectl -n udp logs mongo-0 -c replset        # "initiated …", "added …", "in sync"
-kubectl -n udp exec mongo-0 -c mongo -- mongosh --quiet --eval   'rs.status().members.map(m => m.name + " " + m.stateStr)'
+kubectl -n udp exec mongo-0 -c mongo -- mongosh --quiet --eval \
+  'rs.status().members.map(m => m.name + " " + m.stateStr)'
 ```
 
-**Zurück zum Standalone:** `mongo.replicaSet.enabled: false`, `mongo.replicas: 1`
-– `mongo-0` läuft mit seinen Daten als Einzelinstanz weiter (welches Mitglied
-zuletzt Primary war, ist egal, alle haben denselben Stand). Danach
-`kubectl -n udp delete pvc data-mongo-1 data-mongo-2`: veraltete Kopien würden
-beim erneuten Einschalten sonst wieder aufgenommen.
+**Zurück zum Standalone:** vorher sicherstellen, dass `mongo-0` Primary ist
+(sonst `rs.stepDown()` auf dem Primary), dann `mongo.replicaSet.enabled: false`,
+`mongo.replicas: 1` – `mongo-0` läuft mit seinen Daten als Einzelinstanz
+weiter, der Arbiter entfällt. Danach `kubectl -n udp delete pvc data-mongo-1 …`:
+veraltete Kopien würden beim erneuten Einschalten sonst wieder aufgenommen.
 
-**Verkleinern** (z. B. 5 → 3 Mitglieder) erledigt das Sidecar, solange die
-verbleibenden eine Mehrheit bilden. Von 3 auf 1 fehlt diese Mehrheit: vorher auf
-dem Primary die überzähligen Mitglieder austragen, erst dann `replicas`
-senken:
+**Verkleinern:** überzählige Mitglieder entfernt das Sidecar, solange die
+verbleibenden eine Mehrheit bilden. Auf ein einzelnes Mitglied fehlt diese
+Mehrheit: vorher auf dem Primary austragen, erst dann die Werte ändern:
 
 ```bash
 kubectl -n udp exec mongo-0 -c mongo -- mongosh --quiet --eval '
-  rs.remove("mongo-2.mongo.udp.svc.cluster.local:27017");
+  rs.remove("mongo-arbiter-0.mongo-arbiter.udp.svc.cluster.local:27017");
   rs.remove("mongo-1.mongo.udp.svc.cluster.local:27017")'
 ```
 
 Geht das Volume von `mongo-0` verloren, während die anderen laufen, wird es vom
 Set neu befüllt. Sind dagegen **alle** Mitglieder gleichzeitig weg und
 `mongo-0` startet mit leerem Volume, legt es ein neues, leeres Set an – dann
-aus dem Backup bzw. den Volumes von `mongo-1`/`mongo-2` wiederherstellen.
+aus dem Backup bzw. den Volumes der anderen Mitglieder wiederherstellen.
 
 ---
 

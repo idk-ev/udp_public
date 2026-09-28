@@ -4,13 +4,16 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
 ## Unveröffentlicht — Hochverfügbarkeit des öffentlichen Pfads
 
-- **MongoDB als Replica Set** (`mongo.replicaSet.enabled`, `mongo.replicas: 3`):
-  Failover in Sekunden, PDB, Verbindungsstring mit allen Mitgliedern für
-  Orion-LD, IoT-Agent und Index-Job. Bestehende Installationen werden per
-  `helm upgrade` umgestellt, `mongo-0` behält seine Daten (DEPLOY.md §10b).
+- **MongoDB als Replica Set** (`mongo.replicaSet.enabled`): drei
+  Datenmitglieder oder zwei plus Arbiter (`replicaSet.arbiter`, eigenes
+  Scheduling, z. B. auf einem Control-Plane-Knoten). Failover in Sekunden, ein
+  PDB über alle Stimmen, Readiness erst nach dem Aufholen. Bestehende
+  Installationen werden per `helm upgrade` umgestellt, `mongo-0` behält seine
+  Daten (DEPLOY.md §10b).
 - **Journaling** für MongoDB immer an (vorher `--nojournal`).
 - **Verteilung** konfigurierbar: `global.spread.mode: required` hält
-  Replikate auf verschiedenen Knoten, auch nach einem Drain.
+  Replikate auf verschiedenen Knoten; Deployments rollen dann ohne Surge aus,
+  damit es auch mit so vielen Knoten wie Replikaten geht.
 - **Cockpit** liefert `/abfahrten` und `/warnungen.ics` bei kurzem
   Node-RED-Ausfall aus dem Cache weiter.
 

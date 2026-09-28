@@ -23,9 +23,10 @@ spec:
       {{- include "udp.selectorLabels" $comp.name | nindent 6 }}
 {{- end }}
 {{- end }}
-{{- /* MongoDB replica set: at most one member down voluntarily, so a drain
-     never costs the set its majority. A member still copying data (not
-     ready, s. files/mongo/replset.js) already counts as the one. */}}
+{{- /* MongoDB replica set: at most one VOTER down voluntarily – data members
+     and arbiter in one budget, so a drain never costs the set its majority.
+     A member still copying data or lagging (not ready, s.
+     files/mongo/replset.js) already counts as the one. */}}
 {{- if and .Values.mongo.replicaSet.enabled (gt (int .Values.mongo.replicas) 1) }}
 ---
 apiVersion: policy/v1
@@ -37,6 +38,11 @@ metadata:
 spec:
   maxUnavailable: {{ .Values.mongo.pdb.maxUnavailable | default 1 }}
   selector:
+    {{- if .Values.mongo.replicaSet.arbiter.enabled }}
+    matchExpressions:
+      - { key: app, operator: In, values: [mongo, mongo-arbiter] }
+    {{- else }}
     matchLabels:
       {{- include "udp.selectorLabels" "mongo" | nindent 6 }}
+    {{- end }}
 {{- end }}

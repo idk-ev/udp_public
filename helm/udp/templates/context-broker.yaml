@@ -13,7 +13,7 @@ metadata:
 spec:
   replicas: {{ .Values.orionLd.replicas }}
   minReadySeconds: {{ .Values.orionLd.minReadySeconds | default 0 }}
-  {{- include "udp.rollingUpdate" .Values.orionLd | nindent 2 }}
+  {{- include "udp.rollingUpdate" (dict "ctx" . "cfg" .Values.orionLd) | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "orion-ld" | nindent 6 }}
@@ -122,7 +122,7 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "mintaka") | nindent 4 }}
 spec:
   replicas: {{ .Values.mintaka.replicas }}
-  {{- include "udp.rollingUpdate" .Values.mintaka | nindent 2 }}
+  {{- include "udp.rollingUpdate" (dict "ctx" . "cfg" .Values.mintaka) | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "mintaka" | nindent 6 }}

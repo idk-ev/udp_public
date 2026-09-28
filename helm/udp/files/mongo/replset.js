@@ -13,22 +13,30 @@
 //     set with mongo-0 as the only member. mongo-0 is the member that carries
 //     the data of a former standalone install, so it must become the first
 //     primary – the others then copy from it (initial sync).
-//   * on the primary: adds missing members (mongo-0..RS_MEMBERS-1) and
-//     removes members whose ordinal is >= RS_MEMBERS, one change per
-//     reconfig (MongoDB allows only one voting change at a time).
+//   * on the primary: adds missing members (mongo-0..RS_MEMBERS-1, then the
+//     arbiter RS_ARBITER if set) and removes members whose ordinal is
+//     >= RS_MEMBERS or an arbiter that is no longer wanted – one change per
+//     reconfig (MongoDB allows only one voting change at a time). Before the
+//     arbiter is added, a cluster-wide default write concern {w: 1} is set
+//     unless one exists already: MongoDB 5.0 refuses a reconfig that changes
+//     the implicit default ("majority" -> 1 for primary-secondary-arbiter),
+//     s. mongo.replicaSet.arbiter in values.yaml.
 //   * everywhere: maintains READY_FILE for the readiness probe of this
-//     container – ready means PRIMARY or SECONDARY, or not yet part of a set.
-//     A member that is still copying data (STARTUP2) or recovering is not
-//     ready: the StatefulSet rollout waits for it, and the PodDisruptionBudget
-//     keeps a drain from taking a second member meanwhile.
+//     container. Ready means PRIMARY, or SECONDARY no more than MAX_LAG_SECONDS
+//     behind the primary, or – only while no replica set exists anywhere yet
+//     (fresh install, migration from standalone) – not yet part of a set.
+//     A member that is still copying data (STARTUP2), recovering, lagging or
+//     waiting for its config is not ready: the StatefulSet rollout waits for
+//     it, and the PodDisruptionBudget keeps a drain (e.g. of the next node)
+//     from taking another voter meanwhile.
 //
 // Idempotent: a set that already matches is left alone, so restarts and
 // upgrades are safe. It never forces a reconfig – if a majority is gone
 // (e.g. replicas lowered from 3 to 1 without removing the members first),
 // it only reports it (s. DEPLOY.md §10b).
 //
-// Environment: POD_NAME, NAMESPACE, RS_NAME, RS_MEMBERS, INTERVAL_SECONDS,
-// READY_FILE.
+// Environment: POD_NAME, NAMESPACE, RS_NAME, RS_MEMBERS, RS_ARBITER ("" =
+// none), INTERVAL_SECONDS, MAX_LAG_SECONDS, READY_FILE.
 
 const fs = require('fs');
 
@@ -39,6 +47,8 @@ const namespace = env.NAMESPACE;
 const self = parseInt(env.POD_NAME.replace(/^.*-/, ''), 10);
 const intervalMs = 1000 * parseInt(env.INTERVAL_SECONDS || '5', 10);
 const readyFile = env.READY_FILE;
+const arbiter = env.RS_ARBITER || '';
+const maxLagMs = 1000 * parseInt(env.MAX_LAG_SECONDS || '30', 10);
 
 // Must match udp.mongoMembers in templates/_helpers.tpl.
 const host = (i) => `mongo-${i}.mongo.${namespace}.svc.cluster.local:27017`;
@@ -46,6 +56,8 @@ const ordinalOf = (h) => {
   const m = /^mongo-(\d+)\.mongo\.([^.]+)\.svc\.cluster\.local:27017$/.exec(h);
   return m && m[2] === namespace ? parseInt(m[1], 10) : null;
 };
+// Must match udp.mongoArbiterHost.
+const isArbiterHost = (h) => /^mongo-arbiter-\d+\.mongo-arbiter\./.test(h);
 const LOCAL = 'localhost:27017';
 
 let lastNote = '';
@@ -97,12 +109,27 @@ function initiate() {
   // Guard against a second, independent set: if any other member already
   // belongs to a set, mongo-0 has lost its config (e.g. a new, empty volume)
   // and will be re-added and resynced by that set's primary.
-  for (let i = 1; i < memberCount; i++) {
-    const h = command(host(i), { hello: 1 });
-    if (h.ok && h.setName) return note(`${host(i)} already belongs to set "${h.setName}" – waiting to be added`);
+  const others = [];
+  for (let i = 1; i < memberCount; i++) others.push(host(i));
+  if (arbiter) others.push(arbiter);
+  for (const other of others) {
+    const h = command(other, { hello: 1 });
+    if (h.ok && h.setName) return note(`${other} already belongs to set "${h.setName}" – waiting to be added`);
   }
   const res = command(LOCAL, { replSetInitiate: { _id: rsName, members: [{ _id: 0, host: host(0) }] } });
   note(res.ok ? `initiated replica set "${rsName}" with ${host(0)}` : `replSetInitiate failed: ${res.errmsg}`);
+}
+
+// A cluster-wide default write concern must exist before an arbiter joins
+// (s. header). An explicitly configured one is kept as it is.
+function ensureDefaultWriteConcern() {
+  const cur = command(LOCAL, { getDefaultRWConcern: 1 });
+  if (!cur.ok) { note(`getDefaultRWConcern failed: ${cur.errmsg}`); return false; }
+  if (cur.defaultWriteConcernSource === 'global') return true;
+  const res = command(LOCAL, { setDefaultRWConcern: 1, defaultWriteConcern: { w: 1 } });
+  if (!res.ok) { note(`setDefaultRWConcern failed: ${res.errmsg}`); return false; }
+  print(`${new Date().toISOString()} replset: set cluster-wide default write concern {w: 1}`);
+  return true;
 }
 
 function reconcile() {
@@ -112,9 +139,12 @@ function reconcile() {
   const present = cfg.members.map((m) => m.host);
   const surplus = cfg.members
     .filter((m) => { const o = ordinalOf(m.host); return o !== null && o >= memberCount; })
-    .sort((a, b) => ordinalOf(b.host) - ordinalOf(a.host));
+    .sort((a, b) => ordinalOf(b.host) - ordinalOf(a.host))
+    .concat(cfg.members.filter((m) => isArbiterHost(m.host) && m.host !== arbiter));
   const missing = [];
   for (let i = 0; i < memberCount; i++) if (!present.includes(host(i))) missing.push(host(i));
+  // Data members first: the arbiter only helps once there is a second copy.
+  if (arbiter && !present.includes(arbiter)) missing.push(arbiter);
   if (!surplus.length && !missing.length) return note(`primary, ${present.length} member(s), in sync with the chart`);
 
   const next = Object.assign({}, cfg, { version: cfg.version + 1, members: cfg.members.slice() });
@@ -126,15 +156,48 @@ function reconcile() {
     next.members = next.members.filter((m) => m.host !== victim.host);
     change = `removed ${victim.host}`;
   } else {
-    // A new voting member is added as "newlyAdded" by the server and only
-    // votes once its initial sync is done – the majority stays reachable.
+    // A new voting data member is added as "newlyAdded" by the server and
+    // only votes once its initial sync is done – the majority stays reachable.
     const id = Math.max(-1, ...cfg.members.map((m) => m._id)) + 1;
-    next.members.push({ _id: id, host: missing[0] });
-    change = `added ${missing[0]}`;
+    const member = { _id: id, host: missing[0] };
+    if (missing[0] === arbiter) {
+      if (!ensureDefaultWriteConcern()) return;
+      member.arbiterOnly = true;
+    }
+    next.members.push(member);
+    change = `added ${member.arbiterOnly ? 'arbiter ' : ''}${missing[0]}`;
   }
   const res = command(LOCAL, { replSetReconfig: next });
   // ConfigurationInProgress & co. resolve themselves – next round.
   note(res.ok ? change : `reconfig (${change}) failed, retrying: ${res.errmsg}`);
+}
+
+// Other voters of the set as the chart defines it.
+function peers() {
+  const list = [];
+  for (let i = 0; i < memberCount; i++) if (i !== self) list.push(host(i));
+  if (arbiter) list.push(arbiter);
+  return list;
+}
+
+// A member without config is only "ready" while no set exists anywhere –
+// otherwise it is a member that still waits for its config from the primary
+// (e.g. back with an empty volume) and holds no usable data.
+function anyPeerInSet() {
+  return peers().some((p) => { const h = command(p, { hello: 1 }); return Boolean(h.ok && h.setName); });
+}
+
+// SECONDARY and caught up: optime not more than maxLagMs behind the primary
+// (as last reported by its heartbeat).
+function caughtUp() {
+  const st = command(LOCAL, { replSetGetStatus: 1 });
+  if (!st.ok) return false;
+  const me = st.members.find((m) => m.self);
+  const primary = st.members.find((m) => m.stateStr === 'PRIMARY');
+  if (!me || !primary) return true;  // no primary to compare with – nothing to catch up to
+  const lag = new Date(primary.optimeDate).getTime() - new Date(me.optimeDate).getTime();
+  if (lag > maxLagMs) note(`secondary lags ${Math.round(lag / 1000)} s behind the primary – not ready`);
+  return lag <= maxLagMs;
 }
 
 function tick() {
@@ -143,18 +206,19 @@ function tick() {
     setReady(false);
     return note(`local mongod not reachable: ${h.errmsg}`);
   }
-  setReady(Boolean(h.isWritablePrimary || h.secondary || !h.setName));
   if (!h.setName) {
+    setReady(!anyPeerInSet());
     if (self === 0) return initiate();
     return note('not part of a replica set yet – waiting for the primary to add this member');
   }
+  setReady(Boolean(h.isWritablePrimary || (h.secondary && caughtUp())));
   if (h.setName !== rsName) return note(`member of set "${h.setName}", but the chart expects "${rsName}"`);
   if (self >= memberCount) return note(`ordinal ${self} is beyond mongo.replicas (${memberCount}) – leaving the config to the primary`);
   if (h.isWritablePrimary) return reconcile();
   note(h.secondary ? `secondary, primary: ${h.primary || 'none'}` : `not ready yet (primary: ${h.primary || 'none'})`);
 }
 
-note(`started for ${host(self)}, set "${rsName}", ${memberCount} member(s)`);
+note(`started for ${host(self)}, set "${rsName}", ${memberCount} data member(s)${arbiter ? ` + arbiter ${arbiter}` : ''}`);
 while (true) {
   try {
     tick();

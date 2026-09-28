@@ -67,9 +67,12 @@ global:
   #              too few nodes). After a node drain they can all end up on one
   #              node – the next drain of THAT node takes the service down.
   #   required   never two replicas of a component on one node. Needs at
-  #              least as many schedulable nodes as replicas, and one more for
-  #              rolling updates of Deployments (maxSurge 1) – otherwise the
-  #              extra pod stays Pending and the rollout waits.
+  #              least as many schedulable nodes as replicas. Deployments then
+  #              roll out with maxSurge 0 / maxUnavailable 1 (replace in place,
+  #              one replica less during the update) – a surge pod would need
+  #              a node MORE than replicas and stay Pending otherwise.
+  #              Per component: <component>.rollingUpdate: {maxSurge,
+  #              maxUnavailable} brings the surge back on clusters with room.
   # An explicit <component>.affinity replaces the generated one entirely.
   spread:
     mode: preferred
@@ -266,13 +269,16 @@ mongo:
   replicas: 1
   # MongoDB replica set: one primary, the other members replicate and one of
   # them takes over within seconds when the primary's node is drained or lost.
-  # With replicas 3 the set keeps a primary while any ONE member is down.
-  # replicas 2 gives no failover (a single survivor is no majority) – use 1 or
-  # at least 3.
+  # A primary needs a majority of the voting members, so the number of voters
+  # must be odd (the chart refuses anything else):
+  #   replicas 3                   three data members (PSS)
+  #   replicas 2 + arbiter.enabled two data members + a data-less voter (PSA)
+  #                                for clusters with only two data nodes
+  # Either layout keeps a primary while any ONE member is down.
   #
-  # Switching an existing standalone install on (enabled true + replicas 3) is
-  # an in-place upgrade: mongo-0 keeps its volume, restarts once as a member
-  # and becomes the primary, the new members copy the data (initial sync).
+  # Switching an existing standalone install on is an in-place upgrade:
+  # mongo-0 keeps its volume, restarts once as a member and becomes the
+  # primary, the new members copy the data (initial sync).
   # Steps, downtime, scale-down and rollback: DEPLOY.md §10b.
   #
   # The members are configured by a small sidecar (files/mongo/replset.js)
@@ -294,13 +300,61 @@ mongo:
     # starts once and then checks every intervalSeconds without restarting.
     # Its readiness goes stale after 60 s without a check – keep the interval
     # well below that.
+    # Readiness of a data member (sidecar): PRIMARY, or SECONDARY at most
+    # maxLagSeconds behind the primary. A member that is copying data,
+    # recovering or lagging is not ready – the PDB then keeps a drain from
+    # taking another voter (e.g. the next node of a rolling reboot).
     reconciler:
       intervalSeconds: 5
+      maxLagSeconds: 30
       resources:
         requests: { cpu: 10m,  memory: 192Mi }
         limits:   { cpu: 250m, memory: 320Mi }
-  # Only rendered with replicas > 1: at most one member may be down
-  # voluntarily (drain), so a three-member set always keeps its majority.
+    # Arbiter: votes in elections, holds no data (StatefulSet "mongo-arbiter",
+    # emptyDir, no volume). It lets two data members fail over: whichever
+    # data member survives plus the arbiter are a majority of three.
+    # It is never scheduled onto a node with a data member (built-in required
+    # anti-affinity) – on a node of its own, e.g. a control-plane node via
+    # nodeSelector + tolerations below, it adds the third failure domain
+    # without a third data node. Clients never talk to it (not in the
+    # connection strings; drivers only monitor it).
+    #
+    # Consequences of PSA in MongoDB 5.0 (DEPLOY.md §10b):
+    #   * Adding an arbiter changes the implicit default write concern from
+    #     "majority" to 1, which MongoDB only accepts once a cluster-wide
+    #     default is set. The reconciler sets {w: 1} if none is set yet: a
+    #     write is acknowledged by the primary alone, so writes keep working
+    #     while a data member is down ("majority" would block then – the
+    #     arbiter cannot acknowledge writes). Price: a write the primary had
+    #     not yet replicated when it crashed is rolled back on failover
+    #     (a clean step-down on drain waits for the secondary to catch up).
+    #   * While a data member is down, the majority commit point stands still
+    #     (majority read concern is always on in 5.0): the primary keeps
+    #     history in cache/disk until the member is back. Fine for a node
+    #     reboot; for an outage of hours set the missing member to
+    #     votes 0 / priority 0 (DEPLOY.md §10b).
+    #   * Flow control would throttle every write to its minimum during that
+    #     time (measured: ten times slower) without any benefit, since no
+    #     secondary can catch up – disableFlowControl turns it off.
+    arbiter:
+      enabled: false
+      disableFlowControl: true
+      # Scheduling of the arbiter only; empty -> global.nodeSelector etc.
+      nodeSelector: {}
+      tolerations: []
+      # Merged with the built-in anti-affinity against the data members.
+      affinity: {}
+      priorityClassName: ""
+      # WiredTiger cache pinned to its minimum (0.25 GB) – the arbiter stores
+      # only the replica set config.
+      resources:
+        requests: { cpu: 50m,  memory: 128Mi }
+        limits:   { cpu: 500m, memory: 512Mi }
+  # One budget over ALL voters – data members and arbiter: at most one may be
+  # down voluntarily (drain), so the set always keeps its majority. Separate
+  # budgets would let a drain take a data member while the arbiter is away
+  # (or the other way round) – two of three votes gone, no primary.
+  # Only rendered with replicas > 1.
   pdb: { maxUnavailable: 1 }
   resources:
     requests: { cpu: 250m, memory: 512Mi }

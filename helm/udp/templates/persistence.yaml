@@ -11,8 +11,20 @@
 # =============================================================================
 {{- $m := .Values.mongo }}
 {{- $rs := $m.replicaSet.enabled }}
-{{- if and (not $rs) (gt (int $m.replicas) 1) }}
+{{- $arb := and $rs $m.replicaSet.arbiter.enabled }}
+{{- $replicas := int $m.replicas }}
+{{- if and (not $rs) (gt $replicas 1) }}
 {{- fail "mongo.replicas > 1 needs mongo.replicaSet.enabled: several standalone instances would each hold a different part of the data" }}
+{{- end }}
+{{- if and (not $rs) $m.replicaSet.arbiter.enabled }}
+{{- fail "mongo.replicaSet.arbiter.enabled needs mongo.replicaSet.enabled" }}
+{{- end }}
+{{- /* A primary needs a majority of the voters: an even number of voters
+     survives no more failures than one voter less. One data member alone
+     (no arbiter) is the only exception – a single-member set. */}}
+{{- $voters := add $replicas (ternary 1 0 $arb) }}
+{{- if and $rs (or (gt $replicas 1) $arb) (or (lt $voters 3) (eq (mod $voters 2) 0)) }}
+{{- fail (printf "mongo: %d data member(s)%s = %d voters – a replica set needs an odd number of at least 3 voters: replicas 3, or replicas 2 with replicaSet.arbiter.enabled" $replicas (ternary " + arbiter" "" $arb) $voters) }}
 {{- end }}
 {{- if $rs }}
 apiVersion: v1
@@ -58,7 +70,17 @@ spec:
           # it, and a standalone without it loses the writes since the last
           # checkpoint on every unclean stop.
           {{- if $rs }}
-          args: ["--replSet", {{ $m.replicaSet.name | quote }}, "--quiet"]
+          args:
+            - --replSet
+            - {{ $m.replicaSet.name | quote }}
+            - --quiet
+            {{- if and $arb $m.replicaSet.arbiter.disableFlowControl }}
+            # PSA: with a data member down the majority commit point cannot
+            # move, flow control would throttle every write to its minimum
+            # for nothing (s. mongo.replicaSet.arbiter in values.yaml).
+            - --setParameter
+            - enableFlowControl=false
+            {{- end }}
           {{- else }}
           args: ["--quiet"]
           {{- end }}
@@ -83,7 +105,10 @@ spec:
             - { name: NAMESPACE, value: {{ .Release.Namespace | quote }} }
             - { name: RS_NAME, value: {{ $m.replicaSet.name | quote }} }
             - { name: RS_MEMBERS, value: {{ $m.replicas | quote }} }
+            # "" = no arbiter (an existing one is removed from the set).
+            - { name: RS_ARBITER, value: {{ ternary (include "udp.mongoArbiterHost" .) "" $arb | quote }} }
             - { name: INTERVAL_SECONDS, value: {{ $m.replicaSet.reconciler.intervalSeconds | quote }} }
+            - { name: MAX_LAG_SECONDS, value: {{ $m.replicaSet.reconciler.maxLagSeconds | quote }} }
             - { name: READY_FILE, value: /run/replset/ready }
             # mongosh keeps its config and log under $HOME – the image's home
             # directory is not writable for uid 999.
@@ -133,3 +158,73 @@ spec:
   selector:
     {{- include "udp.selectorLabels" "mongo" | nindent 4 }}
   ports: [{ port: 27017 }]
+{{- if $arb }}
+{{- $a := $m.replicaSet.arbiter }}
+{{- /* Scheduling knobs of the arbiter, pod security of the data members. */}}
+{{- $acfg := dict "podSecurityContext" $m.podSecurityContext "nodeSelector" $a.nodeSelector "tolerations" $a.tolerations "priorityClassName" $a.priorityClassName }}
+{{- /* User affinity plus a required anti-affinity against the data members:
+     an arbiter sharing a node with a data member would take two votes down
+     with that node. */}}
+{{- $aff := deepCopy ($a.affinity | default dict) }}
+{{- $anti := get $aff "podAntiAffinity" | default dict }}
+{{- $terms := get $anti "requiredDuringSchedulingIgnoredDuringExecution" | default list }}
+{{- $terms = append $terms (dict "topologyKey" "kubernetes.io/hostname" "labelSelector" (dict "matchLabels" (dict "app" "mongo"))) }}
+{{- $_ := set $anti "requiredDuringSchedulingIgnoredDuringExecution" $terms }}
+{{- $_ := set $aff "podAntiAffinity" $anti }}
+---
+# Arbiter of the replica set (mongo.replicaSet.arbiter): votes, holds no data.
+# emptyDir instead of a volume – after a restart it receives the set config
+# from the primary again. Added to the set by the replset sidecar of the
+# primary (files/mongo/replset.js).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo-arbiter
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mongo-arbiter") | nindent 4 }}
+spec:
+  serviceName: mongo-arbiter
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "mongo-arbiter" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "mongo-arbiter") | nindent 8 }}
+    spec:
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" $acfg) | nindent 6 }}
+      affinity:
+        {{- toYaml $aff | nindent 8 }}
+      containers:
+        - name: mongo
+          image: {{ include "udp.image" (dict "ctx" . "image" $m.image) }}
+          args: ["--replSet", {{ $m.replicaSet.name | quote }}, "--wiredTigerCacheSizeGB", "0.25", "--quiet"]
+          ports: [{ containerPort: 27017 }]
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" $m.containerSecurityContext) | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /data/db }
+          resources:
+            {{- toYaml $a.resources | nindent 12 }}
+          # Plain TCP like the data members (s. mongo.probes): an arbiter that
+          # accepts connections can vote.
+          {{- include "udp.probes" $m.probes | nindent 10 }}
+      volumes:
+        - name: data
+          emptyDir: { sizeLimit: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-arbiter
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mongo-arbiter") | nindent 4 }}
+spec:
+  clusterIP: None
+  # Resolvable before ready, like the data members.
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "udp.selectorLabels" "mongo-arbiter" | nindent 4 }}
+  ports: [{ port: 27017 }]
+{{- end }}

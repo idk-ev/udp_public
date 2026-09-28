@@ -32,6 +32,9 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- /* Replica set members among each other (replication, heartbeats,
      elections) and the replset sidecar reaching the other members. */}}
 {{- if .Values.mongo.replicaSet.enabled }}{{ $mongoClients = append $mongoClients "mongo" }}{{ end }}
+{{- $mongoArbiter := and .Values.mongo.replicaSet.enabled .Values.mongo.replicaSet.arbiter.enabled }}
+{{- /* Arbiter <-> members (heartbeats, votes). */}}
+{{- if $mongoArbiter }}{{ $mongoClients = append $mongoClients "mongo-arbiter" }}{{ end }}
 {{- $timescaleClients := list "orion-ld" "mintaka" "frost" "keycloak" "node-red" }}
 {{- if .Values.ckan.enabled }}{{ $timescaleClients = append $timescaleClients "ckan" }}{{ end }}
 {{- if .Values.backup.enabled }}{{ $timescaleClients = append $timescaleClients "db-backup" }}{{ end }}
@@ -50,6 +53,11 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
   (dict "app" "mongo"          "ports" (list 27017)     "from" $mongoClients)
   (dict "app" "mosquitto"      "ports" (list 1883 9001) "from" (list "iot-agent-json"))
 }}
+{{- /* Arbiter: the members, and every client – drivers monitor all hosts the
+     set reports, the arbiter included (no data is ever read from it). */}}
+{{- if $mongoArbiter }}
+{{- $rules = append $rules (dict "app" "mongo-arbiter" "ports" (list 27017) "from" $mongoClients) }}
+{{- end }}
 {{- if .Values.ckan.enabled }}
 {{- $rules = concat $rules (list
   (dict "app" "ckan"  "ports" (list 5000) "from" (list "apisix") "monitored" true)

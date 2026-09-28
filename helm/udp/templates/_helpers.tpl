@@ -297,11 +297,11 @@ global.spread.mode:
              same node and stay there until they are rescheduled.
   required   never two replicas on one node. Needs at least as many
              schedulable nodes as replicas; a replica without a free node
-             stays Pending. Rolling updates of Deployments (maxSurge 1,
-             maxUnavailable 0, s. udp.rollingUpdate) need one node MORE than
-             replicas, otherwise the surge pod stays Pending and the rollout
-             waits. A drain still proceeds (the PDB allows one missing replica),
-             the evicted replica just waits for a free node.
+             stays Pending. A surge pod during a rolling update would need
+             one node MORE than replicas, so Deployments switch to
+             maxSurge 0 / maxUnavailable 1 in this mode (s. udp.rollingUpdate).
+             A drain still proceeds (the PDB allows one missing replica), the
+             evicted replica just waits for a free node.
 Call: {{- include "udp.spread" (dict "ctx" . "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
 */}}
 {{- define "udp.spread" -}}
@@ -355,18 +355,34 @@ Call: {{ include "udp.spreadMode" (dict "ctx" . "cfg" .Values.orionLd) }}
 {{- end -}}
 
 {{/*
-Rollout strategy for replicated Deployments: never take a ready pod away
-before its replacement is ready (maxUnavailable 0) – the Service keeps at least
-the full replica count during an update. Needs room for one extra pod
-(maxSurge 1); if the cluster has none, the rollout waits instead of degrading.
-With spread.mode "required" that extra pod needs a node without a replica,
-i.e. one node more than replicas (s. udp.spread).
-Call: {{- include "udp.rollingUpdate" .Values.orionLd | nindent 2 }}
+Rollout strategy for replicated Deployments.
+
+spread.mode "preferred" (and single replicas): never take a ready pod away
+before its replacement is ready (maxUnavailable 0, maxSurge 1) – the Service
+keeps the full replica count during an update. Needs room for one extra pod;
+if the cluster has none, the rollout waits instead of degrading.
+
+spread.mode "required" with more than one replica: the extra pod would need a
+node without a replica. With exactly as many nodes as replicas there is none,
+the surge pod stays Pending forever and the rollout never finishes. The
+strategy therefore switches to replace-in-place (maxSurge 0, maxUnavailable 1):
+one replica at a time is stopped and recreated on its now free node – the
+Service runs on one replica less for the duration.
+
+<component>.rollingUpdate ({maxSurge, maxUnavailable}) overrides both, e.g.
+to get the surge behaviour back on clusters with spare nodes.
+Call: {{- include "udp.rollingUpdate" (dict "ctx" . "cfg" .Values.orionLd) | nindent 2 }}
 */}}
 {{- define "udp.rollingUpdate" -}}
+{{- $ru := dict "maxUnavailable" 0 "maxSurge" 1 -}}
+{{- if and (gt (int (.cfg.replicas | default 1)) 1) (not .cfg.affinity) (eq (include "udp.spreadMode" .) "required") -}}
+{{- $ru = dict "maxUnavailable" 1 "maxSurge" 0 -}}
+{{- end -}}
+{{- /* Key by key: merge would treat an explicit 0 as unset. */ -}}
+{{- range $k, $v := (.cfg.rollingUpdate | default dict) }}{{ $_ := set $ru $k $v }}{{ end -}}
 strategy:
   type: RollingUpdate
-  rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  rollingUpdate: { maxUnavailable: {{ $ru.maxUnavailable }}, maxSurge: {{ $ru.maxSurge }} }
 {{- end -}}
 
 {{/*
@@ -443,6 +459,15 @@ The member list also ends up in the replica set config (files/mongo/replset.js)
 {{- $hosts = append $hosts (printf "mongo-%d.mongo.%s.svc.cluster.local:27017" $i $ns) -}}
 {{- end -}}
 {{- join "," $hosts -}}
+{{- end -}}
+
+{{/*
+Replica set arbiter (mongo.replicaSet.arbiter): StatefulSet + headless Service
+"mongo-arbiter". Deliberately NOT part of the client connection strings – it
+serves no data; drivers learn about it from the members and only monitor it.
+*/}}
+{{- define "udp.mongoArbiterHost" -}}
+{{- printf "mongo-arbiter-0.mongo-arbiter.%s.svc.cluster.local:27017" .Release.Namespace -}}
 {{- end -}}
 
 {{/*
