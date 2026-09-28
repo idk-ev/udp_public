@@ -1,0 +1,295 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/conficars_ulm/vehicle_types",
+  "recordedAt": "2026-09-28T03:09:40.075Z",
+  "note": "The complete live response, verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:31 GMT",
+    "etag": "\"8fcdd3e42f14d33453a2acf455ef305f\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564851,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "vehicle_types": [
+        {
+          "vehicle_type_id": "CFU:VehicleType:skodafabia",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Skoda Fabia",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "doors_5"
+          ],
+          "g_CO2_km": 105,
+          "make": "Skoda",
+          "model": "Fabia",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:small_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:small_hour_nighttime",
+            "CFU:PricingPlan:small_hour_daytime",
+            "CFU:PricingPlan:small_hour_day",
+            "CFU:PricingPlan:small_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:hyundaii10",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Hyundai i10",
+          "vehicle_accessories": [
+            "air_conditioning"
+          ],
+          "g_CO2_km": 108,
+          "make": "Hyundai",
+          "model": "i10",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:mini_hour_nighttime",
+            "CFU:PricingPlan:mini_hour_daytime",
+            "CFU:PricingPlan:mini_hour_day",
+            "CFU:PricingPlan:mini_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:vwup",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "VW Up",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "doors_5"
+          ],
+          "g_CO2_km": 116,
+          "make": "VW",
+          "model": "Up",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:mini_hour_nighttime",
+            "CFU:PricingPlan:mini_hour_daytime",
+            "CFU:PricingPlan:mini_hour_day",
+            "CFU:PricingPlan:mini_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:mbsprintertransporter",
+          "form_factor": "car",
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "MB Sprinter Transporter",
+          "vehicle_accessories": [],
+          "g_CO2_km": 218,
+          "make": "MB",
+          "model": "Sprinter Transporter",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:transporter_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:transporter_hour_nighttime",
+            "CFU:PricingPlan:transporter_hour_daytime",
+            "CFU:PricingPlan:transporter_hour_day",
+            "CFU:PricingPlan:transporter_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:toyotaaygox",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Toyota.Aygo X",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "doors_5"
+          ],
+          "g_CO2_km": 108,
+          "make": "Toyota.Aygo",
+          "model": "X",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:mini_hour_nighttime",
+            "CFU:PricingPlan:mini_hour_daytime",
+            "CFU:PricingPlan:mini_hour_day",
+            "CFU:PricingPlan:mini_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:daciajogger",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Dacia Jogger",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "doors_5",
+            "navigation"
+          ],
+          "g_CO2_km": 128,
+          "make": "Dacia",
+          "model": "Jogger",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:medium_hour_nighttime",
+            "CFU:PricingPlan:medium_hour_daytime",
+            "CFU:PricingPlan:medium_hour_day",
+            "CFU:PricingPlan:medium_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:mbvitotransporter",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "MB Vito Transporter",
+          "vehicle_accessories": [],
+          "g_CO2_km": 164,
+          "make": "MB",
+          "model": "Vito Transporter",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:large_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:large_hour_nighttime",
+            "CFU:PricingPlan:large_hour_daytime",
+            "CFU:PricingPlan:large_hour_day",
+            "CFU:PricingPlan:large_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:hyundaii20",
+          "form_factor": "car",
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Hyundai i20",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "automatic",
+            "doors_5"
+          ],
+          "g_CO2_km": 128,
+          "make": "Hyundai",
+          "model": "i20",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:small_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:small_hour_nighttime",
+            "CFU:PricingPlan:small_hour_daytime",
+            "CFU:PricingPlan:small_hour_day",
+            "CFU:PricingPlan:small_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:toyotayarishybrid",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Toyota Yaris Hybrid",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "automatic",
+            "doors_5"
+          ],
+          "g_CO2_km": 87,
+          "make": "Toyota",
+          "model": "Yaris Hybrid",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:small_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:small_hour_nighttime",
+            "CFU:PricingPlan:small_hour_daytime",
+            "CFU:PricingPlan:small_hour_day",
+            "CFU:PricingPlan:small_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:skodacitigo",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Skoda Citigo",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "automatic",
+            "doors_5"
+          ],
+          "g_CO2_km": 0,
+          "make": "Skoda",
+          "model": "Citigo",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:mini_hour_nighttime",
+            "CFU:PricingPlan:mini_hour_daytime",
+            "CFU:PricingPlan:mini_hour_day",
+            "CFU:PricingPlan:mini_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:renaultkangoo",
+          "form_factor": "car",
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Renault Kangoo",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "doors_5"
+          ],
+          "g_CO2_km": 151,
+          "make": "Renault",
+          "model": "Kangoo",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:medium_hour_nighttime",
+            "CFU:PricingPlan:medium_hour_daytime",
+            "CFU:PricingPlan:medium_hour_day",
+            "CFU:PricingPlan:medium_hour_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "CFU:VehicleType:renaulttrafic",
+          "form_factor": "car",
+          "rider_capacity": 9,
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Renault Trafic",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "navigation"
+          ],
+          "g_CO2_km": 186,
+          "make": "Renault",
+          "model": "Trafic",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "CFU:PricingPlan:large_hour_daytime",
+          "pricing_plan_ids": [
+            "CFU:PricingPlan:large_hour_nighttime",
+            "CFU:PricingPlan:large_hour_daytime",
+            "CFU:PricingPlan:large_hour_day",
+            "CFU:PricingPlan:large_hour_week"
+          ]
+        }
+      ]
+    }
+  }
+}

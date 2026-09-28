@@ -1,0 +1,269 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/teilauto_schwaebisch_hall/vehicle_types",
+  "recordedAt": "2026-09-28T03:09:40.584Z",
+  "note": "The complete live response, verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:18 GMT",
+    "etag": "\"8ebc07b4b7d0ece5a696215b716a1014\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564838,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "vehicle_types": [
+        {
+          "vehicle_type_id": "TAS:VehicleType:renaulr4",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Renaul R4",
+          "vehicle_accessories": [],
+          "make": "Renaul",
+          "model": "R4",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:medium_hour_nighttime",
+            "TAS:PricingPlan:medium_hour_daytime",
+            "TAS:PricingPlan:medium_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:citroenberlingo",
+          "form_factor": "car",
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Citroen Berlingo",
+          "vehicle_accessories": [],
+          "make": "Citroen",
+          "model": "Berlingo",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:medium_hour_nighttime",
+            "TAS:PricingPlan:medium_hour_daytime",
+            "TAS:PricingPlan:medium_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:renaultscenic",
+          "form_factor": "car",
+          "rider_capacity": 7,
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Renault Scenic",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "automatic"
+          ],
+          "make": "Renault",
+          "model": "Scenic",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:medium_hour_nighttime",
+            "TAS:PricingPlan:medium_hour_daytime",
+            "TAS:PricingPlan:medium_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:toyotaaurishybrid",
+          "form_factor": "car",
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Toyota Auris Hybrid",
+          "vehicle_accessories": [
+            "automatic"
+          ],
+          "g_CO2_km": 85,
+          "make": "Toyota",
+          "model": "Auris Hybrid",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:medium_hour_nighttime",
+            "TAS:PricingPlan:medium_hour_daytime",
+            "TAS:PricingPlan:medium_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:opelcorsae",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Opel Corsa e",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "automatic"
+          ],
+          "make": "Opel",
+          "model": "Corsa e",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:mini_hour_nighttime",
+            "TAS:PricingPlan:mini_hour_daytime",
+            "TAS:PricingPlan:mini_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:renaultzoe",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Renault Zoe",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "automatic"
+          ],
+          "make": "Renault",
+          "model": "Zoe",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:mini_hour_nighttime",
+            "TAS:PricingPlan:mini_hour_daytime",
+            "TAS:PricingPlan:mini_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:suzukiswift",
+          "form_factor": "car",
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Suzuki Swift",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "manual"
+          ],
+          "make": "Suzuki",
+          "model": "Swift",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:mini_hour_nighttime",
+            "TAS:PricingPlan:mini_hour_daytime",
+            "TAS:PricingPlan:mini_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:toyotaaygox",
+          "form_factor": "car",
+          "rider_capacity": 4,
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Toyota AygoX",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "automatic"
+          ],
+          "make": "Toyota",
+          "model": "AygoX",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:mini_hour_nighttime",
+            "TAS:PricingPlan:mini_hour_daytime",
+            "TAS:PricingPlan:mini_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:mitsubishispacestar",
+          "form_factor": "car",
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Mitsubishi Space Star",
+          "vehicle_accessories": [
+            "manual"
+          ],
+          "g_CO2_km": 96,
+          "make": "Mitsubishi",
+          "model": "Space Star",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:mini_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:mini_hour_nighttime",
+            "TAS:PricingPlan:mini_hour_daytime",
+            "TAS:PricingPlan:mini_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:vwid3",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "VW ID3",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "automatic",
+            "doors_5"
+          ],
+          "make": "VW",
+          "model": "ID3",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:medium_hour_nighttime",
+            "TAS:PricingPlan:medium_hour_daytime",
+            "TAS:PricingPlan:medium_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:opelastrakombi",
+          "form_factor": "car",
+          "propulsion_type": "combustion",
+          "max_range_meters": 300000,
+          "name": "Opel Astra Kombi",
+          "vehicle_accessories": [
+            "air_conditioning",
+            "manual"
+          ],
+          "make": "Opel",
+          "model": "Astra Kombi",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:medium_hour_nighttime",
+            "TAS:PricingPlan:medium_hour_daytime",
+            "TAS:PricingPlan:medium_day"
+          ]
+        },
+        {
+          "vehicle_type_id": "TAS:VehicleType:opelfrontera",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Opel Frontera",
+          "vehicle_accessories": [
+            "automatic"
+          ],
+          "make": "Opel",
+          "model": "Frontera",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "TAS:PricingPlan:medium_hour_daytime",
+          "pricing_plan_ids": [
+            "TAS:PricingPlan:medium_hour_nighttime",
+            "TAS:PricingPlan:medium_hour_daytime",
+            "TAS:PricingPlan:medium_day"
+          ]
+        }
+      ]
+    }
+  }
+}

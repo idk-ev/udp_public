@@ -1,0 +1,103 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/swu2go/vehicle_types",
+  "recordedAt": "2026-09-28T03:09:39.625Z",
+  "note": "The complete live response, verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:27 GMT",
+    "etag": "\"bf8bd5cdbe5cf4e7ceeef2bf2cc260ad\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564847,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "vehicle_types": [
+        {
+          "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Renault Zoe Z.E. 50",
+          "vehicle_accessories": [],
+          "make": "Renault",
+          "model": "Zoe Z.E. 50",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "SWU:PricingPlan:small_hour_daytime",
+          "pricing_plan_ids": [
+            "SWU:PricingPlan:small_hour_nighttime",
+            "SWU:PricingPlan:small_hour_daytime",
+            "SWU:PricingPlan:small_day",
+            "SWU:PricingPlan:small_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "SWU:VehicleType:idbuzz",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "ID Buzz",
+          "vehicle_accessories": [],
+          "make": "ID",
+          "model": "Buzz",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "SWU:PricingPlan:van_hour_daytime",
+          "pricing_plan_ids": [
+            "SWU:PricingPlan:van_hour_nighttime",
+            "SWU:PricingPlan:van_hour_daytime",
+            "SWU:PricingPlan:van_day",
+            "SWU:PricingPlan:van_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "SWU:VehicleType:renaultzoeze40",
+          "form_factor": "car",
+          "rider_capacity": 5,
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "Renault Zoe Z.E 40",
+          "vehicle_accessories": [
+            "automatic",
+            "doors_5",
+            "cruise_control",
+            "navigation"
+          ],
+          "make": "Renault",
+          "model": "Zoe Z.E 40",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "SWU:PricingPlan:small_hour_daytime",
+          "pricing_plan_ids": [
+            "SWU:PricingPlan:small_hour_nighttime",
+            "SWU:PricingPlan:small_hour_daytime",
+            "SWU:PricingPlan:small_day",
+            "SWU:PricingPlan:small_week"
+          ]
+        },
+        {
+          "vehicle_type_id": "SWU:VehicleType:id3",
+          "form_factor": "car",
+          "propulsion_type": "electric",
+          "max_range_meters": 300000,
+          "name": "ID 3",
+          "vehicle_accessories": [],
+          "make": "ID",
+          "model": "3",
+          "wheel_count": 4,
+          "return_constraint": "roundtrip_station",
+          "default_pricing_plan_id": "SWU:PricingPlan:small_hour_daytime",
+          "pricing_plan_ids": [
+            "SWU:PricingPlan:small_hour_nighttime",
+            "SWU:PricingPlan:small_hour_daytime",
+            "SWU:PricingPlan:small_day",
+            "SWU:PricingPlan:small_week"
+          ]
+        }
+      ]
+    }
+  }
+}

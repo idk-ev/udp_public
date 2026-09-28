@@ -1,0 +1,553 @@
+{
+  "source": "https://api.mobidata-bw.de/ocpdb/api/public/v1/locations?lat=48.65&lon=9.0&radius=190000&limit=1000&offset=10000",
+  "recordedAt": "2026-09-28T05:00:25.519Z",
+  "note": "The page at offset 10000 of the live radius query, trimmed by hand: 12 of 1000 locations kept verbatim in source order, picked as 4 BW register-only (STATIC), 3 outside the BW box, 3 inside the box but outside BW, 2 BW without a name (a location counts once). Each EVSE slimmed to uid, evse_id and status (connectors, capabilities and timestamps removed; FN_OC_WRAP reads only status and the count). total_count, next_offset and next_path verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "items": [
+      {
+        "address": "Winterbauernhof 2",
+        "postal_code": "78730",
+        "city": "Lauterbach",
+        "state": "Baden-Württemberg",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:22Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236737",
+        "publish": true,
+        "original_id": "1077836",
+        "source": "bnetza_api",
+        "official_region_code": "083255005036",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.24003,
+          "longitude": 8.33394,
+          "lat": 48.24003,
+          "lon": 8.33394
+        },
+        "operator": {
+          "name": "Theris GmbH"
+        },
+        "evses": [
+          {
+            "uid": "260083396",
+            "evse_id": "DE*FKU*EFS10497",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083394",
+            "evse_id": "DE*FKU*EFS10495",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083391",
+            "evse_id": "DE*FKU*EFS10493",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083397",
+            "evse_id": "DE*FKU*EFS10498",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083392",
+            "evse_id": "DE*FKU*EFS10499",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083393",
+            "evse_id": "DE*FKU*EFS10494",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083395",
+            "evse_id": "DE*FKU*EFS10496",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Schwabacher Str. 1",
+        "postal_code": "91183",
+        "city": "Abenberg",
+        "state": "Bayern",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:22Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236743",
+        "publish": true,
+        "original_id": "1077849",
+        "source": "bnetza_api",
+        "official_region_code": "095760111111",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 49.243341,
+          "longitude": 10.959264,
+          "lat": 49.243341,
+          "lon": 10.959264
+        },
+        "operator": {
+          "name": "N-ERGIE Aktiengesellschaft"
+        },
+        "evses": [
+          {
+            "uid": "260083407",
+            "evse_id": "DE*LVP*E21500*002",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083406",
+            "evse_id": "DE*LVP*E21500*001",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Im Dorf 14",
+        "postal_code": "91616",
+        "city": "Neusitz",
+        "state": "Bayern",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:22Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236744",
+        "publish": true,
+        "original_id": "1077850",
+        "source": "bnetza_api",
+        "official_region_code": "095715501181",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 49.37327,
+          "longitude": 10.22148,
+          "lat": 49.37327,
+          "lon": 10.22148
+        },
+        "operator": {
+          "name": "N-ERGIE Aktiengesellschaft"
+        },
+        "evses": [
+          {
+            "uid": "260083408",
+            "evse_id": "DE*LVP*E21805*001",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083409",
+            "evse_id": "DE*LVP*E21805*002",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Wilhelm-Löhe-Str. ggü. 18",
+        "postal_code": "90574",
+        "city": "Roßtal",
+        "state": "Bayern",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:22Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236747",
+        "publish": true,
+        "original_id": "1077854",
+        "source": "bnetza_api",
+        "official_region_code": "095730125125",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 49.391402,
+          "longitude": 10.88768,
+          "lat": 49.391402,
+          "lon": 10.88768
+        },
+        "operator": {
+          "name": "N-ERGIE Aktiengesellschaft"
+        },
+        "evses": [
+          {
+            "uid": "260083414",
+            "evse_id": "DE*LVP*E21518*001",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083415",
+            "evse_id": "DE*LVP*E21518*002",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Despag-Straße 1",
+        "postal_code": "85055",
+        "city": "Ingolstadt",
+        "state": "Bayern",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:23Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236763",
+        "publish": true,
+        "original_id": "1077875",
+        "source": "bnetza_api",
+        "official_region_code": "091610000000",
+        "coordinates": {
+          "latitude": 48.776306,
+          "longitude": 11.452222,
+          "lat": 48.776306,
+          "lon": 11.452222
+        },
+        "operator": {
+          "name": "EDEKA Südbayern Handels Stiftung & Co KG"
+        },
+        "evses": [
+          {
+            "uid": "260083439",
+            "evse_id": "BNETZA*1077875*1",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083441",
+            "evse_id": "BNETZA*1077875*3",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083440",
+            "evse_id": "BNETZA*1077875*2",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Friedrich-Ebert-Straße 29",
+        "postal_code": "88239",
+        "city": "Wangen",
+        "state": "Baden-Württemberg",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:24Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236776",
+        "publish": true,
+        "original_id": "1077888",
+        "source": "bnetza_api",
+        "official_region_code": "084365007081",
+        "coordinates": {
+          "latitude": 47.68641,
+          "longitude": 9.83819,
+          "lat": 47.68641,
+          "lon": 9.83819
+        },
+        "operator": {
+          "name": "EDEKA Südbayern Handels Stiftung & Co KG"
+        },
+        "evses": [
+          {
+            "uid": "260083466",
+            "evse_id": "BNETZA*1077888*1",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083467",
+            "evse_id": "BNETZA*1077888*2",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Pröbstenerstr. 23",
+        "postal_code": "87637",
+        "city": "Eisenberg",
+        "state": "Bayern",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:25Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236789",
+        "publish": true,
+        "original_id": "1077901",
+        "source": "bnetza_api",
+        "official_region_code": "097775756125",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 47.612865,
+          "longitude": 10.607083,
+          "lat": 47.612865,
+          "lon": 10.607083
+        },
+        "operator": {
+          "name": "Wattif Europe GmbH"
+        },
+        "evses": [
+          {
+            "uid": "260083494",
+            "evse_id": "DEUEISGO04",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083492",
+            "evse_id": "DEUEISGO02",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083493",
+            "evse_id": "DEUEISGO03",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083491",
+            "evse_id": "DEUEISGO01",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Koppengäßle 14",
+        "postal_code": "78733",
+        "city": "Aichhalden",
+        "state": "Baden-Württemberg",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:25Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236819",
+        "publish": true,
+        "original_id": "1077935",
+        "source": "bnetza_api",
+        "official_region_code": "083255005001",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.26172,
+          "longitude": 8.41045,
+          "lat": 48.26172,
+          "lon": 8.41045
+        },
+        "operator": {
+          "name": "Hess Montagen und Bauelemente GmbH"
+        },
+        "evses": [
+          {
+            "uid": "260083515",
+            "evse_id": "BNETZA*1077936*1",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083516",
+            "evse_id": "BNETZA*1077937*1",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083514",
+            "evse_id": "BNETZA*1077935*1",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Kolpingstr. 1-7",
+        "postal_code": "87497",
+        "city": "Wertach",
+        "state": "Bayern",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:26Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236826",
+        "publish": true,
+        "original_id": "1077943",
+        "source": "bnetza_api",
+        "official_region_code": "097800145145",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 47.61545,
+          "longitude": 10.432127,
+          "lat": 47.61545,
+          "lon": 10.432127
+        },
+        "operator": {
+          "name": "Kolping-Familienferienwerk Diözesanverband Augsburg e.V."
+        },
+        "evses": [
+          {
+            "uid": "260083521",
+            "evse_id": "DE*AUW*E1037*002",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083523",
+            "evse_id": "DE*AUW*E1037*004",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083520",
+            "evse_id": "DE*AUW*E1037*001",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083522",
+            "evse_id": "DE*AUW*E1037*003",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Bahnhofstr. 15",
+        "postal_code": "73463",
+        "city": "Westhausen",
+        "state": "Baden-Württemberg",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:27Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236856",
+        "publish": true,
+        "original_id": "1077979",
+        "source": "bnetza_api",
+        "official_region_code": "081365004082",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.881425,
+          "longitude": 10.184163,
+          "lat": 48.881425,
+          "lon": 10.184163
+        },
+        "operator": {
+          "name": "deer GmbH"
+        },
+        "evses": [
+          {
+            "uid": "260083563",
+            "evse_id": "DE*753*E00364*001",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083564",
+            "evse_id": "DE*753*E00364*002",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Rosenstr. 19",
+        "postal_code": "71088",
+        "city": "Holzgerlingen",
+        "state": "Baden-Württemberg",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:30Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236926",
+        "publish": true,
+        "original_id": "1078060",
+        "source": "bnetza_api",
+        "official_region_code": "081155004024",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.645616,
+          "longitude": 9.019147,
+          "lat": 48.645616,
+          "lon": 9.019147
+        },
+        "operator": {
+          "name": "Frank Holzapfel"
+        },
+        "evses": [
+          {
+            "uid": "260083692",
+            "evse_id": "BNETZA*1078060*1",
+            "status": "STATIC"
+          }
+        ]
+      },
+      {
+        "address": "Am Buchrain 17",
+        "postal_code": "79713",
+        "city": "Bad Säckingen",
+        "state": "Baden-Württemberg",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:53:30Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "236927",
+        "publish": true,
+        "original_id": "1078061",
+        "source": "bnetza_api",
+        "official_region_code": "083375005096",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 47.554403,
+          "longitude": 7.928873,
+          "lat": 47.554403,
+          "lon": 7.928873
+        },
+        "operator": {
+          "name": "Stadtwerke Bad Säckingen GmbH"
+        },
+        "evses": [
+          {
+            "uid": "260083694",
+            "evse_id": "BNETZA*1078062*1",
+            "status": "STATIC"
+          },
+          {
+            "uid": "260083693",
+            "evse_id": "BNETZA*1078061*1",
+            "status": "STATIC"
+          }
+        ]
+      }
+    ],
+    "total_count": 31461,
+    "next_offset": 11000,
+    "next_path": "/ocpdb/api/public/v1/locations?lat=48.65&lon=9.0&radius=190000&limit=1000&offset=11000"
+  }
+}

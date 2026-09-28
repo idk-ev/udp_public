@@ -1,0 +1,126 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/teilauto_schwaebisch_hall/station_information",
+  "recordedAt": "2026-09-28T03:09:40.409Z",
+  "note": "All 15 stations of the live response, in source order; only the rental_uris of each station removed (deep links, never read).",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:18 GMT",
+    "etag": "\"3aac6cd8e576ea7ae3c855f5fbe315d7\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564838,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "stations": [
+        {
+          "station_id": "TAS:Station:6471",
+          "name": "Sonnenrain",
+          "lat": 49.109912,
+          "lon": 9.769058,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:5442",
+          "name": "Kocherwiesen",
+          "lat": 49.10306,
+          "lon": 9.746308,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:11040",
+          "name": "Viva!Karree Karl-Friedrich Binder Straße",
+          "lat": 49.112679,
+          "lon": 9.770981,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:11020",
+          "name": "Holzmarkt",
+          "lat": 49.112526,
+          "lon": 9.738939,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:9480",
+          "name": "Langer Graben / Gymnasiumstraße 4",
+          "lat": 49.113611,
+          "lon": 9.738012,
+          "capacity": 2
+        },
+        {
+          "station_id": "TAS:Station:11438",
+          "name": "Michelbach Bilz Hagenhofweg",
+          "lat": 49.07199,
+          "lon": 9.769,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:11437",
+          "name": "Westheim Rosengartenhalle",
+          "lat": 49.05535,
+          "lon": 9.7299,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:1699",
+          "name": "Waldorfschule",
+          "lat": 49.11234,
+          "lon": 9.72259,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:11439",
+          "name": "Michelfeld Rathaus",
+          "lat": 49.098,
+          "lon": 9.68,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:3531",
+          "name": "Hessental Bahnhof",
+          "lat": 49.097,
+          "lon": 9.768,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:10045",
+          "name": "Lukaskirche",
+          "lat": 49.100189,
+          "lon": 9.73345,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:96",
+          "name": "Sonnenhof",
+          "lat": 49.10188,
+          "lon": 9.72277,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:2606",
+          "name": "Bausparkasse",
+          "lat": 49.113086,
+          "lon": 9.744979,
+          "capacity": 1
+        },
+        {
+          "station_id": "TAS:Station:97",
+          "name": "Ritter",
+          "lat": 49.11313,
+          "lon": 9.73178,
+          "capacity": 2
+        },
+        {
+          "station_id": "TAS:Station:10005",
+          "name": "Im Lehen",
+          "lat": 49.116781,
+          "lon": 9.74624,
+          "capacity": 1
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,455 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/swu2go/station_status",
+  "recordedAt": "2026-09-28T03:09:39.765Z",
+  "note": "The complete live response, verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:27 GMT",
+    "etag": "\"c8a13f051f52d6dd4ba63a1651c74846\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564847,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "stations": [
+        {
+          "station_id": "SWU:Station:5162",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5660",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze40",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:9182",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:9183",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:8273",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:9184",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5160",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:8272",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:10139",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:10154",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze40",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5159",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:4984",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5413",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5216",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze40",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:7759",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:id3",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:10379",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:7717",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:9013",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:11291",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5155",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:10380",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:10140",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5158",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:8380",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5170",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:5171",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:9968",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:idbuzz",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:10186",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:8459",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:8977",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        },
+        {
+          "station_id": "SWU:Station:9929",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "SWU:VehicleType:renaultzoeze50",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564847
+        }
+      ]
+    }
+  }
+}

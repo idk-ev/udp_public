@@ -1,0 +1,210 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/conficars_ulm/station_information",
+  "recordedAt": "2026-09-28T03:09:39.919Z",
+  "note": "All 27 stations of the live response, in source order; only the rental_uris of each station removed (deep links, never read).",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:31 GMT",
+    "etag": "\"3f86756f748ce9f6adf89f194af74732\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564851,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "stations": [
+        {
+          "station_id": "CFU:Station:6451",
+          "name": "Zeitblomstraße 29/2 (Stellplatz ist gegenüber)",
+          "lat": 48.402945,
+          "lon": 9.988742,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:3661",
+          "name": "Schülinstraße 25 Studentenwohnanlage",
+          "lat": 48.405231,
+          "lon": 10.002353,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:3167",
+          "name": "Rosengasse 8",
+          "lat": 48.400918,
+          "lon": 9.99453,
+          "capacity": 2
+        },
+        {
+          "station_id": "CFU:Station:2297",
+          "name": "Schillerstraße 35 am Bahnhofsteg",
+          "lat": 48.398292,
+          "lon": 9.981213,
+          "capacity": 3
+        },
+        {
+          "station_id": "CFU:Station:8351",
+          "name": "Eisenkrautweg 16 (Stellplatz ist gegenüber)",
+          "lat": 48.413161,
+          "lon": 9.961691,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:5619",
+          "name": "Römerstraße 85",
+          "lat": 48.387783,
+          "lon": 9.971148,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:2986",
+          "name": "Eselsbergsteige 101",
+          "lat": 48.412239,
+          "lon": 9.950274,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:10530",
+          "name": "Wilhelmstraße 25",
+          "lat": 48.405752,
+          "lon": 9.989043,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:3656",
+          "name": "Rathausstraße 5 Innenhof vom Rathaus",
+          "lat": 48.395366,
+          "lon": 10.001589,
+          "capacity": 2
+        },
+        {
+          "station_id": "CFU:Station:10554",
+          "name": "Wielandstraße 59",
+          "lat": 48.406437,
+          "lon": 10.005633,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:4746",
+          "name": "Klosterhof 23B (Im Klosterhof, Meinlohschule)",
+          "lat": 48.397984,
+          "lon": 9.954156,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:10457",
+          "name": "Jahnstraße 4 (Stellplatz TG Altstadt)",
+          "lat": 48.453876,
+          "lon": 10.278399,
+          "capacity": 2
+        },
+        {
+          "station_id": "CFU:Station:5958",
+          "name": "Ehinger Straße 23 Innenhof Ypsilon",
+          "lat": 48.394308,
+          "lon": 9.9814,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:9018",
+          "name": "Bootshausstraße 7 (gegenüber Ruderclub)",
+          "lat": 48.389926,
+          "lon": 9.988739,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:5254",
+          "name": "Paukengasse 10 (Stellplatz ist gegenüber)",
+          "lat": 48.391656,
+          "lon": 9.960809,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:6222",
+          "name": "Steingasse 10 (Stellplatz ist gegenüber)",
+          "lat": 48.398707,
+          "lon": 9.997639,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:7633",
+          "name": "Uhrenmachergasse 9 (Stellplatz ist gegenüber)",
+          "lat": 48.395018,
+          "lon": 9.956398,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:9096",
+          "name": "Römerstraße 167",
+          "lat": 48.385434,
+          "lon": 9.965671,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:1448",
+          "name": "Zeughausgasse 12",
+          "lat": 48.400165,
+          "lon": 10.000728,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:1844",
+          "name": "Söflinger Straße 208/1",
+          "lat": 48.39485,
+          "lon": 9.962764,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:11539",
+          "name": "Benzstraße (öffentlicher Parkraum)",
+          "lat": 48.364418,
+          "lon": 9.944051,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:11133",
+          "name": "Beyerstraße 20",
+          "lat": 48.391825,
+          "lon": 9.979094,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:10583",
+          "name": "Glacisstraße 34",
+          "lat": 48.39712,
+          "lon": 10.008722,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:4479",
+          "name": "Gartenstraße 36",
+          "lat": 48.391405,
+          "lon": 9.997962,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:9428",
+          "name": "Hofgartenweg 14 (Stellplatz ist gegenüber)",
+          "lat": 48.45288,
+          "lon": 10.277889,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:9926",
+          "name": "Otl-Aicher-Allee 1",
+          "lat": 48.434039,
+          "lon": 10.020969,
+          "capacity": 1
+        },
+        {
+          "station_id": "CFU:Station:10148",
+          "name": "Wengengasse 29",
+          "lat": 48.39996,
+          "lon": 9.98731,
+          "capacity": 1
+        }
+      ]
+    }
+  }
+}

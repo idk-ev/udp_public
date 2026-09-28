@@ -1,0 +1,1161 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/hopp_konstanz/free_bike_status",
+  "recordedAt": "2026-09-28T03:09:29.738Z",
+  "note": "All 114 vehicles of the live feed, in source order; only the rental_uris of each vehicle removed (deep links, never read). Konstanz, on the Swiss border.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:09:04 GMT",
+    "etag": "\"73970b718964187cdb0ebaf0dca9e336\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564944,
+    "ttl": 0,
+    "version": "2.3",
+    "data": {
+      "bikes": [
+        {
+          "bike_id": "HOP:Vehicle:2b9a914e-fa9e-4f78-9884-99908f28373c",
+          "lat": 47.660032,
+          "lon": 9.16961,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:b552dc9b-81f5-4de8-8509-93e102293e15",
+          "lat": 47.670575,
+          "lon": 9.179441,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 26000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:dad1da56-c73c-4e14-9311-7e9481b4c30a",
+          "lat": 47.667354,
+          "lon": 9.166826,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 17200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:4b452723-fde4-4477-b484-c0eb56581a81",
+          "lat": 47.689292,
+          "lon": 9.147906,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 6400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:623e059f-959f-41bd-9608-3d33a1aa73b6",
+          "lat": 47.674207,
+          "lon": 9.149365,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 14000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:4173001e-17f8-4360-9964-e8bc354baad0",
+          "lat": 47.687503,
+          "lon": 9.156908,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 6800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:411955fb-74dc-41ec-ab37-b0e0af92572b",
+          "lat": 47.685549,
+          "lon": 9.148083,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 28800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:44814f41-b878-4cb3-b222-01cf98fb6040",
+          "lat": 47.670494,
+          "lon": 9.155379,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 26000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:3bab04de-edd5-4cb8-97e8-fd5c6d132853",
+          "lat": 47.656547,
+          "lon": 9.169921,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 20000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:ace3610d-5085-4d37-85e7-d9ed69c3ee88",
+          "lat": 47.668056,
+          "lon": 9.187534,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 33200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:a6c19c74-1fa2-4040-aba5-ac131b83ad67",
+          "lat": 47.674114,
+          "lon": 9.18153,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 19200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:e16dc378-a004-49b9-9a3e-fad24004f7ed",
+          "lat": 47.675901,
+          "lon": 9.173552,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 6800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:fcd43f79-1bdf-41ff-a101-fbcb7ac93be5",
+          "lat": 47.665592,
+          "lon": 9.170028,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 8000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:e5cac707-fd2a-4e71-9fae-f8f773681de4",
+          "lat": 47.686779,
+          "lon": 9.145642,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 14000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:2abb08c4-c2f4-4468-ab0a-696d67f8ba80",
+          "lat": 47.671492,
+          "lon": 9.178408,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:94c8f3af-01dc-463f-9db8-66d0dbdf40ea",
+          "lat": 47.66989,
+          "lon": 9.173289,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 36800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:ad9e7f36-0939-46af-846c-93158af39a5f",
+          "lat": 47.673127,
+          "lon": 9.169854,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 8400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:73a4780a-681a-4180-9386-efff9b7b0bdf",
+          "lat": 47.66732,
+          "lon": 9.166829,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:7769cca7-d557-4d91-886f-4bccb564ce05",
+          "lat": 47.66167,
+          "lon": 9.170416,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:2e0a5ded-49b6-4edc-9aa1-1017fea1c556",
+          "lat": 47.682982,
+          "lon": 9.153369,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:050f035a-a8a6-4bd6-9a42-fddfcc5a5c1a",
+          "lat": 47.682117,
+          "lon": 9.142408,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:9b633747-a564-4e99-9498-3c16d263671f",
+          "lat": 47.667293,
+          "lon": 9.16672,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 33200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:a6a064d5-7f35-4f6f-b9dd-1f4283c2eb1b",
+          "lat": 47.681403,
+          "lon": 9.199358,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 14800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:1b09a080-1829-4948-9d3b-c62606106341",
+          "lat": 47.668769,
+          "lon": 9.1928,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 14000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:5afa17b8-6a8a-4255-9544-447c6ac7c0ca",
+          "lat": 47.658356,
+          "lon": 9.169668,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 6800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:1e4f9806-ddf7-4c63-8fc1-f03f838b6c35",
+          "lat": 47.667208,
+          "lon": 9.18741,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 26800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:cf8938a5-561d-4caf-82ed-d4978ac5266c",
+          "lat": 47.672991,
+          "lon": 9.15897,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:d878826b-d0fd-4dcd-af53-076d85ee6dea",
+          "lat": 47.667431,
+          "lon": 9.16577,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:85700219-5b94-4afa-abd3-9bbd93fd66bf",
+          "lat": 47.682081,
+          "lon": 9.182691,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 18400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:b9e707ff-a507-4e0d-8dca-74cbe5b1f0f5",
+          "lat": 47.674899,
+          "lon": 9.184011,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 30400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:23e850f4-4704-4319-b11f-84f0ecfedbab",
+          "lat": 47.671468,
+          "lon": 9.178456,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 9200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:c50a2817-addc-4d48-9257-01944b7b3f71",
+          "lat": 47.67924,
+          "lon": 9.161512,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 17200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:bdb52a9f-07b0-41cf-92a8-a3a158e18413",
+          "lat": 47.687378,
+          "lon": 9.145963,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 21600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:2f23bba2-27ed-493a-8117-146b52b5d79f",
+          "lat": 47.67297,
+          "lon": 9.155014,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 8800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:f1ed95a3-9f1b-4e77-b486-ba5fcd56d2e7",
+          "lat": 47.687713,
+          "lon": 9.146875,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 18800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:b88d04d6-4a0a-4797-b494-818ddb0f8402",
+          "lat": 47.656471,
+          "lon": 9.169927,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:62ac5350-1b69-4d3e-bfe7-9e2521ae9e61",
+          "lat": 47.673157,
+          "lon": 9.16985,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:4d750a4a-bfc3-442b-89b7-efaf24413f07",
+          "lat": 47.658468,
+          "lon": 9.169552,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 9200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:4f2c10b7-6461-44d4-8338-15fc5bcdfe3c",
+          "lat": 47.658535,
+          "lon": 9.168861,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 28400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:bc135c21-fea4-4d3e-8b61-9944b37af968",
+          "lat": 47.66964,
+          "lon": 9.18218,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:d3534fb7-80d4-4940-bf6b-31f8702c18c4",
+          "lat": 47.682593,
+          "lon": 9.17453,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 5600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:c184828e-716f-47b8-b7d6-296f0d278832",
+          "lat": 47.672962,
+          "lon": 9.169855,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 26800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:9d0b8c81-b6b2-4d38-8a82-6cf9a4f37c4b",
+          "lat": 47.674947,
+          "lon": 9.183981,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 20000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:bad7260a-cc8f-4d4e-aa7f-4804d8451a1b",
+          "lat": 47.677864,
+          "lon": 9.18545,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 13200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:44b0c709-7cd2-4edc-bdec-767be7994a27",
+          "lat": 47.665928,
+          "lon": 9.177417,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:3dd18343-d8df-4dd2-96e6-3b32d40b1440",
+          "lat": 47.670437,
+          "lon": 9.189118,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 8000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:e9ecff38-ff8b-49ef-858e-abb93dc73aee",
+          "lat": 47.677744,
+          "lon": 9.185277,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:54163b2d-b61a-43d7-8b7b-562168cba3d8",
+          "lat": 47.683302,
+          "lon": 9.150376,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:e653010e-0797-4ba6-91b0-62bba8564353",
+          "lat": 47.674612,
+          "lon": 9.183221,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 6400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:8777213e-c63b-4ade-836e-5e14ea417334",
+          "lat": 47.678902,
+          "lon": 9.162651,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 29200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:0aca1567-9930-417d-808f-d51303159146",
+          "lat": 47.682933,
+          "lon": 9.160942,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 28400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:f8ee59ed-57c6-447e-9bd8-d7677a63241f",
+          "lat": 47.671493,
+          "lon": 9.178383,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:0b3568cf-2e02-4cb5-84d8-f79e1999e5cb",
+          "lat": 47.66463,
+          "lon": 9.174477,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 6000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:8a19042a-4cbc-4dc4-96dd-2e93c8783ec7",
+          "lat": 47.679604,
+          "lon": 9.187813,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 18400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:69f4e899-65af-40bf-881e-d5412b062dcf",
+          "lat": 47.676007,
+          "lon": 9.180431,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 5600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:6765d76f-32d7-4494-b226-edae82edf594",
+          "lat": 47.672551,
+          "lon": 9.183685,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:c2c04edb-85a2-4870-a251-e0526188c4ff",
+          "lat": 47.670501,
+          "lon": 9.178157,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 30800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:f3422cbd-31fd-4a93-a51a-be5510e0cf6c",
+          "lat": 47.682155,
+          "lon": 9.170218,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 30400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:943eed79-4db0-4681-b4bb-27fa45513daa",
+          "lat": 47.658617,
+          "lon": 9.170719,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 18400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:941fb22d-a699-44fd-927a-50a10e9cb850",
+          "lat": 47.672602,
+          "lon": 9.183484,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 20400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:485e446f-5d5e-4f6c-8097-e5e9a4460fad",
+          "lat": 47.679961,
+          "lon": 9.197902,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 34800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:dab40080-3d9e-4415-b526-5ea10156fd49",
+          "lat": 47.673787,
+          "lon": 9.174897,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 31200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:abae0305-14ec-459e-a0bb-782cf3fc76b1",
+          "lat": 47.686713,
+          "lon": 9.145632,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 30000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:0bc62878-3b8a-452a-9b4e-faa6e2c19c0b",
+          "lat": 47.679598,
+          "lon": 9.162703,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 26800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:2bee8fc3-f1c3-4318-ac34-59cdbd6c0aa5",
+          "lat": 47.676826,
+          "lon": 9.161588,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 27200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:f32b356c-4ea9-454c-aba1-1c9737852a09",
+          "lat": 47.666173,
+          "lon": 9.164794,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:f449c9da-3be5-4e1d-ae5d-6a2b6e7bdf78",
+          "lat": 47.680049,
+          "lon": 9.165104,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 17600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:4852c798-3bbd-472d-9a45-814c3a07126e",
+          "lat": 47.672931,
+          "lon": 9.155051,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 6000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:687f8db0-2515-4cc9-881d-8017da2ef53f",
+          "lat": 47.690471,
+          "lon": 9.150864,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 6800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:b7c5070a-bf77-428c-906a-dafd2a633cd7",
+          "lat": 47.678562,
+          "lon": 9.165174,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 27200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:5062fc49-e9ee-48f0-bc61-7b4a2ea52013",
+          "lat": 47.680105,
+          "lon": 9.165529,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 14800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:1017067a-4b0f-45b3-95ab-f57826074fc5",
+          "lat": 47.675335,
+          "lon": 9.146314,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 34800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:8456d567-f67c-465c-9b6a-59636d2df9d4",
+          "lat": 47.65855,
+          "lon": 9.170483,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 33200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:92a9c4f1-934f-4ca5-9b32-d2472805ba1b",
+          "lat": 47.687137,
+          "lon": 9.159824,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 16000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:a76d252e-da48-4828-87ac-7e44be1660b9",
+          "lat": 47.672506,
+          "lon": 9.18381,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:212458a9-8f26-47ce-a1aa-7ff5d6adf9f9",
+          "lat": 47.671606,
+          "lon": 9.158275,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 5600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:f9172396-31d3-4173-893c-0902e23b8b56",
+          "lat": 47.674643,
+          "lon": 9.168623,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 36800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:a164b988-5b1e-4bf3-be46-315ff34f2f0c",
+          "lat": 47.663944,
+          "lon": 9.171656,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 30400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:60fe0fa4-8255-4b01-ac04-adeb786627c8",
+          "lat": 47.671725,
+          "lon": 9.174715,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:84b5b005-63cb-4754-a321-21dd90fc0d6d",
+          "lat": 47.679821,
+          "lon": 9.161556,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:51219148-d1ac-435c-a6e8-b806c28c97d5",
+          "lat": 47.679746,
+          "lon": 9.146496,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 14800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:9956c95f-8509-4791-859c-114cc9c7a98e",
+          "lat": 47.660242,
+          "lon": 9.171204,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:45cb886a-6ab4-48a1-bf78-37840c5ca97f",
+          "lat": 47.686838,
+          "lon": 9.197326,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 12400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:687cf08b-040f-4389-92d0-876923b089fe",
+          "lat": 47.687918,
+          "lon": 9.161401,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 31200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:e9011c30-eeae-48b1-b5cf-44d05ec24bf3",
+          "lat": 47.672972,
+          "lon": 9.169857,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:e2e6809b-99f4-4169-bdc9-8820b5d56676",
+          "lat": 47.677246,
+          "lon": 9.14651,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 22000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:5f4289c9-b175-4f36-8441-6dbee6081062",
+          "lat": 47.673053,
+          "lon": 9.169884,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:1145ad4b-7596-4ccf-b7df-10bbad3bc3dc",
+          "lat": 47.672543,
+          "lon": 9.183608,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 26000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:a298a6ff-33b9-47c4-a215-9ababdcbcc27",
+          "lat": 47.685177,
+          "lon": 9.153338,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:b3a16209-b055-48fe-a912-e0daf48a382d",
+          "lat": 47.684311,
+          "lon": 9.149384,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 23200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:bcb9532e-00c3-4a69-80fd-f24652a9dfad",
+          "lat": 47.681163,
+          "lon": 9.189437,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:49d90ce6-6044-4bcb-8ad9-bc30d2af75ca",
+          "lat": 47.687601,
+          "lon": 9.155608,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 10400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:5657e5c6-dec7-4963-80c2-30aaa834ba02",
+          "lat": 47.676712,
+          "lon": 9.148187,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 15200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:5b84af96-b79e-4088-900f-9b43e42a089d",
+          "lat": 47.687394,
+          "lon": 9.153247,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 11200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:b7b173b0-442a-4139-8d73-153ef8d4f3a9",
+          "lat": 47.682913,
+          "lon": 9.175314,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 28800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:c06ab28e-73d1-4f2b-87ea-2eafa96d7754",
+          "lat": 47.678308,
+          "lon": 9.192917,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:0425b43b-cd90-43fe-97e0-cdc2959c1791",
+          "lat": 47.67929,
+          "lon": 9.170071,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 31200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:15338f57-fdcf-4cd4-8cbb-132ddb38acf8",
+          "lat": 47.663187,
+          "lon": 9.161977,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 8400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:8450269f-60ae-4c47-b081-92c241790701",
+          "lat": 47.664476,
+          "lon": 9.163205,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 17200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:6d0e1496-fa54-4ff7-b9f5-d529a6adb2f1",
+          "lat": 47.674851,
+          "lon": 9.169112,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 10800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:91128d3c-16ca-4854-ab52-7e432fc945c9",
+          "lat": 47.679623,
+          "lon": 9.160503,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 26400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:05a423bb-608f-46cd-8fef-c593812a12dd",
+          "lat": 47.68873,
+          "lon": 9.146057,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 16400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:e852ed67-1e4b-409f-b172-3ad8a435acbb",
+          "lat": 47.672593,
+          "lon": 9.185431,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 18400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:adbb1751-97e2-4264-be2e-92b1fa08556f",
+          "lat": 47.66052,
+          "lon": 9.171353,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 20400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:2f5228c1-b691-4128-beaa-424f9170aec9",
+          "lat": 47.670999,
+          "lon": 9.189179,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 33200,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:2c2fb21d-c6ae-44df-b43c-e165bd8cda77",
+          "lat": 47.682571,
+          "lon": 9.16768,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 22400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:f2d62ada-b2d7-4c53-bef5-bd12a74693b0",
+          "lat": 47.670114,
+          "lon": 9.187484,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 37600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:13d89c82-ab90-4cb5-ace6-e389cd108732",
+          "lat": 47.663026,
+          "lon": 9.172825,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 22400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:0e2aeaf6-73e5-4461-90bf-e2aed300542f",
+          "lat": 47.671351,
+          "lon": 9.189952,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32000,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:0d2992ca-2165-4dc7-aea3-8d03f13023ef",
+          "lat": 47.671584,
+          "lon": 9.158222,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 9600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:164ef786-6a8f-4f6a-abe6-360dab8c9305",
+          "lat": 47.672964,
+          "lon": 9.169874,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 17600,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:3c8408ea-66fa-4309-87e7-136b3b2919ed",
+          "lat": 47.672608,
+          "lon": 9.169791,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 32400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:942a1b64-e171-4522-9e22-0e01c8384608",
+          "lat": 47.674394,
+          "lon": 9.166486,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 36800,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        },
+        {
+          "bike_id": "HOP:Vehicle:5f2cf681-0f48-45fa-a6ee-ae8e7b53d131",
+          "lat": 47.682171,
+          "lon": 9.176622,
+          "is_reserved": false,
+          "is_disabled": false,
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "current_range_meters": 26400,
+          "pricing_plan_id": "HOP:PricingPlan:flt_531"
+        }
+      ]
+    }
+  }
+}
