@@ -20,10 +20,10 @@
  * The single sensors (~930 statewide) are written only in every fourth run,
  * i.e. hourly: writing them every 15 minutes would more than double the
  * time-series database without the map layer profiting. The old node counted
- * runs in the flow context (`scTakt`), starting from 0 after a (re)start, so
- * the first detail run is the fourth run after a start. The counter lives in
- * `ctx.state` ({@link cadenceOf}) — in memory, lost on restart exactly as the
- * flow context was in Kubernetes. The prune runs in the detail runs only, so
+ * runs in the flow context (`scTakt`), starting from 0, so the first detail
+ * run is the fourth run. The counter lives in `ctx.state` ({@link cadenceOf})
+ * and is persisted, so a restart continues the count as the flow context did
+ * under Compose (in Kubernetes it started over). The prune runs in the detail runs only, so
  * its interval guard gets `ctx.intervalMs(4)`. Which municipalities get single
  * sensors is `sensorDetailFor` of the registry entry.
  *
@@ -39,7 +39,7 @@
 
 import { observed } from "../kernel/ngsi.js";
 import { isArray, isRecord, isString } from "../kernel/parse.js";
-import { stateKey } from "../kernel/state.js";
+import { persisted, stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
@@ -378,12 +378,8 @@ export function statusText(result: FeinstaubResult): string {
 
 /* ------------------------------------------------------------------ run */
 
-/**
- * `scTakt` of the flow context, in `ctx.state`: in memory, so it lives as long
- * as the old flow context did in Kubernetes (no volume on /data) — until the
- * next restart.
- */
-export const CADENCE = stateKey("scTakt", () => 0);
+/** `scTakt` of the flow context, in `ctx.state`, persisted across restarts. */
+export const CADENCE = stateKey("scTakt", () => 0, persisted.number);
 
 /** Advances the run counter and says whether this run is a detail run (`takt === 0`). */
 export function cadenceOf(ctx: Ctx): boolean {

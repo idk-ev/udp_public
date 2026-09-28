@@ -89,7 +89,7 @@ import {
   optString,
   requireArray,
 } from "../kernel/parse.js";
-import { stateKey } from "../kernel/state.js";
+import { persisted, stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
@@ -831,11 +831,11 @@ export function legacyParkApi(
 
 /**
  * The flow-context flags of the legacy cleanup. They are not signatures, so
- * they cannot live in the change gate; they live in `ctx.state`, in memory
+ * they cannot live in the change gate; they live in `ctx.state`, persisted
  * like the prune bookkeeping.
  */
-export const LEGACY_DONE = stateKey("parkLegacyDone", () => false);
-export const LEGACY_LAST = stateKey("parkLegacyLast", () => 0);
+export const LEGACY_DONE = stateKey("parkLegacyDone", () => false, persisted.boolean);
+export const LEGACY_LAST = stateKey("parkLegacyLast", () => 0, persisted.number);
 
 /* ------------------------------------------------------------------ Run */
 

@@ -43,29 +43,33 @@
  *  * only ids the broker CONFIRMS as deleted (204, or the success part of a
  *    207) count and lose their change signature. TRoE history is untouched.
  *
- * ## State stays in memory — decided, not deferred by accident
+ * ## State is persisted
  *
- * The interval bookkeeping and the confirmation tables live in this process,
- * per connector. A restart loses them, and both then answer "skip": the
- * interval check sees no previous run, the confirmation tables start empty. For
- * these two a restart only delays pruning.
+ * The interval bookkeeping, the confirmation tables and the last plausible
+ * municipality count ({@link PruneBookkeeping}) are kept per connector and
+ * persisted in PostgreSQL with the change signatures (src/kernel/persistence.ts),
+ * so the first prune after a restart behaves like the one before it: the
+ * interval check sees the previous run, a candidate keeps its consecutive
+ * runs. (Lost, both would only delay pruning; the municipality count would
+ * make the check MORE permissive — which is why a count that was never
+ * persisted is still seeded from Orion, see `MasterDataCheck` in
+ * src/kernel/geo.ts.)
  *
- * The third piece of state, the last plausible municipality count behind the
- * 95 % ratchet, is different: starting from zero it would make the check MORE
- * permissive after a restart, and under Compose the old runtime kept it
- * (`contextStorage: localfilesystem`; only Kubernetes ran without a volume on
- * /data). It is therefore seeded from the number of `Municipality` entities in
- * Orion before the first verdict, and while Orion cannot answer there is no
- * prune at all (see `MasterDataCheck` in src/kernel/geo.ts).
- *
- * All of it moves to Postgres together with the change gate, after parity (see
- * src/kernel/change-gate.ts).
+ * While the connector's persisted state is not loaded the prune is SKIPPED
+ * with a `[warn]` and touches no bookkeeping: an empty interval table would
+ * skip anyway, but empty confirmation tables and a missing reference are not
+ * something to delete live data on. Before a delete goes out, the signatures
+ * of its candidates are removed from the persisted table
+ * ({@link PruneStore.forgetAhead}); if that cannot be written, the delete is
+ * not sent. A signature that outlived its entity in the database would, after
+ * a restart, turn the entity's return into a freshness-only write.
  */
 
 import type { SignatureScope } from "./change-gate.js";
-import type { MasterDataCheck, SharedGeo } from "./geo.js";
-import { isEntityId, isRecord, isString, isTruthy } from "./parse.js";
-import type { EntityId, Log, Orion, PruneOptions, PruneResult, Pruner } from "./types.js";
+import { MasterDataCheck } from "./geo.js";
+import type { SharedGeo } from "./geo.js";
+import { isArray, isEntityId, isRecord, isString, isTruthy } from "./parse.js";
+import type { EntityId, JsonValue, Log, Orion, PruneOptions, PruneResult, Pruner } from "./types.js";
 
 /** PRUNE_HELPER lists and deletes in pages of these sizes. */
 const LIST_MAX_PAGES = 100;
@@ -96,6 +100,142 @@ const DEFAULT_CONFIRM_MS = 24 * 3_600_000;
 
 /** `[first seen as candidate (ms), consecutive runs]` — the value of a confirmation table. */
 type Confirmation = readonly [firstSeenMs: number, runs: number];
+
+function finite(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** `[[id, firstSeenMs, runs], …]` as persisted; `null` if anything is off. */
+function confirmationTableOf(raw: unknown): Map<string, Confirmation> | null {
+  if (!isArray(raw)) return null;
+  const table = new Map<string, Confirmation>();
+  for (const row of raw) {
+    if (!isArray(row) || row.length !== 3) return null;
+    const [id, first, runs] = row;
+    const firstSeen = finite(first);
+    const count = finite(runs);
+    if (typeof id !== "string" || firstSeen === null || count === null) return null;
+    table.set(id, [firstSeen, count]);
+  }
+  return table;
+}
+
+/**
+ * The state of one connector's prunes: `pruneLastRun_<label>` and the
+ * `confirmKey` tables of the old flow context, plus the master data
+ * reference. One per connector id; persisted as one document
+ * (src/kernel/persistence.ts), so every change is reported via
+ * {@link onChange}.
+ */
+export class PruneBookkeeping {
+  readonly masterData: MasterDataCheck;
+  /** Keyed by label, type and pattern. */
+  readonly #lastRun = new Map<string, number>();
+  readonly #confirmations = new Map<string, Map<string, Confirmation>>();
+  #onChange: () => void = () => undefined;
+
+  constructor(masterData: MasterDataCheck = new MasterDataCheck()) {
+    this.masterData = masterData;
+    masterData.onChange(() => {
+      this.#onChange();
+    });
+  }
+
+  onChange(listener: () => void): void {
+    this.#onChange = listener;
+  }
+
+  lastRun(key: string): number | undefined {
+    return this.#lastRun.get(key);
+  }
+
+  setLastRun(key: string, ms: number): void {
+    this.#lastRun.set(key, ms);
+    this.#onChange();
+  }
+
+  confirmations(key: string): ReadonlyMap<string, Confirmation> | undefined {
+    return this.#confirmations.get(key);
+  }
+
+  setConfirmations(key: string, table: Map<string, Confirmation>): void {
+    this.#confirmations.set(key, table);
+    this.#onChange();
+  }
+
+  /** The ids the broker confirmed as deleted leave the confirmation table. */
+  forgetConfirmed(key: string, ids: readonly string[]): void {
+    const table = this.#confirmations.get(key);
+    if (table === undefined || ids.length === 0) return;
+    for (const id of ids) table.delete(id);
+    this.#onChange();
+  }
+
+  snapshot(): JsonValue {
+    return {
+      lastRun: [...this.#lastRun].map(([key, ms]) => [key, ms]),
+      confirmations: [...this.#confirmations].map(([key, table]) => [
+        key,
+        [...table].map(([id, [first, runs]]) => [id, first, runs]),
+      ]),
+      masterDataCount: this.masterData.snapshot(),
+    };
+  }
+
+  /**
+   * Replaces everything with a persisted document (external data, hence
+   * `unknown`). `null` = nothing persisted: all empty, the reference unset.
+   * A document that does not narrow is dropped as a whole and reported as
+   * `false` — empty bookkeeping only ever delays a prune.
+   */
+  restore(raw: unknown): boolean {
+    this.#lastRun.clear();
+    this.#confirmations.clear();
+    this.masterData.restore(null);
+    if (raw === null) return true;
+    if (!isRecord(raw) || !isArray(raw.lastRun) || !isArray(raw.confirmations)) return false;
+    const lastRun = new Map<string, number>();
+    for (const row of raw.lastRun) {
+      if (!isArray(row) || row.length !== 2) return false;
+      const [key, ms] = row;
+      const at = finite(ms);
+      if (typeof key !== "string" || at === null) return false;
+      lastRun.set(key, at);
+    }
+    const confirmations = new Map<string, Map<string, Confirmation>>();
+    for (const row of raw.confirmations) {
+      if (!isArray(row) || row.length !== 2) return false;
+      const [key, rows] = row;
+      const table = confirmationTableOf(rows);
+      if (typeof key !== "string" || table === null) return false;
+      confirmations.set(key, table);
+    }
+    const count = raw.masterDataCount;
+    const reference = finite(count);
+    if (count !== null && reference === null) return false;
+    for (const [key, ms] of lastRun) this.#lastRun.set(key, ms);
+    for (const [key, table] of confirmations) this.#confirmations.set(key, table);
+    this.masterData.restore(reference);
+    return true;
+  }
+}
+
+/**
+ * What the persistence offers the pruner (kernel-internal, implemented in
+ * src/kernel/persistence.ts). Without one the bookkeeping is memory only.
+ */
+export interface PruneStore {
+  /** The connector's persisted state is loaded and writable. */
+  usable(): boolean;
+  /** Why not, for the skip line. */
+  reason(): string;
+  /**
+   * Removes the persisted signatures of `fields` in table `key` BEFORE their
+   * entities are deleted; the in-memory table is left alone. `false` = not
+   * written, and the delete must not go out.
+   */
+  forgetAhead(key: string, fields: readonly string[]): Promise<boolean>;
+}
 
 function describeFailure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -138,20 +278,27 @@ export interface PrunerDeps {
   /** Default of `PruneOptions.intervalMs`: the connector's registry interval. */
   readonly defaultIntervalMs: number;
   readonly nowMs: () => number;
+  /**
+   * The connector's bookkeeping, shared by every ctx of it; must hold
+   * `masterData`. Default: a fresh one around `masterData`, memory only.
+   */
+  readonly bookkeeping?: PruneBookkeeping | undefined;
+  /** The persistence; without it nothing is persisted and the pruner is always usable. */
+  readonly store?: PruneStore | undefined;
 }
 
-class MemoryPruner implements Pruner {
+class KernelPruner implements Pruner {
   readonly #deps: PrunerDeps;
-  /** `pruneLastRun_<label>` of the flow context, keyed by label, type and pattern. */
-  readonly #lastRun = new Map<string, number>();
-  readonly #confirmations = new Map<string, Map<string, Confirmation>>();
+  readonly #book: PruneBookkeeping;
 
   constructor(deps: PrunerDeps) {
     this.#deps = deps;
+    this.#book = deps.bookkeeping ?? new PruneBookkeeping(deps.masterData);
   }
 
   async masterDataPlausible(): Promise<boolean> {
-    const { masterData, geo, orion, log } = this.#deps;
+    const { masterData, geo, orion, log, store } = this.#deps;
+    if (store !== undefined && !store.usable()) return false;
     if (!masterData.seeded) {
       const count = await orion.count(MUNICIPALITY_QUERY);
       if (count === null) {
@@ -164,10 +311,18 @@ class MemoryPruner implements Pruner {
   }
 
   resetConfirmations(confirmKey: string): void {
-    this.#confirmations.set(confirmKey, new Map());
+    this.#book.setConfirmations(confirmKey, new Map());
   }
 
   async stale(options: PruneOptions): Promise<PruneResult> {
+    const store = this.#deps.store;
+    if (store !== undefined && !store.usable()) {
+      // Nothing else happens: no bookkeeping, no confirmation reset — the
+      // reload replaces the bookkeeping anyway.
+      const why = `state store not loaded (${store.reason()})`;
+      this.#deps.log.warn(`${options.label}: prune skipped, ${why}`);
+      return { deleted: 0, listed: null, skipped: why };
+    }
     // Every old call site read `if (PRUNE_OK) pruneStale(…)`. Checking here as
     // well makes the guard impossible to forget. Without it the old code did
     // not call the prune at all — and the call sites with a confirmation table
@@ -213,8 +368,8 @@ class MemoryPruner implements Pruner {
     const intervalMs =
       o.intervalMs !== undefined && o.intervalMs > 0 ? o.intervalMs : this.#deps.defaultIntervalMs;
     const intervalKey = `${o.label}|${o.type}|${o.pattern}`;
-    const previousRun = this.#lastRun.get(intervalKey);
-    this.#lastRun.set(intervalKey, now);
+    const previousRun = this.#book.lastRun(intervalKey);
+    this.#book.setLastRun(intervalKey, now);
     // Quiet on the very first run: after a start that is the normal case, not
     // a fault worth a [warn] in the health check.
     if (previousRun === undefined || now - previousRun > 2.5 * intervalMs) {
@@ -268,9 +423,8 @@ class MemoryPruner implements Pruner {
       );
     }
 
-    let confirm: Map<string, Confirmation> | null = null;
     if (o.confirmKey !== undefined) {
-      const previous = this.#confirmations.get(o.confirmKey) ?? new Map<string, Confirmation>();
+      const previous = this.#book.confirmations(o.confirmKey) ?? new Map<string, Confirmation>();
       const table = new Map<string, Confirmation>();
       for (const id of candidates) {
         const seen = previous.get(id) ?? [now, 0];
@@ -281,10 +435,21 @@ class MemoryPruner implements Pruner {
         const entry = table.get(id);
         return entry !== undefined && entry[1] >= 2 && now - entry[0] >= confirmMs;
       });
-      this.#confirmations.set(o.confirmKey, table);
-      confirm = table;
+      this.#book.setConfirmations(o.confirmKey, table);
     }
     if (candidates.length === 0) return { deleted: 0, listed, skipped: null };
+
+    // The persisted signatures of the candidates go first: once an entity is
+    // deleted, a signature left in the database would make its return a
+    // freshness-only write after a restart.
+    const store = this.#deps.store;
+    if (
+      o.signatureKey !== undefined &&
+      store !== undefined &&
+      !(await store.forgetAhead(o.signatureKey, candidates))
+    ) {
+      return skip(`state store not writable (${store.reason()}), delete deferred`);
+    }
 
     // 3. Delete in batches; count only what the broker confirms
     const result = await orion.delete(candidates, {
@@ -292,7 +457,7 @@ class MemoryPruner implements Pruner {
       label: `${o.label}: prune`,
     });
     const deleted = [...result.deleted];
-    if (confirm !== null) for (const id of deleted) confirm.delete(id);
+    if (o.confirmKey !== undefined) this.#book.forgetConfirmed(o.confirmKey, deleted);
     // Forget the change signatures of deleted entities, so a returning object
     // is written in full again instead of as a freshness-only update.
     if (o.signatureKey !== undefined && deleted.length > 0) signatures.forget(o.signatureKey, deleted);
@@ -306,5 +471,5 @@ class MemoryPruner implements Pruner {
 }
 
 export function createPruner(deps: PrunerDeps): Pruner {
-  return new MemoryPruner(deps);
+  return new KernelPruner(deps);
 }

@@ -65,7 +65,8 @@
  *    awaited before the status requests instead of fire-and-forget.
  *  * The cache and the form factors (`csStationen`, `csBauform`) are not
  *    signatures; they live in `ctx.state` ({@link STATIONS},
- *    {@link FORM_FACTORS}), in memory like the flow context in Kubernetes.
+ *    {@link FORM_FACTORS}) as process-lifetime caches, not persisted: every
+ *    run reloads both before it writes anything.
  *  * Narrowing of malformed entries the old code would have taken verbatim or
  *    crashed on: a station id that is neither string nor number is skipped
  *    (old: `sys::undefined`); a non-numeric capacity counts 0, a non-numeric

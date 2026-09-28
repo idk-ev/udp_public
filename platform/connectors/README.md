@@ -8,7 +8,9 @@ kernel matches the current flow generator (strict municipality lookup, commit
 of change signatures after a confirmed upsert, pruning of stale entities);
 every connector is pinned by parity tests against its old function nodes.
 Nothing is switched over yet: all 29 connectors keep running in Node-RED until
-phase 4 sets `"runtime": "app"` per connector.
+phase 4 sets `"runtime": "app"` per connector. Change signatures, prune
+bookkeeping and persisted `ctx.state` live in PostgreSQL, so a restart does not
+rewrite every gated entity (see [State store](#state-store)).
 
 ## Why
 
@@ -37,7 +39,9 @@ The full migration plan with phases and work split is in
     src/kernel/ngsi.ts         cleanText, observed (P), dateObserved
     src/kernel/fetcher.ts      fetch with timeout, retry, User-Agent
     src/kernel/rate-limit.ts   token bucket per host (the delay nodes), optional concurrency cap
-    src/kernel/state.ts        ctx.state: per-connector in-memory state (stateKey)
+    src/kernel/state.ts        ctx.state: per-connector state (stateKey, optionally persisted)
+    src/kernel/persistence.ts  state store: load before the first run, write-through, one writer
+    src/kernel/persistence-pg.ts  its PostgreSQL backend (schema udp_connectors, advisory lock)
     src/kernel/orion.ts        upsert + signature commit, delete, find, paged list
     src/kernel/change-gate.ts  change detection, two-phase (check -> commit)
     src/kernel/geo.ts          geo context, strict municipality lookup
@@ -77,7 +81,8 @@ flows learned the hard way:
   write one.
 - **Prune:** `ctx.prune.stale(options)` deletes own entities a complete run no
   longer produces — only with plausible master data (the 95 % reference is
-  seeded from Orion after a start; no prune while Orion cannot answer), a
+  persisted, and seeded from Orion where none is stored yet; no prune while
+  Orion cannot answer), a
   complete listing, the interval, grace/confirmation and share guards, an
   anchored pattern, and only what the broker confirms.
 
@@ -125,15 +130,17 @@ The rest of the ctx, added in phase 3b where the ports pinched:
   ctx; the key carries the type, so no assertion is needed:
 
   ```ts
-  const RUNS = stateKey("scTakt", () => 0); // src/kernel/state.ts
+  const RUNS = stateKey("scTakt", () => 0, persisted.number); // src/kernel/state.ts
   const runs = ctx.state.slot(RUNS); // StateSlot<number>
   runs.set(runs.get() + 1);
   ```
 
   `run` and the connector's `routes` share it; no other connector sees it.
   Never a module-level `let` or `WeakMap<Ctx, …>`: state belongs to the ctx.
-  It lives in memory, like the signature store and the prune bookkeeping, and
-  all three move to Postgres together in phase 6.
+  A key with a codec (`persisted.number`, `.boolean`, `.numberMap`, or an own
+  `StateCodec`) is persisted with the signatures and survives a restart; a key
+  without one is a process-lifetime cache for what the next run rebuilds
+  anyway (stop directory, station cache).
 - **`ctx.rowBudget`** — `rowBudget24h` of every registry entry summed per
   type (`ROW_BUDGET` of the generator), for `troe-stats`.
 - **`ctx.entry`** carries what connectors read from the registry, including
@@ -144,6 +151,50 @@ The rest of the ctx, added in phase 3b where the ports pinched:
   (`find`, `list`, `count`) are unpaced (`bucket: null`) so they never queue
   behind a write backlog; writes stay paced.
 - **`SqlParam`** accepts `readonly string[]` for `$1::text[]`.
+
+## State store
+
+The change gate's signature tables, the prune bookkeeping (interval
+bookkeeping, confirmation tables, master data reference) and every `ctx.state`
+key declared with a codec are persisted per connector in PostgreSQL. Under
+Compose Node-RED kept all of this on a volume; a process that forgets it writes
+every gated entity in full on its next run (~400k TRoE rows per restart,
+`parken-bw` alone ~230k).
+
+- **Where:** the TimescaleDB of `ctx.db` (same `TROE_DB_HOST`, `TROE_DB_USER`,
+  `TROE_DB_PASSWORD`, database `orion`), schema `udp_connectors`, never Orion's
+  tables. Created at startup with `CREATE SCHEMA/TABLE IF NOT EXISTS`; the user
+  needs `CREATE` on the database, or the schema has to exist.
+
+  | Table | Key | Holds |
+  |---|---|---|
+  | `signatures` | `connector, table_key, field` | one signature (`value` jsonb: string or number) |
+  | `prune_state` | `connector` | the prune bookkeeping as one jsonb document |
+  | `connector_state` | `connector, name` | one persisted `ctx.state` key (jsonb) |
+
+- **Load before the first run**, at startup and before every run until it
+  worked. While a connector's state is not loaded, the change gate and
+  persisted state keys throw and the run is skipped with a `[warn]`; prunes
+  are skipped with a `[warn]` and touch no bookkeeping; a gated upsert is not
+  sent. Connectors that use none of it run normally. No connector on
+  `runtime: "app"` = no connection at all.
+- **Write-through.** A signature dropped in memory is persisted *before* the
+  upsert goes out; if that fails, a gated upsert is not sent. A committed
+  signature is persisted after the broker confirmed it, per chunk. The
+  database therefore never holds a signature the broker did not confirm. A
+  prune removes the persisted signatures of its candidates before it deletes.
+  Bookkeeping and state are written when they change and at the end of every
+  run. A failed write keeps memory as it is and is retried with the next one;
+  one `[warn]` per failure streak.
+- **One writer.** The service runs as exactly one replica (Helm:
+  `replicas: 1`, `strategy: Recreate`). A session advisory lock held for the
+  process lifetime enforces it: a second instance loads nothing, runs only
+  ungated connectors and takes over once the lock is free.
+- **`/healthz`** reports `stateStore` (`healthy`, `writer`, loaded / not loaded
+  / failing connectors). It stays 200: restarting does not fix a database.
+- **Cutover:** a connector switched to `runtime: "app"` has no signatures in
+  the store yet, so its first run writes in full once — as a fresh Node-RED
+  would. A one-time cost per connector, not per restart.
 
 ## Ports
 

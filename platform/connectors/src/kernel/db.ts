@@ -12,8 +12,10 @@
  * `TROE_DB_PASSWORD`. One `pg.Client` per session, connected when the session
  * starts and ended when its work settles, as the old nodes connected once per
  * run. Nothing connects before a connector asks: the other 27 connectors never
- * open a database connection, and a missing password only matters to the two
- * that need it.
+ * open a connection of their own, and a missing password only matters to the
+ * two that need it. (The kernel's state store, src/kernel/persistence-pg.ts,
+ * uses the same settings — {@link connectionSettings} — with a small pool of
+ * its own.)
  *
  * `statement_timeout` is passed as well as `query_timeout`, with the reasoning
  * of the old node: the first cancels on the SERVER, the second only makes the
@@ -32,6 +34,26 @@ function orDefault(value: string | undefined, fallback: string): string {
   return value === undefined || value === "" ? fallback : value;
 }
 
+/** Host, port, database, user and password, exactly as the old SQL nodes connected. */
+export interface ConnectionSettings {
+  readonly host: string;
+  readonly port: number;
+  readonly database: string;
+  readonly user: string;
+  readonly password?: string;
+}
+
+export function connectionSettings(env: Env): ConnectionSettings {
+  const password = env.get("TROE_DB_PASSWORD");
+  return {
+    host: orDefault(env.get("TROE_DB_HOST"), "timescale"),
+    port: 5432,
+    database: "orion",
+    user: orDefault(env.get("TROE_DB_USER"), "udp"),
+    ...(password === undefined ? {} : { password }),
+  };
+}
+
 class PgDb implements Db {
   readonly #env: Env;
 
@@ -40,13 +62,8 @@ class PgDb implements Db {
   }
 
   async session<T>(options: DbSessionOptions, work: (session: DbSession) => Promise<T>): Promise<T> {
-    const password = this.#env.get("TROE_DB_PASSWORD");
     const client = new pg.Client({
-      host: orDefault(this.#env.get("TROE_DB_HOST"), "timescale"),
-      port: 5432,
-      database: "orion",
-      user: orDefault(this.#env.get("TROE_DB_USER"), "udp"),
-      ...(password === undefined ? {} : { password }),
+      ...connectionSettings(this.#env),
       application_name: options.applicationName,
       connectionTimeoutMillis: options.connectionTimeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS,
       statement_timeout: options.statementTimeoutMs,

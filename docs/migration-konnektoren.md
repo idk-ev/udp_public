@@ -7,7 +7,8 @@ nicht mehr als Laufzeit der Ingestion.
 
 Stand: **Phasen 0, 1, 1b, 2, 3 und 3b abgeschlossen** (Gerüst, Kernel und
 Vertrag, Paritäts-Harness, alle 29 Konnektoren portiert, Vertragslücken
-geschlossen). Es ingestiert noch nichts — die Umschaltung ist Phase 4.
+geschlossen), Kernel-Zustand dauerhaft in PostgreSQL. Es ingestiert noch
+nichts — die Umschaltung ist Phase 4.
 
 ## Ziel
 
@@ -125,10 +126,10 @@ danach Hilfsfunktionen ab, die es nicht mehr gab. Nachgezogen:
   vorgemerkte Signaturen, `Orion.upsert` übernimmt sie für die bestätigten IDs.
   Einen Commit-Aufruf, den man vergessen könnte, gibt es nicht.
 - **Aufräumen veralteter Entitäten** (`ctx.prune`) mit allen Schutzgrenzen. Der
-  Zustand bleibt im Speicher. Die 95-%-Referenz der Gemeindezahl wird nach
-  einem Start aus der Zahl der `Municipality`-Entitäten in Orion gesetzt;
-  solange Orion nicht antwortet, wird nicht aufgeräumt. Postgres folgt später
-  zusammen mit dem Signaturspeicher.
+  Zustand liegt inzwischen in PostgreSQL (siehe „Zustand dauerhaft in
+  PostgreSQL“). Ist noch keine 95-%-Referenz der Gemeindezahl gespeichert,
+  wird sie aus der Zahl der `Municipality`-Entitäten in Orion gesetzt; solange
+  Orion nicht antwortet, wird nicht aufgeräumt.
 - **Nach dem Review:** Signaturtabellen je Konnektor getrennt, `retain` statt
   freiem Schreiben, `ungated()` für Schreibvorgänge ohne Gate, `ctx.db` für
   die beiden SQL-Konnektoren, Routen mit eigenem `ctx`, Log-Zeilen gegen
@@ -177,7 +178,7 @@ Die Portierung hat Stellen gefunden, an denen der Vertrag klemmte; einige
 Module hatten sich lokal beholfen (modulweite `WeakMap<Ctx, …>`, Konstanten
 statt Registry-Feldern). Nachgezogen im Kernel, alle Module umgestellt:
 
-- **`ctx.state`** — Zustand je Konnektor im Speicher (`stateKey(name, initial)`
+- **`ctx.state`** — Zustand je Konnektor (`stateKey(name, initial)`
   in `src/kernel/state.ts`, `ctx.state.slot(key)`), typisiert ohne Assertion,
   geteilt von `run` und den Routen desselben Konnektors. Ersetzt die
   Workarounds in `abfahrten-on-demand`, `efa-abfahrten`, `mastr-bw`,
@@ -202,8 +203,35 @@ statt Registry-Feldern). Nachgezogen im Kernel, alle Module umgestellt:
   abgeleitet (375 s statt 240 s), damit der geteilte Bucket keine unechte
   Teilgruppe erzeugen kann.
 
-Signaturspeicher, Prune-Buchführung und `ctx.state` liegen weiter im Speicher
-und ziehen in Phase 6 **gemeinsam** nach Postgres.
+### Zustand dauerhaft in PostgreSQL ✅
+
+Entschieden vor der ersten Umschaltung; ersetzt den früheren Plan „in Phase 6
+nach Postgres“. Ein Review zeigte: Unter Compose hielt Node-RED Signaturen,
+Prune-Buchführung und Kontext auf einem Volume, ein Neustart schrieb fast
+nichts. Der Dienst hätte bei **jedem** Neustart alle Gate-Entitäten voll
+geschrieben (~400k TRoE-Zeilen, `parken-bw` allein ~230k bei 25k/Tag Budget);
+jede Umschaltgruppe braucht einen Neustart, eine Absturzschleife vervielfacht
+es. `mastr-bw` hätte seine Rotation jedes Mal bei 0 begonnen.
+
+- **Wo:** dieselbe TimescaleDB wie `ctx.db` (`TROE_DB_*`, Datenbank `orion`),
+  eigenes Schema `udp_connectors` (`signatures`, `prune_state`,
+  `connector_state`, je Konnektor-id), beim Start idempotent angelegt. Orions
+  TRoE-Tabellen bleiben unberührt.
+- **Laden vor dem ersten Lauf.** Ohne geladenen Zustand laufen Konnektoren mit
+  Gate oder persistiertem `ctx.state` nicht (`[warn]`, der nächste Lauf
+  versucht es erneut), Prunes werden übersprungen; ungegatete Konnektoren
+  laufen.
+- **Durchschreiben:** Verworfene Signaturen gehen *vor* dem Upsert in die
+  Datenbank, bestätigte danach (je Chunk). Scheitert das Vorab-Schreiben, geht
+  ein gegateter Upsert nicht raus — die Datenbank enthält nie eine Signatur,
+  die der Broker nicht bestätigt hat. Fehlgeschlagenes wird beim nächsten
+  Schreiben nachgeholt, ein `[warn]` je Fehlerserie.
+- **Ein Schreiber:** Advisory-Lock für die Prozesslaufzeit; eine zweite
+  Instanz lädt nichts und fährt nur ungegatete Konnektoren. `/healthz` meldet
+  `stateStore`.
+- **Vertrag:** nur ein optionales drittes Argument, `stateKey(name, initial,
+  codec)`. `mastr-bw`, `feinstaub-bw` und `parken-bw` persistieren damit ihre
+  Werte; Caches (Haltestellenverzeichnis, Stationscache) bleiben im Prozess.
 
 ### Bewusste Abweichungen vom Node-RED-Verhalten
 
@@ -222,6 +250,9 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - Prunes werden abgewartet statt „fire and forget“ neben dem Upsert gestartet
   (meist danach; bei `sharing-bw`/`carsharing-bw` vor den Systemen). Ihre
   `keep`-Mengen sind unverändert.
+- Signaturen, Prune-Buchführung und persistierter Zustand überleben Neustarts
+  auch in Kubernetes (Node-RED startete dort ohne Volume leer); z. B. zählt
+  `feinstaub-bw` seinen Takt über Neustarts weiter.
 
 *Konnektoren*
 
@@ -250,8 +281,7 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - `ladesaeulen-bw`: alle Seiten abgewartet statt Join-Abbruch nach 420 s
   (Ergebnis bei langsamer Quelle gleich: unvollständig, kein Prune).
 - `mastr-bw`, `uba-bw`: alle Anfragen abgewartet und einmal geschrieben statt
-  Join-Timeout mit Nachzügler-Gruppe; `mastr-bw` verliert Rotation und
-  Anlagenzahlen beim Neustart (wie K8s, anders als Compose).
+  Join-Timeout mit Nachzügler-Gruppe.
 - `baustellen-bw`: Ablauf-Löschung am Ende jedes Laufs statt eigenem Inject
   (gleicher Takt, ohne Versatz).
 - `wetter-dwd-station`: ein Batch-Upsert statt einem je Station; Ausfälle als
@@ -270,6 +300,12 @@ Dienst nimmt genau sie auf. Gruppenweise, mit Beobachtungsfenster dazwischen
 (worauf zu achten ist: „Bewusste Abweichungen“ oben). Rückweg: Feld
 zurückdrehen.
 
+**Einmalige Kosten je Umschaltung:** Für einen frisch umgeschalteten
+Konnektor hat der Dienst noch keine Signaturen; sein erster Lauf schreibt
+einmal voll, wie ein frisch gestartetes Node-RED. Die Gruppen so schneiden,
+dass diese Erstläufe zusammen ins Zeilenbudget passen (`parken-bw` allein
+~230k Zeilen). Das fällt einmal je Konnektor an, nicht je Neustart.
+
 `scripts/healthcheck.sh` muss dafür nicht angefasst werden — es misst die
 Frische der Entitäten in Orion, nicht die Laufzeit, die sie geschrieben hat.
 
@@ -285,10 +321,14 @@ und `docs/staedte-hinzufuegen.md`.
 muss den Admin-Port ansprechen. Kein Proxy (nginx, APISIX, Ingress) darf ihn
 weiterreichen; in Compose höchstens auf `127.0.0.1` veröffentlichen.
 
-### Phase 6 — Abbau
+Der Dienst läuft mit **genau einer** Replik: Helm `replicas: 1` und
+`strategy: Recreate` (eine zweite Instanz bekäme den Schreib-Lock nicht und
+führe keine gegateten Konnektoren). Er braucht `TROE_DB_*` und für das Schema
+`udp_connectors` das Recht `CREATE` auf der Datenbank `orion` (oder das Schema
+wird vorab angelegt); ein Volume braucht er nicht. Die Liveness-Probe nicht an
+`stateStore.healthy` koppeln — ein Neustart repariert keine Datenbank.
 
-Signaturspeicher, Prune-Buchführung und `ctx.state` ziehen zusammen aus dem
-Speicher nach Postgres (siehe Risiko „Signaturspeicher“).
+### Phase 6 — Abbau
 
 `flows.json` schrumpft auf die fünf Beispiel-Nodes und passt damit wieder in
 eine ConfigMap — womit `node-red-udp` aus Image-Matrix und Digest-Pinning fällt
@@ -307,7 +347,7 @@ trotzdem ändert. Sie gehören in den Vertrag, bevor die Agenten starten.
 | **Zeilenbudget** | `rowBudget24h` ist die stehende Sicherung aus dem ParkAPI-Vorfall und hängt im `troe-stats`-Function-Node. | Wandert als Erstes mit (Agent A), nie stillgelegt — auch nicht kurz während der Umschaltung. | hoch |
 | **Taktung** | 25 `delay`-Nodes takten mit `drop: false`; die Warteschlange ist unbegrenzt. | Token-Bucket bekommt eine Obergrenze und meldet Überlauf, statt still zu wachsen. | mittel |
 | **efa-abfahrten** | 23 Function- plus 46 HTTP-Nodes werden eine Schleife; das Anfrageprofil gegen EFA-BW ändert sich. | Nebenläufigkeit explizit deckeln. | mittel |
-| **Signaturspeicher** | Die Änderungserkennung verliert ihren Stand heute bei jedem Neustart (in K8s bewusst, kein Volume auf `/data`). Postgres würde das beheben. | Erst *nach* grüner Parität umstellen — vorher verfälscht es genau die Diffs, mit denen geprüft wird. | mittel |
+| **Signaturspeicher** | Ohne dauerhaften Zustand schreibt jeder Neustart alle Gate-Entitäten voll (~400k TRoE-Zeilen); unter Compose hielt Node-RED ihn auf einem Volume. | Vor der ersten Umschaltung in PostgreSQL (Schema `udp_connectors`): Laden vor dem ersten Lauf, ohne geladenen Zustand kein gegateter Lauf, ein Schreiber per Advisory-Lock. Einmalig voll schreibt nur der Erstlauf je umgeschaltetem Konnektor. | hoch, behoben |
 | **Fremddaten-Parser** | 29 Quellen brauchen je eine `unknown`-Parsefunktion; die Versuchung, sie durch ein `as` zu ersetzen, ist groß. | Lint verbietet die Abkürzung technisch; der Kernel liefert Bausteine, damit der ehrliche Weg der kürzeste ist. | mittel |
 | **Startverhalten** | `refireOnRestart: false` heißt heute `onceDelay: 600` — verzögert feuern, nicht aussetzen. Wer es als „gar nicht“ nachbaut, lässt vier Konnektoren verhungern. | Im Vertrag ausbuchstabieren, samt Begründung aus `docs/betrieb.md`. | niedrig |
 | **B.II.4** | Die Leistungsbeschreibung nennt Node-RED namentlich. | Container und Beispiel-Tab bleiben; Formulierung in Phase 6 nachziehen. | niedrig |

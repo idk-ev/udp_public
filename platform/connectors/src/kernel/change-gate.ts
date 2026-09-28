@@ -56,26 +56,19 @@
  * (`replace: complete`), so an incomplete run keeps the signatures of stations
  * on a missing page.
  *
- * ## Why in memory, for now
+ * ## Persisted, write-through
  *
- * The store lives in the process and is lost on restart. In Kubernetes that is
- * today's behaviour too: Node-RED runs without a volume on /data there. Under
- * Compose, however, the flow context was persisted (`contextStorage:
- * localfilesystem` in settings.js), so there the old runtime kept its tables
- * across restarts and this one does not. For the change gate the loss is the
- * safe direction: every entity counts as changed and is written in full once.
- * (For the prune it is not in every respect — see src/kernel/prune.ts for the
- * municipality count, which is therefore seeded from Orion.)
- *
- * Postgres would fix it, and the migration plan explicitly defers that until
- * parity is green:
- *
- *   > Erst *nach* grüner Parität umstellen — vorher verfälscht es genau die
- *   > Diffs, mit denen geprüft wird.
- *
- * A persistent store would mean the first run after a restart sees a populated
- * signature table where the old runtime (in Kubernetes) saw an empty one, and
- * the two sides would legitimately produce different entity arrays.
+ * The tables are kept in memory for the gate and persisted per connector in
+ * PostgreSQL (src/kernel/persistence.ts), so a restart does not turn every
+ * gated entity into "changed" — under Compose the old runtime kept them on a
+ * volume, and losing them rewrote ~400k TRoE rows per restart. Every change
+ * of a table is reported to the persistence ({@link SignatureObserver}):
+ * dropped signatures are persisted BEFORE the upsert that makes them matter
+ * goes out, committed ones after the broker confirmed them. The rule above
+ * therefore also holds for the database: it never stores a signature the
+ * broker did not confirm. While the persisted tables are not loaded the gate
+ * refuses to work (`StateUnavailableError`) — a gate on empty tables
+ * is the full rewrite the persistence exists to prevent.
  */
 
 import type {
@@ -99,7 +92,7 @@ export const DEFAULT_FRESH_PERIOD_MS = 3_600_000;
  *
  * Exported for tests. (`carsharing-bw` also called it directly, for the
  * one-off migration of its former `csStand` table; that path has nothing to
- * migrate in this service, whose tables start empty.)
+ * migrate in this service, whose tables never held that table.)
  */
 export function freshTurn(id: string, every: number, periodMs: number, nowMs: number): boolean {
   if (!(every > 1)) return true;
@@ -116,6 +109,18 @@ export interface CommitResult {
 const NAMESPACE_SEPARATOR = "\u0000";
 
 /**
+ * The persistence behind one connector's tables (kernel-internal; implemented
+ * in src/kernel/persistence.ts). Without one a scope is memory only — the
+ * parity harness and most unit tests run that way.
+ */
+export interface SignatureObserver {
+  /** Throws `StateUnavailableError` while the persisted tables are not loaded. */
+  assertLoaded(): void;
+  /** These fields of table `key` changed in memory: set, overwritten or removed. */
+  changed(key: string, fields: Iterable<string>): void;
+}
+
+/**
  * The signature tables — the part of the Node-RED flow context the connectors
  * kept them in. Shared by the whole service, but every connector only ever
  * sees its own namespace ({@link scope}): two connectors cannot collide on a
@@ -123,9 +128,15 @@ const NAMESPACE_SEPARATOR = "\u0000";
  */
 export class SignatureStore {
   readonly #tables = new Map<string, Map<string, SignatureValue>>();
+  readonly #observers = new Map<string, SignatureObserver>();
 
   scope(owner: string): SignatureScope {
-    return new SignatureScope(this.#tables, owner);
+    return new SignatureScope(this.#tables, owner, () => this.#observers.get(owner));
+  }
+
+  /** Kernel-internal: reports every change of `owner`'s tables to `observer`. */
+  observe(owner: string, observer: SignatureObserver): void {
+    this.#observers.set(owner, observer);
   }
 }
 
@@ -133,10 +144,26 @@ export class SignatureStore {
 export class SignatureScope {
   readonly #tables: Map<string, Map<string, SignatureValue>>;
   readonly #prefix: string;
+  readonly #observer: () => SignatureObserver | undefined;
 
-  constructor(tables: Map<string, Map<string, SignatureValue>>, owner: string) {
+  constructor(
+    tables: Map<string, Map<string, SignatureValue>>,
+    owner: string,
+    observer: () => SignatureObserver | undefined = () => undefined,
+  ) {
     this.#tables = tables;
     this.#prefix = `${owner}${NAMESPACE_SEPARATOR}`;
+    this.#observer = observer;
+  }
+
+  /** Throws `StateUnavailableError` while the persisted tables are not loaded. */
+  assertLoaded(): void {
+    this.#observer()?.assertLoaded();
+  }
+
+  /** Reports changed fields to the persistence; the gate calls it for what it changes on a live table. */
+  changed(key: string, fields: Iterable<string>): void {
+    this.#observer()?.changed(key, fields);
   }
 
   /** The live table, created on demand. Connectors only ever get copies. */
@@ -154,9 +181,22 @@ export class SignatureScope {
     return new Map(this.#tables.get(this.#prefix + key));
   }
 
+  /** The stored value of one field, for the persistence. */
+  valueOf(key: string, field: string): SignatureValue | undefined {
+    return this.#tables.get(this.#prefix + key)?.get(field);
+  }
+
   /** Replaces a table wholesale — replace mode of the gate, and test setup. */
   replace(key: string, table: ReadonlyMap<string, SignatureValue>): void {
-    this.#tables.set(this.#prefix + key, new Map(table));
+    const name = this.#prefix + key;
+    const previous = this.#tables.get(name);
+    const touched = new Set<string>();
+    if (previous !== undefined) {
+      for (const [field, value] of previous) if (table.get(field) !== value) touched.add(field);
+    }
+    for (const [field, value] of table) if (previous?.get(field) !== value) touched.add(field);
+    this.#tables.set(name, new Map(table));
+    if (touched.size > 0) this.changed(key, touched);
   }
 
   /** Keeps the entries `keep` accepts; drops a table left empty. */
@@ -164,8 +204,14 @@ export class SignatureScope {
     const name = this.#prefix + key;
     const table = this.#tables.get(name);
     if (table === undefined) return;
-    for (const [field, value] of [...table]) if (!keep(field, value)) table.delete(field);
+    const removed: string[] = [];
+    for (const [field, value] of [...table]) {
+      if (keep(field, value)) continue;
+      table.delete(field);
+      removed.push(field);
+    }
     if (table.size === 0) this.#tables.delete(name);
+    if (removed.length > 0) this.changed(key, removed);
   }
 
   keys(): readonly string[] {
@@ -178,7 +224,19 @@ export class SignatureScope {
   forget(key: string, fields: Iterable<string>): void {
     const table = this.#tables.get(this.#prefix + key);
     if (table === undefined) return;
-    for (const field of fields) table.delete(field);
+    const removed: string[] = [];
+    for (const field of fields) if (table.delete(field)) removed.push(field);
+    if (removed.length > 0) this.changed(key, removed);
+  }
+
+  /**
+   * Replaces ALL of this connector's tables with what the state store holds —
+   * the load before the first run, and the reload after the writer lock was
+   * lost. Not reported as a change: it is what the store already has.
+   */
+  load(tables: ReadonlyMap<string, ReadonlyMap<string, SignatureValue>>): void {
+    for (const key of this.keys()) this.#tables.delete(this.#prefix + key);
+    for (const [key, table] of tables) this.#tables.set(this.#prefix + key, new Map(table));
   }
 
   /**
@@ -188,6 +246,7 @@ export class SignatureScope {
   commit(pending: readonly PendingSignature[], confirmed: ReadonlySet<EntityId>): CommitResult {
     let committed = 0;
     let dropped = 0;
+    const touched = new Map<string, string[]>();
     for (const [key, field, value, entityId] of pending) {
       if (!confirmed.has(entityId)) {
         dropped += 1;
@@ -197,7 +256,12 @@ export class SignatureScope {
       if (value === null) table.delete(field);
       else table.set(field, value);
       committed += 1;
+      const fields = touched.get(key);
+      if (fields === undefined) touched.set(key, [field]);
+      else fields.push(field);
     }
+    // Write-through, batched per chunk: Orion.upsert commits once per chunk.
+    for (const [key, fields] of touched) this.changed(key, fields);
     return { committed, dropped };
   }
 }
@@ -232,6 +296,7 @@ class MemoryChangeGate implements ChangeGate {
     sigOf: (entity: T) => SignatureValue,
     options?: ChangeGateOptions,
   ): UpsertPlan {
+    this.#store.assertLoaded();
     const replace = options?.replace ?? false;
     const every = options?.freshEvery ?? 1;
     const period = options?.periodMs ?? DEFAULT_FRESH_PERIOD_MS;
@@ -242,12 +307,13 @@ class MemoryChangeGate implements ChangeGate {
     const table = replace ? new Map<string, SignatureValue>() : previous;
     const out: NgsiEntity[] = [];
     const pending: PendingSignature[] = [];
+    const dropped: string[] = [];
     let changed = 0;
 
     for (const entity of entities) {
       const signature = sigOf(entity);
       if (previous.get(entity.id) !== signature) {
-        table.delete(entity.id);
+        if (table.delete(entity.id)) dropped.push(entity.id);
         pending.push([key, entity.id, signature, entity.id]);
         out.push(entity);
         changed += 1;
@@ -267,12 +333,15 @@ class MemoryChangeGate implements ChangeGate {
       }
     }
 
+    // Replace mode reports its own difference; merge mode only ever drops.
     if (replace) this.#store.replace(key, table);
+    else if (dropped.length > 0) this.#store.changed(key, dropped);
     this.#log.status(`${String(changed)}/${String(entities.length)} changed (rest: freshness only)`);
     return { entities: out, pending };
   }
 
   table(key: string): Map<string, SignatureValue> {
+    this.#store.assertLoaded();
     return this.#store.copy(key);
   }
 
@@ -281,10 +350,12 @@ class MemoryChangeGate implements ChangeGate {
   }
 
   retain(key: string, keep: (field: string, value: SignatureValue) => boolean): void {
+    this.#store.assertLoaded();
     this.#store.retain(key, keep);
   }
 
   keys(): readonly string[] {
+    this.#store.assertLoaded();
     return this.#store.keys();
   }
 }

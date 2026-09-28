@@ -20,6 +20,13 @@
  *    in Compose published on the host at most on 127.0.0.1. Phase 5 points
  *    `scripts/trigger-connector.sh` here.
  *
+ * State: change signatures, prune bookkeeping and persisted `ctx.state`
+ * keys live in PostgreSQL (schema `udp_connectors`, src/kernel/persistence.ts).
+ * They are loaded before the first run — a connector that needs them does not
+ * run until they are — and written back as they change; shutdown writes the
+ * rest. The service must run as ONE replica: a second instance does not get
+ * the writer lock and runs nothing that needs state.
+ *
  * **Nothing runs yet.** Not because the wiring is missing — it is complete
  * below — but because no entry in platform/config/connectors.json carries the
  * field yet. That file is not touched here; the cutover is phase 4, one group of
@@ -35,7 +42,7 @@ import {
   DEFAULT_ADMIN_PORT,
   DEFAULT_TRIGGER_COOLDOWN_SECONDS,
 } from "./kernel/admin.js";
-import { createCtx, createKernel } from "./kernel/context.js";
+import { createCtx, createKernel, runConnector } from "./kernel/context.js";
 import type { Kernel } from "./kernel/context.js";
 import { DEFAULT_PORT } from "./kernel/http.js";
 import { sanitizeLogText } from "./kernel/log.js";
@@ -92,7 +99,7 @@ async function main(): Promise<void> {
     if (module === undefined) return;
     const schedule = scheduleOf(entry, position);
     const ctx = createCtx(kernel, entry);
-    kernel.scheduler.add(entry.id, schedule, () => module.run(ctx));
+    kernel.scheduler.add(entry.id, schedule, () => runConnector(kernel, ctx, module));
     // Built with the connector's own ctx: its log, its limiter share, its Orion.
     for (const route of module.routes?.(ctx) ?? []) kernel.publicHttp.register(route);
     kernel.log.info(
@@ -102,6 +109,10 @@ async function main(): Promise<void> {
         `, first run in ${String(schedule.startupDelaySeconds)} s`,
     );
   });
+
+  // Load before the first run. Without a scheduled connector nothing is
+  // bound, and the state store is never even connected.
+  if (scheduled.length > 0) await kernel.persistence?.prepareAll();
 
   for (const route of adminRoutes(kernel, {
     version: VERSION,
@@ -121,9 +132,16 @@ async function main(): Promise<void> {
     kernel.log.info(`${signal} received, shutting down`);
     kernel.shutdown.abort();
     kernel.scheduler.stop();
-    void Promise.all([kernel.publicHttp.close(), kernel.adminHttp.close()]).then(() => {
-      process.exit(0);
-    });
+    // The state store last: its close writes what is still marked and
+    // releases the writer lock for the next instance.
+    void Promise.all([kernel.publicHttp.close(), kernel.adminHttp.close()])
+      .then(() => kernel.persistence?.close())
+      .catch((error: unknown) => {
+        kernel.log.error("state store: close failed", error);
+      })
+      .then(() => {
+        process.exit(0);
+      });
   };
   process.on("SIGTERM", () => {
     stop("SIGTERM");

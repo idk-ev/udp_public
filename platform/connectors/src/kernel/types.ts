@@ -15,7 +15,8 @@
  * (docs/migration-konnektoren.md, "Sperre: Vertrag eingefroren"). Phase 3b
  * widened it once, where the ports had pinched: {@link ConnectorState},
  * `Ctx.rowBudget`, `RegistryEntry.sensorDetailFor`, request headers, the
- * concurrency cap, unpaced Orion reads and array SQL parameters.
+ * concurrency cap, unpaced Orion reads and array SQL parameters. Persisting
+ * the kernel state added one optional piece: {@link StateCodec}.
  *
  * Two rules carry the whole design:
  *
@@ -816,8 +817,9 @@ export interface PruneResult {
  * count and lose their change signature; the TRoE history is left untouched.
  *
  * State (interval bookkeeping, confirmation tables, the last plausible
- * municipality count) lives in memory, per connector; the municipality count
- * is seeded from Orion after a start — see src/kernel/prune.ts.
+ * municipality count) is kept per connector and persisted in PostgreSQL, so a
+ * restart does not reset it; a municipality count that was never persisted is
+ * seeded from Orion — see src/kernel/prune.ts and src/kernel/persistence.ts.
  */
 export interface Pruner {
   /**
@@ -826,10 +828,11 @@ export interface Pruner {
    * count, boundaries for at least 99 % of their AGS (by key, not by count),
    * and no boundary entry dropped by the parser.
    *
-   * The "last plausible count" survives no restart, so after a start it is
-   * first seeded from the number of `Municipality` entities in Orion; while
-   * Orion cannot answer, the answer is `false` — no prune. Asynchronous for
-   * that reason. {@link stale} checks it itself; call it directly only to
+   * The "last plausible count" is persisted with the rest of the prune
+   * bookkeeping. Where none was persisted yet (first start, new connector) it
+   * is seeded from the number of `Municipality` entities in Orion; while Orion
+   * cannot answer, the answer is `false` — no prune. Asynchronous for that
+   * reason. Also `false` while the connector's persisted state is not loaded. {@link stale} checks it itself; call it directly only to
    * decide the else branch (e.g. {@link resetConfirmations} on an incomplete
    * run).
    */
@@ -837,7 +840,9 @@ export interface Pruner {
   /**
    * Never throws; failures are logged as `[warn]` and reported as skipped.
    * Implausible master data skip without a request and clear the
-   * `confirmKey` table, as the else branch of the old call sites did.
+   * `confirmKey` table, as the else branch of the old call sites did. While
+   * the connector's persisted state is not loaded the prune is skipped with
+   * a `[warn]` and its bookkeeping is left untouched.
    */
   stale(options: PruneOptions): Promise<PruneResult>;
   /** Clears a confirmation table — an incomplete run breaks "consecutive". */
@@ -1076,11 +1081,22 @@ export interface StateSlot<T> {
 }
 
 /**
+ * How a piece of connector state is written to and read back from the state
+ * store. `decode` gets what the database returned — external data, hence
+ * `unknown` — and answers `undefined` for anything it does not recognise; the
+ * slot then starts from its initial value.
+ */
+export interface StateCodec<T> {
+  encode(value: T): JsonValue;
+  decode(raw: unknown): T | undefined;
+}
+
+/**
  * Declares one piece of connector state: its name, its type and how its
  * initial value is made. Created ONCE, at module level, with
- * `stateKey(name, initial)` from src/kernel/state.ts. The key carries the type,
- * which is what lets {@link ConnectorState.slot} return the value typed
- * without an assertion.
+ * `stateKey(name, initial, codec?)` from src/kernel/state.ts. The key carries
+ * the type, which is what lets {@link ConnectorState.slot} return the value
+ * typed without an assertion.
  */
 export interface StateKey<T> {
   readonly name: string;
@@ -1098,10 +1114,11 @@ export interface StateKey<T> {
  * …). Shared by `run` and the connector's `routes`, which receive the same
  * ctx; invisible to every other connector.
  *
- * In memory, like the signature store and the prune bookkeeping: lost on
- * restart, as the flow context was in Kubernetes (no volume on `/data`). All
- * three move to Postgres together in phase 6
- * (docs/migration-konnektoren.md).
+ * A key declared with a {@link StateCodec} is persisted in PostgreSQL together
+ * with the change signatures and the prune bookkeeping, and survives a
+ * restart; a key without one is a cache that lives as long as the process
+ * (see src/kernel/state.ts). Reading a persisted key while the connector's
+ * state is not loaded throws, and the kernel skips the run.
  */
 export interface ConnectorState {
   /**
@@ -1140,7 +1157,7 @@ export interface Ctx {
   readonly db: Db;
   readonly params: ConnectorParams;
   readonly enabledFor: "*" | readonly Ags[] | null;
-  /** In-memory state of this connector, shared by `run` and its `routes`. */
+  /** State of this connector, shared by `run` and its `routes`; see {@link ConnectorState}. */
   readonly state: ConnectorState;
   /**
    * `rowBudget24h` of EVERY registry entry summed per entity type —

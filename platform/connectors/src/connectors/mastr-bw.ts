@@ -28,11 +28,9 @@
  *
  * The rotation position (`mastrPos`) and the plant counts (`mastrCount`) were
  * GLOBAL context in the flow. Here they live in `ctx.state` ({@link POSITION},
- * {@link COUNTS}), in memory: lost on restart as the global context was in
- * Kubernetes (no volume on /data) — but not as under Compose, where Node-RED
- * persisted it. After a restart the rotation starts at the first municipality
- * again and every municipality gets ten pages once, until the state moves to
- * Postgres in phase 6.
+ * {@link COUNTS}) and are persisted, as Node-RED persisted them under Compose:
+ * a restart continues the rotation where it stopped instead of starting at
+ * the first municipality with ten pages each.
  *
  * ## Fan-out and the join
  *
@@ -52,7 +50,7 @@
 
 import { observed } from "../kernel/ngsi.js";
 import { isArray, isRecord, isString, isTruthy } from "../kernel/parse.js";
-import { stateKey } from "../kernel/state.js";
+import { persisted, stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
@@ -329,10 +327,10 @@ export function countsOf(pages: readonly MastrPage[]): ReadonlyMap<Ags, number> 
 /* ------------------------------------------------------------------ run */
 
 /** `mastrPos` of the global context. See the module header for what a restart does. */
-export const POSITION = stateKey("mastrPos", () => 0);
+export const POSITION = stateKey("mastrPos", () => 0, persisted.number);
 
 /** `mastrCount` of the global context: the plant count per municipality of its last run. */
-export const COUNTS = stateKey("mastrCount", () => new Map<Ags, number>());
+export const COUNTS = stateKey("mastrCount", () => new Map<Ags, number>(), persisted.numberMap);
 
 /** At most `limit` in flight, results in item order; stops starting new ones once aborted. */
 async function inOrder<T, R>(

@@ -191,18 +191,20 @@ class Index implements GeoIndex {
  *
  * The 95 % ratchet compares against the last plausible count (`gemCount` in
  * the node context). Under Compose that context survived restarts
- * (`contextStorage: localfilesystem`); in this process it would start at 0,
- * and a truncated municipality file arriving right after a restart — 1,020 of
- * 1,101 rows, say — would pass as plausible and let every prune delete the
- * entities of the missing municipalities. So the reference is SEEDED once from
- * the number of `Municipality` entities in Orion (what `stammdaten-bw` wrote)
- * before the check gives any verdict; until the seed is in, the answer is
- * `false` and no bookkeeping happens. This is stricter than the old code in
- * Kubernetes, where the context started empty too, and deliberately so.
+ * (`contextStorage: localfilesystem`); here it is persisted with the prune
+ * bookkeeping (src/kernel/persistence.ts: {@link snapshot} / {@link restore}).
+ * Where none was persisted yet it would start at 0, and a truncated
+ * municipality file arriving right then — 1,020 of 1,101 rows, say — would
+ * pass as plausible and let every prune delete the entities of the missing
+ * municipalities. So a missing reference is SEEDED once from the number of
+ * `Municipality` entities in Orion (what `stammdaten-bw` wrote) before the
+ * check gives any verdict; until the seed is in, the answer is `false` and no
+ * bookkeeping happens.
  */
 export class MasterDataCheck {
-  /** `context.get('gemCount')`; `null` until seeded. */
+  /** `context.get('gemCount')`; `null` until seeded or restored. */
   #lastCount: number | null = null;
+  #onChange: () => void = () => undefined;
 
   get seeded(): boolean {
     return this.#lastCount !== null;
@@ -210,7 +212,24 @@ export class MasterDataCheck {
 
   /** Sets the reference once; later calls are ignored (the ratchet owns it then). */
   seed(count: number): void {
-    this.#lastCount ??= count;
+    if (this.#lastCount !== null) return;
+    this.#lastCount = count;
+    this.#onChange();
+  }
+
+  /** The reference, for the persistence. */
+  snapshot(): number | null {
+    return this.#lastCount;
+  }
+
+  /** The persisted reference; `null` = none persisted, seed from Orion again. */
+  restore(count: number | null): void {
+    this.#lastCount = count;
+  }
+
+  /** Called whenever the reference changes (kernel-internal: the persistence). */
+  onChange(listener: () => void): void {
+    this.#onChange = listener;
   }
 
   /**
@@ -237,7 +256,10 @@ export class MasterDataCheck {
     if (previous === null || municipalities === null) return false;
     const count = municipalities.length;
     if (count < 1000 || count < previous * 0.95) return false;
-    this.#lastCount = count;
+    if (count !== previous) {
+      this.#lastCount = count;
+      this.#onChange();
+    }
     if (boundaries === null || boundariesDegraded) return false;
     let covered = 0;
     for (const row of municipalities) if (boundaries[row[0]] !== undefined) covered += 1;

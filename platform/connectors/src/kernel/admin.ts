@@ -46,7 +46,13 @@ export interface AdminOptions {
   readonly cooldownMs: number;
 }
 
-/** `GET /healthz` — liveness plus what is actually scheduled. */
+/**
+ * `GET /healthz` — liveness plus what is actually scheduled, and the state
+ * store (`stateStore.healthy`: writer lock held, every connector loaded, no
+ * write failing). A state store problem does not turn the answer into an
+ * error: restarting the process would not fix the database, only repeat the
+ * load.
+ */
 function healthRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
   return {
     method: "GET",
@@ -64,6 +70,7 @@ function healthRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
             cron: job.schedule.cron,
             startupDelaySeconds: job.schedule.startupDelaySeconds,
           })),
+          stateStore: kernel.persistence?.health() ?? null,
         }),
       );
     },
