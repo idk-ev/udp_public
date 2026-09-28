@@ -19,6 +19,10 @@
 {{- fail (printf "timescale.migration.phase must be \"\", \"prepare\" or \"cutover\" (got %q)" $phase) }}
 {{- end }}
 {{- $instances := int $ts.instances }}
+{{- $rec := $ts.recovery }}
+{{- if and $rec.enabled (ne $phase "") }}
+{{- fail "timescale.recovery cannot be combined with timescale.migration.phase – finish the migration first." }}
+{{- end }}
 {{- $dbUser := .Values.db.user }}
 {{- with lookup "v1" "Secret" .Release.Namespace (include "udp.dbSecretName" .) }}
 {{- $dbUser = index .data "POSTGRES_USER" | default "" | b64dec | default $dbUser }}
@@ -49,6 +53,12 @@ the old StatefulSet exists without it, only phase prepare is allowed.
 {{- $liveSvc := lookup "v1" "Service" .Release.Namespace "timescale" }}
 {{- $liveCluster := lookup "postgresql.cnpg.io/v1" "Cluster" .Release.Namespace "timescale" }}
 {{- $copied := dig "metadata" "annotations" "udp.idk-ev.de/copied-from-legacy" "" $liveCluster }}
+{{- /* bootstrap is only read when the Cluster is created: on a running one
+     recovery would restore nothing, only move WAL archiving into the new,
+     base-backup-less folder of backup.serverName. */}}
+{{- if and $rec.enabled $liveCluster (not (dig "spec" "bootstrap" "recovery" "" $liveCluster)) }}
+{{- fail "timescale.recovery only works when the Cluster is created – \"timescale\" exists and was not restored from the archive. Run scripts/restore-timescale.sh full first (DEPLOY.md §10c)." }}
+{{- end }}
 {{- if and $liveSts (not $copied) (ne $phase "prepare") }}
 {{- if eq $phase "cutover" }}
 {{- fail "Cutover refused: the CNPG cluster carries no udp.idk-ev.de/copied-from-legacy annotation, i.e. the data copy has not completed. Run scripts/migrate-timescale-cnpg.sh copy first." }}
@@ -157,7 +167,29 @@ spec:
     synchronous:
       {{- toYaml $ts.synchronous | nindent 6 }}
     {{- end }}
+  {{- if .Values.backup.enabled }}
+  # WAL archiving and base backups through the Barman Cloud plugin
+  # (templates/backup.yaml).
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: timescale-backup
+        serverName: {{ .Values.backup.serverName | quote }}
+  {{- end }}
+  # Only read when the Cluster is created – changing it later has no effect on
+  # a running cluster.
   bootstrap:
+    {{- if $rec.enabled }}
+    # Restore from the backup archive (timescale.recovery, DEPLOY.md §10c).
+    # Databases, roles, locale and checksums come from the backup.
+    recovery:
+      source: backup-archive
+      {{- with $rec.targetTime }}
+      recoveryTarget:
+        targetTime: {{ . | quote }}
+      {{- end }}
+    {{- else }}
     initdb:
       database: {{ $ts.db.name }}
       owner: {{ $dbUser }}
@@ -167,6 +199,16 @@ spec:
       localeCollate: en_US.UTF-8
       localeCType: en_US.UTF-8
       dataChecksums: true
+    {{- end }}
+  {{- if $rec.enabled }}
+  externalClusters:
+    - name: backup-archive
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: timescale-backup
+          serverName: {{ $rec.serverName | quote }}
+  {{- end }}
   managed:
     roles:
       # The platform's single application role; Orion-LD creates a database
