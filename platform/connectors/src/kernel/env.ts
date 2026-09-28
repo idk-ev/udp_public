@@ -16,6 +16,16 @@
 
 import type { Env } from "./types.js";
 
+/**
+ * Base URL of the cockpit, which serves the project's own static data files
+ * (`bw-gemeinden.json`, `bw-grenzen.json`, `oepnv-halte.json`, …) to six
+ * connectors. Port 8080, as `COCKPIT` in the generator: the cockpit's nginx is
+ * unprivileged and listens there only; Compose has no port mapping between
+ * containers, and the Helm Service exposes 8080 as well. The flows' former
+ * `http://cockpit/` reached nothing in Compose.
+ */
+export const COCKPIT_URL = "http://cockpit:8080";
+
 class ProcessEnv implements Env {
   get(name: string): string | undefined {
     const value = process.env[name];

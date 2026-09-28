@@ -5,7 +5,8 @@ Migrationsplan: Die 29 Konnektoren wandern aus dem generierten
 (`platform/connectors/`). Node-RED bleibt als Low-Code-Baustein stehen — nur
 nicht mehr als Laufzeit der Ingestion.
 
-Stand: **Phase 0 abgeschlossen** (Gerüst). Es ingestiert noch nichts.
+Stand: **Phasen 0, 1, 1b und 2 abgeschlossen** (Gerüst, Kernel und Vertrag,
+Paritäts-Harness). Es ingestiert noch nichts.
 
 ## Ziel
 
@@ -89,7 +90,7 @@ Nachweis: `test/hardening/` — zwei Dateien, die scheitern **müssen**;
 `tests/static/type-discipline.test.js` ruft `tsc` und `eslint` darauf auf und
 erwartet das Scheitern.
 
-### Phase 1 — Kernel und Vertrag (1 Agent, seriell)
+### Phase 1 — Kernel und Vertrag (1 Agent, seriell) ✅
 
 `kernel/types.ts` zuerst; dort steht der Vertrag, alles andere setzt ihn um.
 Dann die übrigen `kernel/`-Module plus `stammdaten-bw` und `grenzen-bw` — die
@@ -102,13 +103,39 @@ daran erzeugen zwei Schnittstellen.
 *Fertig, wenn* `types.ts` den vollständigen `ctx`-Vertrag trägt, `tsc --noEmit`
 und `eslint` sauber durchlaufen und ein Beispielkonnektor damit läuft.
 
-### Phase 2 — Paritäts-Harness (1 Agent, parallel zu Phase 1)
+### Phase 2 — Paritäts-Harness (1 Agent, parallel zu Phase 1) ✅
 
 `vm-runner.ts`, ein Aufzeichnungsskript für Fixtures, ein durchgearbeitetes
 Beispiel. Hängt nur an `flows.json`, nicht am Kernel.
 
 *Fertig, wenn* ein alter Function-Node und ein neues Modul auf derselben
 Fixture nachweislich identische Entitäten liefern.
+
+### Phase 1b — Kernel an den aktuellen Generator angleichen ✅
+
+Während Phase 1 hat sich der Generator auf `main` geändert; der Kernel bildete
+danach Hilfsfunktionen ab, die es nicht mehr gab. Nachgezogen:
+
+- **Strikte Gemeindezuordnung** (`GeoStore.forRun`, `GeoIndex.agsAt`):
+  Punkt-in-Polygon mit Lückentoleranz, kein Zentroid-Fallback mehr. Ohne
+  Grenzen-Cache wird der Lauf übersprungen, außer das Modul erklärt
+  `boundaries: "optional"` ausdrücklich.
+- **Signaturen erst nach bestätigtem Upsert:** `ChangeGate.check` liefert nur
+  vorgemerkte Signaturen, `Orion.upsert` übernimmt sie für die bestätigten IDs.
+  Einen Commit-Aufruf, den man vergessen könnte, gibt es nicht.
+- **Aufräumen veralteter Entitäten** (`ctx.prune`) mit allen Schutzgrenzen. Der
+  Zustand bleibt im Speicher. Die 95-%-Referenz der Gemeindezahl wird nach
+  einem Start aus der Zahl der `Municipality`-Entitäten in Orion gesetzt;
+  solange Orion nicht antwortet, wird nicht aufgeräumt. Postgres folgt später
+  zusammen mit dem Signaturspeicher.
+- **Nach dem Review:** Signaturtabellen je Konnektor getrennt, `retain` statt
+  freiem Schreiben, `ungated()` für Schreibvorgänge ohne Gate, `ctx.db` für
+  die beiden SQL-Konnektoren, Routen mit eigenem `ctx`, Log-Zeilen gegen
+  eingeschleuste Zeilenumbrüche geschützt, `/trigger` nur auf dem Admin-Port
+  mit Sperrfrist.
+
+Paritätstests gegen die neuen Flows: `stammdaten-bw`, `grenzen-bw`, strikte
+Zuordnung, Signatur-Commit, Aufräumen.
 
 ### Sperre: Vertrag eingefroren
 
@@ -156,6 +183,11 @@ Frische der Entitäten in Orion, nicht die Laufzeit, die sie geschrieben hat.
 `/flows`), Log-Grep in `healthcheck.sh`, Compose- und Helm-Dienst,
 `UDP_NODERED_UPSTREAM` in der Cockpit-nginx, NetworkPolicy, `docs/betrieb.md`
 und `docs/staedte-hinzufuegen.md`.
+
+`/trigger` und `/healthz` liegen auf dem **Admin-Port** 1881
+(`UDP_CONNECTORS_ADMIN_PORT`), nicht auf dem öffentlichen Port 1880. Das Skript
+muss den Admin-Port ansprechen. Kein Proxy (nginx, APISIX, Ingress) darf ihn
+weiterreichen; in Compose höchstens auf `127.0.0.1` veröffentlichen.
 
 ### Phase 6 — Abbau
 

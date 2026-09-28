@@ -7,7 +7,7 @@
      occurred in the Node-RED flows being replaced:
 
        noUncheckedIndexedAccess   The source data arrives as positional arrays
-                                  (ParkAPI: 12 columns, bw-gemeinden: 8). Their
+                                  (ParkAPI: 12 columns, bw-gemeinden: 9). Their
                                   meaning used to live in a comment. Without
                                   this option a[11] is silently number instead
                                   of number | undefined.

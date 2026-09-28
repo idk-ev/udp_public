@@ -40,7 +40,15 @@
  * the only one in this module.
  */
 
-import type { ConnectorId, Log, RegistryEntry, Schedule, ScheduledJob, Scheduler } from "./types.js";
+import type {
+  ConnectorId,
+  Log,
+  RegistryEntry,
+  Schedule,
+  ScheduledJob,
+  Scheduler,
+  TriggerResult,
+} from "./types.js";
 
 /** The delay the generator gives connectors with `refireOnRestart: false`. */
 export const RESTART_DELAY_SECONDS = 600;
@@ -186,6 +194,8 @@ interface Job {
   readonly cron: CronFields | null;
   running: boolean;
   lastCronMinute: number;
+  /** Time of the last accepted manual trigger, for the cooldown. */
+  lastTriggerMs: number | null;
 }
 
 /** How often the cron jobs are checked. A minute is the resolution of cron. */
@@ -195,10 +205,12 @@ class TimerScheduler implements Scheduler {
   readonly #log: Log;
   readonly #jobs = new Map<ConnectorId, Job>();
   readonly #timers: NodeJS.Timeout[] = [];
+  readonly #nowMs: () => number;
   #started = false;
 
-  constructor(log: Log) {
+  constructor(log: Log, nowMs: () => number) {
     this.#log = log;
+    this.#nowMs = nowMs;
   }
 
   add(id: ConnectorId, schedule: Schedule, task: () => Promise<void>): void {
@@ -210,6 +222,7 @@ class TimerScheduler implements Scheduler {
       cron: schedule.cron === null ? null : parseCron(schedule.cron),
       running: false,
       lastCronMinute: -1,
+      lastTriggerMs: null,
     });
   }
 
@@ -257,11 +270,24 @@ class TimerScheduler implements Scheduler {
     this.#started = false;
   }
 
-  trigger(id: ConnectorId): boolean {
+  /**
+   * Checked before firing, so a refused trigger is an answer to the caller
+   * (429 on the admin port), not a `[warn]` about a skipped run.
+   */
+  trigger(id: ConnectorId, cooldownMs: number): TriggerResult {
     const job = this.#jobs.get(id);
-    if (job === undefined) return false;
+    if (job === undefined) return { outcome: "unknown" };
+    if (job.running) return { outcome: "running" };
+    const now = this.#nowMs();
+    if (job.lastTriggerMs !== null && now - job.lastTriggerMs < cooldownMs) {
+      return {
+        outcome: "cooldown",
+        retryAfterSeconds: Math.ceil((cooldownMs - (now - job.lastTriggerMs)) / 1000),
+      };
+    }
+    job.lastTriggerMs = now;
     this.#fire(job, "trigger");
-    return true;
+    return { outcome: "started" };
   }
 
   #track(timer: NodeJS.Timeout): void {
@@ -308,6 +334,7 @@ class TimerScheduler implements Scheduler {
   }
 }
 
-export function createScheduler(log: Log): Scheduler {
-  return new TimerScheduler(log);
+/** @param nowMs Clock of the trigger cooldown; injected for tests. */
+export function createScheduler(log: Log, nowMs: () => number = Date.now): Scheduler {
+  return new TimerScheduler(log, nowMs);
 }

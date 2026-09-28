@@ -161,6 +161,15 @@ export interface RunOptions {
   readonly env?: Readonly<Record<string, string>>;
   /** Additional module specifiers a node may load through its `libs`. */
   readonly allowModules?: readonly string[];
+  /**
+   * Replacements for `libs` modules, by specifier — e.g. `{ http: fakeHttp }`
+   * from test/harness/kernel.ts for the nodes that prune or query Orion
+   * through `node:http` (PRUNE_LIBS). Takes precedence over `require`, so the
+   * node never reaches a real network.
+   */
+  readonly modules?: Readonly<Record<string, unknown>>;
+  /** Initial content of the NODE context (`context.get`), e.g. `gemCount` of PRUNE_OK. */
+  readonly context?: Readonly<Record<string, unknown>>;
   readonly timeoutMs?: number;
   readonly flowsFile?: string;
 }
@@ -181,6 +190,8 @@ export interface FunctionNodeRun {
   /** Flow context AFTER the run — for nodes whose result is a context write. */
   readonly flow: ReadonlyMap<string, unknown>;
   readonly global: ReadonlyMap<string, unknown>;
+  /** Node context AFTER the run. */
+  readonly context: ReadonlyMap<string, unknown>;
 }
 
 type Outcome =
@@ -229,7 +240,8 @@ function isContextCallback(value: unknown): value is ContextCallback {
   return typeof value === "function";
 }
 
-function contextApi(store: Map<string, unknown>): Record<string, unknown> {
+/** The context API over a map — `flow`, `global` or node context of a sandbox. */
+export function contextApi(store: Map<string, unknown>): Record<string, unknown> {
   // Node-RED offers get/set both synchronously and with a callback. Only the
   // synchronous form occurs in flows.json; the callback form is served anyway,
   // because a node written by hand later would silently lose its value.
@@ -292,7 +304,7 @@ export async function runFunctionNode(nodeId: string, options: RunOptions): Prom
   const events: string[] = [];
   const flowStore = new Map<string, unknown>(Object.entries(options.flow ?? {}));
   const globalStore = new Map<string, unknown>(Object.entries(options.global ?? {}));
-  const nodeStore = new Map<string, unknown>();
+  const nodeStore = new Map<string, unknown>(Object.entries(options.context ?? {}));
   const environment = options.env ?? {};
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -307,7 +319,10 @@ export async function runFunctionNode(nodeId: string, options: RunOptions): Prom
   // timeout. What `require` returns stays `unknown`, exactly like the vm result.
   const libs: { readonly name: string; readonly value: unknown }[] = [];
   for (const lib of definition.libs) {
-    const value: unknown = requireModule(resolveModule(lib, options.allowModules ?? []));
+    const modules = options.modules ?? {};
+    const value: unknown = Object.hasOwn(modules, lib.module)
+      ? modules[lib.module]
+      : requireModule(resolveModule(lib, options.allowModules ?? []));
     libs.push({ name: lib.var, value });
   }
 
@@ -434,7 +449,90 @@ export async function runFunctionNode(nodeId: string, options: RunOptions): Prom
     events,
     flow: flowStore,
     global: globalStore,
+    context: nodeStore,
   };
+}
+
+/**
+ * Cuts a helper block out of a function node body, from the first occurrence
+ * of `start` to the end of the first `end` after it (both included).
+ *
+ * For the helpers the generator splices into many nodes — STRICT_LOOKUP sits
+ * in fourteen, PRUNE_HELPER in eight — so a test can pin the helper itself on inputs no connector
+ * fixture would ever contain (non-finite coordinates, a point in Basel). The
+ * code still comes out of `flows.json`, i.e. it is what Node-RED runs.
+ */
+export function extractSnippet(nodeId: string, start: string, end: string, flowsFile?: string): string {
+  const body = loadFunctionNode(nodeId, flowsFile).func;
+  const from = body.indexOf(start);
+  if (from < 0) throw new Error(`function node "${nodeId}": start marker not found: ${start}`);
+  const to = body.indexOf(end, from);
+  if (to < 0) throw new Error(`function node "${nodeId}": end marker not found after the start: ${end}`);
+  return body.slice(from, to + end.length);
+}
+
+/** Bodies of all function nodes containing `marker` — to check a snippet is the same everywhere. */
+export function functionNodesContaining(marker: string, flowsFile?: string): FunctionNodeDefinition[] {
+  return listFunctionNodes(flowsFile)
+    .map((node) => loadFunctionNode(node.id, flowsFile))
+    .filter((node) => node.func.includes(marker));
+}
+
+/**
+ * Runs `code` in a fresh vm context that holds only `globals`, then evaluates
+ * `expression` in the same script scope and returns its value — `unknown`,
+ * and from the other realm: compare it through `normalize()`.
+ */
+export function evaluateSnippet(
+  code: string,
+  globals: Readonly<Record<string, unknown>>,
+  expression: string,
+): unknown {
+  const context = createContext({ ...globals });
+  const script = new Script(`${code}\n;(${expression});`, { filename: "snippet" });
+  const result: unknown = script.runInContext(context, { timeout: DEFAULT_TIMEOUT_MS });
+  return result;
+}
+
+/**
+ * As {@link evaluateSnippet}, for an async helper (`pruneStale`): the value of
+ * `expression` is awaited inside the vm and handed back through a host
+ * callback pair, the same settlement `runFunctionNode` uses.
+ */
+export async function evaluateSnippetAsync(
+  code: string,
+  globals: Readonly<Record<string, unknown>>,
+  expression: string,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<unknown> {
+  return new Promise<unknown>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`snippet did not settle within ${String(timeoutMs)} ms`));
+    }, timeoutMs);
+    const settle = {
+      ok: (value: unknown): void => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      fail: (reason: unknown): void => {
+        clearTimeout(timer);
+        reject(new Error(`snippet failed: ${describeError(reason)}`));
+      },
+    };
+    const context = createContext({ ...globals, __settle__: settle });
+    const script = new Script(
+      `${code}\n;Promise.resolve(${expression}).then(__settle__.ok, __settle__.fail);`,
+      {
+        filename: "snippet",
+      },
+    );
+    try {
+      script.runInContext(context);
+    } catch (error) {
+      clearTimeout(timer);
+      reject(error instanceof Error ? error : new Error(describeError(error)));
+    }
+  });
 }
 
 function collectMessages(value: unknown, into: unknown[]): void {

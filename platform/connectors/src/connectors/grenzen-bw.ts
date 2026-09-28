@@ -8,9 +8,11 @@
  *
  * Port of FN_GRENZEN from scripts/generate-nodered-flows.py. The whole connector
  * is three lines in the original, and it ingests nothing: it loads
- * `bw-grenzen.json` and puts it into the geo context, where NEAREST_HELPER and
- * PIP_ONLY read it. Without it every coordinate is assigned by nearest centroid,
- * which puts a gauge on the far bank into the wrong municipality.
+ * `bw-grenzen.json` and puts it into the geo context, where the strict lookup
+ * (STRICT_LOOKUP, src/kernel/geo.ts) reads it. Without it there is no
+ * municipality assignment at all: the connectors that need one skip their runs
+ * — guessing by nearest centroid instead is what put rental bikes from Basel
+ * into Lörrach, and was removed for that reason.
  *
  * That is also why it is in phase 1 and why its registry entry carries a
  * `healthUrl` instead of a `sampleEntity` — there is no entity whose freshness
@@ -21,12 +23,13 @@
  * parity harness compares the parsed structure rather than nothing at all.
  */
 
+import { COCKPIT_URL } from "../kernel/env.js";
 import { isArray, isFiniteNumber, isRecord } from "../kernel/parse.js";
 import type { BoundaryEntry, BoundarySet, ConnectorModule, Ctx, GeoIndex, IsoTime } from "../kernel/types.js";
 
 export const ID = "grenzen-bw";
 
-export const DEFAULT_URL = "http://cockpit/bw-grenzen.json";
+export const DEFAULT_URL = `${COCKPIT_URL}/bw-grenzen.json`;
 
 /** Result of parsing, with the count of entries that had to be dropped. */
 export interface BoundaryFile {
@@ -99,26 +102,31 @@ export function build(raw: BoundaryFile, _geo: GeoIndex | null, _now: IsoTime): 
 export async function run(ctx: Ctx): Promise<void> {
   const url = ctx.env.get("UDP_BOUNDARIES_URL") ?? DEFAULT_URL;
   const response = await ctx.fetch.json(url);
-  if (!response.ok) {
-    // Wording of the original: the run is not a failure, only a downgrade —
-    // "Fallback nearest bleibt aktiv".
+  if (!response.ok || !isRecord(response.body)) {
+    // Wording of the original. The previous boundaries stay in place, as the
+    // old node returned before `global.set`.
     ctx.log.warn(
-      `bw-grenzen.json not loadable (HTTP ${String(response.status)}) — centroid fallback stays active`,
+      `bw-grenzen.json not loadable (HTTP ${String(response.status)}) — ` +
+        "connectors with strict municipality lookup skip their runs",
     );
     return;
   }
 
   const file = parse(response.body);
-  const boundaries = build(file, ctx.geo.index(), ctx.now());
+  const boundaries = build(file, null, ctx.now());
   const count = Object.keys(boundaries).length;
   if (file.skipped > 0) {
     ctx.log.warn(`bw-grenzen.json: ${String(file.skipped)} unusable entries skipped`);
   }
   if (count === 0) {
-    ctx.log.warn("bw-grenzen.json contained no usable polygon — centroid fallback stays active");
-    return;
+    ctx.log.warn(
+      "bw-grenzen.json contained no usable polygon — connectors with strict lookup skip their runs",
+    );
   }
-  ctx.geo.setBoundaries(boundaries);
+  // Set even when empty, as the original set whatever object arrived: an empty
+  // cache makes the strict connectors skip (no assignment, no prune) instead of
+  // carrying on with boundaries the source no longer vouches for.
+  ctx.geo.setBoundaries(boundaries, file.skipped);
   ctx.log.status(`${String(count)} municipality polygons`);
 }
 

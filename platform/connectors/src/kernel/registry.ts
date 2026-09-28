@@ -43,9 +43,11 @@ import type {
   ConnectorParams,
   ConnectorRuntime,
   EntityId,
+  EntityType,
   JsonValue,
   Registry,
   RegistryEntry,
+  RowBudget,
 } from "./types.js";
 
 /** Env var pointing at the registry; set to /app/config/connectors.json in the image. */
@@ -128,12 +130,21 @@ function sampleEntity(raw: unknown, at: string): EntityId | null {
   return raw;
 }
 
-function rowBudget(raw: unknown, at: string): Readonly<Record<string, number>> | null {
+/**
+ * `rowBudget24h`: `{ "<entity type>": <rows per day> }`. The generator reads it
+ * as `(c.get("rowBudget24h") or {}).items()` and sums `int(n)` per type, so
+ * the values are whole row counts; anything else is a typo in the registry and
+ * is rejected here rather than silently truncated.
+ */
+function rowBudget(raw: unknown, at: string): RowBudget | null {
   if (raw === undefined || raw === null) return null;
-  if (!isRecord(raw)) throw new Error(`${at}: expected an object of entity type to row count`);
-  const budget: Record<string, number> = {};
+  if (!isRecord(raw)) throw new Error(`${at}: expected an object of entity type to rows per day`);
+  const budget: Record<EntityType, number> = {};
   for (const [type, value] of Object.entries(raw)) {
-    if (!isFiniteNumber(value)) throw new Error(`${at}.${type}: expected a number`);
+    if (type === "") throw new Error(`${at}: empty entity type`);
+    if (!isFiniteNumber(value) || !Number.isInteger(value) || value < 0) {
+      throw new Error(`${at}.${type}: expected a whole, non-negative number of rows`);
+    }
     budget[type] = value;
   }
   return budget;
@@ -208,6 +219,31 @@ export function parseRegistry(raw: unknown): readonly RegistryEntry[] {
     seen.add(entry.id);
   }
   return entries;
+}
+
+/**
+ * Budgets of all entries summed per entity type — `ROW_BUDGET` of the
+ * generator, which hands the result to the TRoE statistics. Several connectors
+ * may write the same type; then their budgets add up.
+ */
+export function sumRowBudgets(entries: readonly RegistryEntry[]): RowBudget {
+  const sum: Record<EntityType, number> = {};
+  for (const entry of entries) {
+    for (const [type, rows] of Object.entries(entry.rowBudget24h ?? {})) sum[type] = (sum[type] ?? 0) + rows;
+  }
+  return sum;
+}
+
+/**
+ * Run interval in milliseconds — `interval_ms(conn_id, runs)` of the generator:
+ * `intervalSeconds`, a cron connector counts as daily, a missing value as
+ * daily too. The default of the prune's interval guard.
+ */
+export function intervalMsOf(entry: RegistryEntry, runs = 1): number {
+  const seconds = entry.cron === null || entry.cron === "" ? entry.intervalSeconds : 86_400;
+  // A nonsensical multiplier must not switch the prune's interval guard off (0) or invert it.
+  const factor = Number.isFinite(runs) && runs > 0 ? runs : 1;
+  return (seconds === null || seconds === 0 ? 86_400 : seconds) * 1000 * factor;
 }
 
 /** Missing `runtime` means `"nodered"` — see platform/connectors/README.md. */

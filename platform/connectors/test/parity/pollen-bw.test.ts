@@ -211,7 +211,7 @@ async function aDriftedFieldIsReportedWithItsPath(): Promise<void> {
 
   assert.throws(
     () => {
-      assertEntitiesEqual(legacy, drifted, { printDiff: false });
+      assertEntitiesEqual(legacy, drifted);
     },
     (error: unknown) => {
       assert.ok(error instanceof Error);
@@ -237,7 +237,6 @@ function onlyWallClockStampsAreNeutralised(): void {
     assertEntitiesEqual(
       [{ startsAt: "2026-08-31T06:00:00Z", observedAt: "2026-08-31T06:00:00Z" }],
       [{ startsAt: "2026-09-01T06:00:00Z", observedAt: "2026-08-31T07:04:31Z" }],
-      { printDiff: false },
     );
   }, /startsAt/);
 }

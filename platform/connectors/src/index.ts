@@ -6,10 +6,21 @@
 /**
  * Entry point of the UDP connector service.
  *
- * Wires registry, scheduler and HTTP server together and starts the connectors
- * the registry marks as `"runtime": "app"`.
+ * Wires registry, scheduler and the two HTTP servers together and starts the
+ * connectors the registry marks as `"runtime": "app"`.
  *
- * **Phase 1 runs nothing.** Not because the wiring is missing — it is complete
+ * Two ports, deliberately (src/kernel/admin.ts):
+ *
+ *  * public — UDP_CONNECTORS_PORT, default 1880: only the routes connectors
+ *    register (`/abfahrten`, `/warnungen.ics`). The cockpit's nginx proxies to
+ *    it, so it faces the internet. `/trigger` does not exist here.
+ *  * admin — UDP_CONNECTORS_ADMIN_PORT, default 1881, bound to
+ *    UDP_CONNECTORS_ADMIN_HOST (default 0.0.0.0): `GET /healthz` and
+ *    `POST /trigger/:id`. Never to be mapped by nginx, APISIX or an ingress;
+ *    in Compose published on the host at most on 127.0.0.1. Phase 5 points
+ *    `scripts/trigger-connector.sh` here.
+ *
+ * **Nothing runs yet.** Not because the wiring is missing — it is complete
  * below — but because no entry in platform/config/connectors.json carries the
  * field yet. That file is not touched here; the cutover is phase 4, one group of
  * connectors at a time with an observation window in between, and the way back
@@ -18,63 +29,21 @@
  */
 
 import { CONNECTORS } from "./connectors/index.js";
+import {
+  adminRoutes,
+  DEFAULT_ADMIN_HOST,
+  DEFAULT_ADMIN_PORT,
+  DEFAULT_TRIGGER_COOLDOWN_SECONDS,
+} from "./kernel/admin.js";
 import { createCtx, createKernel } from "./kernel/context.js";
 import type { Kernel } from "./kernel/context.js";
-import { DEFAULT_PORT, jsonResponse, textResponse } from "./kernel/http.js";
+import { DEFAULT_PORT } from "./kernel/http.js";
+import { sanitizeLogText } from "./kernel/log.js";
 import { loadRegistry, resolveRegistryPath, runtimeOf, REGISTRY_PATH_ENV } from "./kernel/registry.js";
 import { scheduleOf } from "./kernel/scheduler.js";
-import type { RegistryEntry, RouteDefinition } from "./kernel/types.js";
+import type { RegistryEntry } from "./kernel/types.js";
 
 const VERSION = "1.0.0";
-
-/** `GET /healthz` — liveness plus what is actually scheduled. */
-function healthRoute(kernel: Kernel, started: number): RouteDefinition {
-  return {
-    method: "GET",
-    path: "/healthz",
-    handle(): Promise<{ status: number; contentType: string; body: string }> {
-      return Promise.resolve(
-        jsonResponse(200, {
-          status: "ok",
-          version: VERSION,
-          uptimeSeconds: Math.round((Date.now() - started) / 1000),
-          connectors: kernel.scheduler.jobs().map((job) => ({
-            id: job.id,
-            kind: job.schedule.kind,
-            intervalSeconds: job.schedule.intervalSeconds,
-            cron: job.schedule.cron,
-            startupDelaySeconds: job.schedule.startupDelaySeconds,
-          })),
-        }),
-      );
-    },
-  };
-}
-
-/**
- * `POST /trigger/:id` — the replacement for `scripts/trigger-connector.sh`'s
- * detour over `nodePrefixes` and the Node-RED admin API. Answers immediately;
- * the run happens in the background, as posting to an inject node did.
- */
-function triggerRoute(kernel: Kernel): RouteDefinition {
-  return {
-    method: "POST",
-    path: "/trigger/:id",
-    handle(request): Promise<{ status: number; contentType: string; body: string }> {
-      const id = request.params.id ?? "";
-      if (kernel.scheduler.trigger(id)) {
-        kernel.log.info(`${id}: triggered via POST /trigger/${id}`);
-        return Promise.resolve(jsonResponse(202, { id, triggered: true }));
-      }
-      const known = kernel.registry.byId(id);
-      const reason =
-        known === undefined
-          ? `unknown connector "${id}"`
-          : `connector "${id}" is not scheduled here (runtime: ${runtimeOf(known)}, active: ${String(known.active)})`;
-      return Promise.resolve(textResponse(404, `${reason}\n`));
-    },
-  };
-}
 
 /** One log line per registry entry: what runs here, what stays in Node-RED, why. */
 function reportPlan(kernel: Kernel, scheduled: readonly RegistryEntry[]): void {
@@ -124,7 +93,8 @@ async function main(): Promise<void> {
     const schedule = scheduleOf(entry, position);
     const ctx = createCtx(kernel, entry);
     kernel.scheduler.add(entry.id, schedule, () => module.run(ctx));
-    for (const route of module.routes ?? []) kernel.http.register(route);
+    // Built with the connector's own ctx: its log, its limiter share, its Orion.
+    for (const route of module.routes?.(ctx) ?? []) kernel.publicHttp.register(route);
     kernel.log.info(
       `${entry.id}: ${schedule.kind}` +
         (schedule.cron === null ? "" : ` "${schedule.cron}"`) +
@@ -133,16 +103,25 @@ async function main(): Promise<void> {
     );
   });
 
-  kernel.http.register(healthRoute(kernel, started));
-  kernel.http.register(triggerRoute(kernel));
-  await kernel.http.listen(Number(process.env.UDP_CONNECTORS_PORT ?? DEFAULT_PORT));
+  for (const route of adminRoutes(kernel, {
+    version: VERSION,
+    started,
+    cooldownMs: kernel.env.number("UDP_TRIGGER_COOLDOWN_SECONDS", DEFAULT_TRIGGER_COOLDOWN_SECONDS) * 1000,
+  })) {
+    kernel.adminHttp.register(route);
+  }
+  await kernel.publicHttp.listen(kernel.env.number("UDP_CONNECTORS_PORT", DEFAULT_PORT));
+  await kernel.adminHttp.listen(
+    kernel.env.number("UDP_CONNECTORS_ADMIN_PORT", DEFAULT_ADMIN_PORT),
+    kernel.env.get("UDP_CONNECTORS_ADMIN_HOST") ?? DEFAULT_ADMIN_HOST,
+  );
   kernel.scheduler.start();
 
   const stop = (signal: string): void => {
     kernel.log.info(`${signal} received, shutting down`);
     kernel.shutdown.abort();
     kernel.scheduler.stop();
-    void kernel.http.close().then(() => {
+    void Promise.all([kernel.publicHttp.close(), kernel.adminHttp.close()]).then(() => {
       process.exit(0);
     });
   };
@@ -159,6 +138,7 @@ main().catch((error: unknown) => {
   // marker is written by hand — scripts/healthcheck.sh counts [error] lines and
   // a startup failure is exactly what it must not miss.
   process.stderr.write(`${new Date().toISOString()} [error] [udp-connectors] startup failed\n`);
-  process.stderr.write(`    ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+  const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  for (const line of detail.split(/\r?\n/)) process.stderr.write(`    ${sanitizeLogText(line)}\n`);
   process.exit(1);
 });

@@ -180,7 +180,7 @@ class RetryingFetcher implements Fetcher {
         },
         ...(options?.body === undefined ? {} : { body: options.body }),
         signal: AbortSignal.timeout(timeoutMs),
-        redirect: "follow",
+        redirect: options?.redirect ?? "follow",
       });
     } catch (error) {
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {

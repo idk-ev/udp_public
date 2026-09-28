@@ -4,39 +4,63 @@
  */
 
 /**
- * Municipality assignment by coordinate — port of NEAREST_HELPER and PIP_ONLY
- * from scripts/generate-nodered-flows.py.
+ * Municipality assignment by coordinate — port of STRICT_LOOKUP and the
+ * `geo_helper` prelude from scripts/generate-nodered-flows.py.
  *
  * Almost every connector needs it: a gauge, an air quality station, a car
  * sharing bay or a road work carries a coordinate, and the dashboards are built
- * per municipality. Two steps, in this order:
+ * per municipality.
  *
- *  1. **Point in polygon** over the simplified boundaries from
- *     `bw-grenzen.json`, guarded by each municipality's bounding box. This is
- *     the correct assignment and the reason the boundary cache exists.
- *  2. **Centroid fallback** — nearest municipality centre by squared distance,
- *     with longitude scaled by 0.66 (roughly cos 48.5°, the latitude of Baden-
- *     Württemberg) so that a degree of longitude is not counted as long as a
- *     degree of latitude.
+ * ## Strict: polygon or nothing
  *
- * The fallback also covers the window in which `grenzen-bw` has not run yet: the
- * old helper says "Fallback nearest bleibt aktiv" and keeps assigning rather
- * than dropping the reading.
+ * A point that lies in no municipality polygon belongs to no BW municipality.
+ * The former helper (NEAREST_HELPER) fell back to the nearest municipality
+ * centroid, so points outside Baden-Württemberg — Basel, Alsace, the
+ * Palatinate, Bavaria — were silently counted in the nearest BW municipality,
+ * and without boundaries EVERY point was assigned by centroid. That fallback is
+ * gone from the kernel on purpose; see `GeoIndex` in types.ts.
  *
- * `agsAt` is the strict variant (PIP_ONLY in the generator): polygon hit or
- * nothing. The Overpass connectors use it because a point five kilometres
- * outside every boundary is a query artefact, not a municipal amenity.
+ * ## Sliver tolerance
+ *
+ * The boundaries in `bw-grenzen.json` are simplified, which leaves thin slivers
+ * between neighbouring polygons (on a 1 km grid over BW roughly 0.3 % of the
+ * points fall into such gaps). A point without a polygon hit is still accepted
+ * if four probes ~330 m to the north, south, east and west ALL hit a polygon;
+ * it gets the municipality most probes agree on (ties: the first probe's in
+ * N, S, E, W order). A point outside the state has BW polygons on one side at
+ * most and is rejected — unless it sits in a notch or enclave narrower than
+ * ~660 m.
+ *
+ * ## Without boundaries
+ *
+ * No boundaries, no assignment: every lookup answers `null`. Whether the run
+ * then goes ahead is the connector's declared choice (`GeoRequirements`), and
+ * the default is to skip it with a warning — guessing by centroid is exactly
+ * the bug this replaced.
  *
  * Ported behaviour-identically, including the iteration order over the boundary
  * set: the first polygon hit wins, and `Object.keys` walks a JSON-parsed object
- * in insertion order exactly as `for (const ags in GRZ)` did. (The AGS keys look
+ * in insertion order exactly as `for (const a in GRZ)` did. (The AGS keys look
  * numeric but start with a zero, so they are not array-index keys and are not
- * reordered.)
+ * reordered.) test/parity/strict-lookup.test.ts pins it against the old JS.
  */
 
-import type { Ags, BoundarySet, GeoIndex, GeoStore, Log, MunicipalityRow } from "./types.js";
+import type { Ags, BoundarySet, GeoIndex, GeoRequirements, GeoStore, Log, MunicipalityRow } from "./types.js";
 
 type Ring = readonly (readonly [lon: number, lat: number])[];
+
+type Box = readonly [west: number, south: number, east: number, north: number];
+
+/** Probe offsets `[dy, dx]` in degrees: ~330 m north, south, east, west at 48.5° N. */
+const PROBES: readonly (readonly [dLat: number, dLon: number])[] = [
+  [0.003, 0],
+  [-0.003, 0],
+  [0, 0.0045],
+  [0, -0.0045],
+];
+
+/** Margin around the union of all boxes before the cheap reject. */
+const BOX_MARGIN = 0.01;
 
 /**
  * Ray casting. Rings carry `[lon, lat]` pairs, so x is longitude and y is
@@ -49,9 +73,8 @@ export function pointInRings(lat: number, lon: number, rings: readonly Ring[]): 
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
       const a = ring[i];
       const b = ring[j];
-      // Only reachable on a malformed ring; the old code would have thrown here
-      // and taken the whole run with it. Skipping the vertex keeps the other
-      // 1,102 municipalities updating.
+      // Only reachable on a malformed ring, and grenzen-bw's parser rejects
+      // those; the old code would have thrown here and taken the run with it.
       if (a === undefined || b === undefined) continue;
       const xi = a[0];
       const yi = a[1];
@@ -64,78 +87,191 @@ export function pointInRings(lat: number, lon: number, rings: readonly Ring[]): 
   return false;
 }
 
+/** Union of all polygon bounding boxes (`BW_BOX`): cheap reject for points far outside BW. */
+function unionBox(boundaries: BoundarySet | null, keys: readonly Ags[]): Box {
+  let west = 180;
+  let south = 90;
+  let east = -180;
+  let north = -90;
+  if (boundaries !== null) {
+    for (const ags of keys) {
+      const entry = boundaries[ags];
+      if (entry === undefined) continue;
+      const box = entry.b;
+      if (box[0] < west) west = box[0];
+      if (box[1] < south) south = box[1];
+      if (box[2] > east) east = box[2];
+      if (box[3] > north) north = box[3];
+    }
+  }
+  return [west, south, east, north];
+}
+
 class Index implements GeoIndex {
   readonly municipalities: readonly MunicipalityRow[];
   readonly boundaries: BoundarySet | null;
+  readonly hasBoundaries: boolean;
   readonly #byAgs: ReadonlyMap<Ags, MunicipalityRow>;
   readonly #boundaryKeys: readonly Ags[];
+  readonly #box: Box;
 
   constructor(municipalities: readonly MunicipalityRow[], boundaries: BoundarySet | null) {
     this.municipalities = municipalities;
     this.boundaries = boundaries;
     this.#byAgs = new Map(municipalities.map((row) => [row[0], row]));
     this.#boundaryKeys = boundaries === null ? [] : Object.keys(boundaries);
+    this.hasBoundaries = this.#boundaryKeys.length > 0;
+    this.#box = unionBox(boundaries, this.#boundaryKeys);
   }
 
   byAgs(ags: Ags): MunicipalityRow | undefined {
     return this.#byAgs.get(ags);
   }
 
-  agsAt(lat: number, lon: number): Ags | null {
-    const boundaries = this.boundaries;
-    if (boundaries === null) return null;
+  /** `pipAgs`: the first polygon containing the point, no tolerance. */
+  #polygonAt(boundaries: BoundarySet, lat: number, lon: number): Ags | null {
     for (const ags of this.#boundaryKeys) {
       const entry = boundaries[ags];
       if (entry === undefined) continue;
       const box = entry.b;
-      if (lon >= box[0] && lat >= box[1] && lon <= box[2] && lat <= box[3]) {
-        if (pointInRings(lat, lon, entry.r)) return ags;
+      if (
+        lon >= box[0] &&
+        lat >= box[1] &&
+        lon <= box[2] &&
+        lat <= box[3] &&
+        pointInRings(lat, lon, entry.r)
+      ) {
+        return ags;
       }
     }
     return null;
   }
 
-  nearest(lat: number, lon: number): MunicipalityRow | null {
-    const hit = this.agsAt(lat, lon);
-    if (hit !== null) {
-      const row = this.#byAgs.get(hit);
-      // A polygon without a master data row falls through to the centroid
-      // search, exactly as the original did (`if (row) return row;`).
-      if (row !== undefined) return row;
+  agsAt(lat: number, lon: number): Ags | null {
+    const boundaries = this.boundaries;
+    if (boundaries === null || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    const box = this.#box;
+    if (
+      lon < box[0] - BOX_MARGIN ||
+      lat < box[1] - BOX_MARGIN ||
+      lon > box[2] + BOX_MARGIN ||
+      lat > box[3] + BOX_MARGIN
+    ) {
+      return null;
     }
+    const hit = this.#polygonAt(boundaries, lat, lon);
+    if (hit !== null) return hit;
 
-    let best: MunicipalityRow | null = null;
-    let bestDistance = Infinity;
-    for (const row of this.municipalities) {
-      const dy = row[2] - lat;
-      const dx = (row[3] - lon) * 0.66;
-      const distance = dy * dy + dx * dx;
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = row;
-      }
+    const votes = new Map<Ags, number>();
+    let best: Ags | null = null;
+    for (const [dLat, dLon] of PROBES) {
+      const probe = this.#polygonAt(boundaries, lat + dLat, lon + dLon);
+      // One probe outside every polygon: the point is at the edge of the
+      // covered area, not in a sliver between two municipalities.
+      if (probe === null) return null;
+      const count = (votes.get(probe) ?? 0) + 1;
+      votes.set(probe, count);
+      if (best === null || count > (votes.get(best) ?? 0)) best = probe;
     }
     return best;
+  }
+
+  municipalityAt(lat: number, lon: number): MunicipalityRow | null {
+    const ags = this.agsAt(lat, lon);
+    return ags === null ? null : (this.#byAgs.get(ags) ?? null);
   }
 }
 
 /**
- * Holds the geo context — replaces `global.get('bwGemeinden')` and
- * `global.set('bwGrenzen', …)`.
+ * The plausibility of the master data for pruning (PRUNE_OK_JS). Kept per
+ * connector, as the old node context was per function node; evaluated both by
+ * `GeoStore.forRun` (where the old prelude computed it) and by the pruner.
  *
- * `index()` stays `null` until `stammdaten-bw` has delivered the municipality
- * rows. That is the state the old helper answered with
- * `node.warn('bwGemeinden noch nicht im Kontext — Stammdaten-Flow abwarten')`;
- * connectors warn and skip the run rather than assigning by guesswork.
+ * ## The reference count after a restart
+ *
+ * The 95 % ratchet compares against the last plausible count (`gemCount` in
+ * the node context). Under Compose that context survived restarts
+ * (`contextStorage: localfilesystem`); in this process it would start at 0,
+ * and a truncated municipality file arriving right after a restart — 1,020 of
+ * 1,101 rows, say — would pass as plausible and let every prune delete the
+ * entities of the missing municipalities. So the reference is SEEDED once from
+ * the number of `Municipality` entities in Orion (what `stammdaten-bw` wrote)
+ * before the check gives any verdict; until the seed is in, the answer is
+ * `false` and no bookkeeping happens. This is stricter than the old code in
+ * Kubernetes, where the context started empty too, and deliberately so.
  */
-class MemoryGeoStore implements GeoStore {
+export class MasterDataCheck {
+  /** `context.get('gemCount')`; `null` until seeded. */
+  #lastCount: number | null = null;
+
+  get seeded(): boolean {
+    return this.#lastCount !== null;
+  }
+
+  /** Sets the reference once; later calls are ignored (the ratchet owns it then). */
+  seed(count: number): void {
+    this.#lastCount ??= count;
+  }
+
+  /**
+   * At least 1,000 municipalities, not fewer than 95 % of the last plausible
+   * count, and boundaries for at least 99 % of their AGS — checked by key, not
+   * by count, so a boundary file of the right size but for the wrong
+   * municipalities does not pass. Deleting entities relies on the master data
+   * being complete; a truncated file would otherwise make every municipality
+   * beyond the cut look "no longer produced".
+   *
+   * `boundariesDegraded` (the parser dropped an entry) fails it as well —
+   * stricter than the old code in wording only: the old node stored the broken
+   * entry and crashed on it, so it never reached a prune either.
+   *
+   * Idempotent within one state of the geo context, so evaluating it twice in
+   * one run changes nothing.
+   */
+  evaluate(
+    municipalities: readonly MunicipalityRow[] | null,
+    boundaries: BoundarySet | null,
+    boundariesDegraded: boolean,
+  ): boolean {
+    const previous = this.#lastCount;
+    if (previous === null || municipalities === null) return false;
+    const count = municipalities.length;
+    if (count < 1000 || count < previous * 0.95) return false;
+    this.#lastCount = count;
+    if (boundaries === null || boundariesDegraded) return false;
+    let covered = 0;
+    for (const row of municipalities) if (boundaries[row[0]] !== undefined) covered += 1;
+    return covered >= count * 0.99;
+  }
+}
+
+/**
+ * The shared geo context — replaces `global.get('bwGemeinden')` and
+ * `global.set('bwGrenzen', …)`. `stammdaten-bw` and `grenzen-bw` fill it,
+ * every other connector reads it through its own {@link GeoStore} view.
+ */
+export class SharedGeo {
   readonly #log: Log;
   #municipalities: readonly MunicipalityRow[] | null = null;
   #boundaries: BoundarySet | null = null;
-  #index: GeoIndex | null = null;
+  #boundariesDegraded = false;
+  #index: Index | null = null;
 
   constructor(log: Log) {
     this.#log = log;
+  }
+
+  get municipalities(): readonly MunicipalityRow[] | null {
+    return this.#municipalities;
+  }
+
+  get boundaries(): BoundarySet | null {
+    return this.#boundaries;
+  }
+
+  /** The parser dropped at least one polygon of the current boundary set. */
+  get boundariesDegraded(): boolean {
+    return this.#boundariesDegraded;
   }
 
   setMunicipalities(rows: readonly MunicipalityRow[]): void {
@@ -144,24 +280,75 @@ class MemoryGeoStore implements GeoStore {
     this.#log.debug(`geo context: ${String(rows.length)} municipalities`);
   }
 
-  setBoundaries(boundaries: BoundarySet): void {
+  setBoundaries(boundaries: BoundarySet, skippedEntries: number): void {
     this.#boundaries = boundaries;
+    this.#boundariesDegraded = skippedEntries > 0;
     this.#index = null;
-    this.#log.debug(`geo context: ${String(Object.keys(boundaries).length)} municipality polygons`);
+    this.#log.debug(
+      `geo context: ${String(Object.keys(boundaries).length)} municipality polygons` +
+        (skippedEntries > 0 ? `, ${String(skippedEntries)} dropped (degraded: no prune)` : ""),
+    );
   }
 
-  index(): GeoIndex | null {
-    const municipalities = this.#municipalities;
-    if (municipalities === null) return null;
-    // Rebuilt only after a set*, so the lookup maps and the boundary key order
-    // are computed once per refresh instead of once per coordinate.
-    this.#index ??= new Index(municipalities, this.#boundaries);
+  /**
+   * Rebuilt only after a set*, so the lookup maps, the key order and the union
+   * box are computed once per refresh instead of once per coordinate.
+   */
+  index(): GeoIndex {
+    this.#index ??= new Index(this.#municipalities ?? [], this.#boundaries);
     return this.#index;
+  }
+
+  /** The per-connector view handed out as `ctx.geo`. */
+  view(log: Log, masterData: MasterDataCheck): GeoStore {
+    return new GeoView(this, log, masterData);
   }
 }
 
-export function createGeoStore(log: Log): GeoStore {
-  return new MemoryGeoStore(log);
+class GeoView implements GeoStore {
+  readonly #shared: SharedGeo;
+  readonly #log: Log;
+  readonly #masterData: MasterDataCheck;
+
+  constructor(shared: SharedGeo, log: Log, masterData: MasterDataCheck) {
+    this.#shared = shared;
+    this.#log = log;
+    this.#masterData = masterData;
+  }
+
+  setMunicipalities(rows: readonly MunicipalityRow[]): void {
+    this.#shared.setMunicipalities(rows);
+  }
+
+  setBoundaries(boundaries: BoundarySet, skippedEntries: number): void {
+    this.#shared.setBoundaries(boundaries, skippedEntries);
+  }
+
+  /** The checks of `geo_helper`, in its order. */
+  forRun(label: string, requirements?: GeoRequirements): GeoIndex | null {
+    const municipalities = this.#shared.municipalities;
+    if (municipalities === null && requirements?.municipalities !== "optional") {
+      this.#log.warn(`${label}: bwGemeinden not in context yet — waiting for the master data flow`);
+      return null;
+    }
+    // PRUNE_OK is computed here in the old prelude — after the master data
+    // check, before the boundary check — so its bookkeeping advances on every
+    // run that gets this far, including runs skipped for missing boundaries.
+    // (Not before the reference is seeded from Orion; see MasterDataCheck.)
+    this.#masterData.evaluate(municipalities, this.#shared.boundaries, this.#shared.boundariesDegraded);
+    const index = this.#shared.index();
+    if (!index.hasBoundaries && requirements?.boundaries !== "optional") {
+      this.#log.warn(
+        `${label}: municipality boundaries (bwGrenzen) not loaded — run skipped instead of assigning by centroid`,
+      );
+      return null;
+    }
+    return index;
+  }
+}
+
+export function createSharedGeo(log: Log): SharedGeo {
+  return new SharedGeo(log);
 }
 
 /** Standalone index, for the parity harness and for tests. */

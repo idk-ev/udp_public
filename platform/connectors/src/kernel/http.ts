@@ -4,12 +4,11 @@
  */
 
 /**
- * HTTP server of the service — `node:http`, no framework.
+ * HTTP servers of the service — `node:http`, no framework. There are two, and
+ * the split is a security decision (see src/kernel/admin.ts):
  *
- * Two built-in routes:
- *
- *   GET  /healthz       liveness and readiness, plus the list of scheduled jobs
- *   POST /trigger/:id   runs one connector immediately
+ *   public  UDP_CONNECTORS_PORT (1880)        only the routes connectors register
+ *   admin   UDP_CONNECTORS_ADMIN_PORT (1881)  GET /healthz, POST /trigger/:id
  *
  * `/trigger/:id` replaces the detour that `scripts/trigger-connector.sh` has to
  * take today: it reads `nodePrefixes` from the registry, pulls the whole flow
@@ -45,6 +44,26 @@ import type {
  */
 export const DEFAULT_PORT = 1880;
 
+/**
+ * A path segment that is not valid percent-encoding (`/trigger/%E0%A4%A`).
+ * The client's fault, so a 400 — not a 500 with an `[error]` line that the
+ * health check would count as a fault of the service.
+ */
+class MalformedRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MalformedRequestError";
+  }
+}
+
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new MalformedRequestError("malformed percent-encoding in the path");
+  }
+}
+
 /** Guard against an endpoint being fed a large body; the routes take none. */
 const MAX_BODY_BYTES = 1_000_000;
 
@@ -75,7 +94,7 @@ function match(
     const pattern = route.segments[i];
     const actual = segments[i];
     if (pattern === undefined || actual === undefined) return null;
-    if (pattern.startsWith(":")) params[pattern.slice(1)] = decodeURIComponent(actual);
+    if (pattern.startsWith(":")) params[pattern.slice(1)] = decodeSegment(actual);
     else if (pattern !== actual) return null;
   }
   return params;
@@ -111,8 +130,11 @@ export function textResponse(status: number, body: string): RouteResponse {
 }
 
 export interface HttpServer extends RouteRegistry {
-  listen(port: number): Promise<void>;
+  /** `host` defaults to all interfaces, as `server.listen(port)` does. */
+  listen(port: number, host?: string): Promise<void>;
   close(): Promise<void>;
+  /** The port actually bound (useful after `listen(0)`), or `null` before. */
+  port(): number | null;
 }
 
 class KernelHttpServer implements HttpServer {
@@ -137,19 +159,26 @@ class KernelHttpServer implements HttpServer {
     this.#log.debug(`route registered: ${route.method} ${route.path}`);
   }
 
-  async listen(port: number): Promise<void> {
+  async listen(port: number, host?: string): Promise<void> {
     const server = createServer((request, response) => {
       this.#handle(request, response);
     });
     this.#server = server;
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
-      server.listen(port, () => {
+      const done = (): void => {
         server.removeListener("error", reject);
         resolve();
-      });
+      };
+      if (host === undefined) server.listen(port, done);
+      else server.listen(port, host, done);
     });
-    this.#log.info(`listening on port ${String(port)}`);
+    this.#log.info(`listening on ${host ?? "*"}:${String(this.port() ?? port)}`);
+  }
+
+  port(): number | null {
+    const address = this.#server?.address();
+    return address === undefined || address === null || typeof address === "string" ? null : address.port;
   }
 
   async close(): Promise<void> {
@@ -171,13 +200,22 @@ class KernelHttpServer implements HttpServer {
         send(response, result);
       })
       .catch((error: unknown) => {
+        if (error instanceof MalformedRequestError) {
+          send(response, textResponse(400, `bad request: ${error.message}\n`));
+          return;
+        }
         this.#log.error(`request ${request.method ?? "?"} ${request.url ?? "?"} failed`, error);
         send(response, textResponse(500, "internal error\n"));
       });
   }
 
   async #route(request: IncomingMessage): Promise<RouteResponse> {
-    const url = new URL(request.url ?? "/", "http://localhost");
+    let url: URL;
+    try {
+      url = new URL(request.url ?? "/", "http://localhost");
+    } catch {
+      throw new MalformedRequestError("unparseable request target");
+    }
     const segments = url.pathname.split("/").filter((segment) => segment !== "");
     const method = request.method ?? "GET";
 

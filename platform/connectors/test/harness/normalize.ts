@@ -214,18 +214,12 @@ export function formatDifferences(differences: readonly Difference[], labels: Di
 
 export interface ParityOptions extends NormalizeOptions {
   readonly labels?: DiffLabels;
-  /**
-   * The project test runner prints only the FIRST line of an error message
-   * (`tests/run.js`). Without this the listing would never be seen. Off only
-   * where a failure is the expected outcome — see the harness self-test.
-   */
-  readonly printDiff?: boolean;
 }
 
 /**
  * Throws when the two entity arrays differ after normalisation. The message
- * begins with a one-line summary naming the first differing path, because the
- * runner shows nothing more than that; the full listing goes to stderr.
+ * begins with a one-line summary naming the first differing path, followed by
+ * the full listing; `tests/run.js` prints the whole message, indented.
  */
 export function assertEntitiesEqual(left: unknown, right: unknown, options?: ParityOptions): void {
   const labels = options?.labels ?? DEFAULT_LABELS;
@@ -243,9 +237,5 @@ export function assertEntitiesEqual(left: unknown, right: unknown, options?: Par
   const summary =
     `Entity parity mismatch: ${String(differences.length)} difference(s), ` +
     `first at ${where} — ${labels.left} ${leftText} vs ${labels.right} ${rightText}`;
-  const listing = formatDifferences(differences, labels);
-  if (options?.printDiff !== false) {
-    process.stderr.write(`\n${summary}\n\n${listing}\n`);
-  }
-  throw new Error(`${summary}\n\n${listing}`);
+  throw new Error(`${summary}\n\n${formatDifferences(differences, labels)}`);
 }

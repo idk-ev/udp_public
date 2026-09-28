@@ -27,6 +27,11 @@
  *     src/kernel/parse.ts for the building blocks that make the honest way the
  *     short one.
  *
+ * And one for everything that writes: **a change signature takes effect only
+ * once the broker confirmed the write** ({@link UpsertPlan}, {@link
+ * Orion.upsert}). The contract offers no way to store a new signature before
+ * the upsert, because that is what froze values for weeks during Orion outages.
+ *
  * Note on optional properties: `exactOptionalPropertyTypes` is on, and the wire
  * DTOs below therefore spell out `| undefined` on optional members. That is
  * deliberate. The old function nodes build properties via
@@ -203,33 +208,102 @@ export type BoundarySet = Readonly<Record<Ags, BoundaryEntry>>;
 
 /**
  * The geo context almost every connector sits on: municipality master data plus
- * the boundary cache. Ported from NEAREST_HELPER / PIP_ONLY in
- * scripts/generate-nodered-flows.py.
+ * the boundary cache. Port of STRICT_LOOKUP and `geo_helper` in
+ * scripts/generate-nodered-flows.py (see src/kernel/geo.ts for the algorithm).
+ *
+ * There is deliberately NO centroid lookup here any more. The former helper
+ * (NEAREST_HELPER) fell back to the nearest municipality centre, so points
+ * outside Baden-Württemberg — rental bikes in Basel, particulate sensors in
+ * Alsace — were silently counted in the nearest BW municipality, and without
+ * boundaries every point was assigned by centroid. A point that lies in no
+ * municipality polygon belongs to no BW municipality.
+ *
+ * The one connector that still falls back to centroids (`uba-bw`: stations
+ * pre-selected by their DEBW code, guaranteed to be in BW) does so in its own
+ * module, on top of {@link GeoIndex.municipalities}. The generator's static
+ * tests keep a whitelist of exactly one node for that; the fallback is not
+ * offered here so that nobody picks it up by accident.
  */
 export interface GeoIndex {
+  /** Empty when the run asked for `municipalities: "optional"` and none are loaded. */
   readonly municipalities: readonly MunicipalityRow[];
-  /** `null` until `grenzen-bw` has run; `nearest` then falls back to centroids. */
+  /** `null` until `grenzen-bw` has run. */
   readonly boundaries: BoundarySet | null;
+  /** `GRZ_OK` of the old prelude: a non-empty boundary set is loaded. */
+  readonly hasBoundaries: boolean;
   byAgs(ags: Ags): MunicipalityRow | undefined;
-  /** Point in polygon over the simplified boundaries, centroid fallback. */
-  nearest(lat: number, lon: number): MunicipalityRow | null;
-  /** Point in polygon only — no fallback, `null` outside every municipality. */
+  /**
+   * `agsStrict` of the old flows: AGS of the municipality polygon containing
+   * the point, with the sliver tolerance (four probes ~330 m N/S/E/W must ALL
+   * hit a polygon; majority wins). `null` outside every municipality, for
+   * non-finite coordinates, and whenever no boundaries are loaded.
+   */
   agsAt(lat: number, lon: number): Ags | null;
+  /**
+   * `nearestStrict` of the old flows — despite the old name, nothing "nearest"
+   * about it: the master data row of {@link agsAt}, or `null` (also when a
+   * polygon has no master data row).
+   */
+  municipalityAt(lat: number, lon: number): MunicipalityRow | null;
+}
+
+/**
+ * What a run needs from the geo context. Both default to `"required"`.
+ *
+ * `boundaries: "required"` is `geo_helper(label)` of the generator: while the
+ * boundary cache is missing the run is SKIPPED with a warning — assigning by
+ * centroid instead is exactly the error the strict lookup replaced. Used by
+ * `sharing-bw`, `carsharing-bw`, `ladesaeulen-bw`, `feinstaub-bw`, `eco-bw`,
+ * `baustellen-bw`, and (with `municipalities: "optional"`) by `pegel-bw`,
+ * `pegel-lubw` and the three Overpass connectors (PIP_ONLY).
+ *
+ * `boundaries: "optional"` is `geo_helper(label, require_boundaries=False)`:
+ * the run goes ahead, every lookup answers `null` until boundaries arrive. Only
+ * for connectors that still produce something useful without an assignment —
+ * `wetter-dwd-station` (station without municipality), `uba-bw` (own centroid
+ * fallback), `parken-bw` (assigns by ARS first, counts the rest as
+ * unassigned) — and for connectors that only read the master data rows from
+ * the context (`mastr-bw`, `puls-bw`). Spelling it out is the point: the
+ * lenient mode has to be asked for by name in the module. (`wetter-bw`,
+ * `vorhersage-bw` and `warnungen-bw` fetch `bw-gemeinden.json` themselves and
+ * need no geo context; `wetter-bw` also refreshes it via `setMunicipalities`.)
+ *
+ * `municipalities: "optional"` mirrors the nodes that read `bwGemeinden` with
+ * `|| []` (the gauges use it only for display names; the Overpass nodes do not
+ * read it at all); all others skip while the master data are missing.
+ */
+export interface GeoRequirements {
+  readonly boundaries?: "required" | "optional" | undefined;
+  readonly municipalities?: "required" | "optional" | undefined;
 }
 
 /**
  * Holder of the geo context. Replaces `global.get('bwGemeinden')` /
  * `global.set('bwGrenzen', …)` of the Node-RED flow context.
  *
- * `index()` returns `null` as long as `stammdaten-bw` has not run — the same
- * situation the old helper answered with
- * `node.warn('bwGemeinden noch nicht im Kontext — Stammdaten-Flow abwarten')`.
- * Connectors warn and skip; they must not invent a substitute.
+ * Connectors get at the index only through {@link forRun}, which performs the
+ * checks of the old prelude and logs the skip itself (under the connector's
+ * name, so the health check groups it correctly). They must not invent a
+ * substitute when it answers `null`.
  */
 export interface GeoStore {
   setMunicipalities(rows: readonly MunicipalityRow[]): void;
-  setBoundaries(boundaries: BoundarySet): void;
-  index(): GeoIndex | null;
+  /**
+   * `skippedEntries`: polygons the parser had to drop. Any such entry marks the
+   * boundary set as DEGRADED: lookups still use the rest, but no prune runs on
+   * it ({@link Pruner.masterDataPlausible} answers `false`). The old node
+   * stored the broken entry and crashed on it, so it never pruned either.
+   */
+  setBoundaries(boundaries: BoundarySet, skippedEntries: number): void;
+  /**
+   * The geo index for one run, or `null` after a logged `[warn]` — the run is
+   * then to be skipped (`return`). `label` prefixes the warning, as the label
+   * argument of `geo_helper` did.
+   *
+   * Also advances the master data plausibility bookkeeping (PRUNE_OK), exactly
+   * where the old prelude computed it; see {@link Pruner.masterDataPlausible}.
+   */
+  forRun(label: string, requirements?: GeoRequirements): GeoIndex | null;
 }
 
 /* ------------------------------------------------------------------ Logging */
@@ -294,6 +368,12 @@ export interface FetchOptions {
    * "1 Anfrage/s" node that stood in front of 20 of the 25 delays.
    */
   readonly minIntervalMs?: number | undefined;
+  /**
+   * Default `"follow"`, as the `http request` nodes did for the sources. Writes
+   * to Orion use `"error"`: a redirected POST would silently turn into a GET
+   * somewhere else, and a delete must never be re-aimed.
+   */
+  readonly redirect?: "follow" | "error" | undefined;
 }
 
 export interface HttpResponse {
@@ -349,6 +429,121 @@ export interface RateLimiter {
   run<T>(host: string, task: () => Promise<T>, options?: RateLimitOptions): Promise<T>;
 }
 
+/* ------------------------------------------------------------------ Change gate */
+
+/** A stored value signature: what the broker is known to hold for a field. */
+export type SignatureValue = string | number;
+
+/**
+ * A signature that takes effect only once the broker confirmed the write of
+ * `entityId` — `sigPending(key, field, value, id)` of CHUNK_HELPER.
+ *
+ * `field` is usually the entity id itself (that is what the change gate
+ * stores), but tables keyed otherwise exist: `sharing-bw` keeps
+ * `ffLast:<system>` keyed by AGS, `efa-abfahrten` one table per stop keyed by
+ * attribute. `value: null` REMOVES the field on commit — the confirmed zero of
+ * `sharing-bw`.
+ */
+export type PendingSignature = readonly [
+  key: string,
+  field: string,
+  value: SignatureValue | null,
+  entityId: EntityId,
+];
+
+/**
+ * One write towards Orion together with the signatures riding on it.
+ *
+ * This pairing is the whole fix of the "frozen values" incident: a signature
+ * says "this value is in the broker", so it may only be stored once the broker
+ * accepted the write. Storing it before the upsert froze entities for weeks
+ * whenever Orion-LD hung — the next run saw an unchanged signature and sent a
+ * freshness stamp at most, never the value that had been lost. The plan carries
+ * its pending signatures into {@link Orion.upsert}, which commits exactly those
+ * the broker confirmed; there is no separate commit call to forget or to make in
+ * the wrong order.
+ */
+export interface UpsertPlan {
+  readonly entities: readonly NgsiEntity[];
+  readonly pending: readonly PendingSignature[];
+}
+
+export interface ChangeGateOptions {
+  /**
+   * `false` (default) merges into the stored table; `true` replaces it with the
+   * signatures seen in this call. `true` if and only if the connector sees its
+   * WHOLE stock in this one call — see src/kernel/change-gate.ts; picking the
+   * wrong one either disables the gate or leaks.
+   */
+  readonly replace?: boolean | undefined;
+  /**
+   * Refresh the `dateObserved` of an UNCHANGED entity only in every k-th run
+   * (stable per entity, `freshTurn` of CHUNK_HELPER) instead of every run.
+   * Default 1 = every run. `carsharing-bw` and `ladesaeulen-bw` use 3.
+   */
+  readonly freshEvery?: number | undefined;
+  /** Run period for {@link freshEvery}. Default 3,600,000 ms (hourly). */
+  readonly periodMs?: number | undefined;
+}
+
+/**
+ * Change detection over value signatures, two-phase. Port of `gateChanged`,
+ * `sigPending` and SIG_COMMIT in scripts/generate-nodered-flows.py.
+ *
+ * Phase one is {@link check}: it decides what to send and returns the new
+ * signatures as PENDING. Phase two, the commit, is not on this interface on
+ * purpose — it happens inside {@link Orion.upsert} for the ids the broker
+ * confirmed, so a connector cannot commit early or forget it.
+ */
+export interface ChangeGate {
+  /**
+   * Returns the plan to hand to {@link Orion.upsert}: changed entities in full,
+   * unchanged ones reduced to their freshness stamp (`id`, `type`,
+   * `dateObserved`, `@context`), and the pending signatures of the changed
+   * ones. The OLD signature of a changed entity is dropped right away, so a
+   * failed upsert leaves it "changed" and the next run sends it again.
+   *
+   * @param key    Store key, one per table (`'muniSig'`, `'pegelSig'`, …).
+   * @param sigOf  Hashes the MEASURED VALUES, never `dateObserved`.
+   */
+  check<T extends NgsiEntity>(
+    key: string,
+    entities: readonly T[],
+    sigOf: (entity: T) => SignatureValue,
+    options?: ChangeGateOptions,
+  ): UpsertPlan;
+  /**
+   * A plan that writes `entities` in full and carries no signature — for the
+   * connectors without a gate (road works, warnings, …). Spelled out so an
+   * ungated write is a visible decision in the module, not an accident.
+   */
+  ungated(entities: readonly NgsiEntity[]): UpsertPlan;
+  /**
+   * A copy of a table, for the connectors that keep their own (`parken-bw`:
+   * `parkStatik`/`parkFrei`, `sharing-bw`: `ffLast:<system>`, `efa-abfahrten`:
+   * one per stop). Empty if the table does not exist. New values for such a
+   * table go into the plan as {@link PendingSignature}s.
+   */
+  table(key: string): Map<string, SignatureValue>;
+  /**
+   * Keeps only the entries for which `keep(field, value)` holds and removes the
+   * rest (a table left empty is dropped) — `flow.set(key, carriedOver)` of
+   * `parken-bw`, `flow.set('ffLast:<sys>', undefined)` of `sharing-bw`.
+   *
+   * There is deliberately no way to WRITE a value here: a new value goes into
+   * the plan as a {@link PendingSignature} and takes effect on confirmation,
+   * or the frozen values described at {@link UpsertPlan} come back. Call it
+   * before the upsert; called after, it can only drop what was just committed,
+   * which costs a resend, never a frozen value.
+   */
+  retain(key: string, keep: (field: string, value: SignatureValue) => boolean): void;
+  /**
+   * The keys of THIS connector's tables. Tables are namespaced per connector,
+   * so two connectors cannot collide on a key, and neither sees the other's.
+   */
+  keys(): readonly string[];
+}
+
 /* ------------------------------------------------------------------ Orion-LD */
 
 export interface UpsertOptions {
@@ -360,15 +555,34 @@ export interface UpsertOptions {
 }
 
 export interface UpsertResult {
+  /** Entities sent. 0 means there was nothing to write. */
   readonly entities: number;
   readonly chunks: number;
+  /** Chunks the broker did not confirm at all (non-2xx, timeout, refused). */
   readonly failedChunks: number;
+  /**
+   * Ids the broker confirmed: the whole chunk on 2xx, per entity on 207
+   * (`success`, else everything not in `errors`; unreadable body = none).
+   */
+  readonly confirmed: ReadonlySet<EntityId>;
+  /** Pending signatures committed resp. dropped (the entity goes out again). */
+  readonly committed: number;
+  readonly dropped: number;
+}
+
+export interface DeleteOptions {
+  /** Ids per request. Default 200 as in FN_RW_EXPIRE; the prune uses 100. */
+  readonly chunkSize?: number | undefined;
+  /** Prefix of the warnings (`<label> delete HTTP 500`), e.g. `"<prune label>: prune"`. Default `"orion"`. */
+  readonly label?: string | undefined;
 }
 
 export interface DeleteResult {
   readonly requested: number;
   readonly chunks: number;
   readonly failedChunks: number;
+  /** Ids the broker confirmed as deleted (204/200, or the success part of a 207). */
+  readonly deleted: ReadonlySet<EntityId>;
 }
 
 /** Query against `GET /ngsi-ld/v1/entities`. */
@@ -378,47 +592,201 @@ export interface OrionQuery {
   readonly attrs?: readonly string[] | undefined;
   readonly q?: string | undefined;
   readonly limit?: number | undefined;
+  readonly offset?: number | undefined;
   readonly count?: boolean | undefined;
+  /** `options=` — `sysAttrs` for `modifiedAt`/`createdAt`, `keyValues` for the simplified form. */
+  readonly options?: "sysAttrs" | "keyValues" | undefined;
 }
 
-export interface Orion {
-  /** Batch upsert with `options=update`, chunked. */
-  upsert(entities: readonly NgsiEntity[], options?: UpsertOptions): Promise<UpsertResult>;
-  /** Batch delete, chunked at 200 ids as in FN_RW_EXPIRE. */
-  delete(ids: readonly EntityId[]): Promise<DeleteResult>;
-  /** Result stays `unknown`; the caller narrows it. */
-  find(query: OrionQuery): Promise<JsonResponse>;
-}
-
-/* ------------------------------------------------------------------ Change gate */
-
-export interface ChangeGateOptions {
+export interface ListOptions {
+  /** Page size. Default 1000. */
+  readonly pageSize?: number | undefined;
+  /** Hard stop: the prune reads up to 100 pages, the city pulse 50. */
+  readonly maxPages: number;
   /**
-   * `false` (default) merges the new signatures into the stored ones; `true`
-   * replaces the whole table. See src/kernel/change-gate.ts for which connector
-   * needs which — picking the wrong one either disables the gate or leaks.
+   * Deduplicate by id. Offset paging has no stable order while other connectors
+   * write, so an entity can show up on two pages; the city pulse deduplicates
+   * and lets a then-skipped entity fail the count check. The prune does not.
    */
-  readonly replace?: boolean | undefined;
+  readonly dedupe?: boolean | undefined;
 }
 
 /**
- * Change detection over value signatures. Port of `gateChanged` from
- * CHUNK_HELPER in scripts/generate-nodered-flows.py.
+ * Result of a COMPLETE listing, or why there is none. Incomplete counts as
+ * failed: acting on a partial picture is what both callers exist to avoid (the
+ * pulse used to score with `limit=1000` cutting ChargingSummary off; a prune on
+ * a partial listing would delete what it did not see).
  */
-export interface ChangeGate {
+export type ListResult =
+  | {
+      readonly ok: true;
+      /** Raw records — narrow them. */
+      readonly entities: readonly unknown[];
+      /** `NGSILD-Results-Count`, or `null` if the header was missing. */
+      readonly total: number | null;
+    }
+  | {
+      readonly ok: false;
+      /** `"HTTP 503"`, `"is not an array"`, `"incomplete (900/1200)"`, `"failed (…)"`. */
+      readonly reason: string;
+    };
+
+export interface Orion {
   /**
-   * Returns the entities that have to go to Orion: changed ones in full,
-   * unchanged ones reduced to their freshness stamp.
+   * Batch upsert with `options=update`, chunked, THEN commit of the plan's
+   * pending signatures for the confirmed ids — one call, no order to get
+   * wrong. Only a plan is accepted: {@link ChangeGate.check} for a gated write,
+   * {@link ChangeGate.ungated} for one without signatures.
    *
-   * @param key    Store key, one per connector (`'muniSig'`, `'pegelSig'`, …).
-   * @param sigOf  Hashes the MEASURED VALUES, never `dateObserved`.
+   * Never throws for a broker fault: a non-2xx answer, a timeout or a refused
+   * connection marks that chunk unconfirmed, drops its pending signatures with
+   * a `[warn]`, and the remaining chunks still go out — as the old upsert nodes
+   * did with `senderr: false`.
    */
-  gateChanged<T extends NgsiEntity>(
+  upsert(plan: UpsertPlan, options?: UpsertOptions): Promise<UpsertResult>;
+  /**
+   * check → upsert → commit in one call: {@link ChangeGate.check} followed by
+   * {@link upsert}. The shape almost every gated connector needs
+   * (`gateChanged` + `emitChunks` + `upsert_commit` in the old flows).
+   */
+  upsertChanged<T extends NgsiEntity>(
     key: string,
     entities: readonly T[],
-    sigOf: (entity: T) => string,
-    options?: ChangeGateOptions,
-  ): readonly NgsiEntity[];
+    sigOf: (entity: T) => SignatureValue,
+    options?: ChangeGateOptions & UpsertOptions,
+  ): Promise<UpsertResult>;
+  /** Batch delete, chunked. Never throws for a broker fault; see {@link DeleteResult.deleted}. */
+  delete(ids: readonly EntityId[], options?: DeleteOptions): Promise<DeleteResult>;
+  /** One request. Result stays `unknown`; the caller narrows it. */
+  find(query: OrionQuery): Promise<JsonResponse>;
+  /** All pages of a query (`count=true`, `limit`/`offset`), checked against `NGSILD-Results-Count`. */
+  list(query: OrionQuery, options: ListOptions): Promise<ListResult>;
+  /**
+   * `NGSILD-Results-Count` of a query (`count=true&limit=1`), or `null` if
+   * Orion did not answer with a readable count.
+   */
+  count(query: OrionQuery): Promise<number | null>;
+}
+
+/* ------------------------------------------------------------------ Prune */
+
+/**
+ * Options of {@link Pruner.stale} — `pruneStale(o)` of PRUNE_HELPER.
+ *
+ * Every guard exists because the thing it prevents is worse than an entity
+ * left standing: a prune deletes live data from the broker, and a wrong one
+ * is only noticed when a municipality page goes blank.
+ */
+export interface PruneOptions {
+  /**
+   * Log prefix. The interval bookkeeping is keyed by label, type and pattern
+   * together, so reusing a label for a different prune cannot share (and thus
+   * satisfy) another prune's interval guard.
+   */
+  readonly label: string;
+  readonly type: string;
+  /**
+   * Anchored id pattern (`^…$`) that ONLY this connector writes. Sent as
+   * `idPattern` and checked again locally on every listed id — foreign ids are
+   * never touched, whatever the broker returns. An unanchored pattern is
+   * refused (the prune is skipped with a warning): `bw-svz-1` would also match
+   * `bw-svz-10` and every id that merely contains it.
+   */
+  readonly pattern: string;
+  /** Attributes to list. Default `["ags"]`; add what `accept` or the age check reads. */
+  readonly attrs?: readonly string[] | undefined;
+  /** Regex of ids to leave out although they match `pattern` (e.g. a current sub-scheme). */
+  readonly exclude?: string | undefined;
+  /**
+   * Extra ownership check on the listed record, e.g. by `dataProvider`
+   * (request it via `attrs`): municipal connectors write the same types with
+   * slug-prefixed ids and must never be touched.
+   */
+  readonly accept?: ((id: string, entity: Readonly<Record<string, unknown>>) => boolean) | undefined;
+  /** Ids produced by this run; never deleted. */
+  readonly keep?: ReadonlySet<string> | undefined;
+  /**
+   * Only entities whose newest timestamp (`modifiedAt`, `observedAt`,
+   * `dateObserved`) is older than this. No timestamp = keep.
+   */
+  readonly graceMs?: number | undefined;
+  /**
+   * For sources without refreshed timestamps: an id must be a candidate in at
+   * least two CONSECUTIVE runs and for at least `confirmMs` (default 24 h). Any
+   * skipped run clears the candidates — "consecutive" means consecutive.
+   */
+  readonly confirmKey?: string | undefined;
+  readonly confirmMs?: number | undefined;
+  /**
+   * Age-only mode: at least one own entity must have been written within this
+   * window, otherwise the connector itself is down and nothing is "stale".
+   */
+  readonly liveMs?: number | undefined;
+  /**
+   * Never delete more than this share of the own entities (at least 3).
+   * Default 0.3; clamped to (0, 1] — anything else falls back to the default.
+   */
+  readonly maxFraction?: number | undefined;
+  /**
+   * The previous run of this prune must lie at most 2.5 intervals back, so a
+   * first run after an outage or a restart never acts on a single snapshot.
+   * Default: the connector's own registry interval (a cron connector counts as
+   * daily); `ctx.intervalMs(4)` for a prune that runs every fourth run
+   * (`feinstaub-bw`). The check cannot be switched off: 0, a negative value or
+   * NaN fall back to the default.
+   */
+  readonly intervalMs?: number | undefined;
+  /** This connector's change gate table whose entries of deleted ids are forgotten (`sigKey`). */
+  readonly signatureKey?: string | undefined;
+  /** Prefix of the status line, usually the run's own status text. */
+  readonly status?: string | undefined;
+}
+
+export interface PruneResult {
+  /** Ids the broker confirmed as deleted. */
+  readonly deleted: number;
+  /** Outcome of a complete listing (`o.listed`); `null` if none was reached. */
+  readonly listed: { readonly mine: number; readonly candidates: number } | null;
+  /** Why nothing was attempted, or `null`. Already logged. */
+  readonly skipped: string | null;
+}
+
+/**
+ * Automatic removal of stale own entities — port of PRUNE_HELPER and
+ * PRUNE_OK_JS.
+ *
+ * The connectors only upsert. An entity a run no longer produces — the object
+ * left the source, or it was wrongly assigned before the strict lookup — would
+ * otherwise stay in the broker forever. Only ids the broker confirms as deleted
+ * count and lose their change signature; the TRoE history is left untouched.
+ *
+ * State (interval bookkeeping, confirmation tables, the last plausible
+ * municipality count) lives in memory, per connector; the municipality count
+ * is seeded from Orion after a start — see src/kernel/prune.ts.
+ */
+export interface Pruner {
+  /**
+   * PRUNE_OK: the master data are complete enough to trust a deletion — at
+   * least 1,000 municipalities, not fewer than 95 % of the last plausible
+   * count, boundaries for at least 99 % of their AGS (by key, not by count),
+   * and no boundary entry dropped by the parser.
+   *
+   * The "last plausible count" survives no restart, so after a start it is
+   * first seeded from the number of `Municipality` entities in Orion; while
+   * Orion cannot answer, the answer is `false` — no prune. Asynchronous for
+   * that reason. {@link stale} checks it itself; call it directly only to
+   * decide the else branch (e.g. {@link resetConfirmations} on an incomplete
+   * run).
+   */
+  masterDataPlausible(): Promise<boolean>;
+  /**
+   * Never throws; failures are logged as `[warn]` and reported as skipped.
+   * Implausible master data skip without a request and clear the
+   * `confirmKey` table, as the else branch of the old call sites did.
+   */
+  stale(options: PruneOptions): Promise<PruneResult>;
+  /** Clears a confirmation table — an incomplete run breaks "consecutive". */
+  resetConfirmations(confirmKey: string): void;
 }
 
 /* ------------------------------------------------------------------ Registry */
@@ -436,6 +804,18 @@ export type ConnectorRuntime = "nodered" | "app";
  * `[lon, lat]` pair. Two levels: parameter name, then AGS.
  */
 export type ConnectorParams = Readonly<Record<string, Readonly<Record<Ags, JsonValue>>>>;
+
+/** NGSI-LD entity type, e.g. `"ParkingSite"`. */
+export type EntityType = string;
+
+/**
+ * `rowBudget24h` of a registry entry: expected TRoE rows per day, keyed by
+ * entity type — `{ "ParkingSite": 25000, "BikeParking": 8000 }`. Whole,
+ * non-negative row counts. The standing fuse from the ParkAPI incident: the
+ * generator sums the budgets of all connectors per type (several may write the
+ * same type) and the TRoE statistics warn when a type exceeds its sum.
+ */
+export type RowBudget = Readonly<Record<EntityType, number>>;
 
 /**
  * One entry of platform/config/connectors.json, after narrowing.
@@ -468,8 +848,8 @@ export interface RegistryEntry {
   readonly healthUrl: string | null;
   readonly attribution: string | null;
   readonly provides: readonly string[];
-  /** Expected TRoE rows per day and entity type, the ParkAPI fuse. */
-  readonly rowBudget24h: Readonly<Record<string, number>> | null;
+  /** Expected TRoE rows per day and entity type, the ParkAPI fuse. `null` = no budget. */
+  readonly rowBudget24h: RowBudget | null;
   readonly params: ConnectorParams;
 }
 
@@ -509,6 +889,13 @@ export interface Schedule {
   readonly startupDelaySeconds: number;
 }
 
+/** Outcome of {@link Scheduler.trigger}. */
+export type TriggerResult =
+  | { readonly outcome: "started" }
+  | { readonly outcome: "unknown" }
+  | { readonly outcome: "running" }
+  | { readonly outcome: "cooldown"; readonly retryAfterSeconds: number };
+
 export interface ScheduledJob {
   readonly id: ConnectorId;
   readonly schedule: Schedule;
@@ -518,8 +905,13 @@ export interface Scheduler {
   add(id: ConnectorId, schedule: Schedule, task: () => Promise<void>): void;
   start(): void;
   stop(): void;
-  /** Manual run, behind `POST /trigger/:id`. `false` if the id is unknown. */
-  trigger(id: ConnectorId): boolean;
+  /**
+   * Manual run, behind `POST /trigger/:id` on the admin port. Refused while a
+   * run of the connector is active, and within `cooldownMs` of the previous
+   * manual trigger — a trigger is an operator's "run it now", not a way to
+   * hammer a source.
+   */
+  trigger(id: ConnectorId, cooldownMs: number): TriggerResult;
   jobs(): readonly ScheduledJob[];
 }
 
@@ -557,6 +949,47 @@ export interface RouteRegistry {
   register(route: RouteDefinition): void;
 }
 
+/* ------------------------------------------------------------------ Database */
+
+/** A value bound to a `$n` placeholder. */
+export type SqlParam = string | number | boolean | null;
+
+export interface DbQueryResult {
+  /** Narrow them — column types are whatever the SQL says. */
+  readonly rows: readonly Readonly<Record<string, unknown>>[];
+  readonly rowCount: number | null;
+}
+
+export interface DbSession {
+  query(sql: string, params?: readonly SqlParam[]): Promise<DbQueryResult>;
+}
+
+/**
+ * Per-session settings, as the old nodes set them on their `pg.Client`.
+ * `statement_timeout` cancels on the SERVER; `query_timeout` only makes the
+ * client give up and would leave the query running — so both, the server one
+ * shorter.
+ */
+export interface DbSessionOptions {
+  /** `application_name`, visible in `pg_stat_activity` (`udp-troe-stats`). */
+  readonly applicationName: string;
+  readonly statementTimeoutMs: number;
+  readonly queryTimeoutMs: number;
+  /** Default 10 s. */
+  readonly connectionTimeoutMs?: number | undefined;
+}
+
+/**
+ * TimescaleDB access — the `pg` module the two SQL nodes loaded through
+ * `libs`. Host `TROE_DB_HOST` (default `timescale`), port 5432, database
+ * `orion`, user `TROE_DB_USER` (default `udp`), password `TROE_DB_PASSWORD`.
+ * One connection per session, opened when the session starts and closed when
+ * `work` settles, as the old nodes connected per run.
+ */
+export interface Db {
+  session<T>(options: DbSessionOptions, work: (session: DbSession) => Promise<T>): Promise<T>;
+}
+
 /* ------------------------------------------------------------------ Connector */
 
 /**
@@ -570,13 +1003,28 @@ export interface Ctx {
   readonly env: Env;
   readonly fetch: Fetcher;
   readonly limiter: RateLimiter;
+  /** Writes commit the change gate's pending signatures; see {@link Orion.upsert}. */
   readonly orion: Orion;
   readonly gate: ChangeGate;
+  /** Use {@link GeoStore.forRun} at the top of `run`; it logs the skip itself. */
   readonly geo: GeoStore;
+  readonly prune: Pruner;
+  /**
+   * TimescaleDB, for the two connectors that talk SQL (`troe-stats`,
+   * `troe-retention`). Connects lazily; nobody else needs to touch it.
+   */
+  readonly db: Db;
   readonly params: ConnectorParams;
   readonly enabledFor: "*" | readonly Ags[] | null;
   /** The clock. Only `run` may call it — `build` receives the value as an argument. */
   now(): IsoTime;
+  /**
+   * The connector's run interval in milliseconds, times `runs` (default 1) —
+   * `interval_ms(conn_id, runs)` of the generator: `intervalSeconds`, a cron
+   * connector counts as daily. E.g. `intervalMs(4)` for the prune of
+   * `feinstaub-bw`, which runs every fourth run.
+   */
+  intervalMs(runs?: number): number;
   /** Aborted on shutdown; hand it to long loops so a stop is not blocked. */
   readonly signal: AbortSignal;
 }
@@ -585,8 +1033,12 @@ export interface Ctx {
 export interface ConnectorRunner {
   readonly id: ConnectorId;
   run(ctx: Ctx): Promise<void>;
-  /** Endpoints this connector serves, registered at startup. */
-  readonly routes?: readonly RouteDefinition[] | undefined;
+  /**
+   * Endpoints this connector serves on the public port, built with the
+   * connector's own `ctx` at startup — `/abfahrten` needs the shared rate
+   * limiter and the stop directory, `/warnungen.ics` needs `orion.find`.
+   */
+  readonly routes?: ((ctx: Ctx) => readonly RouteDefinition[]) | undefined;
 }
 
 /**

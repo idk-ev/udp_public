@@ -40,7 +40,10 @@ let pass = 0, fail = 0;
           console.log(`  ✓ ${f} › ${name}`);
         } catch (e) {
           fail++;
-          console.error(`  ✗ ${f} › ${name}\n    ${String(e.message || e).split("\n")[0]}`);
+          // The full message, indented: a parity failure carries its diff
+          // listing below the summary line, and that listing is the point.
+          const message = String((e && e.message) || e).split("\n").map(line => `    ${line}`).join("\n");
+          console.error(`  ✗ ${f} › ${name}\n${message}`);
         }
       }
     }

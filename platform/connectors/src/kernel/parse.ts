@@ -61,6 +61,17 @@ export function isArray(value: unknown): value is readonly unknown[] {
   return Array.isArray(value);
 }
 
+/**
+ * JavaScript truthiness of a foreign value — for porting `a || b`, `x && x.id`
+ * or `if (e.modifiedAt)` faithfully. `strict-boolean-expressions` rightly
+ * refuses `unknown` in a condition; this makes the old semantics explicit
+ * instead of approximating them with `!== undefined` (which lets `""`, `0` and
+ * `null` through where the old node did not).
+ */
+export function isTruthy(value: unknown): boolean {
+  return Boolean(value);
+}
+
 /* ------------------------------------------------------------------ Optional readers */
 
 /** Property of a record, or `undefined` if the container is not a record. */

@@ -27,6 +27,30 @@
 
 import type { Log, LogLevel } from "./types.js";
 
+/**
+ * Makes an external string safe for ONE log line. Log messages carry text from
+ * the sources — station names, error bodies, URLs. A line feed in there would
+ * start a new line of the attacker's choosing, `… [error] [parken-bw] …`
+ * included, and the health check counts lines by exactly those markers. So:
+ * CR, LF and every other control character (plus the Unicode line and
+ * paragraph separators) are written as escapes, and a `[warn]` / `[error]`
+ * inside the text is defused to `(warn)` / `(error)` so it cannot be counted
+ * as a second marker either. Applied centrally in `#write`, so no call site can
+ * forget it.
+ */
+export function sanitizeLogText(text: string): string {
+  let out = "";
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    if (code >= 0x20 && code !== 0x7f && code !== 0x2028 && code !== 0x2029) out += char;
+    else if (char === "\n") out += "\\n";
+    else if (char === "\r") out += "\\r";
+    else if (char === "\t") out += "\\t";
+    else out += `\\u${code.toString(16).padStart(4, "0")}`;
+  }
+  return out.replace(/\[(warn|error)\]/gi, "($1)");
+}
+
 const ORDER: Readonly<Record<LogLevel, number>> = { debug: 10, info: 20, warn: 30, error: 40 };
 
 function thresholdOf(raw: string | undefined): number {
@@ -74,7 +98,7 @@ class ConsoleLog implements Log {
 
   #write(level: LogLevel, message: string): void {
     if (ORDER[level] < this.#threshold) return;
-    const line = `${new Date().toISOString()} [${level}] [${this.#component}] ${message}\n`;
+    const line = `${new Date().toISOString()} [${level}] [${this.#component}] ${sanitizeLogText(message)}\n`;
     // stderr for warn and error so that a `docker logs` split by stream keeps
     // them apart; the health check reads both streams (2>&1) either way.
     if (level === "warn" || level === "error") process.stderr.write(line);
@@ -97,7 +121,12 @@ class ConsoleLog implements Log {
     this.#write("error", message);
     // The cause goes on its own line: the counted [error] line stays short and
     // greppable, the stack stays readable.
-    if (cause !== undefined) process.stderr.write(`    ${describeCause(cause)}\n`);
+    // A stack has several lines by nature; each is sanitised and indented on
+    // its own, so none of them can pass for a line of its own making.
+    if (cause !== undefined) {
+      const lines = describeCause(cause).split(/\r?\n/);
+      process.stderr.write(lines.map((line) => `    ${sanitizeLogText(line)}\n`).join(""));
+    }
   }
 
   status(text: string): void {

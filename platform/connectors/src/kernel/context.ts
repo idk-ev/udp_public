@@ -6,33 +6,39 @@
 /**
  * Assembles the kernel and, from it, one {@link Ctx} per connector.
  *
- * The services below are shared deliberately. The rate limiter has to be, or it
- * would not know how hard a host is being hit in total; the geo store has to be,
- * because `stammdaten-bw` fills what twenty other connectors read; the change
- * gate has to be, because its keys are namespaced per connector anyway. Only the
- * logger is per connector — its component name is what
- * `scripts/healthcheck.sh` groups warnings by.
+ * Shared deliberately: the rate limiter, or it would not know how hard a host
+ * is being hit in total; the geo context, because `stammdaten-bw` fills what
+ * twenty other connectors read; the signature store, of which every connector
+ * only ever sees its own namespace.
+ *
+ * Per connector: the logger — its component name is what
+ * `scripts/healthcheck.sh` groups warnings by — and therefore every service
+ * that logs on the connector's behalf (change gate, Orion client, geo view,
+ * pruner), plus the prune bookkeeping, which the old flows kept in node and
+ * flow context of the connector's own function nodes.
  */
 
-import { createChangeGate } from "./change-gate.js";
+import { createChangeGate, SignatureStore } from "./change-gate.js";
+import { createDb } from "./db.js";
 import { createEnv } from "./env.js";
 import { createFetcher } from "./fetcher.js";
-import { createGeoStore } from "./geo.js";
+import { createSharedGeo, MasterDataCheck } from "./geo.js";
+import type { SharedGeo } from "./geo.js";
 import { createHttpServer } from "./http.js";
 import type { HttpServer } from "./http.js";
 import { createLog } from "./log.js";
 import { createOrion, DEFAULT_ORION_URL } from "./orion.js";
+import { createPruner } from "./prune.js";
 import { createRateLimiter } from "./rate-limit.js";
+import { intervalMsOf } from "./registry.js";
 import { createScheduler } from "./scheduler.js";
 import type {
-  ChangeGate,
   Ctx,
+  Db,
   Env,
   Fetcher,
-  GeoStore,
   IsoTime,
   Log,
-  Orion,
   RateLimiter,
   Registry,
   RegistryEntry,
@@ -44,35 +50,43 @@ export interface Kernel {
   readonly env: Env;
   readonly limiter: RateLimiter;
   readonly fetch: Fetcher;
-  readonly orion: Orion;
-  readonly gate: ChangeGate;
-  readonly geo: GeoStore;
+  readonly orionUrl: string;
+  readonly signatures: SignatureStore;
+  readonly geo: SharedGeo;
   readonly registry: Registry;
-  readonly http: HttpServer;
+  /** Connector routes only (`/abfahrten`, `/warnungen.ics`); proxied to the internet. */
+  readonly publicHttp: HttpServer;
+  /** `/healthz` and `/trigger/:id`; never proxied — see src/kernel/admin.ts. */
+  readonly adminHttp: HttpServer;
   readonly scheduler: Scheduler;
+  /** Shared by the two SQL connectors; connects per session, lazily. */
+  readonly db: Db;
   /** Aborted on SIGTERM/SIGINT; handed to every connector as `ctx.signal`. */
   readonly shutdown: AbortController;
+  /** Milliseconds clock of the gate rotation and the prune guards. */
+  readonly nowMs: () => number;
 }
 
 export function createKernel(registry: Registry, serviceName = "udp-connectors"): Kernel {
   const env = createEnv();
   const log = createLog(serviceName, env.get("LOG_LEVEL"));
   const limiter = createRateLimiter(log.child("rate-limit"));
-  const fetcher = createFetcher(log.child("fetch"), limiter, env.get("UDP_USER_AGENT"));
-  const orion = createOrion(log.child("orion"), fetcher, env.get("ORION_URL") ?? DEFAULT_ORION_URL);
 
   return {
     log,
     env,
     limiter,
-    fetch: fetcher,
-    orion,
-    gate: createChangeGate(log.child("change-gate")),
-    geo: createGeoStore(log.child("geo")),
+    fetch: createFetcher(log.child("fetch"), limiter, env.get("UDP_USER_AGENT")),
+    orionUrl: env.get("ORION_URL") ?? DEFAULT_ORION_URL,
+    signatures: new SignatureStore(),
+    geo: createSharedGeo(log.child("geo")),
     registry,
-    http: createHttpServer(log.child("http")),
+    publicHttp: createHttpServer(log.child("http")),
+    adminHttp: createHttpServer(log.child("admin")),
     scheduler: createScheduler(log.child("scheduler")),
+    db: createDb(env),
     shutdown: new AbortController(),
+    nowMs: Date.now,
   };
 }
 
@@ -86,19 +100,35 @@ function nowIso(): IsoTime {
 }
 
 export function createCtx(kernel: Kernel, entry: RegistryEntry): Ctx {
+  const log = kernel.log.child(entry.id);
+  const signatures = kernel.signatures.scope(entry.id);
+  const gate = createChangeGate(signatures, log, kernel.nowMs);
+  const orion = createOrion(log, kernel.fetch, gate, signatures, kernel.orionUrl);
+  const masterData = new MasterDataCheck();
   return {
     id: entry.id,
     entry,
-    log: kernel.log.child(entry.id),
+    log,
     env: kernel.env,
     fetch: kernel.fetch,
     limiter: kernel.limiter,
-    orion: kernel.orion,
-    gate: kernel.gate,
-    geo: kernel.geo,
+    orion,
+    gate,
+    geo: kernel.geo.view(log, masterData),
+    prune: createPruner({
+      log,
+      orion,
+      signatures,
+      geo: kernel.geo,
+      masterData,
+      defaultIntervalMs: intervalMsOf(entry),
+      nowMs: kernel.nowMs,
+    }),
+    db: kernel.db,
     params: entry.params,
     enabledFor: entry.enabledFor,
     now: nowIso,
+    intervalMs: (runs?: number): number => intervalMsOf(entry, runs),
     signal: kernel.shutdown.signal,
   };
 }

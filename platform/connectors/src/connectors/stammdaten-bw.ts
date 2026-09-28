@@ -29,6 +29,8 @@
  * not worth deviating for before parity is green.
  */
 
+import { COCKPIT_URL } from "../kernel/env.js";
+import { cleanText } from "../kernel/ngsi.js";
 import {
   ParseError,
   isArray,
@@ -56,7 +58,7 @@ import type {
 export const ID = "stammdaten-bw";
 
 /** Served by the cockpit; overridable so a dev run can point at a local build. */
-export const DEFAULT_URL = "http://cockpit/bw-gemeinden.json";
+export const DEFAULT_URL = `${COCKPIT_URL}/bw-gemeinden.json`;
 
 /** As FN_MUNI: `emitChunks(node, msg, geaendert, 150)`. */
 const CHUNK_SIZE = 150;
@@ -86,18 +88,6 @@ export interface MunicipalityEntity extends NgsiEntity {
   readonly "@context": string;
   readonly population?: Property<number> | undefined;
   readonly dashboardUrl?: Property<string> | undefined;
-}
-
-/**
- * The apostrophe swap of the original: `String(s == null ? '' : s).replace(/'/g,
- * '’')`. It exists because the entity text used to be spliced into generated
- * JavaScript, where a straight quote closed the string early. The typographic
- * apostrophe is now part of the stored data, so it stays — dropping it would
- * rewrite 1,103 names and produce a diff against the old runtime on the first
- * run.
- */
-function clean(value: string | null): string {
-  return (value ?? "").replace(/'/g, "’");
 }
 
 function parseRow(raw: unknown, index: number): MunicipalityRow {
@@ -147,7 +137,7 @@ export function build(
     return {
       id: `urn:ngsi-ld:Municipality:bw-${ags}`,
       type: "Municipality",
-      name: { type: "Property", value: clean(name) },
+      name: { type: "Property", value: cleanText(name) },
       ags: { type: "Property", value: ags },
       kreisCode: { type: "Property", value: kreisCode },
       municipalityType: { type: "Property", value: MUNICIPALITY_TYPE[typ] ?? typ },
@@ -194,18 +184,20 @@ export async function run(ctx: Ctx): Promise<void> {
   // until the master data happen to change.
   ctx.geo.setMunicipalities(file.gemeinden);
 
-  const entities = build(file, ctx.geo.index(), ctx.now());
+  const entities = build(file, null, ctx.now());
   ctx.log.status(`${String(entities.length)} municipalities`);
 
-  const changed = ctx.gate.gateChanged(GATE_KEY, entities, signatureOf);
-  if (changed.length === 0) {
+  // check -> upsert -> commit: the signatures of the municipalities take effect
+  // only for the ids Orion confirmed, so a lost write is repeated next run.
+  const result = await ctx.orion.upsertChanged(GATE_KEY, entities, signatureOf, { chunkSize: CHUNK_SIZE });
+  if (result.entities === 0) {
     ctx.log.status(`unchanged (${String(entities.length)})`);
     return;
   }
-  const result = await ctx.orion.upsert(changed, { chunkSize: CHUNK_SIZE });
   ctx.log.info(
-    `${String(changed.length)} of ${String(entities.length)} municipalities upserted in ` +
-      `${String(result.chunks)} chunks (${String(result.failedChunks)} failed)`,
+    `${String(result.entities)} of ${String(entities.length)} municipalities upserted in ` +
+      `${String(result.chunks)} chunks (${String(result.failedChunks)} failed, ` +
+      `${String(result.committed)} signatures committed)`,
   );
 }
 
