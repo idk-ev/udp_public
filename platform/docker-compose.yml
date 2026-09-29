@@ -222,6 +222,55 @@ services:
     networks: [udp]
     <<: *default-logging
 
+  # Konnektordienst (platform/connectors): löst die generierten Node-RED-Flows
+  # konnektorweise ab. Er führt genau die Registry-Einträge mit
+  # "runtime": "app" aus — ohne einen solchen Eintrag beantwortet er nur
+  # /healthz und verbindet sich mit nichts (docs/migration-konnektoren.md).
+  connectors:
+    build:
+      context: ..
+      dockerfile: platform/connectors/Dockerfile
+    image: udp/connectors:local
+    container_name: udp-connectors
+    depends_on:
+      orion-ld:
+        condition: service_started
+      timescale:
+        condition: service_healthy
+    environment:
+      TZ: Europe/Berlin
+      ORION_URL: http://orion-ld:1026
+      # Zustandsspeicher (Schema udp_connectors) und die beiden SQL-Konnektoren:
+      # dieselbe TimescaleDB und dieselben Zugangsdaten wie Node-RED.
+      TROE_DB_HOST: timescale
+      TROE_DB_USER: ${POSTGRES_USER:-udp}
+      TROE_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+      HYSTREET_API_TOKEN: ${HYSTREET_API_TOKEN:-}
+      UDP_CONNECTORS_PORT: "1880"
+      UDP_CONNECTORS_ADMIN_PORT: "1881"
+      UDP_TRIGGER_COOLDOWN_SECONDS: "60"
+    volumes:
+      # Dieselbe Registry wie der Flow-Generator: runtime umstellen, Flows neu
+      # generieren und beide Container neu starten genügt — kein Image-Build.
+      - ./config/connectors.json:/app/config/connectors.json:ro
+    # 1880 (/abfahrten, /warnungen.ics) erreicht nur die Cockpit-nginx über das
+    # Compose-Netz. Der Admin-Port 1881 (/healthz, /trigger) wird NICHT
+    # veröffentlicht: /trigger antwortet nur auf Loopback, also per
+    #   docker exec udp-connectors … (scripts/trigger-connector.sh)
+    expose: ["1880"]
+    healthcheck:
+      # Nur Prozess-Lebendigkeit: /healthz bleibt 200, auch wenn der
+      # Zustandsspeicher klemmt (ein Neustart repariert keine Datenbank).
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1881/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    read_only: true
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
   ckan:
     build:
       context: ./config/ckan
@@ -416,9 +465,18 @@ services:
       NGINX_ENVSUBST_FILTER: "^(UDP_|NGINX_LOCAL_RESOLVERS)"
       UDP_GATEWAY_UPSTREAM: "apisix:9080"
       UDP_NODERED_UPSTREAM: "node-red:1880"
+      # Leer = Node-RED; "connectors:1880" schaltet den Endpunkt auf den
+      # Konnektordienst um (s. .env.example, gui/docker/17-udp-upstreams.envsh).
+      UDP_ABFAHRTEN_UPSTREAM: ${UDP_ABFAHRTEN_UPSTREAM:-}
+      UDP_WARNUNGEN_UPSTREAM: ${UDP_WARNUNGEN_UPSTREAM:-}
     volumes:
       - ../gui/dist:/usr/share/nginx/html:ro
       - ./config/nginx/cockpit.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # Dieselben Entrypoint-Skripte wie im Cockpit-Image (gui/Dockerfile):
+      # vertrauenswürdige Proxys (${UDP_REALIP_FROM} der Vorlage) und die
+      # Upstreams der beiden Endpunkte. Ohne sie bricht nginx -t ab.
+      - ../gui/docker/16-udp-realip.envsh:/docker-entrypoint.d/16-udp-realip.envsh:ro
+      - ../gui/docker/17-udp-upstreams.envsh:/docker-entrypoint.d/17-udp-upstreams.envsh:ro
     ports:
       - "${UI_PORT:-3700}:8080"         # UI-Slot gem. PORTS.md
     restart: unless-stopped

@@ -10,6 +10,7 @@
 #   postgres-timescale-oss   platform/config/postgres       -> Helm: timescale.legacy.image
 #                                                              (+ docker compose)
 #   node-red-udp             platform/config/nodered        -> Helm: nodeRed.image
+#   udp-connectors           platform/connectors            -> Helm: connectors.image
 #
 # Alle übrigen Images (Orion-LD, Keycloak, APISIX, …) kommen unverändert von
 # Upstream und werden hier bewusst NICHT gespiegelt.
@@ -44,6 +45,9 @@ on:
       - 'platform/config/postgres/**'
       - 'platform/config/postgres-cnpg/**'
       - 'platform/config/nodered/**'
+      # The connector image carries the registry (connectors.json) as well.
+      - 'platform/connectors/**'
+      - 'platform/config/connectors.json'
       - 'helm/**'
       - '.github/workflows/build-images.yml'
   pull_request:
@@ -54,6 +58,9 @@ on:
       - 'platform/config/postgres/**'
       - 'platform/config/postgres-cnpg/**'
       - 'platform/config/nodered/**'
+      # The connector image carries the registry (connectors.json) as well.
+      - 'platform/connectors/**'
+      - 'platform/config/connectors.json'
       - 'helm/**'
       - '.github/workflows/build-images.yml'
   # Releases haben absichtlich keinen paths-Filter: ein Release muss immer alle
@@ -112,6 +119,13 @@ jobs:
             dockerfile: platform/config/nodered/Dockerfile
             valueKey: nodeRed
             description: Node-RED mit den generierten UDP-Datenflüssen
+          # Build context is the repository root: the Dockerfile copies the
+          # registry from platform/config/connectors.json.
+          - name: udp-connectors
+            context: .
+            dockerfile: platform/connectors/Dockerfile
+            valueKey: connectors
+            description: UDP-Konnektordienst (Ingestion offener Datenquellen nach NGSI-LD)
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -358,7 +372,7 @@ jobs:
 
             pinned=""
             if [ "$mode" = "pin" ]; then
-              for key in cockpit ckan timescale timescale.legacy nodeRed; do
+              for key in cockpit ckan timescale timescale.legacy nodeRed connectors; do
                 if [ ! -s "digests/$key" ]; then pinned=""; break; fi
                 TAGVAL="${tag}@$(cat "digests/$key")" \
                   yq -i ".${key}.image.tag = strenv(TAGVAL)" "$CHART_DIR/values.yaml"

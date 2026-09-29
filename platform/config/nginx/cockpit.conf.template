@@ -16,6 +16,12 @@
 #                          Kubernetes (Cluster-DNS), ohne ihn zu pflegen.
 #   UDP_GATEWAY_UPSTREAM   host:port von APISIX
 #   UDP_NODERED_UPSTREAM   host:port von Node-RED
+#   UDP_ABFAHRTEN_UPSTREAM host:port für /abfahrten     (Vorgabe: UDP_NODERED_UPSTREAM)
+#   UDP_WARNUNGEN_UPSTREAM host:port für /warnungen.ics (Vorgabe: UDP_NODERED_UPSTREAM)
+#                          Die Vorgabe setzt gui/docker/17-udp-upstreams.envsh.
+#                          Auf den Konnektordienst (connectors:1880) gestellt,
+#                          ist das die Umschaltung des Endpunkts
+#                          (docs/migration-konnektoren.md, Phase 4); leer = zurück.
 #
 # In Kubernetes MÜSSEN die Upstreams voll qualifiziert sein
 # (apisix.<ns>.svc.cluster.local): nginx wendet auf Namen, die es über den
@@ -26,9 +32,9 @@
 # öffentlichem Traffic; 60 s Kontext / 300 s Zeitreihen genügen den Takten.
 proxy_cache_path /var/cache/nginx/udp levels=1:2 keys_zone=udpapi:10m
                  max_size=100m inactive=15m use_temp_path=off;
-# Node-RED routes (/abfahrten, /warnungen.ics): own zone with a long
-# "inactive" – the stale copy that bridges a Node-RED outage must still exist
-# then. Calendar clients poll /warnungen.ics only every hour or so; with the
+# Routes of the ingestion runtime (/abfahrten, /warnungen.ics – Node-RED or the
+# connector service): own zone with a long "inactive" – the stale copy that
+# bridges an outage of that single instance must still exist then. Calendar clients poll /warnungen.ics only every hour or so; with the
 # 15 min of udpapi the entry would usually be gone exactly when it is needed.
 proxy_cache_path /var/cache/nginx/nodered levels=1:2 keys_zone=udpnodered:2m
                  max_size=20m inactive=24h use_temp_path=off;
@@ -109,7 +115,7 @@ server {
         expires -1;
         try_files $uri =404;
     }
-    # Warnungen als iCal-Abo (Node-RED). 5 min Cache — Kalender ziehen ohnehin selten.
+    # Warnungen als iCal-Abo (Node-RED oder Konnektordienst). 5 min Cache — Kalender ziehen ohnehin selten.
     # Cache key and upstream request carry ONLY kreis: extra or repeated
     # parameters neither bypass the cache nor reach the upstream (one cache
     # entry per district, whatever else a client appends).
@@ -117,17 +123,19 @@ server {
         limit_except GET HEAD OPTIONS { deny all; }
         limit_req zone=udp_warnungen burst=10 nodelay;
         limit_req_status 429;
-        set $nodered http://${UDP_NODERED_UPSTREAM};
-        proxy_pass $nodered/warnungen.ics?kreis=$arg_kreis;
+        set $warnungen http://${UDP_WARNUNGEN_UPSTREAM};
+        proxy_pass $warnungen/warnungen.ics?kreis=$arg_kreis;
         proxy_set_header Host $host;
         proxy_cache udpnodered;
         proxy_cache_valid 200 300s;
         proxy_cache_key "$uri?kreis=$arg_kreis";
         proxy_cache_lock on;
-        # Node-RED runs as a single instance: while it restarts (rollout,
-        # node drain) the last good calendar is served instead of an error,
-        # and an expired entry is refreshed in the background. http_404:
-        # Node-RED answers 404 until its flows are loaded after a restart.
+        # Node-RED and the connector service run as a single instance: while
+        # the upstream restarts (rollout, node drain) the last good calendar is
+        # served instead of an error, and an expired entry is refreshed in the
+        # background. http_404: Node-RED answers 404 until its flows are loaded
+        # after a restart. The connector service answers 503 while Orion is
+        # unreachable – served stale as well.
         proxy_cache_use_stale updating error timeout http_404 http_500 http_502 http_503 http_504;
         proxy_cache_background_update on;
         # add_header here replaces the server-level headers; repeated.
@@ -194,11 +202,12 @@ server {
         proxy_cache_background_update on;
         add_header X-Cache $upstream_cache_status always;
     }
-    # ÖPNV-Abfahrten auf Anfrage (Node-RED). 60 s Micro-Cache mit proxy_cache_lock:
+    # ÖPNV-Abfahrten auf Anfrage (Node-RED oder Konnektordienst). 60 s Micro-Cache mit proxy_cache_lock:
     # Gleichzeitige Aufrufe desselben Halts werden zu einer einzigen Anfrage an
     # die EFA-BW-Auskunft zusammengefasst.
     # Exakter Match (nicht Präfix): sonst reichte /abfahrten/<beliebig> in die
-    # Node-RED-Instanz durch, die selbst keine Authentifizierung hat.
+    # Node-RED-Instanz bzw. den Konnektordienst durch, die selbst keine
+    # Authentifizierung haben.
     # Cache key and upstream request carry ONLY ags: `?ags=…&x=<random>` used
     # to bypass the cache and hit EFA-BW on every request, and a repeated ags
     # could plant a 404 under another request's key.
@@ -206,8 +215,8 @@ server {
         limit_except GET HEAD OPTIONS { deny all; }
         limit_req zone=udp_abfahrten burst=30 nodelay;
         limit_req_status 429;
-        set $nodered http://${UDP_NODERED_UPSTREAM};
-        proxy_pass $nodered/abfahrten?ags=$arg_ags;
+        set $abfahrten http://${UDP_ABFAHRTEN_UPSTREAM};
+        proxy_pass $abfahrten/abfahrten?ags=$arg_ags;
         proxy_set_header Host $host;
         proxy_cache udpnodered;
         proxy_cache_methods GET HEAD;
@@ -215,7 +224,7 @@ server {
         proxy_cache_valid 404 30s;
         proxy_cache_key "$uri?ags=$arg_ags";
         proxy_cache_lock on;
-        # While Node-RED is briefly unavailable (single instance: rollout,
+        # While the upstream is briefly unavailable (single instance: rollout,
         # node drain) the last good answer of this stop is served instead of
         # an error – with X-Cache: STALE. Departures carry clock times and a
         # "stand" timestamp, so a stale answer is visibly old rather than

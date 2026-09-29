@@ -3,16 +3,45 @@
 # © 2024–2026 Thomas Kieß and contributors
 
 """Generiert alle udp-rt-*-Flow-Tabs (Reutlingen + BW + Betrieb) und schreibt sie nach platform/config/nodered/flows.json (Demo-Tab bleibt erhalten)."""
-import json, sys
+import argparse, json, sys
 from datetime import datetime, timezone
 
 from pathlib import Path
-FLOWS = str(Path(__file__).resolve().parent.parent / "platform" / "config" / "nodered" / "flows.json")
-REGISTRY_PATH = str(Path(__file__).resolve().parent.parent / "platform" / "config" / "connectors.json")
-STATUS_EXPORT = str(Path(__file__).resolve().parent.parent / "gui" / "public" / "connectors-status.json")
+_ROOT = Path(__file__).resolve().parent.parent
+# Paths default to the checkout; the overrides exist for tests that run the
+# generator on a copy (tests/static/connector-runtime.test.js).
+_cli = argparse.ArgumentParser(description=__doc__)
+_cli.add_argument("--registry", default=str(_ROOT / "platform" / "config" / "connectors.json"),
+                  help="connector registry to read (default: platform/config/connectors.json)")
+_cli.add_argument("--flows", default=str(_ROOT / "platform" / "config" / "nodered" / "flows.json"),
+                  help="flows.json to update in place (default: platform/config/nodered/flows.json)")
+_cli.add_argument("--status-export", default=str(_ROOT / "gui" / "public" / "connectors-status.json"),
+                  help="status export to write (default: gui/public/connectors-status.json)")
+_args = _cli.parse_args()
+FLOWS = _args.flows
+REGISTRY_PATH = _args.registry
+STATUS_EXPORT = _args.status_export
 with open(REGISTRY_PATH, encoding="utf-8") as _f:
     REGISTRY = json.load(_f)["connectors"]
 REG = {c["id"]: c for c in REGISTRY}
+
+# Runtime of a connector: "nodered" (default, generated into flows.json) or
+# "app" (the connector service in platform/connectors picks it up and the
+# generator drops it here). The same two values the service's registry guard
+# accepts (platform/connectors/src/kernel/registry.ts); anything else stops the
+# generator instead of silently running a connector in both runtimes or none.
+RUNTIMES = ("nodered", "app")
+
+def runtime_of(c):
+    value = c.get("runtime")
+    if value is None:
+        return "nodered"
+    if value not in RUNTIMES:
+        sys.exit(f"connectors.json: {c.get('id')}: runtime must be one of {RUNTIMES}, got {value!r}")
+    return value
+
+for _c in REGISTRY:
+    runtime_of(_c)
 
 def reg_param(conn_id, key, ags):
     return REG[conn_id].get("params", {}).get(key, {}).get(ags)
@@ -3874,6 +3903,10 @@ for n in nodes:
         continue
     if not c.get("active", True):
         continue  # inaktiver Konnektor: Pipeline komplett entfernen
+    if runtime_of(c) == "app":
+        # Runs in the connector service: drop the whole pipeline, so a
+        # connector never runs in Node-RED and the service at the same time.
+        continue
     if n.get("type") == "inject":
         # Seltene Quellen (Overpass u. a.) sollen nicht sofort bei jedem Neustart
         # feuern — sonst laufen Entwicklungs-Restarts in die Rate-Limits der
@@ -3901,6 +3934,7 @@ status = [{k: c.get(k) for k in ("id", "name", "scope", "enabledFor", "sollMinut
                                  "sampleEntity", "provides", "attribution",
                                  "requiresSecret", "active", "supersededBy", "pending",
                                  "refireOnRestart", "healthUrl")}
+          | {"runtime": runtime_of(c)}
           for c in REGISTRY]
 # "stand" = Änderungszeit der Registry, nicht die Laufzeit: sonst erzeugt jeder
 # Generatorlauf einen Diff, obwohl sich fachlich nichts geändert hat.

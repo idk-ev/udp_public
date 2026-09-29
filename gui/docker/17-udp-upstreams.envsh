@@ -1,0 +1,31 @@
+#!/bin/sh
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+#
+# Sourced by the nginx entrypoint before the templates are rendered: the
+# upstreams of /abfahrten and /warnungen.ics (cockpit.conf.template).
+#
+#   UDP_ABFAHRTEN_UPSTREAM  host:port serving /abfahrten
+#   UDP_WARNUNGEN_UPSTREAM  host:port serving /warnungen.ics
+#
+# Unset or empty, both follow UDP_NODERED_UPSTREAM. Pointing one at the
+# connector service (connectors:1880 in Compose, the fully qualified service
+# name in Kubernetes) is the cutover of that endpoint; clearing it again is the
+# way back (docs/migration-konnektoren.md, phase 4). A value with anything but
+# host:port characters would end up verbatim in the nginx configuration, so it
+# is rejected and the endpoint stays on Node-RED.
+: "${UDP_NODERED_UPSTREAM:=node-red:1880}"
+export UDP_NODERED_UPSTREAM
+for udp_name in UDP_ABFAHRTEN_UPSTREAM UDP_WARNUNGEN_UPSTREAM; do
+    eval "udp_value=\${$udp_name:-}"
+    case "$udp_value" in
+        "")
+            udp_value="$UDP_NODERED_UPSTREAM" ;;
+        *[!0-9A-Za-z.:_-]*)
+            echo "17-udp-upstreams: ignoring invalid $udp_name '$udp_value', using $UDP_NODERED_UPSTREAM" >&2
+            udp_value="$UDP_NODERED_UPSTREAM" ;;
+    esac
+    eval "export $udp_name=\"\$udp_value\""
+    echo "17-udp-upstreams: $udp_name=$udp_value"
+done
+unset udp_name udp_value

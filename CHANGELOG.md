@@ -2,6 +2,27 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Konnektordienst im Betrieb
+
+Der Konnektordienst (`platform/connectors`) läuft in Compose und Helm neben
+Node-RED mit, übernimmt aber noch keinen Konnektor — das Verhalten der
+Plattform ändert sich nicht.
+
+- **Umschaltung per Registry:** `"runtime": "app"` nimmt einen Konnektor aus
+  `flows.json` und übergibt ihn dem Dienst; der Status-Export trägt die
+  Laufzeit.
+- **Compose-Dienst `connectors`** und **Helm-Deployment `connectors`** (eine
+  Replik, `Recreate`, read-only). Nur Port 1880 ist erreichbar, und nur vom
+  Cockpit; der Admin-Port bleibt intern.
+- **Cockpit:** `/abfahrten` und `/warnungen.ics` einzeln umschaltbar
+  (`UDP_ABFAHRTEN_UPSTREAM`/`UDP_WARNUNGEN_UPSTREAM`, Helm
+  `cockpit.endpoints`), Vorgabe Node-RED.
+- **Skripte:** `trigger-connector.sh` löst umgeschaltete Konnektoren im Dienst
+  aus, `healthcheck.sh` zählt dessen Logs mit und zeigt den Zustandsspeicher.
+- **Compose-Cockpit:** Entrypoint-Skripte werden eingebunden; `nginx -t`
+  scheiterte vorher an `${UDP_REALIP_FROM}`.
+- Image `udp-connectors` in der Image-Pipeline und im Digest-Pinning.
+
 ## 1.2.0 — Hochverfügbarkeit des öffentlichen Pfads, Datenqualität, Lastkapazität
 
 > **Upgrade bestehender Kubernetes-Installationen:** ohne neue Werte bleibt

@@ -1,5 +1,5 @@
 {
- "stand": "2026-08-27T00:33:30+00:00",
+ "stand": "2026-09-29T04:04:52+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -15,7 +15,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "troe-stats",
@@ -31,7 +32,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "troe-retention",
@@ -47,7 +49,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "stammdaten-bw",
@@ -63,7 +66,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "grenzen-bw",
@@ -79,7 +83,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": "http://localhost:3700/bw-grenzen.json"
+   "healthUrl": "http://localhost:3700/bw-grenzen.json",
+   "runtime": "nodered"
   },
   {
    "id": "wetter-bw",
@@ -97,7 +102,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "vorhersage-bw",
@@ -116,7 +122,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "pollen-bw",
@@ -134,7 +141,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "hitze-bw",
@@ -152,7 +160,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": true,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "pegel-bw",
@@ -170,7 +179,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "pegel-lubw",
@@ -188,7 +198,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "rathaus-bw",
@@ -206,7 +217,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "ausflug-bw",
@@ -224,7 +236,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "poi-bw",
@@ -242,7 +255,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "warnungen-bw",
@@ -260,7 +274,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415"
+   "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415",
+   "runtime": "nodered"
   },
   {
    "id": "baustellen-bw",
@@ -278,7 +293,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "uba-bw",
@@ -296,7 +312,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "feinstaub-bw",
@@ -314,7 +331,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "parken-bw",
@@ -333,7 +351,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "sharing-bw",
@@ -351,7 +370,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "carsharing-bw",
@@ -369,7 +389,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "ladesaeulen-bw",
@@ -389,7 +410,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "eco-bw",
@@ -407,7 +429,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "mastr-bw",
@@ -425,7 +448,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "puls-bw",
@@ -443,7 +467,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "wetter-dwd-station",
@@ -461,7 +486,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "efa-abfahrten",
@@ -503,7 +529,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   },
   {
    "id": "abfahrten-on-demand",
@@ -521,7 +548,8 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": true,
-   "healthUrl": "http://localhost:3700/abfahrten?ags=08111000"
+   "healthUrl": "http://localhost:3700/abfahrten?ags=08111000",
+   "runtime": "nodered"
   },
   {
    "id": "hystreet",
@@ -541,7 +569,8 @@
    "supersededBy": null,
    "pending": true,
    "refireOnRestart": null,
-   "healthUrl": null
+   "healthUrl": null,
+   "runtime": "nodered"
   }
  ]
 }

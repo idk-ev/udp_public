@@ -99,13 +99,21 @@ exports["Alle /gateway-Locations sind auf lesende Methoden begrenzt"] = () => {
   }
 };
 
-exports["Node-RED ist nur über die beiden exakten Endpunkte erreichbar"] = () => {
+exports["Node-RED und Konnektordienst sind nur über die beiden exakten Endpunkte erreichbar"] = () => {
   const conf = read(NGINX);
-  const nodered = [...conf.matchAll(/location\s+(=\s+)?(\/\S+)\s*\{([\s\S]*?)\n    \}/g)]
-    .filter(([, , , body]) => body.includes("UDP_NODERED_UPSTREAM"));
-  assert.deepStrictEqual(nodered.map(m => m[2]).sort(), ["/abfahrten", "/warnungen.ics"]);
-  for (const [, exakt, pfad] of nodered)
-    assert(exakt, `${pfad}: Präfix-Match reicht in weitere Node-RED-Pfade durch (location = ... nötig)`);
+  // Je Endpunkt ein eigener Upstream (Vorgabe Node-RED, umschaltbar auf den
+  // Konnektordienst, s. gui/docker/17-udp-upstreams.envsh).
+  const UPSTREAM = /\$\{UDP_(NODERED|ABFAHRTEN|WARNUNGEN)_UPSTREAM\}/;
+  const ingestion = [...conf.matchAll(/location\s+(=\s+)?(\/\S+)\s*\{([\s\S]*?)\n    \}/g)]
+    .filter(([, , , body]) => UPSTREAM.test(body));
+  assert.deepStrictEqual(ingestion.map(m => m[2]).sort(), ["/abfahrten", "/warnungen.ics"]);
+  for (const [, exakt, pfad] of ingestion)
+    assert(exakt, `${pfad}: Präfix-Match reicht in weitere Pfade durch (location = ... nötig)`);
+  const upstreamOf = pfad => ingestion.find(m => m[2] === pfad)[3].match(UPSTREAM)[1];
+  assert.strictEqual(upstreamOf("/abfahrten"), "ABFAHRTEN");
+  assert.strictEqual(upstreamOf("/warnungen.ics"), "WARNUNGEN");
+  // Der Admin-Port des Konnektordienstes (/trigger, /healthz) wird nie proxied.
+  assert(!/:1881\b/.test(conf), "cockpit.conf.template verweist auf den Admin-Port 1881");
 };
 
 /* ---------- Helm: nichts Schreibendes am Ingress ---------- */
@@ -130,6 +138,20 @@ exports["CORS erlaubt keine schreibenden Methoden"] = () => {
     for (const verb of ["POST", "PUT", "PATCH", "DELETE"])
       assert(!m[1].includes(verb), `${path.basename(f)}: CORS erlaubt ${verb}`);
   }
+};
+
+exports["Admin-Port des Konnektordienstes ist nirgends veröffentlicht"] = () => {
+  // /trigger lässt den Dienst Quellen abrufen und nach Orion schreiben: 1881
+  // gehört in keinen Service und wird unter Compose nicht veröffentlicht.
+  const apps = read(path.join(HELM, "templates", "apps.yaml"));
+  const services = apps.split(/\n---/).filter(doc => /kind: Service\b/.test(doc))
+    .map(doc => doc.split("\n").filter(line => !/^\s*#/.test(line)).join("\n"));
+  assert(services.some(doc => /name: connectors\b/.test(doc)), "Service connectors nicht gefunden");
+  for (const doc of services) assert(!/\b1881\b/.test(doc), "ein Service im Chart führt Port 1881");
+  const compose = read(path.join(ROOT, "platform", "docker-compose.yml"));
+  const block = compose.slice(compose.indexOf("\n  connectors:"), compose.indexOf("\n  ckan:"));
+  assert(block.includes("container_name: udp-connectors"), "Compose-Dienst connectors nicht gefunden");
+  assert(!/^\s*ports:/m.test(block), "Compose veröffentlicht Ports des Konnektordienstes");
 };
 
 exports["Kein Service im Chart ist von außen exponiert"] = () => {

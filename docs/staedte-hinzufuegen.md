@@ -55,10 +55,12 @@ python3 scripts/generate-city-pages.py                   # SEO-Stubs gui/public/
 npm --prefix gui run build                               # dist aktualisieren
 ```
 
-`bw-grenzen.json` wird von Node-RED über `http://cockpit:8080/bw-grenzen.json` in den
-globalen Kontext geladen (Punkt-in-Polygon). Fehlt die Datei, überspringen die
-Konnektoren mit Gemeindezuordnung ihre Läufe, statt nach Nähe zu raten. Nach Grenzänderung Node-RED neu
-starten.
+`bw-grenzen.json` wird von Node-RED bzw. dem Konnektordienst (je nachdem, wo
+`grenzen-bw` läuft) über `http://cockpit:8080/bw-grenzen.json` geladen
+(Punkt-in-Polygon). Fehlt die Datei, überspringen die Konnektoren mit
+Gemeindezuordnung ihre Läufe, statt nach Nähe zu raten. Nach Grenzänderung
+diese Laufzeit neu starten oder `grenzen-bw` per `scripts/trigger-connector.sh`
+auslösen.
 
 ## Stufe 2 — individualisieren (Branding + Theme)
 
@@ -133,7 +135,17 @@ sich nicht landesweit ausrollen:
 Wichtig fürs Template: Stations-Entitäten (Laden, Carsharing, Sensoren …) müssen
 den **Stadt-Slug als ID-Präfix** tragen (`urn:…:<slug>-…`) — darüber filtert die
 Karte; Aggregat-Kacheln laufen über das `ags`-Attribut. Neue Bausteine, die es in
-Reutlingen nicht gibt, folgen dem allgemeinen Schema:
+Reutlingen nicht gibt, folgen dem allgemeinen Schema.
+
+**Wo Konnektoren heute leben:** Die Konnektoren sind als TypeScript-Module
+nach `platform/connectors/src/connectors/` portiert (ein Modul je Registry-id,
+mit Paritätstest gegen den alten Flow). Welche Laufzeit einen Konnektor
+ausführt, entscheidet das Registry-Feld `runtime` (`"nodered"` als Vorgabe
+oder `"app"` für den Konnektordienst, s. `docs/migration-konnektoren.md`). Bis
+zum Abbau der Flows (Phase 6) bleibt der Generator in Gebrauch: Er baut
+`flows.json` für alle Konnektoren auf `"nodered"` und den Status-Export. Ein
+neuer Konnektor braucht deshalb bis dahin beides — Pipeline-Block im Generator
+und Modul im Dienst (`platform/connectors/README.md`).
 
 1. **Registry-Eintrag** in `platform/config/connectors.json`:
    ```json
@@ -153,7 +165,7 @@ Reutlingen nicht gibt, folgen dem allgemeinen Schema:
    ```bash
    python3 scripts/generate-nodered-flows.py     # baut flows.json + connectors-status.json
    docker restart udp-node-red
-   bash scripts/trigger-connector.sh <id>         # nur bei refireOnRestart:false
+   bash scripts/trigger-connector.sh <id>         # nur bei refireOnRestart:false (Node-RED oder Konnektordienst)
    bash scripts/healthcheck.sh                    # Frische-Ampel je Konnektor
    ```
    Quellen mit strengen Anbieter-Limits (Overpass u. a.) bekommen in der
@@ -186,7 +198,7 @@ Manifests. Anfragen an **info@idkev.de**.
 - [ ] Neue Konnektoren im Healthcheck „OK" (oder „WARTET" bei Secret)
 - [ ] Neue Kachel/Chart-Karte/Kartenebene erscheint auf `/<slug>`, Klick öffnet die Detailansicht
 - [ ] `npm --prefix gui run build` fehlerfrei
-- [ ] Node-RED-Fehler 0 (`docker logs udp-node-red`)
+- [ ] Node-RED- und Konnektordienst-Fehler 0 (`bash scripts/healthcheck.sh`)
 
 Registry-Schema, Betriebsregeln und Micro-Cache: siehe
 [`framework-dashboards.md`](framework-dashboards.md).

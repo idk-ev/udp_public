@@ -13,8 +13,8 @@ global:
   # keine direkten Docker-Hub-Pulls) hier z. B. "harbor.example.org/udp-mirror".
   imageRegistry: ""
   # Registry der selbst gebauten Images – EINE Stelle für cockpit, ckan-dcat,
-  # postgres-timescale-cnpg (-oss nur zur Migration) und node-red-udp. Beim Spiegeln nur
-  # diesen Wert ändern.
+  # postgres-timescale-cnpg (-oss nur zur Migration), node-red-udp und
+  # udp-connectors. Beim Spiegeln nur diesen Wert ändern.
   udpRegistry: "ghcr.io/idk-ev/udp"
   # Nur nötig, wenn die GHCR-Pakete privat sind (siehe DEPLOY.md, Abschnitt 6).
   imagePullSecrets: []
@@ -71,6 +71,14 @@ cockpit:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
 ckan:
+  image:
+    tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+# Konnektordienst: immer zusammen mit node-red-udp auf denselben Stand pinnen –
+# beide tragen dieselbe Registry (ein Konnektor läuft in genau einem von beiden).
+nodeRed:
+  image:
+    tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+connectors:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
 

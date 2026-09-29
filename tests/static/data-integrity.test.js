@@ -30,10 +30,12 @@ exports["Registry und Status-Export sind synchron"] = () => {
   for (const c of exp) if (c.pending) assert(reg.find(r => r.id === c.id).pending, `pending nicht aus Registry: ${c.id}`);
 };
 
-exports["Jeder aktive Registry-Konnektor hat Flow-Nodes (nodePrefixes)"] = () => {
+exports["Jeder aktive Node-RED-Konnektor hat Flow-Nodes (nodePrefixes)"] = () => {
   const reg = J("platform/config/connectors.json").connectors;
   const ids = new Set(J("platform/config/nodered/flows.json").map(n => String(n.id || "")));
-  for (const c of reg.filter(c => c.active !== false)) {
+  // runtime "app": runs in the connector service, the generator drops its nodes
+  // (tests/static/connector-runtime.test.js).
+  for (const c of reg.filter(c => c.active !== false && (c.runtime || "nodered") === "nodered")) {
     const hit = c.nodePrefixes.some(p => [...ids].some(id => id.startsWith(p)));
     assert(hit, `Konnektor ${c.id}: keine Nodes mit Präfix ${c.nodePrefixes}`);
   }
@@ -71,8 +73,14 @@ exports["Node-RED-Image bringt Flows, settings.js und pg mit"] = () => {
     "functionExternalModules fehlt — die TRoE-Nodes können pg nicht laden");
   assert(/^\s*contextStorage:/m.test(settings), "contextStorage fehlt");
 
-  // Die beiden öffentlich proxied Endpunkte müssen in den Flows existieren.
+  // Die beiden öffentlich proxied Endpunkte müssen in den Flows existieren —
+  // solange ihr Konnektor noch in Node-RED läuft (runtime "app": der
+  // Konnektordienst beantwortet sie, die nginx-Upstreams zeigen dorthin).
+  const reg = J("platform/config/connectors.json").connectors;
+  const onNodeRed = id => (reg.find(c => c.id === id).runtime || "nodered") === "nodered";
+  const expected = [["/abfahrten", "abfahrten-on-demand"], ["/warnungen.ics", "warnungen-bw"]]
+    .filter(([, id]) => onNodeRed(id)).map(([url]) => url);
   const urls = J("platform/config/nodered/flows.json")
     .filter(n => n.type === "http in").map(n => n.url).sort();
-  assert.deepStrictEqual(urls, ["/abfahrten", "/warnungen.ics"]);
+  assert.deepStrictEqual(urls, expected);
 };

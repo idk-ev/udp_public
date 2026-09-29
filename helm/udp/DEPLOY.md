@@ -26,7 +26,7 @@ einen Kubernetes-Cluster zu bringen. Das Chart liegt in `helm/udp/`.
 | API & Identität | APISIX (Gateway), Keycloak (OIDC)                        |
 | Open Data       | CKAN (DCAT-AP.de) + Solr + Valkey *(`ckan.enabled`)*     |
 | Geo             | GeoServer *(`geoserver.enabled`)*, Masterportal *(aus)*  |
-| Anwendungen     | Node-RED, Cockpit                                        |
+| Anwendungen     | Node-RED, Konnektordienst *(`connectors.enabled`)*, Cockpit |
 | Betrieb         | DB-Backup (pg_dump) *(`backup.enabled`)*                 |
 | Netzwerk        | Ingress, NetworkPolicies, PodDisruptionBudgets           |
 
@@ -55,7 +55,7 @@ den Context Broker).
 |------|------|----------|
 | `/` | Cockpit (SPA + generierte Kommunenseiten) | offen |
 | `/gateway/…` | Cockpit-nginx → APISIX, **nur GET/HEAD/OPTIONS** (Micro-Cache) | offen |
-| `/abfahrten`, `/warnungen.ics` | Cockpit-nginx → Node-RED (exakte Pfade) | offen |
+| `/abfahrten`, `/warnungen.ics` | Cockpit-nginx → Node-RED oder Konnektordienst (exakte Pfade, `cockpit.endpoints`) | offen |
 | `/ngsi-ld`, `/temporal`, `/FROST-Server` | APISIX | aus (`ingress.apiPaths: []`) |
 | `/iot`, `/ingest` | APISIX → IoT-Agent | aus (`iotAgentJson.exposeRoutes: false`) |
 | `/catalog`, `/geoserver`, `/portal` | APISIX → CKAN / GeoServer / Masterportal | aus (`ingress.exposeComponentPaths: false`) |
@@ -326,7 +326,7 @@ Mindestens anpassen:
 
 ## 6. Eigene Images
 
-Vier der Images gibt es nicht als Upstream-Image. Gebaut und gepusht werden sie
+Diese Images gibt es nicht als Upstream-Image. Gebaut und gepusht werden sie
 von der GitHub Action **`.github/workflows/build-images.yml`** nach
 `ghcr.io/idk-ev/udp/…`:
 
@@ -336,6 +336,7 @@ von der GitHub Action **`.github/workflows/build-images.yml`** nach
 | `ckan.image` | `ckan-dcat` | CKAN 2.10 + `ckanext-dcat` (DCAT-AP.de) |
 | `timescale.image` | `postgres-timescale-oss` | PostGIS **und** TimescaleDB Apache Edition |
 | `nodeRed.image` | `node-red-udp` | Node-RED + generierte Datenflüsse, gehärtete `settings.js`, `pg` |
+| `connectors.image` | `udp-connectors` | Konnektordienst (`platform/connectors`) samt Konnektor-Registry |
 
 > Node-RED bekommt seine Flows aus dem Image, nicht aus einer ConfigMap oder
 > einem Volume: `flows.json` ist ein generiertes Artefakt
@@ -346,6 +347,21 @@ von der GitHub Action **`.github/workflows/build-images.yml`** nach
 > der Änderungserkennung – der erste Zyklus danach schreibt einmalig alle
 > Entitäten neu. Flow-Änderungen brauchen einen neuen Image-Build, kein
 > `helm upgrade` mit neuer ConfigMap.
+
+> **Konnektordienst** (Deployment `connectors`): löst die Node-RED-Flows
+> konnektorweise ab und führt genau die Registry-Einträge mit
+> `"runtime": "app"` aus — ohne einen solchen Eintrag läuft er leer mit. Immer
+> **eine** Replik mit `strategy: Recreate` (Zustand in TimescaleDB, Schema
+> `udp_connectors`, ein Schreiber per Advisory-Lock; der DB-Nutzer braucht
+> `CREATE` auf `orion`). Der Service zeigt nur Port 1880 (die beiden
+> Endpunkte), die NetworkPolicy lässt dort nur das Cockpit zu; der Admin-Port
+> 1881 (`/healthz`, `/trigger`) steht in keinem Service. Kein PVC,
+> Root-Dateisystem read-only. `node-red-udp` und `udp-connectors` tragen
+> dieselbe Registry und werden **zusammen** ausgerollt, damit kein Konnektor in
+> beiden oder keiner Laufzeit läuft. Umschalten der Endpunkte:
+> `cockpit.endpoints.abfahrten` / `.warnungen: connectors`
+> (`docs/migration-konnektoren.md`, Phase 4). Auslösen eines Konnektors:
+> `CONNECTORS_EXEC="kubectl -n <ns> exec deploy/connectors --" bash scripts/trigger-connector.sh <id>`.
 
 > Das Datenbank-Image ist Pflicht, kein Komfort: `files/postgres/01-databases.sql`
 > legt `CREATE EXTENSION timescaledb` an – mit einem reinen `postgis/postgis`
@@ -844,7 +860,7 @@ Das Monitoring hat ein eigenes Release und wird separat entfernt
 - [ ] **CORS einschränken:** `global_rules` `allow_origins: "*"` → echte Origins.
 - [ ] **strictEgress** erproben und aktivieren (`networkPolicies.strictEgress`).
       Internetzugang behalten dann nur `networkPolicies.internetEgress.components`
-      (Default: Node-RED, Orion-LD, IoT-Agent, CKAN).
+      (Default: Node-RED, Konnektordienst, Orion-LD, IoT-Agent, CKAN).
 - [ ] **Monitoring:** `networkPolicies.monitoringNamespaceLabel` setzen – öffnet
       die HTTP-Dienste und APISIX-Metrics `:9091` für diesen Namespace.
 - [ ] **Backups** für mongo/timescale-Volumes einrichten (Velero/Snapshots).

@@ -36,6 +36,11 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- /* Arbiter <-> members (heartbeats, votes). */}}
 {{- if $mongoArbiter }}{{ $mongoClients = append $mongoClients "mongo-arbiter" }}{{ end }}
 {{- $timescaleClients := list "orion-ld" "mintaka" "frost" "keycloak" "node-red" }}
+{{- /* Connector service: state store (schema udp_connectors) + SQL connectors. */}}
+{{- if .Values.connectors.enabled }}{{ $timescaleClients = append $timescaleClients "connectors" }}{{ end }}
+{{- /* Callers of Orion-LD and of the cockpit's static data files (cockpit:8080). */}}
+{{- $ingestion := list "node-red" }}
+{{- if .Values.connectors.enabled }}{{ $ingestion = append $ingestion "connectors" }}{{ end }}
 {{- if .Values.ckan.enabled }}{{ $timescaleClients = append $timescaleClients "ckan" }}{{ end }}
 {{- if .Values.backup.enabled }}{{ $timescaleClients = append $timescaleClients "db-backup" }}{{ end }}
 {{- $legacyTimescale := ne (.Values.timescale.migration.phase | default "") "" }}
@@ -43,9 +48,9 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- if $legacyTimescale }}{{ $timescaleClients = append $timescaleClients "timescale-migrate" }}{{ end }}
 {{- $rules := list
   (dict "app" "apisix"         "ports" (list 9080)      "from" (list "cockpit")                         "public" true "monitored" true)
-  (dict "app" "cockpit"        "ports" (list 8080)      "from" (list "node-red")                        "public" true "monitored" true)
+  (dict "app" "cockpit"        "ports" (list 8080)      "from" $ingestion                               "public" true "monitored" true)
   (dict "app" "keycloak"       "ports" (list 8080)      "from" (list "apisix")                          "public" true "monitored" true)
-  (dict "app" "orion-ld"       "ports" (list 1026)      "from" (list "apisix" "iot-agent-json" "node-red")            "monitored" true)
+  (dict "app" "orion-ld"       "ports" (list 1026)      "from" (concat (list "apisix" "iot-agent-json") $ingestion)   "monitored" true)
   (dict "app" "mintaka"        "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
   (dict "app" "frost"          "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
   (dict "app" "iot-agent-json" "ports" (list 4041 7896) "from" (list "apisix" "orion-ld")                             "monitored" true)
@@ -68,6 +73,12 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
      instances carry no app label – their policy follows below. */}}
 {{- if $legacyTimescale }}
 {{- $rules = append $rules (dict "app" "timescale" "ports" (list 5432) "from" $timescaleClients) }}
+{{- end }}
+{{- /* Connector service: only its public port (/abfahrten, /warnungen.ics) and
+     only for the cockpit. The admin port 1881 (/healthz, /trigger) is in no
+     rule – only the kubelet probes and kubectl exec reach it. */}}
+{{- if .Values.connectors.enabled }}
+{{- $rules = append $rules (dict "app" "connectors" "ports" (list 1880) "from" (list "cockpit")) }}
 {{- end }}
 {{- if .Values.geoserver.enabled }}
 {{- $rules = append $rules (dict "app" "geoserver" "ports" (list 8080) "from" (list "apisix") "monitored" true) }}
@@ -286,7 +297,7 @@ spec:
 {{- with $np.internetEgress.components }}
 ---
 # Internet access (HTTP/HTTPS) for components that fetch external data:
-# Node-RED connectors, JSON-LD @contexts (Orion-LD, IoT agent), CKAN harvesting.
+# Node-RED and connector service, JSON-LD @contexts (Orion-LD, IoT agent), CKAN harvesting.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

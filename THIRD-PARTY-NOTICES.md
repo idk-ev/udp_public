@@ -166,7 +166,7 @@ eigenständige Container betrieben. Sie sind nicht Teil dieses Repositorys.
 
 ## 6. Selbst gebaute Images
 
-Diese vier Images entstehen aus Dateien dieses Repositorys und werden vom Workflow
+Diese Images entstehen aus Dateien dieses Repositorys und werden vom Workflow
 `.github/workflows/build-images.yml` in die GitHub Container Registry
 veröffentlicht — sie werden also **weiterverbreitet**.
 

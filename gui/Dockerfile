@@ -24,6 +24,9 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY platform/config/nginx/cockpit.conf.template /etc/nginx/templates/default.conf.template
 # Trusted proxy networks for the client address (UDP_TRUSTED_PROXIES).
 COPY --chmod=755 gui/docker/16-udp-realip.envsh /docker-entrypoint.d/16-udp-realip.envsh
+# Upstreams of /abfahrten and /warnungen.ics: Node-RED unless
+# UDP_ABFAHRTEN_UPSTREAM / UDP_WARNUNGEN_UPSTREAM point at the connector service.
+COPY --chmod=755 gui/docker/17-udp-upstreams.envsh /docker-entrypoint.d/17-udp-upstreams.envsh
 
 # Der Entrypoint liest die Nameserver aus /etc/resolv.conf nach
 # NGINX_LOCAL_RESOLVERS – so stimmt der resolver in Docker (127.0.0.11) wie in
@@ -33,7 +36,8 @@ ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 # Variablen treffen, sobald eine gleichnamige Umgebungsvariable existiert.
 ENV NGINX_ENVSUBST_FILTER=^(UDP_|NGINX_LOCAL_RESOLVERS)
 # Vorbelegung für Docker/Compose (kurze Servicenamen). Kubernetes überschreibt
-# beide: nginx wendet auf Namen, die es über den resolver auflöst, die
+# beide (UDP_ABFAHRTEN_/UDP_WARNUNGEN_UPSTREAM folgen UDP_NODERED_UPSTREAM,
+# solange sie nicht gesetzt sind, s. gui/docker/17-udp-upstreams.envsh): nginx wendet auf Namen, die es über den resolver auflöst, die
 # search-Domains nicht an und braucht daher voll qualifizierte Servicenamen.
 ENV UDP_GATEWAY_UPSTREAM=apisix:9080 \
     UDP_NODERED_UPSTREAM=node-red:1880

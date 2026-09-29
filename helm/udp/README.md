@@ -37,7 +37,7 @@ helm/udp/
     ├── api-identity.yaml       # apisix + keycloak
     ├── catalog.yaml            # ckan + solr + redis (ckan.enabled)
     ├── geo.yaml                # geoserver (+ masterportal, optional)
-    ├── apps.yaml               # node-red + cockpit
+    ├── apps.yaml               # node-red + connectors + cockpit
     ├── backup.yaml             # logische DB-Dumps (backup.enabled)
     ├── ingress.yaml
     ├── networkpolicy.yaml      # default-deny + segmentierte Freigaben
@@ -105,6 +105,10 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.extraModuleUrls` | `{}` | zusätzliche Ziele der Modul-Kacheln (z. B. Node-RED, Uptime Kuma aus `monitoring/`) |
 | `cockpit.tenants` | Standard/lkrt/lktue | Mandanten-Auswahl im Cockpit |
 | `cockpit.gatewayUpstream` | `""` | FQDN von APISIX für den nginx-Proxy im Cockpit (leer → `apisix.<ns>.svc.cluster.local:9080`) |
+| `cockpit.endpoints.abfahrten` / `.warnungen` | `nodered` | wer `/abfahrten` bzw. `/warnungen.ics` beantwortet: `nodered`, `connectors` oder `host:port` (Umschaltung, `docs/migration-konnektoren.md`) |
+| `connectors.enabled` | `true` | Konnektordienst (eine Replik, `Recreate`; läuft leer, solange kein Registry-Eintrag `"runtime": "app"` trägt) |
+| `connectors.image` | `udp-connectors` | Image des Konnektordienstes; mit `nodeRed.image` zusammen pinnen |
+| `connectors.dbHost` / `orionUrl` | `timescale` / `http://orion-ld:1026` | Ziele des Dienstes; DB-Zugang aus dem DB-Secret |
 | `ingress.clusterIssuer` | `letsencrypt` | cert-manager für TLS |
 | `networkPolicies.enabled` | `true` | Netzsegmentierung (CNI mit Policy nötig) |
 | `networkPolicies.strictEgress` | `false` | zusätzlich Egress-Default-deny (Internet nur für `internetEgress.components`) |
@@ -123,8 +127,8 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.trustedProxies` | `[]` | Proxy-Netze, deren X-Forwarded-For für die Client-IP gilt (leer = alle privaten Netze) |
 | `global.priorityClassName` / `nodeSelector` / `tolerations` | leer | Scheduling-Vorgaben für alle Pods |
 | `global.imageRegistry` | `""` | Registry-Prefix für Upstream-Images (Mirror) |
-| `global.udpRegistry` | `ghcr.io/idk-ev/udp` | Registry der drei eigenen Images |
-| `global.udpTag` | `main` | Tag der drei eigenen Images |
+| `global.udpRegistry` | `ghcr.io/idk-ev/udp` | Registry der eigenen Images |
+| `global.udpTag` | `main` | Tag der eigenen Images |
 | `global.storageClass` | `""` | StorageClass für alle PVCs |
 
 Alle Parameter mit Kommentaren siehe [values.yaml](values.yaml).
@@ -132,7 +136,8 @@ Alle Parameter mit Kommentaren siehe [values.yaml](values.yaml).
 ## Sicherheit auf einen Blick
 
 - Container: `drop ALL caps`, `no privilege escalation`, `seccomp RuntimeDefault`;
-  Non-Root wo das Image es erlaubt (DBs, Keycloak, Mosquitto, Node-RED).
+  Non-Root wo das Image es erlaubt (DBs, Keycloak, Mosquitto, Node-RED,
+  Konnektordienst mit read-only Root-Dateisystem).
 - NetworkPolicies: Default-deny-Ingress, jede Komponente nur für ihre
   tatsächlichen Aufrufer und Ports, extern nur Cockpit/APISIX/Keycloak über den
   Ingress-Controller.

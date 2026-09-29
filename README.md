@@ -114,8 +114,10 @@ flowchart LR
     direction LR
     MQ[Mosquitto<br/>MQTT] --> IA[IoT-Agent JSON]
     NR[Node-RED<br/>Low-Code-ETL]
+    KD[Konnektordienst<br/>Ingestion]
     IA --> CB[Orion-LD<br/>NGSI-LD Context Broker]
     NR --> CB
+    KD --> CB
     CB -->|TRoE| TS[(PostgreSQL<br/>+ PostGIS)]
     MI[Mintaka<br/>Temporal API] --> TS
     FR[FROST-Server<br/>OGC SensorThings] --> TS
@@ -135,6 +137,7 @@ flowchart LR
 
   S1 --> MQ
   S2 --> NR
+  S2 --> KD
   S3 --> NR
   CB --- GW
   MI --- GW

@@ -3,12 +3,13 @@
 Ingestion of the open data sources into NGSI-LD. Replaces the generated Node-RED
 flows step by step (`platform/config/nodered/flows.json`).
 
-**Status: phase 3b — all 29 connectors ported, contract gaps closed.** The
-kernel matches the current flow generator (strict municipality lookup, commit
+**Status: phase 5 — all 29 connectors ported, deployable in Compose and Helm.**
+The kernel matches the current flow generator (strict municipality lookup, commit
 of change signatures after a confirmed upsert, pruning of stale entities);
 every connector is pinned by parity tests against its old function nodes.
-Nothing is switched over yet: all 29 connectors keep running in Node-RED until
-phase 4 sets `"runtime": "app"` per connector. Change signatures, prune
+Nothing is switched over yet: the service runs next to Node-RED and all 29
+connectors keep running there until phase 4 sets `"runtime": "app"` per
+connector (see [Deployment](#deployment)). Change signatures, prune
 bookkeeping and persisted `ctx.state` live in PostgreSQL, so a restart does not
 rewrite every gated entity (see [State store](#state-store)).
 
@@ -201,7 +202,7 @@ every gated entity in full on its next run (~400k TRoE rows per restart,
 | Port | Env (default) | Serves | Exposure |
 |---|---|---|---|
 | public | `UDP_CONNECTORS_PORT` (1880) | only the routes connectors register (`/abfahrten`, `/warnungen.ics`) | proxied by the cockpit nginx |
-| admin | `UDP_CONNECTORS_ADMIN_PORT` (1881), bound to `UDP_CONNECTORS_ADMIN_HOST` (0.0.0.0) | `GET /healthz`, `POST /trigger/:id` | **never** mapped by nginx, APISIX or an ingress; in Compose published on the host at most on 127.0.0.1 |
+| admin | `UDP_CONNECTORS_ADMIN_PORT` (1881), bound to `UDP_CONNECTORS_ADMIN_HOST` (0.0.0.0) | `GET /healthz`, `POST /trigger/:id` | **never** mapped by nginx, APISIX or an ingress; not published in Compose, in no Kubernetes Service |
 
 Around every route the server answers what Express answered around the old
 `http in` nodes: `HEAD` on a `GET` route (same status and headers, no body),
@@ -214,9 +215,25 @@ write to Orion, which must not be reachable from the internet. A trigger within
 `UDP_TRIGGER_COOLDOWN_SECONDS` (60, never less) of the previous one, or while a
 run is active, answers 429 with a `Retry-After` instead of starting another run.
 The admin host defaults to all interfaces so container probes reach `/healthz`;
-`/trigger` itself answers only a loopback peer (403 otherwise), so phase 5 runs
-`scripts/trigger-connector.sh` inside the container (`docker exec` /
+`/trigger` itself answers only a loopback peer (403 otherwise), so
+`scripts/trigger-connector.sh` runs it inside the container (`docker exec` /
 `kubectl exec`). No route reads a request body.
+
+## Deployment
+
+| | Compose (`platform/docker-compose.yml`) | Helm (`helm/udp`) |
+|---|---|---|
+| unit | service `connectors`, container `udp-connectors` | Deployment + Service `connectors`, `replicas: 1`, `Recreate` |
+| image | built from this Dockerfile (context: repository root) | `udp-connectors` (`connectors.image`), built by `.github/workflows/build-images.yml` |
+| registry | the checkout's `connectors.json`, mounted read-only | baked into the image |
+| public port 1880 | compose network only (cockpit nginx) | Service port; NetworkPolicy: cockpit only |
+| admin port 1881 | not published | in no Service |
+| health | Compose healthcheck: `/healthz` inside the container | startup/liveness `/healthz`, readiness TCP 1880 |
+
+Liveness never looks at `stateStore.healthy`. The cockpit reaches the two
+endpoints through `UDP_ABFAHRTEN_UPSTREAM` / `UDP_WARNUNGEN_UPSTREAM` (Helm:
+`cockpit.endpoints`), which default to Node-RED. Operations:
+[`docs/betrieb.md`](../../docs/betrieb.md), section "Konnektordienst".
 
 ## Developing
 
@@ -273,10 +290,13 @@ A connector is rehooked via the registry, not via a code path:
 { "id": "troe-stats", "runtime": "app" }
 ```
 
-`generate-nodered-flows.py` drops switched-over connectors from `flows.json`,
-and this service picks up exactly those. If the field is missing, `"nodered"`
-still applies. The way back: turn the field back, run the generator, roll out
-again.
+`generate-nodered-flows.py` drops switched-over connectors from `flows.json`
+(`tests/static/connector-runtime.test.js`), and this service picks up exactly
+those. If the field is missing, `"nodered"` still applies; any other value
+stops the generator and the service. Roll out Node-RED and this service
+together; for `abfahrten-on-demand` and `warnungen-bw` also point the cockpit's
+endpoint upstream here. The way back: turn the field back, run the generator,
+roll out again (steps: `docs/migration-konnektoren.md`, phase 4).
 
 `scripts/healthcheck.sh` does not need to be touched for this — it measures the
 freshness of the entities in Orion, not the runtime that wrote them.

@@ -70,6 +70,11 @@ fi
 log "3/6 Generierte Artefakte erzeugen"
 python3 "$UDP_ROOT/scripts/generate-city-pages.py" | tail -1
 python3 "$UDP_ROOT/scripts/generate-nodered-flows.py" | tail -1
+# "up -d" builds an image only when it is missing – the connector service
+# would otherwise keep running the code of its first build.
+docker compose --project-directory "$UDP_ROOT/platform" -f "$UDP_ROOT/platform/docker-compose.yml" \
+    build --quiet connectors
+log "    connector service image built"
 if command -v npm >/dev/null; then
     ( cd "$UDP_ROOT/gui" && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null )
     log "    GUI gebaut -> gui/dist"

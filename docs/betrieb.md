@@ -208,7 +208,58 @@ Erstbefüllung oder Nachziehen nach Änderungen:
     bash scripts/trigger-connector.sh ausflug-bw
 
 Das Skript löst die Inject-Node über die Node-RED-Admin-API aus (ohne
-Neustart, ohne Deploy).
+Neustart, ohne Deploy). Für Konnektoren mit `"runtime": "app"` geht es
+stattdessen an den Konnektordienst (s. unten).
+
+## Konnektordienst
+
+`platform/connectors` löst die generierten Node-RED-Flows konnektorweise ab
+(Plan und Stand: [`migration-konnektoren.md`](migration-konnektoren.md)). Der
+Dienst führt genau die Registry-Einträge mit `"runtime": "app"` aus; der
+Flow-Generator lässt dieselben Einträge aus `flows.json` fallen, ein Konnektor
+läuft also nie in beiden Laufzeiten. Solange kein Eintrag das Feld trägt,
+beantwortet der Dienst nur `/healthz` und baut keine Verbindung auf.
+
+| | Compose | Kubernetes (Helm) |
+|---|---|---|
+| Dienst | Container `udp-connectors`, Image aus `platform/connectors/Dockerfile` | Deployment `connectors`, Image `udp-connectors` (`connectors.image`) |
+| Registry | `platform/config/connectors.json`, read-only eingebunden | im Image (wie die Flows im Node-RED-Image) |
+| Port 1880 | nur im Compose-Netz (Cockpit-nginx) | Service `connectors:1880`, NetworkPolicy nur vom Cockpit |
+| Port 1881 | nicht veröffentlicht | in keinem Service |
+
+- **Ports:** 1880 trägt nur die Endpunkte `/abfahrten` und `/warnungen.ics`,
+  die die Cockpit-nginx weiterreicht. Der Admin-Port 1881 (`/healthz`,
+  `/trigger/<id>`) wird nie veröffentlicht und von keinem Proxy
+  weitergereicht: Ein Trigger lässt den Dienst eine Quelle abrufen und nach
+  Orion schreiben. `/trigger` antwortet zusätzlich nur auf Loopback, wird also
+  im Container ausgelöst.
+- **Zustand:** Änderungssignaturen, Prune-Buchführung und persistierter
+  Konnektorzustand liegen in der TimescaleDB, Datenbank `orion`, Schema
+  `udp_connectors` (Zugang wie Node-RED über `TROE_DB_*`). Das Schema legt der
+  Dienst beim ersten umgeschalteten Konnektor selbst an; der Datenbanknutzer
+  braucht dafür `CREATE` auf der Datenbank, sonst das Schema vorab anlegen. Ein
+  Volume braucht der Dienst nicht (Root-Dateisystem read-only).
+- **Genau eine Instanz:** Ein Advisory-Lock macht die laufende Instanz zum
+  einzigen Schreiber. Helm fest mit `replicas: 1` und `strategy: Recreate`;
+  eine zweite Instanz führte nur die ungegateten Konnektoren aus — doppelt.
+- **Auslösen:** `bash scripts/trigger-connector.sh <id>` erkennt die Laufzeit
+  aus der Registry. Unter Compose läuft der Aufruf per
+  `docker exec udp-connectors`, in Kubernetes mit
+  `CONNECTORS_EXEC="kubectl -n <namespace> exec deploy/connectors --"`.
+  Antworten: 202 gestartet, 429 Sperrfrist (60 s) oder Lauf aktiv, 404 läuft
+  dort nicht.
+- **Gesundheit:** `/healthz` (Admin-Port) meldet die eingeplanten Konnektoren
+  und den Zustandsspeicher (`stateStore.healthy`, `writer`). Die Antwort bleibt
+  200, auch wenn die Datenbank klemmt — Liveness-Probe und Compose-Healthcheck
+  prüfen nur, ob der Prozess lebt; ein Neustart repariert keine Datenbank.
+  `scripts/healthcheck.sh` zeigt den Zustandsspeicher an und schlägt nur fehl,
+  wenn dort Konnektoren laufen und er nicht gesund ist.
+- **Logs:** Zeilen `<Zeit> [warn] [udp-connectors:<konnektor>] …`;
+  `scripts/healthcheck.sh` zählt `[error]`/`[warn]` für Node-RED und den Dienst
+  getrennt und nennt die häufigsten Warnquellen.
+- **Aktualisieren:** Unter Compose baut `deploy/deploy.sh` das Image bei jedem
+  Deployment neu; in Kubernetes kommt es aus der Image-Pipeline und wird mit
+  dem Node-RED-Image zusammen ausgerollt.
 
 ## Zeitreihen-Retention (TRoE)
 

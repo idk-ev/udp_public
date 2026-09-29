@@ -5,10 +5,11 @@ Migrationsplan: Die 29 Konnektoren wandern aus dem generierten
 (`platform/connectors/`). Node-RED bleibt als Low-Code-Baustein stehen — nur
 nicht mehr als Laufzeit der Ingestion.
 
-Stand: **Phasen 0, 1, 1b, 2, 3 und 3b abgeschlossen** (Gerüst, Kernel und
+Stand: **Phasen 0, 1, 1b, 2, 3, 3b und 5 abgeschlossen** (Gerüst, Kernel und
 Vertrag, Paritäts-Harness, alle 29 Konnektoren portiert, Vertragslücken
-geschlossen), Kernel-Zustand dauerhaft in PostgreSQL. Es ingestiert noch
-nichts — die Umschaltung ist Phase 4.
+geschlossen, Betrieb in Compose und Helm), Kernel-Zustand dauerhaft in
+PostgreSQL. Der Dienst läuft neben Node-RED, ingestiert aber noch nichts — die
+Umschaltung (Phase 4) ist ab jetzt reine Konfiguration.
 
 ## Ziel
 
@@ -331,6 +332,28 @@ Dienst nimmt genau sie auf. Gruppenweise, mit Beobachtungsfenster dazwischen
 (worauf zu achten ist: „Bewusste Abweichungen“ oben). Rückweg: Feld
 zurückdrehen.
 
+**Schritte je Gruppe** (seit Phase 5 nur Konfiguration):
+
+1. `"runtime": "app"` für die Konnektoren der Gruppe setzen.
+2. `python3 scripts/generate-nodered-flows.py` — `flows.json` verliert deren
+   Nodes, `connectors-status.json` trägt die Laufzeit.
+3. Node-RED und Konnektordienst **zusammen** neu ausrollen. Compose: beide
+   lesen Registry bzw. Flows aus dem Checkout, `docker compose up -d
+   node-red connectors` (bzw. `restart`). Helm: beide Images tragen ihren
+   Stand im Image; das Chart aus demselben Commit rollt `node-red-udp` und
+   `udp-connectors` gemeinsam aus.
+4. Nur für `abfahrten-on-demand` und `warnungen-bw`: den Endpunkt in der
+   Cockpit-nginx umstellen — Compose `UDP_ABFAHRTEN_UPSTREAM` /
+   `UDP_WARNUNGEN_UPSTREAM=connectors:1880` in `platform/.env`, Helm
+   `cockpit.endpoints.abfahrten` / `.warnungen: connectors`; danach das
+   Cockpit neu starten. Der nginx-Cache überbrückt den Wechsel.
+5. `bash scripts/trigger-connector.sh <id>` für Konnektoren, die nicht beim
+   Start laufen; `bash scripts/healthcheck.sh` beobachten.
+
+Rückweg: dieselben Schritte rückwärts (Feld entfernen, Flows neu generieren,
+beide ausrollen, Endpunkt zurück auf Node-RED) — unter Compose vorher den
+Node-RED-Kontext der zurückkehrenden Konnektoren leeren (s. unten).
+
 **Erste Gruppe:** `stammdaten-bw`, `grenzen-bw` und `wetter-bw` — sie füllen
 den Geo-Kontext (Gemeinden, Grenzen), von dem rund 20 Konnektoren des Dienstes
 abhängen; ohne sie überspringen diese ihre Läufe.
@@ -353,12 +376,26 @@ dass diese Erstläufe zusammen ins Zeilenbudget passen (`parken-bw` allein
 `scripts/healthcheck.sh` muss dafür nicht angefasst werden — es misst die
 Frische der Entitäten in Orion, nicht die Laufzeit, die sie geschrieben hat.
 
-### Phase 5 — Betrieb nachziehen (1 Agent)
+### Phase 5 — Betrieb nachziehen (1 Agent) ✅
 
-`trigger-connector.sh` auf `POST /trigger/:id` (id statt Präfixsuche über
-`/flows`), Log-Grep in `healthcheck.sh`, Compose- und Helm-Dienst,
-`UDP_NODERED_UPSTREAM` in der Cockpit-nginx, NetworkPolicy, `docs/betrieb.md`
-und `docs/staedte-hinzufuegen.md`.
+Umgesetzt, siehe `docs/betrieb.md`, Abschnitt „Konnektordienst“:
+
+- **Compose:** Dienst `connectors` (Container `udp-connectors`), Registry
+  read-only aus dem Checkout, 1880 nur im Compose-Netz, 1881 nicht
+  veröffentlicht, Healthcheck auf `/healthz` im Container.
+- **Helm:** Deployment `connectors` (`replicas: 1`, `Recreate`,
+  read-only Root-FS), Service nur mit 1880, NetworkPolicy 1880 nur vom
+  Cockpit; der Dienst darf zu Orion-LD, TimescaleDB und zum Cockpit (statische
+  Stammdaten), unter `strictEgress` ins Internet. Image `udp-connectors` in der
+  Image-Pipeline und im Digest-Pinning.
+- **Cockpit-nginx:** je Endpunkt ein Upstream (`UDP_ABFAHRTEN_UPSTREAM`,
+  `UDP_WARNUNGEN_UPSTREAM`), Vorgabe Node-RED.
+- **Generator:** `"runtime": "app"` entfernt den Konnektor aus `flows.json`
+  (Test: `tests/static/connector-runtime.test.js`), der Status-Export trägt
+  `runtime`.
+- **Skripte:** `trigger-connector.sh` löst `runtime: "app"` per
+  `POST /trigger/<id>` im Container aus; `healthcheck.sh` zählt die Logs beider
+  Laufzeiten und zeigt den Zustandsspeicher.
 
 `/trigger` und `/healthz` liegen auf dem **Admin-Port** 1881
 (`UDP_CONNECTORS_ADMIN_PORT`), nicht auf dem öffentlichen Port 1880. Das Skript
