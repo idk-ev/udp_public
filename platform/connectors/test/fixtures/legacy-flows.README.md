@@ -10,17 +10,18 @@ Frozen reference of the old Node-RED connector code, for the parity tests only.
   `d583e418fa1edfee69153972a149f39d2afbb377`). At that commit all 29
   connectors still ran in Node-RED, so every old function node, request node,
   exec node and inject node is in here.
-- **Why:** from the first cutover on, `scripts/generate-nodered-flows.py` drops
-  a switched-over connector's nodes from the live `flows.json`, and phase 6
-  shrinks that file to the example tab (`docs/migration-konnektoren.md`). The
-  parity tests compare every ported module against its old node; they need the
-  old side to outlive the live file.
+- **Why:** from the first cutover on, the flow generator dropped a
+  switched-over connector's nodes from the live `flows.json`, and phase 6
+  shrank that file to the example tab and removed the generator
+  (`docs/migration-konnektoren.md`). The parity tests compare every ported
+  module against its old node; they need the old side to outlive the live
+  file.
 - **Who reads it:** `test/harness/fixtures.ts` (`legacyFlowsPath()`) and through
   it `test/harness/vm-runner.ts`, `test/harness/prune-settings.ts` and the
   parity tests that read nodes, wires or URLs directly (`source-urls`,
   `efa-abfahrten`, `ops-host`, …). Nothing else.
-- **Never regenerated, never edited, never deployed.** The generator does not
-  know this file; no Dockerfile, Compose file or Helm chart copies it. A change
+- **Never regenerated, never edited, never deployed.** No Dockerfile, Compose
+  file or Helm chart copies it. A change
   to connector behaviour goes into `platform/connectors/src`, and a parity test
   that has to accept it states the deviation in the test, not in this file.
 - **Its limit:** the old nodes carry values the generator baked in from the

@@ -1,7 +1,7 @@
 # Manifest: Wie man eine Stadt hinzufügt
 
 Ein Dokument, eine Regel: **Jede Stadt baut auf derselben Datenbasis auf.** Es gibt
-genau eine landesweite Ingestion (Node-RED → Orion-LD/TRoE, Zuordnung per
+genau eine landesweite Ingestion (Konnektordienst → Orion-LD/TRoE, Zuordnung per
 Amtlichem Gemeindeschlüssel/AGS mit Punkt-in-Polygon). Alle Dashboards sind
 **Filter** auf diese Basis — kein Dashboard bringt eine eigene Ingestion mit.
 Reutlingen (`/reutlingen`) ist die Referenz-Ausbaustufe und dient als **Template**
@@ -55,12 +55,11 @@ python3 scripts/generate-city-pages.py                   # SEO-Stubs gui/public/
 npm --prefix gui run build                               # dist aktualisieren
 ```
 
-`bw-grenzen.json` wird von Node-RED bzw. dem Konnektordienst (je nachdem, wo
-`grenzen-bw` läuft) über `http://cockpit:8080/bw-grenzen.json` geladen
-(Punkt-in-Polygon). Fehlt die Datei, überspringen die Konnektoren mit
-Gemeindezuordnung ihre Läufe, statt nach Nähe zu raten. Nach Grenzänderung
-diese Laufzeit neu starten oder `grenzen-bw` per `scripts/trigger-connector.sh`
-auslösen.
+`bw-grenzen.json` lädt der Konnektordienst beim Start und danach alle 6 h über
+`http://cockpit:8080/bw-grenzen.json` (Punkt-in-Polygon). Fehlt die Datei,
+überspringen die Konnektoren mit Gemeindezuordnung ihre Läufe, statt nach Nähe
+zu raten. Nach Grenzänderung den Konnektordienst neu starten oder `grenzen-bw`
+per `scripts/trigger-connector.sh` auslösen.
 
 ## Stufe 2 — individualisieren (Branding + Theme)
 
@@ -137,15 +136,10 @@ den **Stadt-Slug als ID-Präfix** tragen (`urn:…:<slug>-…`) — darüber fil
 Karte; Aggregat-Kacheln laufen über das `ags`-Attribut. Neue Bausteine, die es in
 Reutlingen nicht gibt, folgen dem allgemeinen Schema.
 
-**Wo Konnektoren heute leben:** Die Konnektoren sind als TypeScript-Module
-nach `platform/connectors/src/connectors/` portiert (ein Modul je Registry-id,
-mit Paritätstest gegen den alten Flow). Welche Laufzeit einen Konnektor
-ausführt, entscheidet das Registry-Feld `runtime` (`"nodered"` als Vorgabe
-oder `"app"` für den Konnektordienst, s. `docs/migration-konnektoren.md`). Bis
-zum Abbau der Flows (Phase 6) bleibt der Generator in Gebrauch: Er baut
-`flows.json` für alle Konnektoren auf `"nodered"` und den Status-Export. Ein
-neuer Konnektor braucht deshalb bis dahin beides — Pipeline-Block im Generator
-und Modul im Dienst (`platform/connectors/README.md`).
+**Wo Konnektoren leben:** im Konnektordienst (`platform/connectors`,
+TypeScript), ein Modul je Registry-id unter `platform/connectors/src/connectors/`.
+Takt, Aktivierung und Monitoring stehen in der Registry, die Transformation im
+Modul. Aufbau und verbindliche Typdisziplin: `platform/connectors/README.md`.
 
 1. **Registry-Eintrag** in `platform/config/connectors.json`:
    ```json
@@ -156,22 +150,33 @@ und Modul im Dienst (`platform/connectors/README.md`).
      "intervalSeconds": 300, "sollMinutes": 5,
      "sampleEntity": "urn:ngsi-ld:PublicTransportStop:reutlingen-hbf",
      "provides": ["departures"], "attribution": "EFA-BW (naldo/bwegt)",
-     "requiresSecret": null, "active": true, "nodePrefixes": ["udp-rt-o-"]
+     "requiresSecret": null, "active": true
    }
    ```
-2. **Pipeline-Block** in `scripts/generate-nodered-flows.py` mit passendem
-   `nodePrefix` (inject → http_get → func → upsert). Bestehende Blöcke als Vorlage.
-3. **Generieren & starten:**
+2. **Modul** `platform/connectors/src/connectors/<id>.ts` gegen den Vertrag in
+   `src/kernel/types.ts`: `parse(raw: unknown)` (Fremddaten verengen, laut
+   scheitern), reines `build(roh, geo, jetzt)` und `run(ctx)` für die I/O;
+   dazu eine Zeile in `src/connectors/index.ts`. Bestehende Module als
+   Vorlage (`baustellen-bw.ts` für eine landesweite Quelle mit Gemeindezuordnung,
+   `efa-abfahrten.ts` für kommunale Parameter). `test/parity/registry.test.ts`
+   schlägt fehl, solange Registry und Module nicht zusammenpassen.
+3. **Test** `platform/connectors/test/parity/<id>.test.ts` mit einer
+   aufgezeichneten, gekürzten Fixture unter `test/fixtures/`: `build` gegen die
+   Fixture, `run` gegen einen Test-Kernel (Harness unter `test/harness/`).
+4. **Prüfen, exportieren & starten:**
    ```bash
-   python3 scripts/generate-nodered-flows.py     # baut flows.json + connectors-status.json
-   docker restart udp-node-red
-   bash scripts/trigger-connector.sh <id>         # nur bei refireOnRestart:false (Node-RED oder Konnektordienst)
+   cd platform/connectors && npm run build && npm run lint && cd ../..
+   node tests/run.js                              # statische Tests + Konnektor-Tests
+   python3 scripts/export-connector-status.py     # connectors-status.json fürs Frontend
+   docker compose -f platform/docker-compose.yml up -d --build connectors
+   bash scripts/trigger-connector.sh <id>         # nur bei refireOnRestart:false
    bash scripts/healthcheck.sh                    # Frische-Ampel je Konnektor
    ```
    Quellen mit strengen Anbieter-Limits (Overpass u. a.) bekommen in der
-   Registry `"refireOnRestart": false` — sie feuern dann nicht bei jedem
-   Neustart, sondern nur nach Zeitplan bzw. auf Zuruf (s. `docs/betrieb.md`).
-4. **Frontend** (nur bei neuem `provides`-Typ): Render-Pfad in `gui/public/stadt.html`
+   Registry `"refireOnRestart": false` — sie laufen dann nicht direkt nach
+   jedem Neustart, sondern erst 10 Minuten später und danach nach Zeitplan
+   bzw. auf Zuruf (s. `docs/betrieb.md`).
+5. **Frontend** (nur bei neuem `provides`-Typ): Render-Pfad in `gui/public/stadt.html`
    ergänzen. `provides` steuert, welche Kachel erscheint; `sampleEntity` liefert den
    Wert. Für Klick-Detailtiefe einen Eintrag in die `DETAILS`-Registry setzen:
    - `kind:"chart"` — Zeitreihe (`SC.hist`), mit Zeitbereichs-Buttons
@@ -182,7 +187,7 @@ und Modul im Dienst (`platform/connectors/README.md`).
    `feinstaub`, `luft-uba`, `parken`, `sharing`, `laden`, `radverkehr`, `pv`,
    `departures`, `br`, `amtliche-station`, `laden-live`, `laden-detail`,
    `carsharing-detail`, `passanten`, `vorhersage`.
-5. **Secrets:** `requiresSecret` (z. B. `HYSTREET_API_TOKEN`) in `platform/.env`;
+6. **Secrets:** `requiresSecret` (z. B. `HYSTREET_API_TOKEN`) in `platform/.env`;
    der Healthcheck meldet „WARTET" statt Fehler, bis das Secret gesetzt ist, und
    die Kachel erscheint automatisch, sobald der Konnektor liefert.
 
@@ -198,7 +203,7 @@ Manifests. Anfragen an **info@idkev.de**.
 - [ ] Neue Konnektoren im Healthcheck „OK" (oder „WARTET" bei Secret)
 - [ ] Neue Kachel/Chart-Karte/Kartenebene erscheint auf `/<slug>`, Klick öffnet die Detailansicht
 - [ ] `npm --prefix gui run build` fehlerfrei
-- [ ] Node-RED- und Konnektordienst-Fehler 0 (`bash scripts/healthcheck.sh`)
+- [ ] Fehler des Konnektordienstes 0 (`bash scripts/healthcheck.sh`)
 
 Registry-Schema, Betriebsregeln und Micro-Cache: siehe
 [`framework-dashboards.md`](framework-dashboards.md).

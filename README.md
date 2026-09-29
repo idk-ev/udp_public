@@ -33,7 +33,7 @@ alle Fach-APIs laufen gebündelt über das API-Gateway:
 | GeoServer (WMS/WFS/WPS) | http://localhost:8780/geoserver |
 | Masterportal (Profil viz-extra) | http://localhost:8780/portal |
 | IoT-Provisionierung / HTTP-Ingest | http://localhost:8780/iot bzw. /ingest |
-| Node-RED (Low-Code-ETL) | http://localhost:4900 |
+| Node-RED (Low-Code-Datenflüsse, Beispielfluss) | http://localhost:4900 |
 | Keycloak (Benutzer/Rollen/Mandanten) | http://localhost:8700 |
 | PostgreSQL/PostGIS | localhost:5439 |
 
@@ -76,7 +76,7 @@ bash deploy/deploy.sh
 
 Das Skript prüft Voraussetzungen und Secrets, holt den aktuellen Stand
 (`--no-pull` überspringt das), erzeugt die generierten Artefakte
-(City-Pages, Node-RED-Flows, GUI-Build), richtet den systemd-User-Service samt
+(City-Pages, Konnektor-Status-Export, Konnektordienst-Image, GUI-Build), richtet den systemd-User-Service samt
 Lingering ein, startet den Stack und fährt einen Rauchtest über Kontext-API,
 Temporal-API, CKAN und die Dashboards. Die Unit liegt versioniert unter
 [`deploy/systemd/`](deploy/systemd/udp-stack.service).
@@ -113,7 +113,7 @@ flowchart LR
   subgraph UDP["Urbane Datenplattform (Kubernetes)"]
     direction LR
     MQ[Mosquitto<br/>MQTT] --> IA[IoT-Agent JSON]
-    NR[Node-RED<br/>Low-Code-ETL]
+    NR[Node-RED<br/>Low-Code-Flows]
     KD[Konnektordienst<br/>Ingestion]
     IA --> CB[Orion-LD<br/>NGSI-LD Context Broker]
     NR --> CB
@@ -136,7 +136,6 @@ flowchart LR
   end
 
   S1 --> MQ
-  S2 --> NR
   S2 --> KD
   S3 --> NR
   CB --- GW
@@ -170,12 +169,14 @@ Entwicklung: `cd gui && npm run dev` (Proxy auf das lokale Gateway).
 Als durchgängiges Praxisbeispiel liest die Plattform acht offene
 Datenquellen für Reutlingen ein (DWD-Wetter, UBA-Luftqualität,
 sensor.community-Feinstaub, Parken/Sharing/Ladesäulen über MobiData BW,
-ÖPNV-Abfahrten über EFA-BW) — Node-RED-Flows → NGSI-LD → Orion-LD/TRoE.
+ÖPNV-Abfahrten über EFA-BW) — Konnektordienst (`platform/connectors`) →
+NGSI-LD → Orion-LD/TRoE. Node-RED bleibt als Low-Code-Werkzeug mit einem
+Beispielfluss für eigene Datenflüsse.
 Darstellung: ein Dashboard je Gemeinde unter `/<slug>` (Referenz `/reutlingen`
 mit Live-Kacheln, Klick-Zeitreihen, Stadtkarte, Abfahrtstafel), ein Kreis-Dashboard
 je Landkreis unter `/kreis-<slug>`, Kommunen-Suche im Hauptdashboard
 (`/dashboard.html`), Betriebs- und TRoE-Metriken direkt im Hauptdashboard
-(PlatformStatus via Node-RED, Lastverlauf via Mintaka).
+(PlatformStatus via Konnektordienst, Lastverlauf via Mintaka).
 Neue Städte hinzufügen: [`docs/staedte-hinzufuegen.md`](docs/staedte-hinzufuegen.md).
 
 ## Mandantenfähigkeit

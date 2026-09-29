@@ -5,11 +5,11 @@ Migrationsplan: Die 29 Konnektoren wandern aus dem generierten
 (`platform/connectors/`). Node-RED bleibt als Low-Code-Baustein stehen — nur
 nicht mehr als Laufzeit der Ingestion.
 
-Stand: **Phasen 0, 1, 1b, 2, 3, 3b und 5 abgeschlossen** (Gerüst, Kernel und
-Vertrag, Paritäts-Harness, alle 29 Konnektoren portiert, Vertragslücken
-geschlossen, Betrieb in Compose und Helm), Kernel-Zustand dauerhaft in
-PostgreSQL. Der Dienst läuft neben Node-RED, ingestiert aber noch nichts — die
-Umschaltung (Phase 4) ist ab jetzt reine Konfiguration.
+Stand: **abgeschlossen.** Alle Phasen (0 bis 6) sind durch; die 29
+Konnektoren laufen in Produktion im Konnektordienst, Node-RED läuft nur noch
+mit dem Beispielfluss. Das Dokument bleibt als Begründung und Chronik der
+Ablösung stehen; der laufende Betrieb steht in `docs/betrieb.md`, Abschnitte
+„Konnektordienst“ und „Node-RED“.
 
 ## Ziel
 
@@ -329,64 +329,50 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - `pegel-bw`, `pegel-lubw`: Anfrage ohne Antwort ergibt dieselbe Warnung wie
   ein HTTP-Fehler (anderer Wortlaut).
 
-### Phase 4 — Umschaltung
+### Phase 4 — Umschaltung ✅
 
-Je Konnektor ein Feld `"runtime": "app"` in `platform/config/connectors.json`.
-Der Generator lässt umgeschaltete Konnektoren aus `flows.json` fallen, der
-Dienst nimmt genau sie auf. Gruppenweise, mit Beobachtungsfenster dazwischen
-(worauf zu achten ist: „Bewusste Abweichungen“ oben). Rückweg: Feld
-zurückdrehen.
+Umgeschaltet wurde per Registry-Feld `"runtime": "app"` je Konnektor: Der
+damalige Generator ließ umgeschaltete Konnektoren aus `flows.json` fallen, der
+Dienst nahm genau sie auf; Node-RED und Dienst wurden je Gruppe gemeinsam
+ausgerollt, die Endpunkte `/abfahrten` und `/warnungen.ics` einzeln in der
+Cockpit-nginx umgestellt. In Produktion in **fünf Gruppen** mit
+Beobachtungsfenster dazwischen:
 
-**Schritte je Gruppe** (seit Phase 5 nur Konfiguration):
+1. Betrieb, Pollen, Hitze, Vorhersage, hystreet
+2. Wetter, Pegel, Luft, Zählstellen
+3. Warnungen, Baustellen, Overpass, MaStR, Retention
+4. Parken, Sharing, Laden, ÖPNV (samt `/abfahrten`)
+5. Puls, Stammdaten, Grenzen
 
-1. `"runtime": "app"` für die Konnektoren der Gruppe setzen.
-2. `python3 scripts/generate-nodered-flows.py` — `flows.json` verliert deren
-   Nodes, `connectors-status.json` trägt die Laufzeit.
-3. Node-RED und Konnektordienst **zusammen** neu ausrollen. Compose: beide
-   lesen Registry bzw. Flows aus dem Checkout, `docker compose up -d
-   node-red connectors` (bzw. `restart`). Helm: beide Images tragen ihren
-   Stand im Image; das Chart aus demselben Commit rollt `node-red-udp` und
-   `udp-connectors` gemeinsam aus.
-4. Nur für `abfahrten-on-demand` und `warnungen-bw`: den Endpunkt in der
-   Cockpit-nginx umstellen — Compose `UDP_ABFAHRTEN_UPSTREAM` /
-   `UDP_WARNUNGEN_UPSTREAM=connectors:1880` in `platform/.env`, Helm
-   `cockpit.endpoints.abfahrten` / `.warnungen: connectors`; danach das
-   Cockpit neu starten. Der nginx-Cache überbrückt den Wechsel.
-5. `bash scripts/trigger-connector.sh <id>` für Konnektoren, die nicht beim
-   Start laufen; `bash scripts/healthcheck.sh` beobachten.
+Den Rückweg (Feld zurückdrehen) hat keine Gruppe gebraucht.
 
-Rückweg: dieselben Schritte rückwärts (Feld entfernen, Flows neu generieren,
-beide ausrollen, Endpunkt zurück auf Node-RED) — unter Compose vorher den
-Node-RED-Kontext der zurückkehrenden Konnektoren leeren (s. unten).
+**Was die Umschaltung gelehrt hat:**
 
-**Letzte Gruppe:** `stammdaten-bw` und `grenzen-bw`. Node-RED hat in
-Kubernetes kein Volume; sein Geo-Kontext (`global.bwGemeinden`/`bwGrenzen`)
-wird nach jedem Neustart nur von diesen beiden Flows neu gefüllt, und alle
-Konnektoren, die noch in Node-RED laufen, brauchen ihn. Der Dienst dagegen
-lädt seinen Geo-Kontext selbst: beim Start (vor dem ersten Lauf) und dann alle
-6 h holt der Kernel `bw-gemeinden.json` und `bw-grenzen.json` vom Cockpit,
-mit den Parsern der beiden Konnektoren und ohne Schreibzugriff auf Orion
-(`platform/connectors/src/kernel/geo-bootstrap.ts`). Die übrigen Konnektoren
-können deshalb vorher umziehen; `wetter-bw` ist dafür nicht mehr maßgeblich.
-Stand des Geo-Kontexts: `/healthz`, Feld `geo`.
-
-**Nie in beiden Laufzeiten zugleich:** Ein Konnektor läuft entweder in
-Node-RED oder im Dienst. Registry-Änderung und Node-RED-Redeploy (neu
-generierte `flows.json`) gehören in denselben Schritt, in beide Richtungen.
-
-**Rückweg unter Compose:** Vor dem Zurückdrehen die Node-RED-Kontextschlüssel
-der zurückkehrenden Konnektoren löschen (oder den Kontextspeicher leeren).
-Sonst findet Node-RED seine alten Signaturen vom Stand vor der Umschaltung,
-hält veraltete Werte für aktuell und sendet nur Frische-Stempel.
-
-**Einmalige Kosten je Umschaltung:** Für einen frisch umgeschalteten
-Konnektor hat der Dienst noch keine Signaturen; sein erster Lauf schreibt
-einmal voll, wie ein frisch gestartetes Node-RED. Die Gruppen so schneiden,
-dass diese Erstläufe zusammen ins Zeilenbudget passen (`parken-bw` allein
-~230k Zeilen). Das fällt einmal je Konnektor an, nicht je Neustart.
-
-`scripts/healthcheck.sh` muss dafür nicht angefasst werden — es misst die
-Frische der Entitäten in Orion, nicht die Laufzeit, die sie geschrieben hat.
+- **Datenbank-Switchover bei jedem Release.** Jedes Chart-Release baute alle
+  eigenen Images bit-verschieden neu; CloudNativePG vergleicht die
+  Image-Referenz als Zeichenkette und rollte deshalb bei jedem Release den
+  Datenbank-Cluster samt Primary-Switchover — und der Dienst verlor jedes Mal
+  seinen Schreib-Lock. Behoben an zwei Stellen: Die Image-Pipeline verwendet
+  unveränderte Images wieder (inhaltsadressiert über einen Hash der
+  Build-Eingaben, Tag `inputs-<hash>`), und das Chart referenziert eigene
+  Images nur noch per Digest, nicht per wanderndem Tag. Zusätzlich lädt der
+  Dienst seinen Zustand nach einem Lock-Verlust sofort im Hintergrund nach.
+- **Open-Meteo-Kontingent.** Wetter (alle 4 h) und Vorhersage (alle 2 h)
+  stießen zusammen an das Tageskontingent von Open-Meteo (je Lauf 8 Batches
+  über alle Gemeinden); beide laufen jetzt alle 6 h.
+- **TRoE-Vacuum.** `troe-retention` setzt vorab Autovacuum-Schwellen (1 %) und
+  fährt nach dem Lauf `VACUUM (ANALYZE)` auf `attributes`/`subattributes`,
+  damit die nächtlichen Löschmengen zügig wieder freigegeben werden.
+- **Geo-Bootstrap.** Der Dienst lädt `bw-gemeinden.json` und `bw-grenzen.json`
+  beim Start selbst vom Cockpit; so konnten die geo-abhängigen Konnektoren vor
+  `stammdaten-bw`/`grenzen-bw` umziehen, und ein Neustart wartet nicht auf
+  deren Takt.
+- **Zustandsspeicher.** Signaturen, Prune-Buchführung und persistierter
+  Zustand in PostgreSQL (s. oben) machten Neustarts billig: Einmalig voll
+  geschrieben hat nur der Erstlauf je umgeschaltetem Konnektor.
+- **Startverhalten.** Endpunkt-Konnektoren starten sofort (sonst antwortete
+  `/abfahrten` nach jedem Neustart minutenlang 503), und das Intervall zählt
+  ab dem ersten Lauf statt ab Prozessstart.
 
 ### Phase 5 — Betrieb nachziehen (1 Agent) ✅
 
@@ -401,13 +387,12 @@ Umgesetzt, siehe `docs/betrieb.md`, Abschnitt „Konnektordienst“:
   Stammdaten), unter `strictEgress` ins Internet. Image `udp-connectors` in der
   Image-Pipeline und im Digest-Pinning.
 - **Cockpit-nginx:** je Endpunkt ein Upstream (`UDP_ABFAHRTEN_UPSTREAM`,
-  `UDP_WARNUNGEN_UPSTREAM`), Vorgabe Node-RED.
-- **Generator:** `"runtime": "app"` entfernt den Konnektor aus `flows.json`
-  (Test: `tests/static/connector-runtime.test.js`), der Status-Export trägt
-  `runtime`.
-- **Skripte:** `trigger-connector.sh` löst `runtime: "app"` per
-  `POST /trigger/<id>` im Container aus; `healthcheck.sh` zählt die Logs beider
-  Laufzeiten und zeigt den Zustandsspeicher.
+  `UDP_WARNUNGEN_UPSTREAM`), damals mit Vorgabe Node-RED — seit Phase 6 ein
+  gemeinsamer Upstream `UDP_CONNECTORS_UPSTREAM`.
+- **Generator:** `"runtime": "app"` entfernte den Konnektor aus `flows.json`,
+  der Status-Export trug `runtime` (beides seit Phase 6 entfallen).
+- **Skripte:** `trigger-connector.sh` löst per `POST /trigger/<id>` im
+  Container aus; `healthcheck.sh` zeigt den Zustandsspeicher.
 
 `/trigger` und `/healthz` liegen auf dem **Admin-Port** 1881
 (`UDP_CONNECTORS_ADMIN_PORT`), nicht auf dem öffentlichen Port 1880. Das Skript
@@ -421,13 +406,49 @@ führe keine gegateten Konnektoren). Er braucht `TROE_DB_*` und für das Schema
 wird vorab angelegt); ein Volume braucht er nicht. Die Liveness-Probe nicht an
 `stateStore.healthy` koppeln — ein Neustart repariert keine Datenbank.
 
-### Phase 6 — Abbau
+### Phase 6 — Abbau ✅
 
-`flows.json` schrumpft auf die fünf Beispiel-Nodes und passt damit wieder in
-eine ConfigMap — womit `node-red-udp` aus Image-Matrix und Digest-Pinning fällt
-und Node-RED auf dem Upstream-Image läuft. `settings.js` verliert
-`functionExternalModules` und `contextStorage`, das Dockerfile das `pg`-Modul.
-`docs/anforderungsabdeckung.md` wird auf den tatsächlichen Stand umformuliert.
+- **Node-RED** läuft auf dem Upstream-Image `nodered/node-red:4.1`;
+  `flows.json` ist nur noch der Beispiel-Tab (5 Nodes, eingecheckt, nicht mehr
+  generiert). Im Chart kommen `flows.json` und `settings.js` aus der ConfigMap
+  `node-red-config` (Kopien unter `helm/udp/files/nodered/`, ein Test hält sie
+  gleich), ein initContainer kopiert sie in ein `emptyDir`. `node-red-udp` ist
+  aus Image-Matrix und Digest-Pinning gefallen, `platform/config/nodered/
+  Dockerfile` gelöscht.
+- **`settings.js`** ohne `contextStorage` (localfilesystem) und mit
+  `functionExternalModules: false` — beides brauchte nur die Ingestion.
+- **Node-RED ohne Ingestion-Rechte:** keine `TROE_DB_*`, kein
+  `HYSTREET_API_TOKEN` (Compose und Helm); NetworkPolicy: kein Zugriff auf
+  TimescaleDB und `cockpit:8080`, kein Internet unter `strictEgress`; Orion-LD
+  bleibt erreichbar (der Beispielfluss schreibt dorthin). Der hystreet-Token
+  heißt im Chart jetzt `connectors.hystreetApiToken` bzw.
+  `connectors.hystreetExistingSecret`; die alten Schlüssel unter `nodeRed.`
+  werden weiter gelesen.
+- **Generator → Status-Export:** `scripts/generate-nodered-flows.py` (3.980
+  Zeilen) ist ersetzt durch `scripts/export-connector-status.py` (~50 Zeilen),
+  das nur `gui/public/connectors-status.json` schreibt (ohne das Feld
+  `runtime`). CI-Drift-Check und `deploy/deploy.sh` rufen es auf.
+- **Registry:** `runtime` und `nodePrefixes` entfernt. Der Dienst führt jeden
+  aktiven Eintrag aus, für den ein Modul existiert
+  (`Registry.activeEntries()`); `test/parity/registry.test.ts` hält Registry
+  und Module gleich. Die Registry-Prüfung ignoriert die beiden Felder, falls
+  ein Fork sie noch trägt.
+- **Cockpit-nginx:** ein Upstream `UDP_CONNECTORS_UPSTREAM` (Vorgabe
+  `connectors:1880`; Helm `cockpit.connectorsUpstream`, Vorgabe der Service
+  `connectors`) für beide Endpunkte. Die Umschalter `UDP_ABFAHRTEN_UPSTREAM`/
+  `UDP_WARNUNGEN_UPSTREAM` und `cockpit.endpoints` entfallen — einen Rückweg
+  zu Node-RED gibt es nicht mehr. Ein übrig gebliebener Wert wird gemeldet
+  (Compose) bzw. bricht das Rendern ab, sofern er nicht `connectors` ist
+  (Helm).
+- **Skripte:** `trigger-connector.sh` ohne Node-RED-Pfad; `healthcheck.sh`
+  zählt nur noch die Logs des Konnektordienstes.
+- **Tests:** Generator- und Flow-Tests entfernt. Jede Invariante, die
+  Produktionsverhalten schützt, zeigt jetzt auf die portierten Module bzw.
+  deren Tests. Die alten Function-Nodes bleiben eingefroren in
+  `platform/connectors/test/fixtures/legacy-flows.json` und sind über die
+  Paritätstests weiter die Regressionssuite.
+- **Anforderungsabdeckung:** B.II.4 beschreibt Node-RED jetzt als
+  Low-Code-Werkzeug mit Beispielfluss, die Ingestion im Konnektordienst.
 
 ## Risiken und Vorabentscheidungen
 
@@ -447,11 +468,13 @@ trotzdem ändert. Sie gehören in den Vertrag, bevor die Agenten starten.
 
 ## Was am Ende verschwindet
 
-| Heute | Danach |
+Stand nach Phase 6: alles umgesetzt.
+
+| Vorher | Danach |
 |---|---|
 | `flows.json` — 442 KB, 367 Nodes | ~2 KB, 5 Nodes (Beispiel-Tab) |
-| `generate-nodered-flows.py` — 3.101 Zeilen | ~150 Zeilen, nur noch `connectors-status.json` |
-| CI-Drift-Check auf `flows.json` | entfällt |
+| `generate-nodered-flows.py` — 3.101 Zeilen | `export-connector-status.py`, ~50 Zeilen, nur noch `connectors-status.json` |
+| CI-Drift-Check auf `flows.json` | entfällt (Drift-Check nur noch auf den Status-Export) |
 | `node-red-udp` in Image-Matrix + Digest-Pinning | Upstream-Image `nodered/node-red:4.1` |
 | `functionExternalModules` + `pg` im Node-RED-Image | entfällt |
 | `nodePrefixes` in der Registry | entfällt — Trigger läuft über die id |

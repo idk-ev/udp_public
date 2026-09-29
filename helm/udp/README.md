@@ -37,7 +37,7 @@ helm/udp/
     ├── api-identity.yaml       # apisix + keycloak
     ├── catalog.yaml            # ckan + solr + redis (ckan.enabled)
     ├── geo.yaml                # geoserver (+ masterportal, optional)
-    ├── apps.yaml               # node-red + connectors + cockpit
+    ├── apps.yaml               # node-red (Upstream-Image) + connectors + cockpit
     ├── backup.yaml             # logische DB-Dumps (backup.enabled)
     ├── ingress.yaml
     ├── networkpolicy.yaml      # default-deny + segmentierte Freigaben
@@ -105,9 +105,11 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.extraModuleUrls` | `{}` | zusätzliche Ziele der Modul-Kacheln (z. B. Node-RED, Uptime Kuma aus `monitoring/`) |
 | `cockpit.tenants` | Standard/lkrt/lktue | Mandanten-Auswahl im Cockpit |
 | `cockpit.gatewayUpstream` | `""` | FQDN von APISIX für den nginx-Proxy im Cockpit (leer → `apisix.<ns>.svc.cluster.local:9080`) |
-| `cockpit.endpoints.abfahrten` / `.warnungen` | `nodered` | wer `/abfahrten` bzw. `/warnungen.ics` beantwortet: `nodered`, `connectors` oder `host:port` (Umschaltung, `docs/migration-konnektoren.md`) |
-| `connectors.enabled` | `true` | Konnektordienst (eine Replik, `Recreate`; läuft leer, solange kein Registry-Eintrag `"runtime": "app"` trägt) |
-| `connectors.image` | `udp-connectors` | Image des Konnektordienstes; mit `nodeRed.image` zusammen pinnen |
+| `cockpit.connectorsUpstream` | `""` | wer `/abfahrten` und `/warnungen.ics` beantwortet (leer → `connectors.<ns>.svc.cluster.local:1880`); `cockpit.endpoints` gibt es nicht mehr |
+| `connectors.enabled` | `true` | Konnektordienst: die Ingestion (eine Replik, `Recreate`) |
+| `connectors.image` | `udp-connectors` | Image des Konnektordienstes samt Registry |
+| `connectors.hystreetApiToken` / `.hystreetExistingSecret` | `""` | hystreet-Token bzw. vorhandenes Secret (Schlüssel `HYSTREET_API_TOKEN`); `nodeRed.hystreet*` wird weiter gelesen |
+| `nodeRed.image` | `nodered/node-red:4.1` | Upstream-Image; Beispielfluss und `settings.js` aus der ConfigMap `node-red-config` |
 | `connectors.dbHost` / `orionUrl` | `timescale` / `http://orion-ld:1026` | Ziele des Dienstes; DB-Zugang aus dem DB-Secret |
 | `ingress.clusterIssuer` | `letsencrypt` | cert-manager für TLS |
 | `networkPolicies.enabled` | `true` | Netzsegmentierung (CNI mit Policy nötig) |

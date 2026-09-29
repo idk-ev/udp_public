@@ -2,34 +2,44 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht — Konnektordienst im Betrieb
+## Unveröffentlicht — Ingestion im Konnektordienst
 
-Der Konnektordienst (`platform/connectors`) läuft in Compose und Helm neben
-Node-RED mit, übernimmt aber noch keinen Konnektor — das Verhalten der
-Plattform ändert sich nicht.
+Alle 29 Konnektoren laufen im Konnektordienst (`platform/connectors`,
+TypeScript) statt in generierten Node-RED-Flows. Node-RED bleibt als
+Low-Code-Baustein mit dem Beispielfluss.
 
-- **Umschaltung per Registry:** `"runtime": "app"` nimmt einen Konnektor aus
-  `flows.json` und übergibt ihn dem Dienst; der Status-Export trägt die
-  Laufzeit.
-- **Compose-Dienst `connectors`** und **Helm-Deployment `connectors`** (eine
-  Replik, `Recreate`, read-only). Für andere Dienste ist nur Port 1880
-  erreichbar — in Helm per NetworkPolicy nur vom Cockpit, in Compose von jedem
-  Container im Compose-Netz. Der Admin-Port 1881 lauscht in Compose nur auf
-  `127.0.0.1` im Container und steht in Helm in keinem Service.
-- **Cockpit:** `/abfahrten` und `/warnungen.ics` einzeln umschaltbar
-  (`UDP_ABFAHRTEN_UPSTREAM`/`UDP_WARNUNGEN_UPSTREAM`, Helm
-  `cockpit.endpoints`), Vorgabe Node-RED. Ein ungültiger Wert bricht den
-  Start bzw. das Rendern ab, statt still auf Node-RED zurückzufallen.
-- **Skripte:** `trigger-connector.sh` löst umgeschaltete Konnektoren im Dienst
-  aus, `healthcheck.sh` zählt dessen Logs mit und zeigt den Zustandsspeicher.
+> **Upgrade:** Helm – einen Digest-Pin von `node-red-udp` unter
+> `nodeRed.image` und `cockpit.endpoints` aus den eigenen Values entfernen
+> (das Chart bricht sonst mit einem Hinweis ab). Compose – `UDP_ABFAHRTEN_UPSTREAM`
+> und `UDP_WARNUNGEN_UPSTREAM` aus `platform/.env` streichen (werden ignoriert).
+
+- **Konnektordienst:** Compose-Dienst und Helm-Deployment `connectors` (eine
+  Replik, `Recreate`, read-only). Zustand (Signaturen, Prune-Buchführung) in
+  PostgreSQL, Schema `udp_connectors`. Port 1880 nur für das Cockpit, der
+  Admin-Port 1881 (`/healthz`, `/trigger`) nirgends veröffentlicht.
+- **Node-RED** auf dem Upstream-Image `nodered/node-red:4.1`, Beispielfluss
+  und `settings.js` in Helm aus einer ConfigMap; `node-red-udp` entfällt.
+  Keine Datenbank-, hystreet- oder Internet-Rechte mehr,
+  `functionExternalModules` aus.
+- **Cockpit:** `/abfahrten` und `/warnungen.ics` gehen an den Konnektordienst
+  (`UDP_CONNECTORS_UPSTREAM`, Helm `cockpit.connectorsUpstream`).
+- **Registry:** `runtime` und `nodePrefixes` entfallen; jeder aktive Eintrag
+  mit Modul läuft. `scripts/export-connector-status.py` ersetzt den
+  Flow-Generator und schreibt nur noch `connectors-status.json`.
+- **Helm:** hystreet-Token unter `connectors.hystreetApiToken` bzw.
+  `.hystreetExistingSecret` im Secret `udp-hystreet` (die Schlüssel unter
+  `nodeRed.` werden weiter gelesen).
+- **Image-Pipeline:** unveränderte Images behalten ihren Digest, das Chart
+  referenziert eigene Images nur per Digest – ein Release rollt die Datenbank
+  nicht mehr grundlos neu aus.
+- **Skripte:** `trigger-connector.sh` löst im Dienst aus, `healthcheck.sh`
+  zählt dessen Logs und zeigt den Zustandsspeicher.
+- Wetter und Vorhersage (Open-Meteo) alle 6 h statt 4 bzw. 2 h
+  (Tageskontingent); `troe-retention` mit Autovacuum-Schwellen und
+  `VACUUM (ANALYZE)`.
 - **Compose-Cockpit:** Entrypoint-Skripte werden eingebunden; `nginx -t`
   scheiterte vorher an `${UDP_REALIP_FROM}`. `UDP_TRUSTED_PROXIES` ist über
   `.env` einstellbar.
-- **Helm:** Der hystreet-Token liegt jetzt im Secret `udp-hystreet` (oder
-  `nodeRed.hystreetExistingSecret`) statt als Klartext-Env; die Values-Schlüssel
-  bleiben.
-- **Generator:** leere oder überlappende `nodePrefixes` brechen ab.
-- Image `udp-connectors` in der Image-Pipeline und im Digest-Pinning.
 
 ## 1.2.0 — Hochverfügbarkeit des öffentlichen Pfads, Datenqualität, Lastkapazität
 

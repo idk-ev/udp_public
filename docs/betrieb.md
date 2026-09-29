@@ -72,7 +72,7 @@ docker run --rm -e VUS=10 -e BASE=https://<host> \
   in jedem Voll-Dump erneut — längere Monats-Staffeln wären fast nur
   redundantes Volumen).
 - **Kontinuierlich**: WAL-Archivierung (PITR) für PostgreSQL; Volume-
-  Snapshots für MongoDB und Node-RED; Kopie in zweite Brandzone/Region
+  Snapshots für MongoDB; Kopie in zweite Brandzone/Region
   (3-2-1-Regel). Das Monitoring sichert sein `/app/data` (SQLite mit der
   Verfügbarkeitshistorie) im eigenen Deployment mit – s. `monitoring/`.
 - **Konfiguration**: vollständig im Git (GitOps) – Wiederaufbau des Clusters
@@ -87,7 +87,7 @@ docker run --rm -e VUS=10 -e BASE=https://<host> \
   ausgewertet (CVE-Feed).
 - Staging-Verprobung → Rolling Update in Produktion → automatischer Rollback
   bei fehlschlagender Readiness.
-- Plausibilitätsprüfungen: Node-RED-Validierungsflüsse und ML-basierte
+- Plausibilitätsprüfungen: Validierungsflüsse (Node-RED) und ML-basierte
   Anomalieerkennung der Fachanwendungen können als Module ergänzt werden;
   Basis-Plausibilisierung (Schema-Validierung NGSI-LD) erfolgt im Broker.
 
@@ -124,9 +124,9 @@ TimescaleDB fehlen die Zeilen; es gibt keinen Log-Eintrag:
 
 1. **Apostroph `'` in einem beliebigen String-Wert** (auch tief in
    Compound-Werten) bricht das SQL-Escaping. Gegenmaßnahme in allen
-   Node-RED-Ingestion-Flows: Freitextfelder externer Quellen mit
-   `s.replace(/'/g, '’')` sanitisieren (siehe `clean()`-Helfer in
-   `platform/config/nodered/flows.json`). Umlaute sind unkritisch.
+   Konnektoren: Freitextfelder externer Quellen laufen durch `clean()`
+   (`platform/connectors/src/kernel/ngsi.ts`, ersetzt `'` durch `’`); eigene
+   Node-RED-Flüsse müssen das selbst tun. Umlaute sind unkritisch.
 2. **Compound-Werte über ~2 KB** (JSON-serialisiert) werden verworfen
    (16 Objekte ≈ 1,9 KB ok, 20 ≈ 2,4 KB nicht). Gegenmaßnahme: Arrays
    kappen und lange Strings kürzen (Beispiel ÖPNV-Flow: max. 10
@@ -191,82 +191,106 @@ Die systemd-Unit ist unter `deploy/systemd/udp-stack.service` versioniert und
 wird beim Deployment mit dem tatsächlichen Pfad instanziiert; Änderungen daran
 gehören ins Repo, nicht direkt nach `~/.config/systemd/user/`.
 
-## Konnektoren und Node-RED-Neustarts
+## Konnektoren und Neustarts
 
-Inject-Nodes feuern standardmäßig beim Start (`once`), damit ein frisch
-aufgesetzter Stack sofort Daten hat. Für **seltene Quellen mit
-Anbieter-Limits** ist das schädlich — mehrere Neustarts hintereinander laufen
-in HTTP 429/504 (so geschehen 21.07. bei Overpass und Open-Meteo). Solche
-Konnektoren tragen in der Registry `"refireOnRestart": false` (aktuell
-`rathaus-bw`, `ausflug-bw`, `wetter-bw`, `vorhersage-bw`) und laufen
-ausschließlich nach Zeitplan. Open-Meteo kam am 21.07. durch mehrere
-Neustarts hintereinander auf HTTP 429 — je Lauf gehen acht Batch-Abfragen
-heraus.
+Der Konnektordienst startet jeden Konnektor kurz nach dem eigenen Start
+(gestaffelt, Endpunkt-Konnektoren sofort), damit ein frisch aufgesetzter Stack
+sofort Daten hat; danach zählt das Intervall ab diesem ersten Lauf. Für
+**seltene Quellen mit Anbieter-Limits** ist ein Lauf bei jedem Neustart
+schädlich — mehrere Neustarts hintereinander laufen in HTTP 429/504 (so
+geschehen 21.07. bei Overpass und Open-Meteo). Solche Konnektoren tragen in
+der Registry `"refireOnRestart": false` und laufen dann erst **10 Minuten**
+nach dem Start — verzögert, nicht ausgelassen: Ein Konnektor, der öfter neu
+gestartet wird, als sein Intervall lang ist, verhungerte sonst.
 
 Erstbefüllung oder Nachziehen nach Änderungen:
 
     bash scripts/trigger-connector.sh ausflug-bw
 
-Das Skript löst die Inject-Node über die Node-RED-Admin-API aus (ohne
-Neustart, ohne Deploy). Für Konnektoren mit `"runtime": "app"` geht es
-stattdessen an den Konnektordienst (s. unten).
+Das Skript löst den Konnektor im Konnektordienst aus, ohne Neustart
+(s. unten).
 
 ## Konnektordienst
 
-`platform/connectors` löst die generierten Node-RED-Flows konnektorweise ab
-(Plan und Stand: [`migration-konnektoren.md`](migration-konnektoren.md)). Der
-Dienst führt genau die Registry-Einträge mit `"runtime": "app"` aus; der
-Flow-Generator lässt dieselben Einträge aus `flows.json` fallen, ein Konnektor
-läuft also nie in beiden Laufzeiten. Solange kein Eintrag das Feld trägt,
-beantwortet der Dienst nur `/healthz` und baut keine Verbindung auf.
+`platform/connectors` (TypeScript) ist die Ingestion der Plattform: Er führt
+jeden aktiven Eintrag der Registry `platform/config/connectors.json` aus, für
+den ein Modul existiert, und beantwortet `/abfahrten` und `/warnungen.ics` für
+das Cockpit. Node-RED läuft daneben nur noch als Low-Code-Baustein mit einem
+Beispielfluss (s. unten; Geschichte der Ablösung:
+[`migration-konnektoren.md`](migration-konnektoren.md)).
 
 | | Compose | Kubernetes (Helm) |
 |---|---|---|
 | Dienst | Container `udp-connectors`, Image aus `platform/connectors/Dockerfile` | Deployment `connectors`, Image `udp-connectors` (`connectors.image`) |
-| Registry | `platform/config/connectors.json`, read-only eingebunden | im Image (wie die Flows im Node-RED-Image) |
+| Registry | `platform/config/connectors.json`, read-only eingebunden | im Image |
 | Port 1880 | nicht veröffentlicht, im Compose-Netz für alle Container erreichbar | Service `connectors:1880`, NetworkPolicy nur vom Cockpit |
 | Port 1881 | nur `127.0.0.1` im Container | in keinem Service, keine NetworkPolicy-Regel |
 
 - **Ports:** 1880 trägt nur die Endpunkte `/abfahrten` und `/warnungen.ics`,
-  die die Cockpit-nginx weiterreicht. Der Admin-Port 1881 (`/healthz`,
-  `/trigger/<id>`) wird nie veröffentlicht und von keinem Proxy
-  weitergereicht: Ein Trigger lässt den Dienst eine Quelle abrufen und nach
-  Orion schreiben. `/trigger` antwortet zusätzlich nur auf Loopback, wird also
-  im Container ausgelöst.
+  die die Cockpit-nginx weiterreicht (`UDP_CONNECTORS_UPSTREAM`, Helm
+  `cockpit.connectorsUpstream`, Vorgabe der Dienst `connectors`). Der
+  Admin-Port 1881 (`/healthz`, `/trigger/<id>`) wird nie veröffentlicht und
+  von keinem Proxy weitergereicht: Ein Trigger lässt den Dienst eine Quelle
+  abrufen und nach Orion schreiben. `/trigger` antwortet zusätzlich nur auf
+  Loopback, wird also im Container ausgelöst.
 - **Zustand:** Änderungssignaturen, Prune-Buchführung und persistierter
   Konnektorzustand liegen in der TimescaleDB, Datenbank `orion`, Schema
-  `udp_connectors` (Zugang wie Node-RED über `TROE_DB_*`). Das Schema legt der
-  Dienst beim ersten umgeschalteten Konnektor selbst an; der Datenbanknutzer
-  braucht dafür `CREATE` auf der Datenbank, sonst das Schema vorab anlegen. Ein
-  Volume braucht der Dienst nicht (Root-Dateisystem read-only).
+  `udp_connectors` (Zugang über `TROE_DB_*`, dieselben Zugangsdaten wie
+  Orion-LD). Das Schema legt der Dienst beim Start selbst an; der
+  Datenbanknutzer braucht dafür `CREATE` auf der Datenbank, sonst das Schema
+  vorab anlegen. Ein Volume braucht der Dienst nicht (Root-Dateisystem
+  read-only).
 - **Genau eine Instanz:** Ein Advisory-Lock macht die laufende Instanz zum
   einzigen Schreiber. Helm fest mit `replicas: 1` und `strategy: Recreate`;
   eine zweite Instanz führte nur die ungegateten Konnektoren aus — doppelt.
-- **Auslösen:** `bash scripts/trigger-connector.sh <id>` erkennt die Laufzeit
-  aus der Registry. Unter Compose läuft der Aufruf per
-  `docker exec udp-connectors`, in Kubernetes mit
+- **Auslösen:** `bash scripts/trigger-connector.sh <id>`. Unter Compose läuft
+  der Aufruf per `docker exec udp-connectors`, in Kubernetes mit
   `CONNECTORS_EXEC="kubectl -n <namespace> exec deploy/connectors --"`.
-  Antworten: 202 gestartet, 429 Sperrfrist (60 s) oder Lauf aktiv, 404 läuft
-  dort nicht.
+  Antworten: 202 gestartet, 429 Sperrfrist (60 s) oder Lauf aktiv, 404
+  unbekannt, inaktiv oder ohne Modul.
 - **Gesundheit:** `/healthz` (Admin-Port) meldet die eingeplanten Konnektoren,
   den Zustandsspeicher (`stateStore.healthy`, `reason`, `writer`) und den
   Geo-Kontext (`geo`: Gemeinden, Grenzen, `boundariesDegraded`, letzter
   Ladezeitpunkt und Fehler je Datei). Nicht gesund ist der Zustandsspeicher
   ohne Schreib-Lock, bei scheiterndem Laden oder Schreiben oder wenn ein
   Konnektor außerhalb eines laufenden Nachladens nicht geladen ist; `reason`
-  nennt dann den Grund. Nach einem Lock-Verlust (Datenbank-Switchover bei
-  jedem Release) lädt der Dienst alle Konnektoren sofort nach — die Sekunden,
-  in denen das läuft (`reloading`), zählen als gesund. Die Antwort bleibt
-  200, auch wenn die Datenbank klemmt — Liveness-Probe und Compose-Healthcheck
-  prüfen nur, ob der Prozess lebt; ein Neustart repariert keine Datenbank.
-  `scripts/healthcheck.sh` zeigt den Zustandsspeicher an und schlägt nur fehl,
-  wenn dort Konnektoren laufen und er nicht gesund ist.
+  nennt dann den Grund. Nach einem Lock-Verlust (Datenbank-Switchover) lädt
+  der Dienst alle Konnektoren sofort nach — die Sekunden, in denen das läuft
+  (`reloading`), zählen als gesund. Die Antwort bleibt 200, auch wenn die
+  Datenbank klemmt — Liveness-Probe und Compose-Healthcheck prüfen nur, ob der
+  Prozess lebt; ein Neustart repariert keine Datenbank.
+  `scripts/healthcheck.sh` zeigt den Zustandsspeicher an und schlägt fehl,
+  wenn er nicht gesund ist, `/healthz` nicht antwortet oder der Container
+  fehlt.
 - **Logs:** Zeilen `<Zeit> [warn] [udp-connectors:<konnektor>] …`;
-  `scripts/healthcheck.sh` zählt `[error]`/`[warn]` für Node-RED und den Dienst
-  getrennt und nennt die häufigsten Warnquellen.
+  `scripts/healthcheck.sh` zählt `[error]`/`[warn]` der letzten 70 Minuten
+  und nennt die häufigsten Warnquellen.
 - **Aktualisieren:** Unter Compose baut `deploy/deploy.sh` das Image bei jedem
-  Deployment neu; in Kubernetes kommt es aus der Image-Pipeline und wird mit
-  dem Node-RED-Image zusammen ausgerollt.
+  Deployment neu; eine Takt- oder Aktivierungsänderung in der Registry braucht
+  nur `docker compose restart connectors`. In Kubernetes kommt das Image
+  samt Registry aus der Image-Pipeline, per Digest im Chart gepinnt.
+- **Status-Export:** `scripts/export-connector-status.py` schreibt aus der
+  Registry `gui/public/connectors-status.json` (Hauptdashboard, Stadtseiten,
+  `healthcheck.sh`); `deploy/deploy.sh` ruft es auf, die CI prüft den Stand.
+
+## Node-RED
+
+Low-Code-Baustein (B.II.4) auf dem Upstream-Image `nodered/node-red` mit
+einem vorkonfigurierten Beispielfluss (`platform/config/nodered/flows.json`:
+NGSI-LD-Entität `WeatherObserved` → Upsert in Orion-LD alle 10 Minuten) und
+`settings.js`. Unter Compose sind beide Dateien aus dem Checkout eingebunden
+(Editor unter `WORKFLOW_PORT`, Vorgabe 4900; ein Deploy im Editor schreibt in
+den Checkout). Im Chart liefert die ConfigMap `node-red-config` dieselben
+Dateien (`helm/udp/files/nodered/`, ein statischer Test hält beide gleich); ein
+initContainer kopiert sie in ein `emptyDir` — was im Editor deployt wird,
+überlebt also keinen Pod-Neustart. Keine Ingress-Route: Der Editor ist per
+`kubectl port-forward` erreichbar.
+
+Node-RED bekommt keine Datenbank- und keine hystreet-Zugangsdaten, darf unter
+`strictEgress` nicht ins Internet (für eigene Flüsse mit externen Quellen
+`node-red` in `networkPolicies.internetEgress.components` aufnehmen) und
+lädt keine npm-Module für Function-Nodes nach
+(`functionExternalModules: false`).
 
 ## Zeitreihen-Retention (TRoE)
 
@@ -339,10 +363,10 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
 
 4. **Zeilenbudget je Entitätstyp.** Ein Konnektor kann in
    `platform/config/connectors.json` ein optionales `rowBudget24h`
-   (`{"ParkingSite": 25000, …}`) hinterlegen. Der Flow-Generator summiert die
-   Budgets aller Konnektoren und übergibt sie an die TRoE-Statistik
+   (`{"ParkingSite": 25000, …}`) hinterlegen. Der Konnektordienst summiert die
+   Budgets aller Konnektoren je Typ und übergibt sie an die TRoE-Statistik
    (`troe-stats`, alle 10 Minuten); wer sein Tagesvolumen überschreitet,
-   erscheint als Warnung im Node-RED-Log. Konnektoren ohne das Feld verhalten
+   erscheint als Warnung im Log des Konnektordienstes. Konnektoren ohne das Feld verhalten
    sich unverändert. Budgets sind grob das Doppelte des geschätzten
    Regelbetriebs und fangen nur Ausreißer: `EVChargingStation` 170.000
    (Frische ~49.000 + Änderungen ~35.000), `ChargingSummary` 80.000
@@ -352,14 +376,14 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
    Vollschrieb (z. B. ~125.000 Zeilen für die Ladepunkte) löst einmalig eine
    Warnung aus.
 5. **Lautes Scheitern statt stiller Lücken.** Der ParkAPI-Abruf prüft, ob sich
-   zwei Seiten überschneiden, und bricht den Lauf mit `node.error` ab, statt
+   zwei Seiten überschneiden, und bricht den Lauf mit einem Fehler ab, statt
    denselben Ausschnitt erneut zu schreiben; ein erreichter Seitendeckel
    erzeugt eine Warnung. Der Aufbauschritt vergleicht zusätzlich die Zahl der
    verschiedenen Entitäts-IDs mit der Zahl der Quelldatensätze und warnt bei
    unter 95 % — das ist die Signatur einer ID-Kollision.
 
 **Retention ist aktiv** (Sprint 1.6): Der Registry-Konnektor
-`troe-retention` löscht täglich 03:40 via Node-RED/pg aus `attributes` und
+`troe-retention` löscht täglich 03:40 per SQL aus `attributes` und
 `subattributes` (die kleine `entities`-Tabelle bleibt für Mintaka-Metadaten)
 und pflegt idempotente Indizes (`ts` sowie `(entityid, ts)` mit
 `text_pattern_ops` — Letzterer trägt die Mintaka-Temporalabfragen je Entität
@@ -405,7 +429,7 @@ sie nicht mehr von selbst weg. Zwei getrennte Aufräumschritte:
   keine Alt-Entität mehr, schaltet sich die Prüfung ab.
 
   Ein Wiederauftreten ist ausgeschlossen: Der Konnektor bildet IDs nur noch aus
-  dem ParkAPI-Schlüssel, und `tests/static/flow-invarianten.test.js` verbietet
+  dem ParkAPI-Schlüssel, und `tests/static/connector-invariants.test.js` verbietet
   Entitäts-IDs aus geslugtem Freitext.
 
 Zu beobachten: Der Plattenbedarf im eingeschwungenen Zustand wurde bei

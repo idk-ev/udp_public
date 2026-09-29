@@ -97,9 +97,9 @@ frei, abgelehnte Änderungen in einem eigenen Fork weiterzuführen.
 - **Eine Basis für alle:** Dashboards sind Filter auf die landesweite
   Ingestion — kein Dashboard bringt eigene Datenbeschaffung mit
   (`docs/staedte-hinzufuegen.md`).
-- **Konnektoren nur über die Registry** (`platform/config/connectors.json`
-  + `scripts/generate-nodered-flows.py`); `flows.json` wird generiert, nie
-  von Hand editiert.
+- **Konnektoren nur über die Registry** (`platform/config/connectors.json`)
+  plus ein Modul im Konnektordienst (`platform/connectors/src/connectors/`)
+  mit Test; Anleitung in `docs/staedte-hinzufuegen.md`.
 - **Keine Zugangsdaten im Repository.** Secrets gehören in `platform/.env`
   (ist in `.gitignore`) oder in ein Secret-Management. `.env.example` enthält
   bewusst nur leere Schlüssel.

@@ -1,33 +1,45 @@
 # UDP connector service
 
-Ingestion of the open data sources into NGSI-LD. Replaces the generated Node-RED
-flows step by step (`platform/config/nodered/flows.json`).
+Ingestion of the open data sources into NGSI-LD — every active entry of the
+registry `platform/config/connectors.json` that has a module here.
 
-**Status: phase 5 — all 29 connectors ported, deployable in Compose and Helm.**
-The kernel matches the current flow generator (strict municipality lookup, commit
-of change signatures after a confirmed upsert, pruning of stale entities);
-every connector is pinned by parity tests against its old function nodes.
-Nothing is switched over yet: the service runs next to Node-RED and all 29
-connectors keep running there until phase 4 sets `"runtime": "app"` per
-connector (see [Deployment](#deployment)). Change signatures, prune
-bookkeeping and persisted `ctx.state` live in PostgreSQL, so a restart does not
-rewrite every gated entity (see [State store](#state-store)).
+**Status: in production, all 29 connectors run here.** The migration from the
+generated Node-RED flows is complete (phase 6 of
+[`docs/migration-konnektoren.md`](../../docs/migration-konnektoren.md)):
+Node-RED stays as a low-code building block with an example flow, as B.II.4 of
+the service specification demands, and ingests nothing. Change signatures,
+prune bookkeeping and persisted `ctx.state` live in PostgreSQL, so a restart
+does not rewrite every gated entity (see [State store](#state-store)).
 
 ## Why
 
-The flows are a generated artifact: `scripts/generate-nodered-flows.py` writes
-4,768 lines of JavaScript into a 442 KB JSON file. The editor is not used — in
-Kubernetes there is deliberately no volume on `/data`, so a change made in the
-editor does not survive the next pod restart. That makes Node-RED a JSON
-interpreter here, not a low-code environment, and it is paid for with a lack of
-testability: the ParkAPI incident of 24.08.2026 ran unnoticed for a month,
-because logic inside a string cannot be checked with a fixture.
+The flows were a generated artifact: a Python generator wrote 4,768 lines of
+JavaScript into a 442 KB JSON file. The editor was not used — in Kubernetes
+there was deliberately no volume on `/data`, so a change made in the editor did
+not survive the next pod restart. That made Node-RED a JSON interpreter, not a
+low-code environment, paid for with a lack of testability: the ParkAPI
+incident of 24.08.2026 ran unnoticed for a month, because logic inside a string
+cannot be checked with a fixture.
 
-Node-RED **stays** — as a low-code building block with the example tab, as
-B.II.4 of the service specification demands. Only the ingestion moves out.
+**History in the code.** Module headers cite the old nodes by id
+(`udp-rt-bp-build`, `FN_PARK_FETCH`, …) and the generator
+`scripts/generate-nodered-flows.py`, removed in phase 6 (its last version is in
+the git history). The old function nodes themselves are frozen in
+`test/fixtures/legacy-flows.json`; the parity tests run them in `node:vm`
+against the same fixtures as the modules, so they stay the regression suite.
 
-The full migration plan with phases and work split is in
-[`docs/migration-konnektoren.md`](../../docs/migration-konnektoren.md).
+## Adding a connector
+
+1. Registry entry in `platform/config/connectors.json` (id, cadence, scope,
+   monitoring fields; `docs/staedte-hinzufuegen.md` lists them).
+2. A module `src/connectors/<id>.ts` against the contract below — `parse`,
+   pure `build`, `run(ctx)` — and one line in `src/connectors/index.ts`.
+   `test/parity/registry.test.ts` fails while registry and modules disagree.
+3. A test in `test/parity/<id>.test.ts` with a recorded, trimmed fixture in
+   `test/fixtures/`: a unit test of `build` and `run` (new connectors have no
+   old node to compare against; the ported ones keep their parity tests).
+4. `scripts/export-connector-status.py` for the dashboards' status export,
+   then build, lint and `node ../../tests/run.js`.
 
 ## Layout
 
@@ -79,12 +91,12 @@ flows learned the hard way:
   still empty), it loads `bw-gemeinden.json` and `bw-grenzen.json` from the
   cockpit (`UDP_MUNICIPALITIES_URL` / `UDP_BOUNDARIES_URL` override) with the
   parsers of `stammdaten-bw` and `grenzen-bw` — so the geo-dependent
-  connectors run here while those two still run in Node-RED. It writes
-  nothing to Orion, runs only with at least one `runtime: "app"` connector,
-  keeps the previous context on a failed load (one `[warn]` per failure
-  streak) and keeps a degraded boundary file degraded (no prune). When the two
-  connectors run here as well they fill the same context from the same files;
-  last write wins. `/healthz` reports it under `geo`.
+  connectors do not wait for those two connectors' schedules. It writes
+  nothing to Orion, runs only with at least one scheduled connector, keeps the
+  previous context on a failed load (one `[warn]` per failure streak) and
+  keeps a degraded boundary file degraded (no prune). The two connectors fill
+  the same context from the same files; last write wins. `/healthz` reports it
+  under `geo`.
 - **Change gate:** `ctx.gate.check(...)` returns an `UpsertPlan` whose new
   signatures are only *pending*; `ctx.orion.upsert(plan)` commits them for the
   ids the broker confirmed (2xx, or per entity on 207). Storing them before
@@ -156,7 +168,7 @@ The rest of the ctx, added in phase 3b where the ports pinched:
   without one is a process-lifetime cache for what the next run rebuilds
   anyway (stop directory, station cache).
 - **`ctx.rowBudget`** — `rowBudget24h` of every registry entry summed per
-  type (`ROW_BUDGET` of the generator), for `troe-stats`.
+  type, for `troe-stats`.
 - **`ctx.entry`** carries what connectors read from the registry, including
   `sensorDetailFor`; use `ctx.intervalMs()` rather than copying an interval.
 - **Rate limiting** — `FetchOptions.minIntervalMs` spaces starts per host,
@@ -170,10 +182,9 @@ The rest of the ctx, added in phase 3b where the ports pinched:
 
 The change gate's signature tables, the prune bookkeeping (interval
 bookkeeping, confirmation tables, master data reference) and every `ctx.state`
-key declared with a codec are persisted per connector in PostgreSQL. Under
-Compose Node-RED kept all of this on a volume; a process that forgets it writes
-every gated entity in full on its next run (~400k TRoE rows per restart,
-`parken-bw` alone ~230k).
+key declared with a codec are persisted per connector in PostgreSQL. A process
+that forgets them writes every gated entity in full on its next run (~400k
+TRoE rows per restart, `parken-bw` alone ~230k).
 
 - **Where:** the TimescaleDB of `ctx.db` (same `TROE_DB_HOST`, `TROE_DB_USER`,
   `TROE_DB_PASSWORD`, database `orion`), schema `udp_connectors`, never Orion's
@@ -195,8 +206,8 @@ every gated entity in full on its next run (~400k TRoE rows per restart,
   in flight). While a connector's state is not loaded, the change gate and
   persisted state keys throw and the run is skipped with a `[warn]`; prunes
   are skipped with a `[warn]` and touch no bookkeeping; a gated upsert is not
-  sent. Connectors that use none of it run normally. No connector on
-  `runtime: "app"` = no connection at all.
+  sent. Connectors that use none of it run normally. No scheduled connector
+  = no connection at all.
 - **Write-through.** A signature dropped in memory is persisted *before* the
   upsert goes out; if that fails, a gated upsert is not sent. A committed
   signature is persisted after the broker confirmed it, per chunk. The
@@ -216,9 +227,8 @@ every gated entity in full on its next run (~400k TRoE rows per restart,
   queued in the reload after startup or a lock change (seconds) does not flip
   it. `reason` is set exactly when `healthy` is false. It stays 200:
   restarting does not fix a database.
-- **Cutover:** a connector switched to `runtime: "app"` has no signatures in
-  the store yet, so its first run writes in full once — as a fresh Node-RED
-  would. A one-time cost per connector, not per restart.
+- **New connector:** it has no signatures in the store yet, so its first run
+  writes in full once. A one-time cost per connector, not per restart.
 
 ## Ports
 
@@ -266,8 +276,8 @@ Consequences:
 | health | Compose healthcheck: `/healthz` inside the container | startup/liveness `/healthz`, readiness TCP 1880 |
 
 Liveness never looks at `stateStore.healthy`. The cockpit reaches the two
-endpoints through `UDP_ABFAHRTEN_UPSTREAM` / `UDP_WARNUNGEN_UPSTREAM` (Helm:
-`cockpit.endpoints`), which default to Node-RED. Operations:
+endpoints through `UDP_CONNECTORS_UPSTREAM` (default `connectors:1880`; Helm:
+`cockpit.connectorsUpstream`, default the `connectors` Service). Operations:
 [`docs/betrieb.md`](../../docs/betrieb.md), section "Konnektordienst".
 
 ## Developing
@@ -317,21 +327,10 @@ For ports there is one more rule: types in the kernel are not touched. If the
 contract pinches, that is a report to the review — not a detour inside your own
 module.
 
-## Switching over per connector
+## Registry fields of the migration
 
-A connector is rehooked via the registry, not via a code path:
-
-```json
-{ "id": "troe-stats", "runtime": "app" }
-```
-
-`generate-nodered-flows.py` drops switched-over connectors from `flows.json`
-(`tests/static/connector-runtime.test.js`), and this service picks up exactly
-those. If the field is missing, `"nodered"` still applies; any other value
-stops the generator and the service. Roll out Node-RED and this service
-together; for `abfahrten-on-demand` and `warnungen-bw` also point the cockpit's
-endpoint upstream here. The way back: turn the field back, run the generator,
-roll out again (steps: `docs/migration-konnektoren.md`, phase 4).
-
-`scripts/healthcheck.sh` does not need to be touched for this — it measures the
-freshness of the entities in Orion, not the runtime that wrote them.
+`runtime` and `nodePrefixes` decided, during the migration, which runtime ran a
+connector and which generated nodes belonged to it. Both are gone from the
+registry; the guard in `src/kernel/registry.ts` ignores them like any other
+field it does not read, so a fork that still carries them loses nothing —
+every active entry runs here.
