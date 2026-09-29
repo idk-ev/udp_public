@@ -225,21 +225,27 @@ export function createCtx(kernel: Kernel, entry: RegistryEntry): Ctx {
  */
 export async function runConnector(kernel: Kernel, ctx: Ctx, runner: ConnectorRunner): Promise<void> {
   const persistence = kernel.persistence;
-  if (persistence !== undefined) {
-    const ready = await persistence.prepare(ctx.id);
-    const reason = persistence.connectorReason(ctx.id);
-    if (!ready && persistence.needsState(ctx.id)) {
-      ctx.log.warn(`run skipped, state store not usable (${reason}) — retried on the next run`);
-      return;
-    }
-  }
+  // From here to the end no background reload swaps this connector's state.
+  persistence?.runStarted(ctx.id);
   try {
-    await runner.run(ctx);
-  } catch (error) {
-    if (!(error instanceof StateUnavailableError)) throw error;
-    ctx.log.warn(`run skipped, ${error.message} — retried on the next run`);
+    if (persistence !== undefined) {
+      const ready = await persistence.prepare(ctx.id);
+      const reason = persistence.connectorReason(ctx.id);
+      if (!ready && persistence.needsState(ctx.id)) {
+        ctx.log.warn(`run skipped, state store not usable (${reason}) — retried on the next run`);
+        return;
+      }
+    }
+    try {
+      await runner.run(ctx);
+    } catch (error) {
+      if (!(error instanceof StateUnavailableError)) throw error;
+      ctx.log.warn(`run skipped, ${error.message} — retried on the next run`);
+    } finally {
+      // Also after a failed run: what the broker confirmed is committed.
+      if (persistence !== undefined) await persistence.flush(ctx.id);
+    }
   } finally {
-    // Also after a failed run: what the broker confirmed is committed.
-    if (persistence !== undefined) await persistence.flush(ctx.id);
+    persistence?.runEnded(ctx.id);
   }
 }

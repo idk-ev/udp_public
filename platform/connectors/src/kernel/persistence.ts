@@ -58,7 +58,10 @@
  *    runs no connector that needs its state; it retries, and takes over (with
  *    a fresh load) once the other instance is gone. Losing the lock
  *    connection unloads every connector; once the lock is back, all of them
- *    are reloaded at once, not each before its next run.
+ *    are reloaded at once, not each before its next run — except a
+ *    connector whose run is under way: its state is never swapped in the
+ *    middle of a run. It is loaded when that run ends (or by its next
+ *    `prepare()`).
  *
  * Prune bookkeeping and state values are written when they change (a state
  * key changed in place, a `Map`, is caught by the write at the end of every
@@ -218,6 +221,8 @@ export class Persistence {
   /** The running reload of every connector, see {@link reloadAll}. */
   #reloading: Promise<void> | null = null;
   #reloadRequested = false;
+  /** Connectors a reload passed over because their run was under way. */
+  readonly #deferred = new Set<ConnectorId>();
   /** Cancels the pending retry of failed loads. */
   #cancelRetry: (() => void) | null = null;
 
@@ -274,6 +279,20 @@ export class Persistence {
     return connector.ensureLoaded();
   }
 
+  /** A run of `id` begins: from now until {@link runEnded} no reload touches its state. */
+  runStarted(id: ConnectorId): void {
+    this.#connectors.get(id)?.runStarted();
+  }
+
+  /** The run of `id` is over; a reload that passed it over loads it now. */
+  runEnded(id: ConnectorId): void {
+    const connector = this.#connectors.get(id);
+    if (connector === undefined) return;
+    connector.runEnded();
+    if (connector.running || !this.#deferred.delete(id)) return;
+    if (this.writable() && !connector.loaded) void this.reloadAll();
+  }
+
   /** Startup: the writer lock once, then every bound connector's load (awaited). */
   async prepareAll(): Promise<void> {
     if (!(await this.#ensureWriter())) return;
@@ -288,8 +307,10 @@ export class Persistence {
    * {@link RETRY_AFTER_MS}. Started whenever the writer lock is taken — at
    * startup and after a lock change (a database switchover) — so that no
    * connector waits for its next run, which for some is twelve hours away.
-   * One reload at a time; a request while one runs makes it go round once
-   * more. Never throws.
+   * A connector whose run is under way is passed over: a run must not get its
+   * state swapped underneath it. {@link runEnded} (or its next `prepare()`)
+   * loads it. One reload at a time; a request while one runs makes it go
+   * round once more. Never throws.
    */
   reloadAll(): Promise<void> {
     this.#reloadRequested = true;
@@ -306,6 +327,11 @@ export class Persistence {
         for (const connector of this.#connectors.values()) {
           // The lock went again: taking it back requests the next pass.
           if (!this.writable()) break;
+          if (connector.running) {
+            if (!connector.loaded) this.#deferred.add(connector.id);
+            continue;
+          }
+          this.#deferred.delete(connector.id);
           await connector.ensureLoaded();
         }
       }
@@ -402,8 +428,10 @@ export class Persistence {
       const ids = failing.map((c) => c.id).join(", ");
       return `state writes failing: ${ids} (${firstWrite.failure ?? "unknown"})`;
     }
-    // Merely queued in the running reload: loaded within seconds, no problem.
-    if (notLoaded.length > 0 && !reloading) return `state not loaded: ${notLoaded.join(", ")}`;
+    // Merely queued in the running reload, or passed over while its run is
+    // under way (loaded when it ends): no problem.
+    const waiting = notLoaded.filter((id) => !this.#deferred.has(id));
+    if (waiting.length > 0 && !reloading) return `state not loaded: ${waiting.join(", ")}`;
     return null;
   }
 
@@ -492,6 +520,8 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
   #epoch = 0;
   #flushQueued = false;
   #queue: Promise<unknown> = Promise.resolve();
+  /** Runs under way (the scheduler never overlaps them; a manual trigger is refused meanwhile). */
+  #runs = 0;
 
   constructor(owner: Persistence, id: ConnectorId, binding: ConnectorBinding) {
     this.#owner = owner;
@@ -516,6 +546,19 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
 
   get loaded(): boolean {
     return this.#loaded;
+  }
+
+  /** A run of this connector is under way. */
+  get running(): boolean {
+    return this.#runs > 0;
+  }
+
+  runStarted(): void {
+    this.#runs += 1;
+  }
+
+  runEnded(): void {
+    this.#runs = Math.max(0, this.#runs - 1);
   }
 
   get failing(): boolean {

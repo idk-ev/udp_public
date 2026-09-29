@@ -871,3 +871,50 @@ export async function runRacingTheReloadWaitsForItsState(): Promise<void> {
   const done = persistence.health();
   assert.deepEqual([done.healthy, done.reloading, done.notLoaded], [true, false, []]);
 }
+
+/**
+ * A lock change while a run is under way: the eager reload passes that
+ * connector over — its state is never swapped in the middle of a run — and
+ * loads it the moment the run ends. Meanwhile the store counts as healthy.
+ */
+export async function reloadPassesOverARunningConnector(): Promise<void> {
+  const { db, service } = await afterOneGatedRun();
+  const persistence = service.kernel.persistence;
+  assert.ok(persistence !== undefined);
+
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let runsAtStart = -1;
+  const slow: ConnectorRunner = {
+    id: "gated",
+    run: async (ctx) => {
+      runsAtStart = ctx.state.slot(RUNS).get();
+      await held;
+    },
+  };
+  const running = runConnector(service.kernel, service.gated, slow);
+  await settle();
+  assert.equal(runsAtStart, 1, "the run started on its loaded state");
+
+  db.loads.length = 0;
+  service.backend.switchover();
+  await runConnector(service.kernel, service.plain, plainConnector);
+  await settle();
+  assert.deepEqual(db.loads, ["plain"], "the running connector was not reloaded underneath its run");
+  const during = persistence.health();
+  assert.deepEqual(
+    [during.healthy, during.reason, during.reloading, during.notLoaded],
+    [true, null, false, ["gated"]],
+    "passed over while running: healthy, loaded when the run ends",
+  );
+
+  release();
+  await running;
+  await settle();
+  assert.deepEqual(db.loads, ["plain", "gated"], "loaded once its run was over");
+  const after = persistence.health();
+  assert.deepEqual([after.healthy, after.notLoaded], [true, []]);
+  assert.deepEqual(after.loaded, ["gated", "plain"]);
+}
