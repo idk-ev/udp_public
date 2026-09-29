@@ -51,7 +51,13 @@ import type { HttpResponse, RouteRequest, UpsertPlan } from "../../src/kernel/ty
 import { readFixture } from "../harness/fixtures.js";
 import { httpResponse, recordingLog } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { messagesOf, payloadOf, runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 import { fullGeo, legacyChunks, rig, upsertBodies } from "../harness/water-warnings-rig.js";
@@ -286,7 +292,9 @@ async function runWritesWhatTheOldChainBuilt(): Promise<void> {
   const rows = parseMunicipalities(readFixture("stammdaten-bw").payload).gemeinden;
   const responses = withDwdAlerts(recorded());
   const r = rig("warnungen-bw", responder(rows, responses));
+  const portClock = openClock();
   await run(r.ctx);
+  const portWindow = portClock.close();
 
   // Old chain on the same responses, in request order (the scripted source
   // answers at once, so arrival order is request order).
@@ -297,9 +305,13 @@ async function runWritesWhatTheOldChainBuilt(): Promise<void> {
     assert.ok(response !== undefined);
     return response;
   });
-  const legacy = await runLegacyBuild(await legacyJoin(inOrder));
+  const joined = await legacyJoin(inOrder);
+  const legacyClock = openClock();
+  const legacy = await runLegacyBuild(joined);
+  const legacyWindow = legacyClock.close();
   const bodies = upsertBodies(r.seen);
   assertEntitiesEqual(legacy.entities, bodies.flat());
+  assertClockStamps(legacy.entities, bodies.flat(), { legacy: legacyWindow, ported: portWindow });
   assert.equal(bodies.flat().length, 20, "10 districts of the fixture, DWD and NINA");
   // The fan-out asked for exactly the old URLs, then wrote once.
   const sourceRequests = r.seen

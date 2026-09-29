@@ -40,7 +40,15 @@ import type { RawGeo } from "../harness/air-energy-kernel.js";
 import { readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, httpResponse } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import type { ClockWindow } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
+import { assertPruneSettings, legacyPruneSettings, recordPrunes } from "../harness/prune-settings.js";
 import { messagesOf, runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 
@@ -86,6 +94,8 @@ interface Sides {
   readonly portSeen: SeenRequest[];
   readonly portWarnings: string[];
   readonly portStatus: string[];
+  readonly legacyWindow: ClockWindow;
+  readonly portWindow: ClockWindow;
 }
 
 async function bothSides(
@@ -99,6 +109,7 @@ async function bothSides(
   const geo = options.geo ?? fixtureGeo();
   const legacyBroker = source.clone();
   const legacySeen: SeenRequest[] = [];
+  const legacyClock = openClock();
   const legacy = await runFunctionNode(NODE_ID, {
     msg: { _msgid: "parity", payload: Date.now() },
     global: legacyGlobal(geo),
@@ -110,6 +121,7 @@ async function bothSides(
       }),
     },
   });
+  const legacyWindow = legacyClock.close();
   const portBroker = source.clone();
   const { ctx, log, seen } = testCtx(
     "puls-bw",
@@ -117,7 +129,9 @@ async function bothSides(
     portBroker.respond,
     options.store === undefined ? {} : { store: options.store },
   );
+  const portClock = openClock();
   await run(ctx);
+  const portWindow = portClock.close();
   return {
     legacy,
     legacySeen,
@@ -125,12 +139,20 @@ async function bothSides(
     portSeen: seen,
     portWarnings: log.warnings(),
     portStatus: log.lines.filter((line) => line.level === "status").map((line) => line.text),
+    legacyWindow,
+    portWindow,
   };
 }
 
 function assertSame(sides: Sides, label: string): void {
   assert.deepEqual(sides.portWarnings, [...sides.legacy.warnings], `${label}: warnings differ`);
   assertEntitiesEqual(legacyEntities(sides.legacy), sides.portBroker.upserts.flat());
+  if (legacyEntities(sides.legacy).length > 0) {
+    assertClockStamps(legacyEntities(sides.legacy), sides.portBroker.upserts.flat(), {
+      legacy: sides.legacyWindow,
+      ported: sides.portWindow,
+    });
+  }
   assert.deepEqual(
     legacyChunkSizes(sides.legacy),
     sides.portBroker.upserts.map((body) => body.length),
@@ -138,11 +160,7 @@ function assertSame(sides: Sides, label: string): void {
   );
   // Same queries: the listing parameters, decoded (the kernel escapes the commas of `attrs`).
   const legacyQueries = Broker.listings(sides.legacySeen);
-  assert.deepEqual(
-    Broker.listings(sides.portSeen).slice(0, legacyQueries.length),
-    legacyQueries,
-    `${label}: queries differ`,
-  );
+  assert.deepEqual(Broker.listings(sides.portSeen), legacyQueries, `${label}: queries differ`);
 }
 
 /** The old status line: `N Gemeinden mit Puls · M unter 3 Komponenten[ · Baustellen-Feed ohne aktuelle Daten]`. */
@@ -409,6 +427,10 @@ async function pruneOfDroppedPulses(): Promise<void> {
       dateObserved: old,
     });
   }
+  // Same type, stale, written by someone else: the broker ignores idPattern
+  // on a prune's listing, so only the local id re-check keeps it.
+  const foreign = "urn:ngsi-ld:CityPulse:reutlingen-puls";
+  source.add({ id: foreign, type: "CityPulse", dateObserved: old });
 
   const legacyBroker = source.clone();
   let flow: Record<string, unknown> = {};
@@ -429,17 +451,23 @@ async function pruneOfDroppedPulses(): Promise<void> {
   }
 
   const portBroker = source.clone();
-  const { ctx, log } = testCtx("puls-bw", sharedGeo(geo), portBroker.respond);
+  const port = testCtx("puls-bw", sharedGeo(geo), portBroker.respond);
+  const { log } = port;
+  const recorded = recordPrunes(port.ctx);
+  const { ctx } = recorded;
   const portDeletes: number[] = [];
   for (let i = 0; i < 2; i += 1) {
     await run(ctx);
     portDeletes.push(portBroker.deletes.flat().length);
   }
   assert.deepEqual(portDeletes, [0, 3], "armed in the first run, deleting in the second");
+  assertPruneSettings("puls-bw", legacyPruneSettings(NODE_ID), recorded.calls, ctx);
   assert.deepEqual(portDeletes, legacyDeletes);
   assert.deepEqual(portBroker.deletes.flat().sort(), legacyBroker.deletes.flat().sort());
   assert.deepEqual(log.warnings(), []);
   assert.ok(portBroker.entities.has("urn:ngsi-ld:CityPulse:bw-08311000"), "a pulse of this run was deleted");
+  assert.ok(portBroker.entities.has(foreign), "port: a foreign pulse was deleted");
+  assert.ok(legacyBroker.entities.has(foreign), "old: a foreign pulse was deleted");
 }
 
 async function unknownResponseForRouting(): Promise<void> {

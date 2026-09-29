@@ -324,3 +324,8 @@ export function flowTable(flow: ReadonlyMap<string, unknown>, key: string): Reco
   const table = flow.get(key);
   return isRecord(table) ? { ...table } : {};
 }
+
+/** The options of every `ctx.prune.stale` call of the port, in order. */
+export function staleOptions(world: MobilityWorld): PruneOptions[] {
+  return world.pruneCalls.flatMap((call) => (call.options === undefined ? [] : [call.options]));
+}

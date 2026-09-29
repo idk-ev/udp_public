@@ -43,7 +43,13 @@ import { isArray } from "../../src/kernel/parse.js";
 import { loadRegistry, resolveRegistryPath, sumRowBudgets } from "../../src/kernel/registry.js";
 import type { RowBudget } from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { testCtx, upsertedEntities } from "../harness/operations-ctx.js";
 import type { TestCtx } from "../harness/operations-ctx.js";
 import { fakePgModule, scriptedDb } from "../harness/operations-pg.js";
@@ -185,8 +191,12 @@ function legacyEntities(legacy: Legacy): unknown[] {
 
 async function fixtureRunIsIdentical(): Promise<void> {
   const s = scenario();
+  const legacyClock = openClock();
   const legacy = await runLegacy(s);
+  const legacyWindow = legacyClock.close();
+  const portClock = openClock();
   const ported = await runPorted(s);
+  const portWindow = portClock.close();
   assert.equal(ported.failure, null);
   assertSameConversation(legacy, ported);
   assert.equal(ported.db.calls.length, 5, "busy, base, window, to_regclass, totals");
@@ -195,6 +205,7 @@ async function fixtureRunIsIdentical(): Promise<void> {
   assert.equal(old.length, 1);
   // What reached Orion (after JSON) against what the old node handed its upsert node.
   assertEntitiesEqual(JSON.parse(JSON.stringify(old)), upsertedEntities(ported.t.seen));
+  assertClockStamps(old, upsertedEntities(ported.t.seen), { legacy: legacyWindow, ported: portWindow });
   // And the pure build() before serialisation.
   const input = parse({
     base: s.base,

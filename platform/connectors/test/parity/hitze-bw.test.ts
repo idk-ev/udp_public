@@ -18,7 +18,13 @@
 import assert from "node:assert/strict";
 import { build, parse, run, slugOf, type HeatHealthWarningEntity } from "../../src/connectors/hitze-bw.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { evaluateSnippet, extractSnippet, runFunctionNode, solePayload } from "../harness/vm-runner.js";
 import { jsonAnswer, upsertedBatches, weatherCtx, weatherFetcher } from "../harness/weather-ctx.js";
 
@@ -88,6 +94,33 @@ async function levelBranchesMatch(): Promise<void> {
   );
 }
 
+async function hochDecidesTheRank(): Promise<void> {
+  // Test input: "hoch" against "mittel" on either day, so the rank of "hoch"
+  // alone decides maxRank — above, "extrem" always outranks it.
+  for (const [today, tomorrow] of [
+    ["hoch", "mittel"],
+    ["mittel", "hoch"],
+  ] as const) {
+    const payload = structuredClone(readFixture(FIXTURE).payload);
+    assert.ok(isRecord(payload) && Array.isArray(payload.content));
+    const mannheim: unknown = payload.content.find(
+      (item: unknown) => isRecord(item) && item.city === "Mannheim",
+    );
+    assert.ok(isRecord(mannheim));
+    mannheim.forecast = { today_15MEZ: today, tomorrow_15MEZ: tomorrow };
+
+    const legacy = await legacyOn(payload);
+    const entities = ported(payload);
+    assertEntitiesEqual(solePayload(legacy), entities);
+    const entity = entities.find((candidate) => candidate.id === "urn:ngsi-ld:HeatHealthWarning:bw-mannheim");
+    assert.ok(entity !== undefined);
+    assert.deepEqual(
+      [entity.todayLevel.value, entity.tomorrowLevel.value, entity.maxRank.value],
+      [today, tomorrow, 3],
+    );
+  }
+}
+
 function slugMatchesTheOldExpression(): void {
   // The old node only slugs the five mapped cities, so the expression is cut
   // out of it and run on cities that stress it (umlauts, blanks, hyphens).
@@ -113,18 +146,23 @@ function slugMatchesTheOldExpression(): void {
 
 async function runWritesTheEntitiesOfTheOldNode(): Promise<void> {
   const fixture = readFixture(FIXTURE);
+  const legacyClock = openClock();
   const legacy = solePayload(await legacyOn(fixture.payload));
+  const legacyWindow = legacyClock.close();
   const network = weatherFetcher((call) =>
     call.method === "POST"
       ? { response: { status: 204, ok: true, headers: {}, body: "" } }
       : jsonAnswer(200, fixture.payload),
   );
   const { ctx, log } = weatherCtx("hitze-bw", network.fetcher);
+  const portClock = openClock();
   await run(ctx);
+  const portWindow = portClock.close();
   assert.equal(network.seen[0]?.url, fixture.source);
   const upserts = upsertedBatches(network.seen);
   assert.equal(upserts.length, 1);
   assertEntitiesEqual(legacy, upserts[0]);
+  assertClockStamps(legacy, upserts[0], { legacy: legacyWindow, ported: portWindow });
   assert.deepEqual(log.warnings(), []);
 }
 
@@ -205,6 +243,7 @@ async function aDriftedCoordinateFailsTheComparison(): Promise<void> {
 export {
   fixtureIsIdentical as "hitze-bw: old FN_HITZE and ported build() produce identical entities on the recorded DWD answer",
   levelBranchesMatch as "hitze-bw: missing forecast, empty and unknown levels and the rank maximum match the old node",
+  hochDecidesTheRank as 'hitze-bw: "hoch" against "mittel" on either day ranks 3, as in the old node',
   slugMatchesTheOldExpression as "hitze-bw: slugOf() is the old slug expression; only BW cities are emitted",
   runWritesTheEntitiesOfTheOldNode as "hitze-bw: run() upserts what the old node emitted, in one request",
   unusableAnswersWarnOnBothSides as "hitze-bw: HTTP error, missing content and no BW city warn and write nothing on both sides",

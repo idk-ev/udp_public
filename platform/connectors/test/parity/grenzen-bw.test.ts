@@ -16,10 +16,13 @@
  */
 
 import assert from "node:assert/strict";
-import { build, parse } from "../../src/connectors/grenzen-bw.js";
+import { build, DEFAULT_URL, parse, run } from "../../src/connectors/grenzen-bw.js";
+import type { BoundarySet } from "../../src/kernel/types.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { isRecord, normalize } from "../harness/normalize.js";
 import { runFunctionNode } from "../harness/vm-runner.js";
+import { jsonAnswer, weatherCtx, weatherFetcher } from "../harness/weather-ctx.js";
+import type { ScriptedAnswer } from "../harness/weather-ctx.js";
 
 const NODE_ID = "udp-rt-bgr-fn";
 const FIXTURE = "grenzen-bw";
@@ -70,7 +73,42 @@ function brokenEntriesAreDroppedAndCounted(): void {
   assert.equal(Object.keys(file.boundaries).length, 167);
 }
 
+async function runFillsTheGeoContextAndA404KeepsIt(): Promise<void> {
+  const fixture = readFixture(FIXTURE);
+  const legacy = await runFunctionNode(NODE_ID, { msg: messageFromFixture(fixture) });
+
+  let answer: ScriptedAnswer = jsonAnswer(200, fixture.payload);
+  const network = weatherFetcher((call) =>
+    call.url === DEFAULT_URL ? answer : { response: new Error(`unexpected call ${call.url}`) },
+  );
+  const { ctx, kernel, log } = weatherCtx("grenzen-bw", network.fetcher);
+  // Read through a function: a narrowing assert on the getter would stick.
+  const context = (): BoundarySet | null => kernel.geo.boundaries;
+  assert.equal(context(), null);
+
+  await run(ctx);
+  assert.deepEqual(log.warnings(), []);
+  const filled = context();
+  assert.ok(filled !== null, "run() did not set the boundaries");
+  assert.deepEqual(normalize(filled), normalize(legacy.global.get("bwGrenzen")), "geo context differs");
+  assert.equal(Object.keys(filled).length, 167);
+  assert.equal(kernel.geo.boundariesDegraded, false);
+  // Nothing goes to Orion: the boundaries are context only.
+  assert.deepEqual(
+    network.seen.map((call) => call.url),
+    [DEFAULT_URL],
+  );
+
+  // HTTP 404: warned, the previous boundaries stay — as the old node returned
+  // before global.set (see unreadableResponseLeavesCacheAlone).
+  answer = jsonAnswer(404, "not found");
+  await run(ctx);
+  assert.equal(context(), filled, "a 404 replaced the boundaries");
+  assert.match(log.warnings().at(-1) ?? "", /bw-grenzen\.json not loadable \(HTTP 404\)/);
+}
+
 export {
+  runFillsTheGeoContextAndA404KeepsIt as "grenzen-bw: run() puts the old node's boundary set into the geo context; a 404 keeps it",
   boundaryCacheIsIdentical as "grenzen-bw: old FN_GRENZEN and ported build() put the identical boundary set into the geo context",
   unreadableResponseLeavesCacheAlone as "grenzen-bw: an unreadable response warns and leaves the previous cache in place",
   brokenEntriesAreDroppedAndCounted as "grenzen-bw: a malformed polygon entry is dropped and counted, not stored",

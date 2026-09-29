@@ -24,7 +24,13 @@ import { readFileSync } from "node:fs";
 import { build, COMMAND, EXEC_TIMEOUT_MS, parse, runWith } from "../../src/connectors/ops-host.js";
 import { ParseError } from "../../src/kernel/parse.js";
 import { flowsPath, messageFromFixture, readFixture } from "../harness/fixtures.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { testCtx, TEST_ORION_URL, upsertedEntities } from "../harness/operations-ctx.js";
 import { loadFunctionNode, messagesOf, runFunctionNode, solePayload } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
@@ -64,7 +70,9 @@ async function recordedOutputIsIdentical(): Promise<void> {
 
 async function runUpsertsTheSameEntity(): Promise<void> {
   const output = recorded();
+  const legacyClock = openClock();
   const legacy = await runLegacy(output);
+  const legacyWindow = legacyClock.close();
   const message = messagesOf(legacy)[0];
   // The upsert node took Content-Type from msg.headers; the kernel's upsert sends the same.
   assert.deepEqual(normalize(isRecord(message) ? message.headers : undefined), {
@@ -72,7 +80,9 @@ async function runUpsertsTheSameEntity(): Promise<void> {
   });
 
   const t = testCtx({ id: "ops-host" });
+  const portClock = openClock();
   await runWith(t.ctx, () => Promise.resolve(output));
+  const portWindow = portClock.close();
   assert.deepEqual(t.log.warnings(), []);
   assert.equal(t.seen.length, 1, "exactly one upsert");
   const request = t.seen[0];
@@ -84,6 +94,10 @@ async function runUpsertsTheSameEntity(): Promise<void> {
   );
   // What reached Orion, after JSON — against what the old node handed its upsert node.
   assertEntitiesEqual(JSON.parse(JSON.stringify(solePayload(legacy))), upsertedEntities(t.seen));
+  assertClockStamps(solePayload(legacy), upsertedEntities(t.seen), {
+    legacy: legacyWindow,
+    ported: portWindow,
+  });
 }
 
 async function unusualOutputsMatch(): Promise<void> {

@@ -19,6 +19,7 @@
  */
 
 import assert from "node:assert/strict";
+import { setTimeout as sleep } from "node:timers/promises";
 import { build, CHUNK_SIZE, GATE_KEY, parse, run, signatureOf } from "../../src/connectors/pegel-bw.js";
 import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
 import type { SignatureScope } from "../../src/kernel/change-gate.js";
@@ -28,7 +29,14 @@ import { isArray } from "../../src/kernel/parse.js";
 import type { UpsertPlan } from "../../src/kernel/types.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { httpResponse, recordingLog } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  assertStampsWithin,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 import { fixtureGeo, legacyChunks, rig, upsertBodies } from "../harness/water-warnings-rig.js";
@@ -134,6 +142,38 @@ async function firstRunIsIdentical(): Promise<void> {
   assert.equal(plan.pending.length, plan.entities.length);
 }
 
+/**
+ * The recording holds 17 stations, seven of them assigned — one chunk of 50.
+ * Nine copies under new station numbers (a synthetic test input) cross the
+ * chunk boundary.
+ */
+function multiplied(payload: unknown, copies: number): unknown[] {
+  assert.ok(isArray(payload));
+  const out: unknown[] = [];
+  for (let copy = 0; copy < copies; copy += 1) {
+    for (const station of payload) {
+      assert.ok(isRecord(station) && typeof station.number === "string");
+      out.push({
+        ...structuredClone(station),
+        number: copy === 0 ? station.number : `${station.number}9${String(copy)}`,
+      });
+    }
+  }
+  return out;
+}
+
+async function crossesTheChunkBoundary(): Promise<void> {
+  const payload = multiplied(readFixture(FIXTURE).payload, 9);
+  const legacy = await runLegacy(payload);
+  const plan = ported(payload, new SignatureStore().scope("test"));
+  assert.ok(
+    plan.entities.length > CHUNK_SIZE,
+    `${String(plan.entities.length)} entities, more than one chunk`,
+  );
+  assert.ok(legacy.sizes.length > 1);
+  assertPlanMatches(legacy, plan);
+}
+
 async function commitThenFreshnessOnly(): Promise<void> {
   const fixture = readFixture(FIXTURE);
   const store = new SignatureStore().scope("test");
@@ -214,7 +254,9 @@ async function badResponsesWriteNothing(): Promise<void> {
 async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   const fixture = readFixture(FIXTURE);
   const geo = fixtureGeo();
+  const legacyClock = openClock();
   const legacy = await runLegacy(fixture.payload);
+  const legacyWindow = legacyClock.close();
   const r = rig("pegel-bw", (request) => {
     if (request.url.host === "www.pegelonline.wsv.de")
       return httpResponse(200, JSON.stringify(fixture.payload));
@@ -228,22 +270,32 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
 
   r.geo.setMunicipalities(geo.rows);
   r.geo.setBoundaries(geo.boundaries, 0);
+  const firstClock = openClock();
   await run(r.ctx);
+  const firstWindow = firstClock.close();
   const bodies = upsertBodies(r.seen);
   assertEntitiesEqual(legacy.entities, bodies.flat());
+  // ctx.now() is the real clock (src/kernel/context.ts), not the rig's.
+  assertClockStamps(legacy.entities, bodies.flat(), { legacy: legacyWindow, ported: firstWindow });
   assert.deepEqual(
     bodies.map((body) => body.length),
     legacy.sizes,
   );
-  // Confirmed by 204: the next run sends freshness stamps only.
+  // Confirmed by 204: the next run sends freshness stamps only — stamped with
+  // the clock of THAT run, not carried over from the first.
+  await sleep(5);
+  const secondClock = openClock();
   await run(r.ctx);
+  const secondWindow = secondClock.close();
   const second = upsertBodies(r.seen).slice(bodies.length).flat();
   assert.equal(second.length, legacy.entities.length);
   assert.ok(second.every((entity) => isRecord(entity) && !("level" in entity)));
+  assertStampsWithin(second, secondWindow, legacy.entities);
 }
 
 export {
   firstRunIsIdentical as "pegel-bw: old FN_PEGEL and ported build() + change gate emit identical chunks and signatures",
+  crossesTheChunkBoundary as "pegel-bw: more stations than one chunk of 50 (synthetic copies) are chunked as by the old node",
   commitThenFreshnessOnly as "pegel-bw: commit after a confirmed upsert matches the old commit node, next run is freshness only",
   oneChangedGauge as "pegel-bw: one changed gauge (and a missing state) is sent in full on both sides",
   withoutMasterDataNamesAreEmpty as "pegel-bw: without master data the run goes ahead with empty names, on both sides",

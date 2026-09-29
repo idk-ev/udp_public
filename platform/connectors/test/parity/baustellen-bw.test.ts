@@ -42,7 +42,14 @@ import type { HttpResponse } from "../../src/kernel/types.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, httpResponse } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
+import { assertPruneSettings, legacyPruneSettings, recordPrunes } from "../harness/prune-settings.js";
 import { payloadOf, runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 import {
@@ -312,7 +319,9 @@ async function pruneDeletesTheSameOnBothSides(): Promise<void> {
   for (const entity of ported(payload, geo).entities) {
     legacyBroker.entities.set(entity.id, { id: entity.id, type: "RoadWork" });
   }
+  const legacyClock = openClock();
   const first = await runLegacy(payload, geo, { respond: legacyBroker.respond });
+  const legacyWindow = legacyClock.close();
   await runLegacy(payload, geo, {
     respond: legacyBroker.respond,
     flow: Object.fromEntries(first.flow),
@@ -329,12 +338,19 @@ async function pruneDeletesTheSameOnBothSides(): Promise<void> {
   );
   r.geo.setMunicipalities(geo.rows);
   r.geo.setBoundaries(geo.boundaries, 0);
-  await run(r.ctx);
+  const recorded = recordPrunes(r.ctx);
+  const portClock = openClock();
+  await run(recorded.ctx);
+  const portWindow = portClock.close();
   assert.deepEqual(portedBroker.deleted, [], "the first run only arms the interval guard");
+  const firstBodies = upsertBodies(r.seen).flat();
+  assertEntitiesEqual(legacyChunks(first).entities, firstBodies);
+  assertClockStamps(legacyChunks(first).entities, firstBodies, { legacy: legacyWindow, ported: portWindow });
   r.clock.now += 6 * HOUR;
-  await run(r.ctx);
+  await run(recorded.ctx);
 
   assert.deepEqual([...portedBroker.deleted].sort(), [...legacyBroker.deleted].sort());
+  assertPruneSettings("baustellen-bw", legacyPruneSettings(NODE_ID), recorded.calls, r.ctx);
   assert.deepEqual(portedBroker.deleted.sort(), [
     "urn:ngsi-ld:RoadWork:bw-kreis-08999-summary",
     "urn:ngsi-ld:RoadWork:bw-svz-left-the-feed-001",

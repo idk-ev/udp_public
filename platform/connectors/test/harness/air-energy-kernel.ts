@@ -166,7 +166,8 @@ type Entity = Record<string, unknown>;
 
 /**
  * Orion-LD as far as these connectors use it: listing with `type`,
- * `idPattern`, `count`, `limit`/`offset`; batch upsert (`options=update`
+ * `idPattern` (ignored for a prune's listing, see there), `count`,
+ * `limit`/`offset`; batch upsert (`options=update`
  * merges the attributes sent); batch delete. Entities are returned as stored —
  * keyValues-shaped for the listings the pulse reads, normalised for what a
  * connector upserted.
@@ -230,7 +231,12 @@ export class Broker {
     }
     const override = this.listAnswer.get(type)?.(request);
     if (override !== undefined) return override;
-    const pattern = params.get("idPattern");
+    // A prune's listing (`options=sysAttrs`) gets every entity of the type,
+    // idPattern IGNORED as by the other test brokers: the local re-check of
+    // the kernel (and of the old PRUNE_HELPER) is then what keeps a foreign id
+    // from being deleted. The city pulse's input listings are filtered as
+    // Orion does — it scores what the broker returns.
+    const pattern = params.get("options") === "sysAttrs" ? null : params.get("idPattern");
     const matcher = pattern === null ? null : new RegExp(pattern);
     const all = [...this.entities.values()].filter(
       (entity) => entity.type === type && (matcher === null || matcher.test(String(entity.id))),

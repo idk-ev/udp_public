@@ -37,7 +37,13 @@ import { Broker, fixtureGeo, legacyEntities, sharedGeo, testCtx } from "../harne
 import { readFixture } from "../harness/fixtures.js";
 import { httpResponse } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { messagesOf, runFunctionNode } from "../harness/vm-runner.js";
 
 const MSGS_NODE = "udp-rt-bx-msgs";
@@ -250,13 +256,18 @@ async function twoNightsLikeTheOldChain(): Promise<void> {
   for (const night of [1, 2]) {
     const before = seen.length;
     const upsertsBefore = broker.upserts.length;
+    const portClock = openClock();
     await run(ctx);
+    const portWindow = portClock.close();
     const legacy = await legacyPlan(global);
     const requests = plan(rows(), Number(global.mastrPos ?? 0), countsFrom(global.mastrCount)).requests;
+    const joined = await legacyJoined(requests);
+    const legacyClock = openClock();
     const built = await runFunctionNode(BUILD_NODE, {
-      msg: { _msgid: "parity", payload: await legacyJoined(requests) },
+      msg: { _msgid: "parity", payload: joined },
       global: Object.fromEntries(legacy.result.global),
     });
+    const legacyWindow = legacyClock.close();
     global = Object.fromEntries(built.global);
 
     const upserts = broker.upserts.length - upsertsBefore;
@@ -265,7 +276,20 @@ async function twoNightsLikeTheOldChain(): Promise<void> {
       legacy.requests.length,
       `night ${String(night)}: page requests differ`,
     );
+    // The requests themselves, in order — not only their number.
+    assert.deepEqual(
+      seen
+        .slice(before)
+        .filter((request) => request.url.host === "www.marktstammdatenregister.de")
+        .map((request) => request.url.href),
+      legacy.requests.map((request) => (request === null ? null : request.url)),
+      `night ${String(night)}: the list of page requests differs`,
+    );
     assertEntitiesEqual(legacyEntities(built), broker.upserts.slice(upsertsBefore).flat());
+    assertClockStamps(legacyEntities(built), broker.upserts.slice(upsertsBefore).flat(), {
+      legacy: legacyWindow,
+      ported: portWindow,
+    });
     assert.equal(
       ctx.state.slot(POSITION).get(),
       global.mastrPos,

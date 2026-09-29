@@ -53,7 +53,16 @@ import type { RawGeo } from "../harness/air-energy-kernel.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, httpResponse, recordingLog } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import type { ClockWindow } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  assertStampsWithin,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
+import { assertPruneSettings, legacyPruneSettings, recordPrunes } from "../harness/prune-settings.js";
 import { messagesOf, runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 
@@ -268,8 +277,11 @@ async function pruneEveryFourthRunOnFullMasterData(): Promise<void> {
   let flow: Record<string, unknown> = {};
   let context: Record<string, unknown> = {};
   const legacyDeletes: number[] = [];
+  const legacyWrites: { entities: unknown[]; window: ClockWindow }[] = [];
   for (let i = 1; i <= 8; i += 1) {
+    const legacyClock = openClock();
     const legacy = await runLegacy(payload, { flow, context, geo, respond: legacyBroker.respond });
+    legacyWrites.push({ entities: legacyEntities(legacy), window: legacyClock.close() });
     await sleep(150);
     flow = flowOf(legacy);
     context = Object.fromEntries(legacy.context);
@@ -281,16 +293,40 @@ async function pruneEveryFourthRunOnFullMasterData(): Promise<void> {
   portBroker.municipalityCount = rows.length;
   const respond = (request: SeenRequest): HttpResponse | Error =>
     request.url.href === SOURCE ? httpResponse(200, JSON.stringify(payload)) : portBroker.respond(request);
-  const { ctx, log, seen } = testCtx("feinstaub-bw", sharedGeo(geo), respond);
+  const port = testCtx("feinstaub-bw", sharedGeo(geo), respond);
+  const { log, seen } = port;
+  const recorded = recordPrunes(port.ctx);
+  const { ctx } = recorded;
   assert.equal(ctx.intervalMs(DETAIL_EVERY), 3_600_000, "prune interval: four runs of 15 minutes");
   const portDeletes: number[] = [];
+  const portWrites: { entities: unknown[]; window: ClockWindow }[] = [];
   for (let i = 1; i <= 8; i += 1) {
+    const before = portBroker.upserts.length;
+    const portClock = openClock();
     await run(ctx);
+    portWrites.push({ entities: portBroker.upserts.slice(before).flat(), window: portClock.close() });
     portDeletes.push(portBroker.deletes.flat().length);
   }
 
+  // Every run's writes carry the clock of that run — the full first run as
+  // the old node's, the freshness-only runs after it inside their own window.
+  const [legacyFirst] = legacyWrites;
+  const [portFirst, ...portLater] = portWrites;
+  assert.ok(legacyFirst !== undefined && portFirst !== undefined);
+  assertEntitiesEqual(legacyFirst.entities, portFirst.entities);
+  assertClockStamps(legacyFirst.entities, portFirst.entities, {
+    legacy: legacyFirst.window,
+    ported: portFirst.window,
+  });
+  for (const later of portLater) assertStampsWithin(later.entities, later.window, legacyFirst.entities);
+
   // Armed in run 4 (first detail run), deleting in run 8 — on both sides.
-  assert.deepEqual(portDeletes, [0, 0, 0, 0, 0, 0, 0, 2]);
+  assert.deepEqual(
+    portDeletes,
+    [0, 0, 0, 0, 0, 0, 0, 2],
+    "port deletions per run (armed in run 4, deleting in run 8)",
+  );
+  assertPruneSettings("feinstaub-bw", legacyPruneSettings(NODE_ID), recorded.calls, ctx);
   assert.deepEqual(portDeletes, legacyDeletes, "deletions per run differ");
   assert.deepEqual(portBroker.deletes.flat().sort(), legacyBroker.deletes.flat().sort());
   assert.ok(

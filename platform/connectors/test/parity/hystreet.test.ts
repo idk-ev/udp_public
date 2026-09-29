@@ -36,7 +36,13 @@ import {
   upsertedEntities,
 } from "../harness/g-transport.js";
 import { httpResponse } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { runFunctionNode } from "../harness/vm-runner.js";
 
 const TOKEN = "test-token-123";
@@ -130,8 +136,12 @@ async function inactiveWithoutToken(): Promise<void> {
 }
 
 async function activeChainMatches(): Promise<void> {
+  const legacyClock = openClock();
   const old = await legacy(TOKEN, normalRespond);
+  const legacyWindow = legacyClock.close();
+  const portClock = openClock();
   const now = await ported(TOKEN, normalRespond);
+  const portWindow = portClock.close();
   const requests = sourceRequests(now.seen);
   assert.equal(requests.length, 2);
   assert.deepEqual(
@@ -142,8 +152,20 @@ async function activeChainMatches(): Promise<void> {
   assert.ok(requests.every((request) => request.options?.retries === 0));
   assert.deepEqual(now.warnings, old.warnings);
   assertEntitiesEqual(old.entities, upsertedEntities(now.seen));
+  assertClockStamps(old.entities, upsertedEntities(now.seen), { legacy: legacyWindow, ported: portWindow });
   assert.equal(old.entities.length, 1);
 }
+
+/** The old warnings, word for word, and what the port logs instead (English log texts). */
+const TRANSLATED = new Map<string, string>([
+  ["hystreet: Standortliste fehlgeschlagen (401)", "hystreet: location list failed (401)"],
+  ["hystreet: kein Reutlingen-Standort gefunden", "hystreet: no Reutlingen location found"],
+  ["hystreet: Detailabruf fehlgeschlagen (503)", "hystreet: detail request failed (503)"],
+  [
+    "hystreet: unbekanntes Antwortformat — Feldnamen prüfen",
+    "hystreet: unknown response format — check the field names",
+  ],
+]);
 
 async function warningPathsMatch(): Promise<void> {
   const cases: readonly { readonly name: string; readonly respond: (url: string) => HttpResponse }[] = [
@@ -180,8 +202,16 @@ async function warningPathsMatch(): Promise<void> {
   for (const scenario of cases) {
     const old = await legacy(TOKEN, scenario.respond);
     const now = await ported(TOKEN, scenario.respond);
-    assert.equal(now.warnings.length, old.warnings.length, `${scenario.name}: warnings differ`);
-    assert.equal(sourceRequests(now.seen).length, old.requests.length, `${scenario.name}: requests differ`);
+    assert.deepEqual(
+      now.warnings,
+      old.warnings.map((text) => TRANSLATED.get(text) ?? `<untranslated: ${text}>`),
+      `${scenario.name}: warnings differ`,
+    );
+    assert.deepEqual(
+      sourceRequests(now.seen).map((request) => ({ url: request.url, headers: request.options?.headers })),
+      normalize(old.requests),
+      `${scenario.name}: requests differ`,
+    );
     assertEntitiesEqual(old.entities, upsertedEntities(now.seen), {
       labels: { left: `old (${scenario.name})`, right: `new (${scenario.name})` },
     });

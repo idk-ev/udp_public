@@ -37,7 +37,14 @@ import { isString, ParseError } from "../../src/kernel/parse.js";
 import type { UpsertPlan } from "../../src/kernel/types.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { httpResponse, recordingLog } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  assertStampsWithin,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { evaluateSnippet, extractSnippet, runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 import { fixtureGeo, legacyChunks, rig, upsertBodies } from "../harness/water-warnings-rig.js";
@@ -212,15 +219,20 @@ async function missingPegDbWarns(): Promise<void> {
 async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   const text = fixtureText();
   const geo = fixtureGeo();
+  const legacyClock = openClock();
   const legacy = await runLegacy(text);
+  const legacyWindow = legacyClock.close();
   const r = rig("pegel-lubw", (request) =>
     request.url.host === "www.hvz.baden-wuerttemberg.de" ? httpResponse(200, text) : httpResponse(204),
   );
   r.geo.setBoundaries(geo.boundaries, 0);
+  const firstClock = openClock();
   await run(r.ctx); // municipalities optional: runs without master data
+  const firstWindow = firstClock.close();
   r.geo.setMunicipalities(geo.rows);
   const withoutNames = upsertBodies(r.seen).flat();
   assert.equal(withoutNames.length, legacy.entities.length);
+  assertStampsWithin(withoutNames, firstWindow, legacy.entities);
   assert.ok(
     withoutNames.every((e) => isRecord(e) && isRecord(e.gemeindeName) && e.gemeindeName.value === ""),
   );
@@ -232,9 +244,12 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   );
   full.geo.setBoundaries(geo.boundaries, 0);
   full.geo.setMunicipalities(geo.rows);
+  const portClock = openClock();
   await run(full.ctx);
+  const portWindow = portClock.close();
   const bodies = upsertBodies(full.seen);
   assertEntitiesEqual(legacy.entities, bodies.flat());
+  assertClockStamps(legacy.entities, bodies.flat(), { legacy: legacyWindow, ported: portWindow });
   assert.deepEqual(
     bodies.map((body) => body.length),
     legacy.sizes,

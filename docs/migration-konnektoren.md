@@ -253,20 +253,38 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - Signaturen, Prune-Buchführung und persistierter Zustand überleben Neustarts
   auch in Kubernetes (Node-RED startete dort ohne Volume leer); z. B. zählt
   `feinstaub-bw` seinen Takt über Neustarts weiter.
+- Antwortgröße gedeckelt (dekomprimiert, Standard 32 MiB, große Quellen mit
+  eigenem Deckel); die `http request`-Nodes lasen ohne Grenze.
+- Weiterleitungen werden standardmäßig abgelehnt (alt: immer gefolgt); nur
+  `uba-bw` und die GBFS-Feeds folgen, jeder Sprung geprüft.
+- Orion-Schreibzugriffe mit 120 s Timeout wie die alten Upsert-Nodes (Lesen
+  30 s); vorher hatte der Port 30 s.
+- `/trigger` nur von Loopback (403 sonst, also per `docker exec`/`kubectl
+  exec`); Cooldown mindestens 60 s, nicht abschaltbar.
+- nginx: Cache-Schlüssel und Upstream-Anfrage von `/abfahrten` und
+  `/warnungen.ics` nur mit `ags` bzw. `kreis`; `limit_req` je Client (30 bzw.
+  10 Anfragen/min, darüber 429).
 
 *Konnektoren*
 
 - `abfahrten-on-demand`: EFA über den gemeinsamen EFA-Bucket, ohne Retry, 30 s
   Timeout (502 nach 30 s statt nginx-504 nach 60 s); kein JSONP; ein
   Verzeichnis ohne `halte`-Objekt wird verworfen, das alte bleibt.
+- `/abfahrten`: gleichzeitige Anfragen je Halt teilen eine EFA-Anfrage, deren
+  Antwort 30 s wiederverwendet wird; eigene Warteschlange (2 laufend, 8
+  wartend, darüber sofort 503); Abbruch, wenn kein Client mehr wartet;
+  EFA-Fehler als gedrosseltes `[warn]`.
 - `efa-abfahrten`: höchstens 2 Anfragen gleichzeitig, 500 ms Abstand (statt 23
   auf einmal); ein Batch-Upsert statt 23; fehlende `stopId` einmal je Prozess
-  gewarnt.
+  gewarnt; Halt-Id URL-kodiert (`:` bleibt, heutige URLs bytegleich).
 - `warnungen-bw`: Anfrage **ohne Antwort** (DNS, Timeout, abgelehnt) zählt als
   „keine Daten“ — der Kreis behält seinen letzten Wert (alt: „keine
   Warnungen“); Teilgruppe nach Join-Timeout wird gewarnt.
 - `/warnungen.ics`: Orion nicht erreichbar oder Fehlerantwort → **503** (alt:
-  200 „Keine amtlichen Warnungen“); ein Lesezugriff ohne Retry.
+  200 „Keine amtlichen Warnungen“); ein Lesezugriff ohne Retry; Fehler als
+  `[warn]` höchstens einmal je Minute (alt: `[error]` je Anfrage); TEXT-Escaping
+  auch für ein einzelnes `\r` und Steuerzeichen; Zeilen nach RFC 5545 bei 75
+  Oktetten gefaltet.
 - `wetter-bw`, `vorhersage-bw`: gemeinsamer 15-s-Takt für `api.open-meteo.com`;
   Join-Fenster 375 s statt 240 s; eine abgeschlossene Gruppe wird sofort
   geschrieben statt den Timer abzuwarten.
@@ -277,16 +295,29 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - `parken-bw`: Dienst-User-Agent statt eigenem; 2 Retries bei Netzfehlern
   (alt: Abbruch beim ersten Fehler).
 - `sharing-bw`, `carsharing-bw`: Systeme nacheinander statt Fan-out; eine
-  Systemliste je Lauf statt zwei (`carsharing-bw`).
+  Systemliste je Lauf statt zwei (`carsharing-bw`); Feed-URLs aus der
+  Systemliste nur unter der GBFS-URL-Regel (https, keine privaten/internen
+  Ziele, auch je Weiterleitung), abgelehnte Feeds als ein `[warn]` je Lauf.
 - `ladesaeulen-bw`: alle Seiten abgewartet statt Join-Abbruch nach 420 s
   (Ergebnis bei langsamer Quelle gleich: unvollständig, kein Prune).
 - `mastr-bw`, `uba-bw`: alle Anfragen abgewartet und einmal geschrieben statt
   Join-Timeout mit Nachzügler-Gruppe.
+- `mastr-bw`: eine Gemeinde mit fehlgeschlagener Seite wird ausgelassen und
+  behält ihren letzten Wert (alt: 0 Anlagen, 0 kW, „vollständig“, Zählung 0
+  gecacht).
 - `baustellen-bw`: Ablauf-Löschung am Ende jedes Laufs statt eigenem Inject
-  (gleicher Takt, ohne Versatz).
+  (gleicher Takt, ohne Versatz); ihr Id-Muster verankert und lokal
+  nachgeprüft, höchstens 30 % der gelisteten eigenen Baustellen je Lauf
+  (mindestens 3, höchstens die alten 200).
+- `troe-retention`: Altschema-Bereinigung nur für nachweislich eigene
+  `parken-bw`-Altlasten (Anbieter + vor der Umstellung geschrieben, alt: alle
+  Nicht-`parkapi-`-Ids inkl. kommunaler B+R); der `OffStreetParking`-Schritt
+  entfällt.
 - `wetter-dwd-station`: ein Batch-Upsert statt einem je Station; Ausfälle als
-  ein `[warn]` je Lauf statt `[error]` je Station.
-- `hystreet`: über den Host-Bucket getaktet (alt: ungetaktet).
+  ein `[warn]` je Lauf statt `[error]` je Station; Stations-Id URL-kodiert
+  (heutige Ids bytegleich).
+- `hystreet`: über den Host-Bucket getaktet (alt: ungetaktet); Weiterleitungen
+  abgelehnt (das Token folgt keinem `Location`); Standort-Id URL-kodiert.
 - `puls-bw`: Kommas in `attrs` URL-kodiert; Fehlertexte der Kernel-Listung.
 - `ops-host`: Plattenbelegung aus `df -P /` statt `/data`.
 - `pegel-bw`, `pegel-lubw`: Anfrage ohne Antwort ergibt dieselbe Warnung wie
@@ -299,6 +330,19 @@ Der Generator lässt umgeschaltete Konnektoren aus `flows.json` fallen, der
 Dienst nimmt genau sie auf. Gruppenweise, mit Beobachtungsfenster dazwischen
 (worauf zu achten ist: „Bewusste Abweichungen“ oben). Rückweg: Feld
 zurückdrehen.
+
+**Erste Gruppe:** `stammdaten-bw`, `grenzen-bw` und `wetter-bw` — sie füllen
+den Geo-Kontext (Gemeinden, Grenzen), von dem rund 20 Konnektoren des Dienstes
+abhängen; ohne sie überspringen diese ihre Läufe.
+
+**Nie in beiden Laufzeiten zugleich:** Ein Konnektor läuft entweder in
+Node-RED oder im Dienst. Registry-Änderung und Node-RED-Redeploy (neu
+generierte `flows.json`) gehören in denselben Schritt, in beide Richtungen.
+
+**Rückweg unter Compose:** Vor dem Zurückdrehen die Node-RED-Kontextschlüssel
+der zurückkehrenden Konnektoren löschen (oder den Kontextspeicher leeren).
+Sonst findet Node-RED seine alten Signaturen vom Stand vor der Umschaltung,
+hält veraltete Werte für aktuell und sendet nur Frische-Stempel.
 
 **Einmalige Kosten je Umschaltung:** Für einen frisch umgeschalteten
 Konnektor hat der Dienst noch keine Signaturen; sein erster Lauf schreibt

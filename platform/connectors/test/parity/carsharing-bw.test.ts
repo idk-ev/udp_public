@@ -46,8 +46,17 @@ import {
   jsonAnswer,
   legacyGlobal,
   mobilityCtx,
+  staleOptions,
 } from "../harness/mobility.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import { assertPruneSettings, legacyPruneSettings } from "../harness/prune-settings.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  fixedClock,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { messagesOf, runFunctionNode } from "../harness/vm-runner.js";
 
 const INFO_LIST_NODE = "udp-rt-cs-msgs";
@@ -364,19 +373,28 @@ async function runMatchesTheOldFlows(): Promise<void> {
     await run(world.ctx);
     // The second run's writes are the old status node's second round:
     // freshness for the unchanged stations, fleets in full.
+    const legacyClock = openClock();
     const first = await legacyStatus(master, {});
     const second = await legacyStatus(master, first.flow);
+    const legacyWindow = legacyClock.close();
     assert.deepEqual(
       normalize(world.broker.upserts),
       normalize(JSON.parse(JSON.stringify(second.payloads))),
       "upserts of the second run differ",
     );
+    // Stamped with the port's clock of THAT run (the test clock, `now`).
+    assertClockStamps(second.payloads, world.broker.upserts, {
+      legacy: legacyWindow,
+      ported: fixedClock(now),
+    });
   });
 
   const feedRequests = world.broker.requests
     .filter((request) => request.url.origin !== "http://orion-ld:1026" && request.url.href !== list.source)
     .map((request) => request.url.href);
   assert.deepEqual(feedRequests, oldUrls, "feed requests differ");
+  // The settings themselves, against the old pruneStale option objects.
+  assertPruneSettings("carsharing-bw", legacyPruneSettings(STATUS_LIST_NODE), staleOptions(world), world.ctx);
   assert.deepEqual(world.broker.deletes.flat().sort(), oldBroker.deletes.flat().sort(), "pruned ids differ");
   assert.deepEqual(oldBroker.deletes.flat().sort(), [STALE_FLEET, STALE].sort());
   assert.ok(world.broker.entities.has(FOREIGN), "a foreign station was pruned");

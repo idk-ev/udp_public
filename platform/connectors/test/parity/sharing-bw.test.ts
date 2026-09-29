@@ -34,9 +34,18 @@ import {
   jsonAnswer,
   legacyGlobal,
   mobilityCtx,
+  staleOptions,
   tableObject,
 } from "../harness/mobility.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import { assertPruneSettings, legacyPruneSettings } from "../harness/prune-settings.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  fixedClock,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { messagesOf, runFunctionNode } from "../harness/vm-runner.js";
 
 const LIST_NODE = "udp-rt-bg-msgs";
@@ -247,6 +256,8 @@ async function runMatchesTheOldFlow(): Promise<void> {
     );
   }
   assert.ok(!world.store.keys().includes("ffLast:gone"));
+  // The settings themselves, against the old pruneStale option objects.
+  assertPruneSettings("sharing-bw", legacyPruneSettings(LIST_NODE), staleOptions(world), world.ctx);
   assert.deepEqual(world.broker.deletes.flat(), oldBroker.deletes.flat(), "pruned ids differ");
   assert.deepEqual(oldBroker.deletes.flat(), [OLD_SUMMARY]);
   assert.deepEqual(world.broker.listings(), oldBroker.listings(), "prune listings differ");
@@ -255,12 +266,15 @@ async function runMatchesTheOldFlow(): Promise<void> {
   // tables the list node left behind.
   let flow = flowObject(legacyList.flow);
   const expected: unknown[] = [];
+  const legacyClock = openClock();
   for (const system of ["hopp_konstanz", "zeus_tuttlingen"] as const) {
     const legacy = await legacySystem(system, feedPayload(system), flow);
     if (legacy.message !== null) expected.push(JSON.parse(JSON.stringify(legacy.message.payload)));
     flow = await legacyCommit(legacy, 204);
   }
+  const legacyWindow = legacyClock.close();
   assert.deepEqual(normalize(world.broker.upserts), normalize(expected), "upserts differ");
+  assertClockStamps(expected, world.broker.upserts, { legacy: legacyWindow, ported: fixedClock(now) });
   for (const key of ["ffLast:hopp_konstanz", "ffLast:zeus_tuttlingen"]) {
     assert.deepEqual(
       normalize(tableObject(world.store, key)),

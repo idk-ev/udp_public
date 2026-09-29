@@ -13,7 +13,10 @@
    in here instead of in a second suite, otherwise the pre-commit hook checks one
    half and CI the other. They exist as COMPILED TypeScript and are therefore
    loaded differently — see below. If the directory is missing (before the first
-   `npm --prefix platform/connectors run build`), it is skipped. */
+   `npm --prefix platform/connectors run build`), it is skipped — unless
+   REQUIRE_PARITY=1 is set (CI's connectors job): then a missing directory, or
+   one with fewer than MIN_PARITY_FILES test files, fails the run instead of
+   letting a broken build pass as "0 parity tests". */
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -21,6 +24,16 @@ const { pathToFileURL } = require("url");
 
 const live = process.argv.includes("--live");
 const PARITY = path.join(__dirname, "..", "platform", "connectors", "dist", "test", "parity");
+// 42 parity test files today; the slack allows merging a few, not losing the suite.
+const MIN_PARITY_FILES = 38;
+if (process.env.REQUIRE_PARITY === "1") {
+  const found = fs.existsSync(PARITY) ? fs.readdirSync(PARITY).filter(x => x.endsWith(".test.js")).length : 0;
+  if (found < MIN_PARITY_FILES) {
+    console.error(`✗ REQUIRE_PARITY: ${found} parity test files in ${PARITY}, expected at least ${MIN_PARITY_FILES} — build platform/connectors first`);
+    console.log("\n0 bestanden, 1 fehlgeschlagen (Paritätstests fehlen)");
+    process.exit(1);
+  }
+}
 const dirs = [path.join(__dirname, "static")]
   .concat(fs.existsSync(PARITY) ? [PARITY] : [])
   .concat(live ? [path.join(__dirname, "live")] : []);

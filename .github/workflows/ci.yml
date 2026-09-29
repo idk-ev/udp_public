@@ -79,12 +79,19 @@ jobs:
       - name: Formatting
         run: npm --prefix platform/connectors run format:check
       - name: Build
-        run: npm --prefix platform/connectors run build
+        # From a clean dist: a stale compiled test file must not keep running
+        # (or keep the parity count up) after its source is gone.
+        run: |
+          rm -rf platform/connectors/dist
+          npm --prefix platform/connectors run build
       - name: Static tests incl. hardening proof
         # Runs a second time here, and that is deliberate: tests/static/
         # type-discipline.test.js calls the service's tsc and eslint and skips
         # itself without its node_modules. In build-test (without an install)
         # the proof is therefore skipped — only here does it really take hold.
         # Incidentally, the run over there shows that the suite still passes
-        # dependency-free on a fresh clone.
+        # dependency-free on a fresh clone. REQUIRE_PARITY: here the parity
+        # suite must be there — a missing build fails instead of being skipped.
+        env:
+          REQUIRE_PARITY: "1"
         run: node tests/run.js

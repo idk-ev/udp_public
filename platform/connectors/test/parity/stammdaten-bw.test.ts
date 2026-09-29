@@ -20,15 +20,25 @@
  */
 
 import assert from "node:assert/strict";
-import { build, parse, signatureOf } from "../../src/connectors/stammdaten-bw.js";
+import { setTimeout as sleep } from "node:timers/promises";
+import { build, DEFAULT_URL, parse, run, signatureOf } from "../../src/connectors/stammdaten-bw.js";
 import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
 import type { SignatureScope } from "../../src/kernel/change-gate.js";
 import { chunk } from "../../src/kernel/orion.js";
-import type { NgsiEntity, UpsertPlan } from "../../src/kernel/types.js";
+import type { MunicipalityRow, NgsiEntity, UpsertPlan } from "../../src/kernel/types.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { recordingLog } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
-import { messagesOf, runFunctionNode } from "../harness/vm-runner.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  assertStampsWithin,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
+import { loadFunctionNode, messagesOf, runFunctionNode } from "../harness/vm-runner.js";
+import { jsonAnswer, upsertedBatches, weatherCtx, weatherFetcher } from "../harness/weather-ctx.js";
+import type { ScriptedAnswer } from "../harness/weather-ctx.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 
 const NODE_ID = "udp-rt-bm-fn";
@@ -194,7 +204,106 @@ async function apostropheIsSwappedAsBefore(): Promise<void> {
   assert.equal(name.value, "L’Isle-sur-Test");
 }
 
+/**
+ * The chunk size FN_MUNI hands `emitChunks` — read out of the old node itself,
+ * so a drifted constant on either side cannot agree with a copy in this file.
+ */
+function oldChunkSize(): number {
+  const match = /emitChunks\(node, msg, geaendert, (\d+)\)/.exec(loadFunctionNode(NODE_ID).func);
+  const size = match?.[1];
+  assert.ok(size !== undefined, "FN_MUNI calls emitChunks(node, msg, geaendert, <size>)");
+  return Number(size);
+}
+
+function sizesOf(batches: readonly (readonly unknown[])[]): number[] {
+  return batches.map((batch) => batch.length);
+}
+
+async function runFillsTheGeoContextAndUpsertsTheOldChunks(): Promise<void> {
+  const fixture = readFixture(FIXTURE);
+  const size = oldChunkSize();
+  const legacyClock = openClock();
+  const first = await runLegacy(fixture.payload);
+  const legacyWindow = legacyClock.close();
+  assert.ok(first.entities.length > size, "the fixture crosses the chunk boundary");
+
+  let answer: ScriptedAnswer = jsonAnswer(200, fixture.payload);
+  const network = weatherFetcher((call) => {
+    if (call.method === "POST") return { response: { status: 204, ok: true, headers: {}, body: "" } };
+    if (call.url === DEFAULT_URL) return answer;
+    return { response: new Error(`unexpected call ${call.method} ${call.url}`) };
+  });
+  const { ctx, kernel, log } = weatherCtx("stammdaten-bw", network.fetcher);
+  // Read through a function: a narrowing assert on the getter would stick.
+  const context = (): readonly MunicipalityRow[] | null => kernel.geo.municipalities;
+  assert.equal(context(), null);
+
+  // Run 1: the geo context is filled — with what the old node put into
+  // global.bwGemeinden — and every municipality goes out in the old chunks.
+  const portClock = openClock();
+  await run(ctx);
+  const portWindow = portClock.close();
+  assert.deepEqual(log.warnings(), []);
+  assert.deepEqual(
+    normalize(context()),
+    normalize(first.run.global.get("bwGemeinden")),
+    "geo context differs from the old global bwGemeinden",
+  );
+  const firstBatches = upsertedBatches(network.seen);
+  assertEntitiesEqual(first.entities, firstBatches.flat());
+  assertClockStamps(first.entities, firstBatches.flat(), { legacy: legacyWindow, ported: portWindow });
+  assert.deepEqual(
+    sizesOf(firstBatches),
+    sizesOf(first.messages.map((message) => arrayField(message, "payload"))),
+    "upsert chunks differ from the old node's",
+  );
+  assert.deepEqual(sizesOf(firstBatches), sizesOf(chunk(first.entities, size)), `chunks of ${String(size)}`);
+
+  // Run 2: confirmed by 204, nothing changed — freshness only, in the same
+  // chunks, stamped with the clock of that run; the geo context is set again.
+  const store = new SignatureStore().scope("test");
+  const flow = await commitAll(first, ported(fixture.payload, store), store);
+  const second = await runLegacy(fixture.payload, flow);
+  await sleep(5);
+  const secondClock = openClock();
+  await run(ctx);
+  const secondWindow = secondClock.close();
+  const secondBatches = upsertedBatches(network.seen).slice(firstBatches.length);
+  assertEntitiesEqual(second.entities, secondBatches.flat());
+  assert.deepEqual(
+    sizesOf(secondBatches),
+    sizesOf(second.messages.map((message) => arrayField(message, "payload"))),
+    "freshness chunks differ from the old node's",
+  );
+  for (const entity of secondBatches.flat()) {
+    assert.deepEqual(Object.keys(isRecord(entity) ? entity : {}).sort(), [
+      "@context",
+      "dateObserved",
+      "id",
+      "type",
+    ]);
+  }
+  assertStampsWithin(secondBatches.flat(), secondWindow, first.entities);
+  assert.equal(context()?.length, first.entities.length);
+
+  // Run 3: HTTP 404 — warned, nothing written, the previous context stays.
+  const previous = context();
+  answer = jsonAnswer(404, "not found");
+  const upsertsBefore = upsertedBatches(network.seen).length;
+  await run(ctx);
+  assert.equal(context(), previous, "a 404 replaced the geo context");
+  assert.equal(upsertedBatches(network.seen).length, upsertsBefore);
+  assert.match(log.warnings().at(-1) ?? "", /bw-gemeinden\.json not loadable \(HTTP 404\)/);
+  const legacy404 = await runFunctionNode(NODE_ID, {
+    msg: { ...messageFromFixture(fixture), statusCode: 404, payload: "not found" },
+    global: { bwGemeinden: "previous" },
+  });
+  assert.equal(legacy404.warnings.length, 1);
+  assert.equal(legacy404.global.get("bwGemeinden"), "previous", "the old node kept its context too");
+}
+
 export {
+  runFillsTheGeoContextAndUpsertsTheOldChunks as "stammdaten-bw: run() fills the geo context, upserts the old chunks, then freshness only; a 404 keeps the context",
   firstRunIsIdentical as "stammdaten-bw: old FN_MUNI and ported build() + change gate emit identical chunks, signatures and geo context",
   commitThenFreshnessOnly as "stammdaten-bw: commit after a confirmed upsert matches the old commit node, next run is freshness only",
   oneChangedMunicipality as "stammdaten-bw: one changed municipality is sent in full, the rest as freshness, on both sides",

@@ -34,7 +34,13 @@ import type { RawPart } from "../../src/connectors/overpass.js";
 import { chunk } from "../../src/kernel/orion.js";
 import { readFixture } from "../harness/fixtures.js";
 import { httpResponse } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import {
   boundaryFixture,
   emittedChunkSizes,
@@ -122,6 +128,39 @@ async function fixtureEntitiesAreIdentical(): Promise<void> {
   assert.equal(weil.totalCount.value, 50, "totalCount is the selected length, as in the old node");
 }
 
+async function twoMunicipalitiesKeepTheOldOrder(): Promise<void> {
+  // The recording falls into ONE municipality. A modified copy, not fixture
+  // data: every third element of Weil am Rhein is copied into Loerrach (new
+  // id, a point in its polygon), interleaved with the originals, so the order
+  // across municipalities and the per-municipality cap are exercised.
+  const geo = fixtureGeo();
+  const [lat, lon] = [47.6156, 7.6613];
+  const loerrach = geo.agsAt(lat, lon);
+  assert.ok(loerrach !== null && loerrach !== WEIL, "the point lies in a second municipality");
+  const elements: unknown[] = [];
+  fixtureElements().forEach((element, index) => {
+    elements.push(element);
+    if (index % 3 !== 0 || !isRecord(element) || typeof element.id !== "number") return;
+    const offset = (index % 7) * 0.0002;
+    elements.push({
+      ...structuredClone(element),
+      id: element.id + 10_000_000_000,
+      lat: lat + offset,
+      lon: lon + offset,
+    });
+  });
+
+  const { legacy, parts } = await bothSides(tiles(elements, 3));
+  const entities = build(parse(parts), geo, new Date().toISOString());
+  assertEntitiesEqual(emittedEntities(legacy), entities);
+  assert.deepEqual(
+    entities.map((entity) => entity.ags.value).sort(),
+    [loerrach, WEIL].sort(),
+    "two municipalities",
+  );
+  assert.deepEqual(normalize(legacy.status), [{ text: "2 Gemeinden mit Versorgungs-POI" }]);
+}
+
 async function kindRulesAreIdentical(): Promise<void> {
   // A modified copy, not fixture data: every branch of artOf, named versus
   // unnamed (a name equal to its kind counts as unnamed), a name beyond 50
@@ -176,16 +215,21 @@ function kindOfCoversEveryBranch(): void {
 
 async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   const bodies = tiles(fixtureElements(), 12);
+  const legacyClock = openClock();
   const { legacy } = await bothSides(bodies.map((body, index) => (index === 4 ? { elements: [] } : body)));
+  const legacyWindow = legacyClock.close();
   const rig = overpassRig("poi-bw", (_url, index) =>
     index === 4 ? new Error("overpass-api.de: request failed") : overpassAnswer(bodies[index]),
   );
+  const portClock = openClock();
   await run(rig.ctx);
+  const portWindow = portClock.close();
 
   assertEntitiesEqual(emittedEntities(legacy), rig.upserted(), {
     labels: { left: "old (Node-RED flow)", right: "new (run → Orion)" },
   });
   assert.deepEqual(rig.upsertSizes(), emittedChunkSizes(legacy));
+  assertClockStamps(emittedEntities(legacy), rig.upserted(), { legacy: legacyWindow, ported: portWindow });
   assert.deepEqual(rig.log.warnings(), ["Overpass K5: empty or failed (overpass-api.de: request failed)"]);
   assert.deepEqual(
     rig.overpass().map((request) => request.url),
@@ -220,6 +264,7 @@ async function nothingUsableWarns(): Promise<void> {
 export {
   requestsAreIdentical as "poi-bw: the twelve tile URLs and the User-Agent are those of the old request node",
   fixtureEntitiesAreIdentical as "poi-bw: old FN_POI_BUILD and ported build() agree, round-robin cap of 50 on real data",
+  twoMunicipalitiesKeepTheOldOrder as "poi-bw: two municipalities (a modified copy) keep the old order and caps",
   kindRulesAreIdentical as "poi-bw: recycling variants, defibrillators, named-first and the name cut as in the old node",
   kindOfCoversEveryBranch as "poi-bw: kindOf covers every branch of the old artOf",
   runUpsertsWhatTheOldFlowSent as "poi-bw: run() upserts what the old flow sent, twelve tiles strictly serialised and paced",

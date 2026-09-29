@@ -36,7 +36,13 @@ import type { OverpassResponse, RawPart } from "../../src/connectors/overpass.js
 import { chunk } from "../../src/kernel/orion.js";
 import { readFixture } from "../harness/fixtures.js";
 import { httpResponse } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import {
   boundaryFixture,
   emittedChunkSizes,
@@ -236,16 +242,21 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   const answers: Answer[] = bodies.map((payload, index) =>
     index === 1 ? { statusCode: 429, payload: "rate_limited" } : { statusCode: 200, payload },
   );
+  const legacyClock = openClock();
   const { legacy } = await bothSides(answers);
+  const legacyWindow = legacyClock.close();
   const rig = overpassRig("ausflug-bw", (_url, index) =>
     index === 1 ? httpResponse(429, "rate_limited") : overpassAnswer(bodies[index]),
   );
+  const portClock = openClock();
   await run(rig.ctx);
+  const portWindow = portClock.close();
 
   assertEntitiesEqual(emittedEntities(legacy), rig.upserted(), {
     labels: { left: "old (Node-RED flow)", right: "new (run → Orion)" },
   });
   assert.deepEqual(rig.upsertSizes(), emittedChunkSizes(legacy));
+  assertClockStamps(emittedEntities(legacy), rig.upserted(), { legacy: legacyWindow, ported: portWindow });
   assert.deepEqual(rig.log.warnings(), ["Overpass Q2: empty or failed (HTTP 429)"]);
 
   // Strictly serialised, in quadrant order, each paced, no retries.

@@ -39,7 +39,13 @@ import {
   upsertedEntities,
 } from "../harness/g-transport.js";
 import { httpResponse } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { runFunctionNode } from "../harness/vm-runner.js";
 
 const STOPS = ["08415061", "08111000", "08317008"] as const;
@@ -74,8 +80,27 @@ function stopOf(ags: string): StopConfig {
   return stop;
 }
 
+/**
+ * The recorded answer of `ags`; the stops without a recording of their own get
+ * one of the three in turn (a test input — each old node builds its own id,
+ * name and location from its generated config, only the departures are shared).
+ */
+function fixtureName(ags: string): string {
+  if (STOPS.some((stop) => stop === ags)) return `efa-abfahrten-${ags}`;
+  const all = enabledStops();
+  const index = all.indexOf(ags);
+  return `efa-abfahrten-${STOPS[(index < 0 ? 0 : index) % STOPS.length] ?? REUTLINGEN}`;
+}
+
 function fixturePayload(ags: string): unknown {
-  return readFixture(`efa-abfahrten-${ags}`).payload;
+  return readFixture(fixtureName(ags)).payload;
+}
+
+/** Every stop the registry enables — each has its own generated pipeline in flows.json. */
+function enabledStops(): string[] {
+  const enabled = registryEntry("efa-abfahrten").enabledFor;
+  if (enabled === null || enabled === "*") throw new Error("efa-abfahrten: the registry lists no stops");
+  return [...enabled];
 }
 
 /** What EFA answers per stop in the current step of a scenario. */
@@ -132,7 +157,7 @@ interface LegacyStop {
 async function legacyStop(p: Pair, ags: string): Promise<LegacyStop> {
   const answer = p.answers.get(ags);
   assert.ok(answer !== undefined);
-  const base = messageFromFixture(readFixture(`efa-abfahrten-${ags}`));
+  const base = messageFromFixture(readFixture(fixtureName(ags)));
   const msg =
     answer instanceof Error
       ? { ...base, statusCode: "ECONNREFUSED", payload: `${answer.message} : ${oldUrl(ags)}` }
@@ -171,8 +196,12 @@ async function cycle(p: Pair, label: string): Promise<unknown[]> {
   const before = p.seen.length;
   const warningsBefore = p.port.log.warnings().length;
   const legacy: LegacyStop[] = [];
+  const legacyClock = openClock();
   for (const ags of stops) legacy.push(await legacyStop(p, ags));
+  const legacyWindow = legacyClock.close();
+  const portClock = openClock();
   await run(p.port.ctx);
+  const portWindow = portClock.close();
   const requests = p.seen.slice(before);
 
   assert.deepEqual(
@@ -186,6 +215,10 @@ async function cycle(p: Pair, label: string): Promise<unknown[]> {
     upserted,
     { labels: { left: `old FN_OEPNV (${label})`, right: `new run() (${label})` } },
   );
+  const written = legacy.filter((stop) => stop.entity !== null).map((stop) => stop.entity);
+  if (written.length > 0) {
+    assertClockStamps(written, upserted, { legacy: legacyWindow, ported: portWindow });
+  }
   const portWarnings = p.port.log.warnings().slice(warningsBefore);
   assert.equal(
     portWarnings.filter((text) => !isCommitWarning(text)).length,
@@ -259,6 +292,25 @@ async function runsAndSignatureTablesMatch(): Promise<void> {
   assert.ok(isRecord(resent) && "departures" in resent, "the refused attributes are sent again");
 
   await cycle(p, "run 5, all committed");
+}
+
+async function everyEnabledStopMatchesItsOwnNode(): Promise<void> {
+  // All stops of the registry, each against its OWN generated FN_OEPNV, http
+  // request node and commit node — not only the three with a recording.
+  const stops = enabledStops();
+  assert.equal(stops.length, 23, "the registry enables 23 stops");
+  const byStopId = new Set(stops.map((ags) => stopOf(ags).stopId));
+  assert.equal(byStopId.size, stops.length, "every stop has its own stopId");
+  const p = pair(stops);
+  const first = await cycle(p, "all stops, run 1");
+  assert.equal(first.length, stops.length);
+  const ids = new Set(first.map((entity) => (isRecord(entity) ? entity.id : undefined)));
+  assert.deepEqual(
+    ids,
+    new Set(stops.map((ags) => stopOf(ags).entityId)),
+    "one entity per stop, under its registry id",
+  );
+  await cycle(p, "all stops, run 2");
 }
 
 async function errorPathsWarnAsBefore(): Promise<void> {
@@ -369,6 +421,7 @@ async function requestProfileIsCapped(): Promise<void> {
 
 export {
   runsAndSignatureTablesMatch as "efa-abfahrten: URLs, deduped entities and oepnvSig tables match the old pipelines over five runs",
+  everyEnabledStopMatchesItsOwnNode as "efa-abfahrten: all 23 enabled stops match their own old pipeline over two runs",
   errorPathsWarnAsBefore as "efa-abfahrten: EFA errors, refused connections and non-JSON warn per stop and write nothing",
   edgeCaseEventsMatch as "efa-abfahrten: cancelled, implausible, non-real-time and incomplete events match FN_OEPNV",
   noUsableDeparturesWarns as "efa-abfahrten: a stop without usable departures warns and is not written",

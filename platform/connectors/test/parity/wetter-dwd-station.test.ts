@@ -41,7 +41,7 @@ import {
   upsertedEntities,
 } from "../harness/g-transport.js";
 import { httpResponse } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord } from "../harness/normalize.js";
+import { assertClockStamps, assertEntitiesEqual, isRecord, openClock } from "../harness/normalize.js";
 import { runFunctionNode } from "../harness/vm-runner.js";
 
 const RECORDED = ["02159", "04160", "04931", "13965"] as const;
@@ -130,12 +130,19 @@ async function compare(
   geo: GeoState,
   weather: (station: string) => HttpResponse | Error = defaultWeather,
 ): Promise<Side> {
+  const legacyClock = openClock();
   const old = await legacy(geo, weather);
+  const legacyWindow = legacyClock.close();
+  const portClock = openClock();
   const now = await ported(geo, weather);
+  const portWindow = portClock.close();
   assert.deepEqual(now.urls, old.urls, `${geo}: station requests or their order differ`);
   assertEntitiesEqual(old.entities, now.entities, {
     labels: { left: `old FN_DWD_BUILD (${geo})`, right: `new run() (${geo})` },
   });
+  if (old.entities.length > 0) {
+    assertClockStamps(old.entities, now.entities, { legacy: legacyWindow, ported: portWindow });
+  }
   return now;
 }
 

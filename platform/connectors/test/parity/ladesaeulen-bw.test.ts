@@ -46,10 +46,19 @@ import {
   jsonAnswer,
   legacyGlobal,
   mobilityCtx,
+  staleOptions,
   tableObject,
 } from "../harness/mobility.js";
 import type { MobilityWorld } from "../harness/mobility.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import { assertPruneSettings, legacyPruneSettings } from "../harness/prune-settings.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  fixedClock,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { messagesOf, runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 
@@ -232,13 +241,20 @@ async function incompleteRunMergesAndResets(): Promise<void> {
   let flow: Record<string, unknown> = { [STATION_GATE]: { [elsewhere]: "2|0|0|0|0" } };
   for (const round of [1, 2]) {
     world.broker.upserts.length = 0;
+    const legacyClock = openClock();
     const legacy = await legacyBuild(answers, pages, total, flow, oldBroker);
+    const legacyWindow = legacyClock.close();
     await run(world.ctx);
+    const expected = legacy.messages.map((message) => wire(arrayField(message, "payload")));
     assert.deepEqual(
       normalize(world.broker.upserts),
-      normalize(legacy.messages.map((message) => wire(arrayField(message, "payload")))),
+      normalize(expected),
       `round ${String(round)}: upserts differ`,
     );
+    assertClockStamps(expected, world.broker.upserts, {
+      legacy: legacyWindow,
+      ported: fixedClock(world.clock.now),
+    });
     assert.ok(legacy.run.warnings.some((line) => line.includes("incomplete run")));
     assert.match(
       world.log.warnings().at(-1) ?? "",
@@ -337,6 +353,8 @@ async function completeRunReplacesAndPrunes(): Promise<void> {
     world.log.warnings().filter((line) => !line.startsWith("Upsert")),
     [],
   );
+  // The settings themselves, against the old pruneStale option objects.
+  assertPruneSettings("ladesaeulen-bw", legacyPruneSettings(BUILD_NODE), staleOptions(world), world.ctx);
   assert.deepEqual(world.broker.deletes.flat().sort(), oldBroker.deletes.flat().sort(), "pruned ids differ");
   assert.deepEqual(oldBroker.deletes.flat().sort(), [STALE_SUMMARY, STALE_STATION].sort());
   assert.deepEqual(
@@ -347,6 +365,92 @@ async function completeRunReplacesAndPrunes(): Promise<void> {
   const oldSig = legacy.run.flow.get(STATION_GATE);
   assert.ok(isRecord(oldSig) && !(STALE_STATION in oldSig), "old: signature of the pruned station kept");
   assert.ok(!world.store.copy(STATION_GATE).has(STALE_STATION), "port: signature of the pruned station kept");
+}
+
+/**
+ * One candidate per prune first seen just OUTSIDE the confirmation window, one
+ * just INSIDE — deleted in this run, resp. only in the next.
+ */
+const WINDOW_IDS = {
+  outside: ["urn:ngsi-ld:EVChargingStation:ulm-ocpdb-999901", "urn:ngsi-ld:ChargingSummary:bw-08000001"],
+  inside: ["urn:ngsi-ld:EVChargingStation:ulm-ocpdb-999902", "urn:ngsi-ld:ChargingSummary:bw-08000002"],
+} as const;
+
+function seedWindow(broker: Broker, which: "outside" | "inside"): void {
+  for (const id of WINDOW_IDS[which]) {
+    broker.entities.set(id, {
+      id,
+      type: id.includes(":EVChargingStation:") ? "EVChargingStation" : "ChargingSummary",
+    });
+  }
+}
+
+async function confirmWindowRunByRun(): Promise<void> {
+  const input = onePageWorld();
+  const total = items(input.page).length;
+  const MINUTE = 60_000;
+  const confirmMs = 24 * HOUR;
+
+  // Old, run α: the outside pair first seen 24 h + 1 min ago, the inside pair
+  // 24 h − 1 min ago, each once before. Run β (the vm clock cannot move): the
+  // inside pair now 24 h + 1 min old, as two minutes later.
+  const oldBroker = new Broker(fullGeo().municipalities.length);
+  seedWindow(oldBroker, "outside");
+  seedWindow(oldBroker, "inside");
+  const confirmations = (outsideAge: number, insideAge: number, now: number): Record<string, unknown> => {
+    const [outStation, outSummary] = WINDOW_IDS.outside;
+    const [inStation, inSummary] = WINDOW_IDS.inside;
+    return {
+      pruneLastRun_OCPDB_EVChargingStation: now - HOUR,
+      pruneLastRun_OCPDB_ChargingSummary: now - HOUR,
+      ocPruneStation: { [outStation]: [now - outsideAge, 1], [inStation]: [now - insideAge, 1] },
+      ocPruneSummary: { [outSummary]: [now - outsideAge, 1], [inSummary]: [now - insideAge, 1] },
+    };
+  };
+  const oldDeletes: string[][] = [];
+  for (const [outsideAge, insideAge] of [
+    [confirmMs + MINUTE, confirmMs - MINUTE],
+    [confirmMs + 3 * MINUTE, confirmMs + MINUTE],
+  ] as const) {
+    const before = oldBroker.deletes.length;
+    const flow = confirmations(outsideAge, insideAge, Date.now());
+    await legacyBuild([{ statusCode: 200, payload: input.page }], 1, total, flow, oldBroker);
+    await oldBroker.idle();
+    oldDeletes.push(oldBroker.deletes.slice(before).flat().sort());
+  }
+  assert.deepEqual(oldDeletes, [[...WINDOW_IDS.outside].sort(), [...WINDOW_IDS.inside].sort()]);
+
+  // Port, from cold: hourly runs; the outside pair is a candidate from 1 h on,
+  // the inside pair from 1 h + 2 min on. At 25 h + 1 min the first pair is
+  // 24 h + 1 min, the second 23 h 59 min a candidate; two minutes later both
+  // are past the window.
+  const start = Date.parse("2026-09-01T00:00:00Z");
+  const world = mobilityCtx({ id: "ladesaeulen-bw", start });
+  seedWindow(world.broker, "outside");
+  world.broker.sources.set(COUNT_URL, jsonAnswer(input.count));
+  world.broker.sources.set(pageUrl(0), jsonAnswer(input.page));
+  const times = [0, HOUR, HOUR + 2 * MINUTE];
+  for (let hour = 2; hour <= 24; hour += 1) times.push(hour * HOUR);
+  times.push(25 * HOUR + MINUTE, 25 * HOUR + 3 * MINUTE);
+  const portDeletes: string[][] = [];
+  for (const at of times) {
+    if (at === HOUR + 2 * MINUTE) seedWindow(world.broker, "inside");
+    world.clock.now = start + at;
+    const before = world.broker.deletes.length;
+    await run(world.ctx);
+    portDeletes.push(world.broker.deletes.slice(before).flat().sort());
+  }
+  const deleting = portDeletes.flatMap((ids, index) =>
+    ids.length > 0 ? [[times[index], ids] as const] : [],
+  );
+  assert.deepEqual(
+    deleting,
+    [
+      [25 * HOUR + MINUTE, oldDeletes[0]],
+      [25 * HOUR + 3 * MINUTE, oldDeletes[1]],
+    ],
+    "deletions run by run differ from the old node's at the window edges",
+  );
 }
 
 async function completeRunReplacesTheTables(): Promise<void> {
@@ -398,5 +502,6 @@ export {
   incompleteRunMergesAndResets as "ladesaeulen-bw: an incomplete run writes the old chunks, merges the tables, resets the confirmations",
   dedupeKeepsTheOldOrder as "ladesaeulen-bw: deduplication and Object.keys order of the old build node",
   completeRunReplacesAndPrunes as "ladesaeulen-bw: a complete run prunes the same stations and sums and forgets their ocSig",
+  confirmWindowRunByRun as "ladesaeulen-bw: candidates just inside and just outside the 24 h confirmation are deleted run by run as by the old node",
   completeRunReplacesTheTables as "ladesaeulen-bw: complete runs replace ocSumSig/ocSig, a vanished location loses its signature",
 };

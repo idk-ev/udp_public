@@ -32,7 +32,13 @@ import {
 import { chunk } from "../../src/kernel/orion.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { httpResponse } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import {
   boundaryFixture,
   emittedChunkSizes,
@@ -218,15 +224,20 @@ async function guardsWarnAndWriteNothing(): Promise<void> {
 
 async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   const fixture = readFixture(FIXTURE);
+  const legacyClock = openClock();
   const legacy = await runLegacy(fixture.payload);
+  const legacyWindow = legacyClock.close();
   const rig = overpassRig("rathaus-bw", () => overpassAnswer(fixture.payload));
+  const portClock = openClock();
   await run(rig.ctx);
+  const portWindow = portClock.close();
 
   assert.deepEqual(rig.log.warnings(), []);
   assertEntitiesEqual(emittedEntities(legacy), rig.upserted(), {
     labels: { left: "old (Node-RED flow)", right: "new (run → Orion)" },
   });
   assert.deepEqual(rig.upsertSizes(), emittedChunkSizes(legacy));
+  assertClockStamps(emittedEntities(legacy), rig.upserted(), { legacy: legacyWindow, ported: portWindow });
 
   // Exactly one request, polite: paced by the shared bucket, no retry, the
   // Node-RED timeout, the contact address.

@@ -40,7 +40,13 @@ import { chunk } from "../../src/kernel/orion.js";
 import { isArray } from "../../src/kernel/parse.js";
 import type { MunicipalityRow } from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { evaluateSnippet, extractSnippet } from "../harness/vm-runner.js";
 import {
   jsonAnswer,
@@ -264,7 +270,9 @@ async function runPacesAndWritesWhatTheOldChainWrote(): Promise<void> {
   const bodies = batchBodies();
   const network = openMeteoNetwork(municipalitiesPayload(), (index) => jsonAnswer(200, bodies[index]));
   const { ctx, kernel, log } = weatherCtx("wetter-bw", network.fetcher);
+  const portClock = openClock();
   await runWith(ctx, { count: 8, timeoutMs: 5_000 });
+  const portWindow = portClock.close();
 
   const calls = openMeteoCalls(network.seen);
   const withDaily = calls[0]?.url.includes("&daily=") === true;
@@ -281,13 +289,16 @@ async function runPacesAndWritesWhatTheOldChainWrote(): Promise<void> {
     assert.equal(options.retries, 0, "no retry against a provider that sent 429");
   }
 
+  const legacyClock = openClock();
   const old = await legacyChain(NODES, await oldBatchesWith(withDaily), bodies.map(ok), ALL);
+  const legacyWindow = legacyClock.close();
   const upserts = upsertedBatches(network.seen);
   assert.deepEqual(
     upserts.map((part) => part.length),
     old.chunks.map((part) => part.length),
   );
   assertEntitiesEqual(old.chunks.flat(), upserts.flat());
+  assertClockStamps(old.chunks.flat(), upserts.flat(), { legacy: legacyWindow, ported: portWindow });
   assert.deepEqual(log.warnings(), []);
   // global.set('bwGemeinden', g) -> the geo context.
   assert.deepEqual(normalize(kernel.geo.municipalities), normalize(rows()));

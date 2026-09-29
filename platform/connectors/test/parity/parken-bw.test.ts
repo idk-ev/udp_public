@@ -57,12 +57,21 @@ import {
   jsonAnswer,
   legacyGlobal,
   mobilityCtx,
+  staleOptions,
   ORION,
   tableObject,
 } from "../harness/mobility.js";
 import type { MobilityWorld } from "../harness/mobility.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
-import { loadFunctionNode, messagesOf, runFunctionNode } from "../harness/vm-runner.js";
+import { assertPruneSettings, legacyPruneSettings, legacySettingsOf } from "../harness/prune-settings.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  fixedClock,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
+import { extractSnippet, loadFunctionNode, messagesOf, runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 
 const FETCH_NODE = "udp-rt-bp-fetch";
@@ -437,12 +446,19 @@ async function runWritesWhatTheOldFlowWrites(): Promise<void> {
 
   // Run 1 on both sides.
   const inventory = parse(recordedPages().map((page) => page.payload));
+  const firstClock = openClock();
   const first = await legacyBuild(inventory, oldBroker);
+  const firstWindow = firstClock.close();
   await run(world.ctx);
   assert.deepEqual(
     normalize(world.broker.upserts),
     normalize(first.messages.map((message) => wire(arrayField(message, "payload")))),
     "upserted chunks differ",
+  );
+  assertClockStamps(
+    first.messages.map((message) => wire(arrayField(message, "payload"))),
+    world.broker.upserts,
+    { legacy: firstWindow, ported: fixedClock(world.clock.now) },
   );
   const flow = await legacyCommit(first);
   assertTablesEqual(new Map(Object.entries(flow)), world.store, "after run 1");
@@ -458,12 +474,19 @@ async function runWritesWhatTheOldFlowWrites(): Promise<void> {
   serve(world.broker, pages);
   world.broker.upserts.length = 0;
   world.clock.now += 3 * HOUR;
+  const secondClock = openClock();
   const second = await legacyBuild(parse(pages.map((page) => page.payload)), oldBroker, flow);
+  const secondWindow = secondClock.close();
   await run(world.ctx);
   assert.deepEqual(
     normalize(world.broker.upserts),
     normalize(second.messages.map((message) => wire(arrayField(message, "payload")))),
     "upserted chunks of the changed run differ",
+  );
+  assertClockStamps(
+    second.messages.map((message) => wire(arrayField(message, "payload"))),
+    world.broker.upserts,
+    { legacy: secondWindow, ported: fixedClock(world.clock.now) },
   );
   const secondFlow = await legacyCommit(second);
   assertTablesEqual(new Map(Object.entries(secondFlow)), world.store, "after run 2");
@@ -471,12 +494,19 @@ async function runWritesWhatTheOldFlowWrites(): Promise<void> {
   // Run 3: nothing changed. Freshness for realtime sites and sums only.
   world.broker.upserts.length = 0;
   world.clock.now += 3 * HOUR;
+  const thirdClock = openClock();
   const third = await legacyBuild(parse(pages.map((page) => page.payload)), oldBroker, secondFlow);
+  const thirdWindow = thirdClock.close();
   await run(world.ctx);
   assert.deepEqual(
     normalize(world.broker.upserts),
     normalize(third.messages.map((message) => wire(arrayField(message, "payload")))),
     "upserted chunks of the unchanged run differ",
+  );
+  assertClockStamps(
+    third.messages.map((message) => wire(arrayField(message, "payload"))),
+    world.broker.upserts,
+    { legacy: thirdWindow, ported: fixedClock(world.clock.now) },
   );
   assert.equal(third.pending.length, 0);
   assertTablesEqual(third.run.flow, world.store, "after run 3 (nothing pending)");
@@ -569,6 +599,164 @@ async function completeRunPrunesTheSameIds(): Promise<void> {
     "listing requests differ",
   );
   assert.equal(new Set(legacy.broker.listings()).size, 5);
+
+  // The settings themselves: the three pruneStale literals of the old node
+  // and the two option objects of its `legacy(typ)` helper.
+  const helper = extractSnippet(BUILD_NODE, "const legacy = typ =>", "status: statusText });");
+  const oldSettings = [
+    ...legacyPruneSettings(BUILD_NODE),
+    ...legacySettingsOf(BUILD_NODE, helper, "[legacy('ParkingSite'), legacy('BikeParking')]"),
+  ];
+  assert.equal(oldSettings.length, 5);
+  assertPruneSettings("parken-bw", oldSettings, staleOptions(ported), ported.ctx);
+}
+
+const MINUTE = 60_000;
+
+/** Per prune one candidate just OUTSIDE the 24 h confirmation, one just INSIDE. */
+const WINDOW = [
+  { key: "parkPruneSite", type: "ParkingSite", outside: "parkapi-999901", inside: "parkapi-999902" },
+  { key: "parkPruneBike", type: "BikeParking", outside: "parkapi-999901", inside: "parkapi-999902" },
+  { key: "parkPruneSummary", type: "ParkingSummary", outside: "bw-08000001", inside: "bw-08000002" },
+] as const;
+
+type Side = "outside" | "inside";
+
+function windowId(entry: (typeof WINDOW)[number], side: Side): string {
+  return `urn:ngsi-ld:${entry.type}:${entry[side]}`;
+}
+
+function seedWindow(broker: Broker, side: Side): void {
+  const provider = { type: "Property", value: "MobiData BW ParkAPI" };
+  for (const entry of WINDOW) {
+    const id = windowId(entry, side);
+    broker.entities.set(id, { id, type: entry.type, dataProvider: provider });
+  }
+}
+
+async function confirmWindowRunByRun(): Promise<void> {
+  const confirmMs = 24 * HOUR;
+  const pages = consistent(recordedPages());
+  const inventory = parse(pages.map((page) => page.payload));
+
+  // Old, run 1: the "outside" candidates first seen 24 h + 1 min ago, the
+  // "inside" ones 24 h - 1 min ago. Run 2 (the vm clock cannot move): two
+  // minutes on.
+  const oldBroker = new Broker(fullGeo().municipalities.length);
+  seedWindow(oldBroker, "outside");
+  seedWindow(oldBroker, "inside");
+  const oldDeletes: string[][] = [];
+  for (const [outsideAge, insideAge] of [
+    [confirmMs + MINUTE, confirmMs - MINUTE],
+    [confirmMs + 3 * MINUTE, confirmMs + MINUTE],
+  ] as const) {
+    const now = Date.now();
+    const flow: Record<string, unknown> = {
+      pruneLastRun_Parken_BW_ParkingSite: now - 3 * HOUR,
+      pruneLastRun_Parken_BW_BikeParking: now - 3 * HOUR,
+      pruneLastRun_Parken_BW_ParkingSummary: now - 3 * HOUR,
+      parkLegacyDone: true,
+    };
+    for (const entry of WINDOW) {
+      flow[entry.key] = {
+        [windowId(entry, "outside")]: [now - outsideAge, 1],
+        [windowId(entry, "inside")]: [now - insideAge, 1],
+      };
+    }
+    const before = oldBroker.deletes.length;
+    await legacyBuild(inventory, oldBroker, flow);
+    await oldBroker.idle();
+    oldDeletes.push(oldBroker.deletes.slice(before).flat().sort());
+  }
+  assert.deepEqual(oldDeletes, [
+    WINDOW.map((entry) => windowId(entry, "outside")).sort(),
+    WINDOW.map((entry) => windowId(entry, "inside")).sort(),
+  ]);
+
+  // Port, from cold, every 3 h: "outside" is a candidate from 3 h on,
+  // "inside" from 3 h + 2 min on. At 27 h + 1 min the first has been one for
+  // 24 h + 1 min, the second for 23 h 59 min; two minutes later both are past.
+  const start = Date.parse("2026-09-01T00:00:00Z");
+  const world = mobilityCtx({ id: "parken-bw", start });
+  seedWindow(world.broker, "outside");
+  serve(world.broker, pages);
+  const times = [0, 3 * HOUR, 3 * HOUR + 2 * MINUTE];
+  for (let hour = 6; hour <= 24; hour += 3) times.push(hour * HOUR);
+  times.push(27 * HOUR + MINUTE, 27 * HOUR + 3 * MINUTE);
+  const deleting: (readonly [number, string[]])[] = [];
+  for (const at of times) {
+    if (at === 3 * HOUR + 2 * MINUTE) seedWindow(world.broker, "inside");
+    world.clock.now = start + at;
+    const before = world.broker.deletes.length;
+    await run(world.ctx);
+    const ids = world.broker.deletes.slice(before).flat().sort();
+    if (ids.length > 0) deleting.push([at, ids]);
+  }
+  assert.deepEqual(
+    deleting,
+    [
+      [27 * HOUR + MINUTE, oldDeletes[0]],
+      [27 * HOUR + 3 * MINUTE, oldDeletes[1]],
+    ],
+    "deletions run by run differ from the old node's at the window edges",
+  );
+}
+
+/** Two legacy sites, last written just OUTSIDE resp. just INSIDE the 7-day grace. */
+const GRACE_OUT = "urn:ngsi-ld:ParkingSite:stuttgart-grace-out";
+const GRACE_IN = "urn:ngsi-ld:ParkingSite:stuttgart-grace-in";
+
+function seedGrace(broker: Broker, at: number): void {
+  const provider = { type: "Property", value: "MobiData BW ParkAPI" };
+  const grace = 7 * 24 * HOUR;
+  for (const [id, modified] of [
+    [GRACE_OUT, at - grace - MINUTE],
+    [GRACE_IN, at - grace + MINUTE],
+  ] as const) {
+    broker.entities.set(id, {
+      id,
+      type: "ParkingSite",
+      dataProvider: provider,
+      createdAt: "2026-07-01T00:00:00Z",
+      modifiedAt: new Date(modified).toISOString(),
+    });
+  }
+}
+
+async function legacyGraceWindowRunByRun(): Promise<void> {
+  const pages = consistent(recordedPages());
+  const inventory = parse(pages.map((page) => page.payload));
+
+  // Old: one run of the daily legacy check, the previous one a day ago.
+  const oldBroker = new Broker(fullGeo().municipalities.length);
+  const now = Date.now();
+  seedGrace(oldBroker, now);
+  await legacyBuild(inventory, oldBroker, {
+    pruneLastRun_Parken_BW_ParkingSite: now - 3 * HOUR,
+    pruneLastRun_Parken_BW_BikeParking: now - 3 * HOUR,
+    pruneLastRun_Parken_BW_ParkingSummary: now - 3 * HOUR,
+    pruneLastRun_Parken_BW_legacy_ParkingSite: now - 24 * HOUR,
+    pruneLastRun_Parken_BW_legacy_BikeParking: now - 24 * HOUR,
+  });
+  await oldBroker.idle();
+  assert.deepEqual(oldBroker.deletes.flat(), [GRACE_OUT]);
+
+  // Port, every 3 h from cold: the legacy check arms at 0 h and acts at 21 h
+  // (20 h after the last one) - seeded relative to that run.
+  const start = Date.parse("2026-09-01T00:00:00Z");
+  const world = mobilityCtx({ id: "parken-bw", start });
+  seedGrace(world.broker, start + 21 * HOUR);
+  serve(world.broker, pages);
+  const deleting: (readonly [number, string[]])[] = [];
+  for (let hour = 0; hour <= 24; hour += 3) {
+    world.clock.now = start + hour * HOUR;
+    const before = world.broker.deletes.length;
+    await run(world.ctx);
+    const ids = world.broker.deletes.slice(before).flat().sort();
+    if (ids.length > 0) deleting.push([hour, ids]);
+  }
+  assert.deepEqual(deleting, [[21, oldBroker.deletes.flat()]], "legacy deletions run by run differ");
+  assert.ok(world.broker.entities.has(GRACE_IN), "a legacy site inside the grace period was deleted");
 }
 
 async function legacyCleanupSwitchesItselfOff(): Promise<void> {
@@ -599,5 +787,7 @@ export {
   missingBoundariesOnlyUseTheArs as "parken-bw: without boundaries only the ARS assigns, and nothing is pruned",
   runWritesWhatTheOldFlowWrites as "parken-bw: run() upserts the old chunks and resets the confirmations on an incomplete run",
   completeRunPrunesTheSameIds as "parken-bw: a complete run prunes the same ids (sites, sums, legacy), never a municipal entity",
+  confirmWindowRunByRun as "parken-bw: candidates just inside and just outside the 24 h confirmation are deleted run by run as by the old node",
+  legacyGraceWindowRunByRun as "parken-bw: legacy sites just inside and just outside the 7-day grace are deleted as by the old node",
   legacyCleanupSwitchesItselfOff as "parken-bw: the legacy cleanup switches itself off after an empty listing",
 };

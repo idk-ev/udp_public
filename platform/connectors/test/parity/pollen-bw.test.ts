@@ -28,7 +28,13 @@ import {
   type PollenForecastEntity,
 } from "../../src/connectors/pollen-bw.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
-import { assertEntitiesEqual, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { runFunctionNode, solePayload } from "../harness/vm-runner.js";
 import { jsonAnswer, upsertedBatches, weatherCtx, weatherFetcher } from "../harness/weather-ctx.js";
 
@@ -120,19 +126,24 @@ function onlyWallClockStampsAreNeutralised(): void {
 
 async function runWritesTheEntitiesOfTheOldNode(): Promise<void> {
   const fixture = readFixture(FIXTURE);
+  const legacyClock = openClock();
   const legacy = solePayload(await runFunctionNode(NODE_ID, { msg: messageFromFixture(fixture) }));
+  const legacyWindow = legacyClock.close();
   const network = weatherFetcher((call) =>
     call.method === "POST"
       ? { response: { status: 204, ok: true, headers: {}, body: "" } }
       : jsonAnswer(200, fixture.payload),
   );
   const { ctx, log } = weatherCtx("pollen-bw", network.fetcher);
+  const portClock = openClock();
   await run(ctx);
+  const portWindow = portClock.close();
 
   assert.equal(network.seen[0]?.url, fixture.source);
   const upserts = upsertedBatches(network.seen);
   assert.equal(upserts.length, 1, "three entities, one request — the old upsert node sent one message");
   assertEntitiesEqual(legacy, upserts[0]);
+  assertClockStamps(legacy, upserts[0], { legacy: legacyWindow, ported: portWindow });
   assert.deepEqual(log.warnings(), []);
 }
 
@@ -180,6 +191,32 @@ async function unusableAnswersWarnOnBothSides(): Promise<void> {
   }
 }
 
+async function repeatedPartRegionsAgree(): Promise<void> {
+  // Sixty copies of the content (a synthetic test input — DWD lists each of
+  // the three BW part-regions once): 180 entities, beyond one chunk of 150.
+  const fixture = readFixture(FIXTURE);
+  const payload = structuredClone(fixture.payload);
+  assert.ok(isRecord(payload) && Array.isArray(payload.content));
+  const content: unknown[] = payload.content;
+  payload.content = Array.from({ length: 60 }, () => content).flat();
+  const legacy = solePayload(
+    await runFunctionNode(NODE_ID, { msg: { ...messageFromFixture(fixture), payload } }),
+  );
+  const network = weatherFetcher((call) =>
+    call.method === "POST"
+      ? { response: { status: 204, ok: true, headers: {}, body: "" } }
+      : jsonAnswer(200, payload),
+  );
+  const { ctx } = weatherCtx("pollen-bw", network.fetcher);
+  await run(ctx);
+  const upserts = upsertedBatches(network.seen);
+  assertEntitiesEqual(legacy, upserts.flat());
+  // NOT compared: the request split. The old node handed all 180 to its
+  // upsert node as ONE message; run() sends chunks of 150 (the kernel
+  // default). Only reachable with repeated part-regions — reported, not pinned.
+  assert.equal(upserts.flat().length, 180);
+}
+
 function malformedSpeciesIsLoud(): void {
   // Deliberate difference (module header): the old node would have written
   // `undefined` for a species without `tomorrow`.
@@ -193,6 +230,7 @@ function malformedSpeciesIsLoud(): void {
 export {
   runWritesTheEntitiesOfTheOldNode as "pollen-bw: run() upserts what the old node emitted, in one request",
   unusableAnswersWarnOnBothSides as "pollen-bw: HTTP error, missing content and no BW part-region warn and write nothing on both sides",
+  repeatedPartRegionsAgree as "pollen-bw: more entities than one chunk (synthetic repeated part-regions) agree with the old node",
   malformedSpeciesIsLoud as "pollen-bw: a species without today/tomorrow makes parse() loud (deliberate difference)",
   fixtureKeepsOnlyBadenWuerttemberg as "pollen-bw: recorded DWD fixture yields exactly the three BW part-regions",
   oldAndNewProduceIdenticalEntities as "pollen-bw: old Node-RED node udp-rt-po-fn and ported build() produce identical entities",

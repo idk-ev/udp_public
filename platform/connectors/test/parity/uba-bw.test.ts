@@ -24,6 +24,7 @@
 import assert from "node:assert/strict";
 import { build, parse, planRequests, run, wrapResponse } from "../../src/connectors/uba-bw.js";
 import type { UbaPart } from "../../src/connectors/uba-bw.js";
+import { isArray } from "../../src/kernel/parse.js";
 import type { GeoIndex, HttpResponse } from "../../src/kernel/types.js";
 import {
   Broker,
@@ -38,7 +39,13 @@ import type { RawGeo } from "../harness/air-energy-kernel.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { httpResponse } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
-import { assertEntitiesEqual, isRecord, normalize } from "../harness/normalize.js";
+import {
+  assertClockStamps,
+  assertEntitiesEqual,
+  isRecord,
+  normalize,
+  openClock,
+} from "../harness/normalize.js";
 import { messagesOf, runFunctionNode } from "../harness/vm-runner.js";
 
 const MSGS_NODE = "udp-rt-bu-msgs";
@@ -211,6 +218,72 @@ async function partialAndMalformedSeries(): Promise<void> {
   assert.equal(ported[0]?.stationName.value, "Test’Station");
 }
 
+async function crossesTheChunkBoundary(): Promise<void> {
+  // Three copies of the recorded station list and answers under new station
+  // ids and codes (a synthetic test input): more stations than one chunk of
+  // 100, through run() and through the old wrap and build nodes.
+  const stations = structuredClone(readFixture("uba-bw").payload);
+  assert.ok(isRecord(stations) && isRecord(stations.data));
+  const data = stations.data;
+  const original = new Map<string, string>();
+  for (const copy of [1, 2]) {
+    for (const [key, entry] of Object.entries(data)) {
+      if (!isArray(entry) || key.includes("-")) continue;
+      const id = `${String(entry[0])}00${String(copy)}`;
+      original.set(id, String(entry[0]));
+      data[`${key}-${String(copy)}`] = [id, `${String(entry[1])}${String(copy)}`, ...entry.slice(2)];
+    }
+  }
+  const recorded = answers();
+  /** The recorded answer of the station a copy was made from, re-keyed to the copy's id. */
+  const answerFor = (id: string): { statusCode: number; payload: unknown } | undefined => {
+    const from = original.get(id) ?? id;
+    const answer = recorded.get(from);
+    if (answer === undefined) return undefined;
+    const payload = answer.payload;
+    if (!isRecord(payload) || !isRecord(payload.data)) return answer;
+    return { statusCode: answer.statusCode, payload: { ...payload, data: { [id]: payload.data[from] } } };
+  };
+
+  const broker = new Broker();
+  const respond = (request: SeenRequest): HttpResponse | Error => {
+    if (request.url.host !== "www.umweltbundesamt.de") return broker.respond(request);
+    if (request.url.pathname.includes("/stations/")) return httpResponse(200, JSON.stringify(stations));
+    const answer = answerFor(request.url.searchParams.get("station") ?? "");
+    return answer === undefined
+      ? httpResponse(404)
+      : httpResponse(answer.statusCode, JSON.stringify(answer.payload));
+  };
+  const geo = fixtureGeo();
+  await run(testCtx("uba-bw", sharedGeo(geo), respond).ctx);
+
+  const requests = planRequests(stations, Date.now());
+  assert.ok(requests !== null);
+  const parts: unknown[] = [];
+  for (const request of requests) {
+    const answer = answerFor(request.station.id);
+    assert.ok(answer !== undefined, `no answer for station ${request.station.id}`);
+    const wrapped = await runFunctionNode(WRAP_NODE, {
+      msg: {
+        _msgid: "parity",
+        station: request.station,
+        statusCode: answer.statusCode,
+        payload: structuredClone(answer.payload),
+      },
+    });
+    const message = messagesOf(wrapped)[0];
+    parts.push(isRecord(message) ? message.payload : undefined);
+  }
+  const legacy = await legacyBuild(parts, geo);
+  assert.ok(legacyEntities(legacy).length > 100, `${String(legacyEntities(legacy).length)} entities`);
+  assertEntitiesEqual(legacyEntities(legacy), broker.upserts.flat());
+  assert.deepEqual(
+    broker.upserts.map((body) => body.length),
+    legacyChunkSizes(legacy),
+    "run() chunks differently from the old node",
+  );
+}
+
 async function aDriftedValueFails(): Promise<void> {
   const geo = fixtureGeo();
   const parts = await legacyParts();
@@ -242,17 +315,22 @@ async function runWritesWhatTheOldNodesWrote(): Promise<void> {
     return broker.respond(request);
   };
   const { ctx, log, seen } = testCtx("uba-bw", sharedGeo(geo), respond);
+  const portClock = openClock();
   await run(ctx);
+  const portWindow = portClock.close();
 
   const parts = (await legacyParts()).map((part) =>
     isRecord(part) && isRecord(part.station) && part.station.id === "286"
       ? { ...part, ok: true, data: null }
       : part,
   );
+  const legacyClock = openClock();
   const legacy = await legacyBuild(parts, geo);
+  const legacyWindow = legacyClock.close();
   assert.deepEqual(log.warnings(), []);
   assert.equal(broker.upserts.length, 1);
   assertEntitiesEqual(legacyEntities(legacy), broker.upserts[0]);
+  assertClockStamps(legacyEntities(legacy), broker.upserts[0], { legacy: legacyWindow, ported: portWindow });
   assert.equal(broker.upserts[0]?.length, 37);
   const stationRequests = seen.filter((request) => request.url.pathname.includes("/airquality/"));
   assert.equal(stationRequests.length, 40, "one request per station, no retry");
@@ -264,6 +342,7 @@ export {
   entitiesAreIdenticalWithStrictAndCentroidAssignment as "uba-bw: old build node and ported build() agree — strict polygon hits and centroid fallback",
   withoutBoundariesEveryStationGoesByCentroid as "uba-bw: without boundaries both assign every station by centroid instead of skipping",
   partialAndMalformedSeries as "uba-bw: null index, valueless and unknown components, failed parts are handled alike",
+  crossesTheChunkBoundary as "uba-bw: more stations than one chunk of 100 (synthetic copies) are chunked as by the old node",
   aDriftedValueFails as "uba-bw: a drifted field fails the comparison with its path",
   runWritesWhatTheOldNodesWrote as "uba-bw: run(ctx) writes what the old nodes wrote, a refused station is skipped",
 };

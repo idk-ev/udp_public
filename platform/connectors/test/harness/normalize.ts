@@ -31,6 +31,11 @@
  *     timestamps into `dateObserved` and `observedAt` where the old node wrote
  *     one and the same, the comparison would not notice.
  *
+ *     Blanking alone would also hide a STALE clock — a port stamping a fixed
+ *     date instead of `ctx.now()`. {@link assertClockStamps} closes that: the
+ *     run() tests check the stamps blanked here against the window the run
+ *     happened in, and their format against the old node's.
+ *
  *  2. LEAVE THE VM REALM. `vm.createContext()` gives the sandbox its own
  *     intrinsics, so an object literal created inside the function node has a
  *     different `Object.prototype` than one from this file.
@@ -238,4 +243,198 @@ export function assertEntitiesEqual(left: unknown, right: unknown, options?: Par
     `Entity parity mismatch: ${String(differences.length)} difference(s), ` +
     `first at ${where} — ${labels.left} ${leftText} vs ${labels.right} ${rightText}`;
   throw new Error(`${summary}\n\n${formatDifferences(differences, labels)}`);
+}
+
+/* ------------------------------------------------------------------ clock stamps */
+
+/**
+ * The span of wall-clock time a run happened in, in epoch milliseconds, both
+ * ends included. A run on a fixed test clock (`ctx.now()` answering one
+ * instant) has `startMs === endMs`.
+ */
+export interface ClockWindow {
+  readonly startMs: number;
+  readonly endMs: number;
+}
+
+/** A window from now until `close()` — taken right before and right after a run. */
+export function openClock(): { close(): ClockWindow } {
+  const startMs = Date.now();
+  return { close: () => ({ startMs, endMs: Date.now() }) };
+}
+
+/** The window of a fixed test clock: exactly one instant. */
+export function fixedClock(at: number | string): ClockWindow {
+  const ms = typeof at === "number" ? at : Date.parse(at);
+  return { startMs: ms, endMs: ms };
+}
+
+/** One window spanning several — e.g. the runs of one test on the real clock. */
+export function spanOf(...windows: readonly ClockWindow[]): ClockWindow {
+  return {
+    startMs: Math.min(...windows.map((window) => window.startMs)),
+    endMs: Math.max(...windows.map((window) => window.endMs)),
+  };
+}
+
+/** One timestamp-shaped value underneath a volatile key. */
+interface Stamp {
+  readonly path: string;
+  /** The volatile key it sits under (`dateObserved`, `observedAt`, …). */
+  readonly key: string;
+  readonly value: string;
+}
+
+/**
+ * The format of a stamp, digits masked: `2026-09-28T10:00:00.123Z` becomes
+ * `9999-99-99T99:99:99.999Z`. Precision, separator and zone designator stay
+ * visible, the instant does not.
+ */
+function stampFormat(value: string): string {
+  return value.replace(/\d/g, "9");
+}
+
+function inWindow(value: string, window: ClockWindow): boolean {
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) && ms >= window.startMs && ms <= window.endMs;
+}
+
+function renderWindow(window: ClockWindow): string {
+  return window.startMs === window.endMs
+    ? new Date(window.startMs).toISOString()
+    : `${new Date(window.startMs).toISOString()} … ${new Date(window.endMs).toISOString()}`;
+}
+
+/** Stamps of an ALREADY REBUILT value (see {@link rebuild}), in walk order. */
+function collectStamps(
+  value: unknown,
+  volatile: ReadonlySet<string>,
+  path: string,
+  key: string | null,
+  into: Stamp[],
+): void {
+  if (Array.isArray(value)) {
+    value.forEach((element: unknown, index) => {
+      collectStamps(element, volatile, `${path}[${String(index)}]`, key, into);
+    });
+    return;
+  }
+  if (isRecord(value)) {
+    for (const name of Object.keys(value)) {
+      const under = key ?? (volatile.has(name) ? name : null);
+      collectStamps(value[name], volatile, `${path}.${name}`, under, into);
+    }
+    return;
+  }
+  if (key !== null && typeof value === "string" && TIMESTAMP.test(value)) {
+    into.push({ path, key, value });
+  }
+}
+
+/** Plain values of this realm, `Date`s as ISO strings, nothing blanked. */
+function rebuild(value: unknown): unknown {
+  return normalizeValue(value, new Set(), false);
+}
+
+function volatileSet(options?: NormalizeOptions): ReadonlySet<string> {
+  return new Set(options?.volatileKeys ?? VOLATILE_KEYS);
+}
+
+function failStamps(problems: readonly string[]): void {
+  if (problems.length === 0) return;
+  throw new Error(
+    `Clock stamp mismatch: ${String(problems.length)} problem(s), first ${problems[0]?.trim() ?? ""}\n\n` +
+      problems.slice(0, MAX_LISTED).join("\n"),
+  );
+}
+
+export interface ClockStampOptions extends NormalizeOptions {
+  /** The window the old node ran in. Its stamps inside it are clock readings. */
+  readonly legacy: ClockWindow;
+  /** The window the port ran in, or its fixed test clock. */
+  readonly ported: ClockWindow;
+}
+
+/**
+ * The half of the stamp comparison that {@link normalize} blanks. Walks both
+ * sides (call it after {@link assertEntitiesEqual}, so the structure is known
+ * to agree) and, for every timestamp underneath a volatile key:
+ *
+ *  * the FORMAT must be the old node's (ms precision, `Z`, …);
+ *  * a stamp the old node took from its clock (inside `legacy`) must be a
+ *    clock reading of the port as well — inside `ported`. A port stamping
+ *    `2020-01-01T00:00:00.000Z`, or a value carried over from an earlier run,
+ *    fails here;
+ *  * a stamp the old node did NOT take from its clock is data after all, and
+ *    must be equal.
+ */
+export function assertClockStamps(legacy: unknown, ported: unknown, options: ClockStampOptions): void {
+  const volatile = volatileSet(options);
+  const left: Stamp[] = [];
+  const right: Stamp[] = [];
+  collectStamps(rebuild(legacy), volatile, "", null, left);
+  collectStamps(rebuild(ported), volatile, "", null, right);
+  const rightByPath = new Map(right.map((stamp) => [stamp.path, stamp]));
+  const problems: string[] = [];
+  if (left.length === 0) problems.push("  the old side carries no timestamp underneath a volatile key");
+  for (const old of left) {
+    const now = rightByPath.get(old.path);
+    rightByPath.delete(old.path);
+    if (now === undefined) {
+      problems.push(`  ${old.path}: old ${old.value}, new <no timestamp>`);
+    } else if (stampFormat(old.value) !== stampFormat(now.value)) {
+      problems.push(
+        `  ${old.path}: format differs — old ${old.value} (${stampFormat(old.value)}), ` +
+          `new ${now.value} (${stampFormat(now.value)})`,
+      );
+    } else if (inWindow(old.value, options.legacy)) {
+      if (!inWindow(now.value, options.ported)) {
+        problems.push(
+          `  ${old.path}: new ${now.value} is not a reading of the run's clock ` +
+            `(${renderWindow(options.ported)})`,
+        );
+      }
+    } else if (old.value !== now.value) {
+      problems.push(`  ${old.path}: data stamp differs — old ${old.value}, new ${now.value}`);
+    }
+  }
+  for (const extra of rightByPath.values()) {
+    problems.push(`  ${extra.path}: old <no timestamp>, new ${extra.value}`);
+  }
+  failStamps(problems);
+}
+
+/**
+ * One-sided form, for writes without an old counterpart in the test (a
+ * freshness-only second run): every stamp underneath a volatile key lies in
+ * `window`, and its key and format occur among the stamps of `reference` —
+ * the old node's output of the same connector.
+ */
+export function assertStampsWithin(
+  values: unknown,
+  window: ClockWindow,
+  reference: unknown,
+  options?: NormalizeOptions,
+): void {
+  const volatile = volatileSet(options);
+  const known: Stamp[] = [];
+  collectStamps(rebuild(reference), volatile, "", null, known);
+  const formats = new Set(known.map((stamp) => `${stamp.key} ${stampFormat(stamp.value)}`));
+  const seen: Stamp[] = [];
+  collectStamps(rebuild(values), volatile, "", null, seen);
+  const problems: string[] = [];
+  if (seen.length === 0) problems.push("  no timestamp underneath a volatile key");
+  for (const stamp of seen) {
+    if (!formats.has(`${stamp.key} ${stampFormat(stamp.value)}`)) {
+      problems.push(
+        `  ${stamp.path}: ${stamp.key} ${stamp.value} has a format the old node never wrote ` +
+          `(${[...formats].join(", ")})`,
+      );
+    } else if (!inWindow(stamp.value, window)) {
+      problems.push(
+        `  ${stamp.path}: ${stamp.value} is not a reading of the run's clock (${renderWindow(window)})`,
+      );
+    }
+  }
+  failStamps(problems);
 }

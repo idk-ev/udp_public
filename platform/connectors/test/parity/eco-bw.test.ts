@@ -33,7 +33,9 @@ import type { RawGeo } from "../harness/air-energy-kernel.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, httpResponse } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
-import { assertEntitiesEqual } from "../harness/normalize.js";
+import type { ClockWindow } from "../harness/normalize.js";
+import { assertClockStamps, assertEntitiesEqual, isRecord, openClock } from "../harness/normalize.js";
+import { assertPruneSettings, legacyPruneSettings, recordPrunes } from "../harness/prune-settings.js";
 import { runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
 
@@ -80,6 +82,37 @@ async function entitiesAreIdentical(): Promise<void> {
     "Tuebingen has no polygon here",
   );
   assert.ok(sites.length < parse(payload).length, "some sites are skipped");
+}
+
+async function crossesTheChunkBoundary(): Promise<void> {
+  // Four copies of the recorded sites under new site ids (a synthetic test
+  // input): more sites and sums than one chunk of 100.
+  const recorded = readFixture("eco-bw").payload;
+  assert.ok(Array.isArray(recorded));
+  const payload: unknown[] = [];
+  for (let copy = 0; copy < 4; copy += 1) {
+    for (const site of recorded) {
+      assert.ok(isRecord(site) && typeof site.counter_site_id === "number");
+      payload.push({
+        ...structuredClone(site),
+        counter_site_id: site.counter_site_id + copy * 1_000_000_000,
+      });
+    }
+  }
+  const legacy = await runLegacy(payload);
+  const result = summarize(parse(payload), sharedGeo(fixtureGeo()).index(), new Date().toISOString());
+  assert.ok(result.entities.length > 100, `${String(result.entities.length)} entities, more than one chunk`);
+  assertEntitiesEqual(legacyEntities(legacy), result.entities, VOLATILE);
+  // What run() sends: the same requests as the old node's chunks.
+  const broker = new Broker([]);
+  const respond = (request: SeenRequest): HttpResponse | Error =>
+    request.url.href === SOURCE_URL ? httpResponse(200, JSON.stringify(payload)) : broker.respond(request);
+  await run(testCtx("eco-bw", sharedGeo(fixtureGeo()), respond).ctx);
+  assert.deepEqual(
+    broker.upserts.map((body) => body.length),
+    legacyChunkSizes(legacy),
+    "run() chunks differently from the old node",
+  );
 }
 
 async function edgeCasesOfTheFeed(): Promise<void> {
@@ -188,8 +221,11 @@ async function dailyPruneMatchesTheOldNode(): Promise<void> {
   let flow: Record<string, unknown> = {};
   let context: Record<string, unknown> = {};
   const legacyDeletes: number[] = [];
+  const legacyWrites: { entities: unknown[]; window: ClockWindow }[] = [];
   for (let i = 0; i < 2; i += 1) {
+    const legacyClock = openClock();
     const legacy = await runLegacy(payload, { geo, flow, context, respond: legacyBroker.respond });
+    legacyWrites.push({ entities: legacyEntities(legacy), window: legacyClock.close() });
     await sleep(150);
     flow = flowOf(legacy);
     context = Object.fromEntries(legacy.context);
@@ -202,14 +238,35 @@ async function dailyPruneMatchesTheOldNode(): Promise<void> {
     request.url.href === SOURCE_URL
       ? httpResponse(200, JSON.stringify(payload))
       : portBroker.respond(request);
-  const { ctx, log } = testCtx("eco-bw", sharedGeo(geo), respond);
+  const port = testCtx("eco-bw", sharedGeo(geo), respond);
+  const { log } = port;
+  const recorded = recordPrunes(port.ctx);
+  const { ctx } = recorded;
   const portDeletes: number[] = [];
+  const portWrites: { entities: unknown[]; window: ClockWindow }[] = [];
   for (let i = 0; i < 2; i += 1) {
+    const before = portBroker.upserts.length;
+    const portClock = openClock();
     await run(ctx);
+    portWrites.push({ entities: portBroker.upserts.slice(before).flat(), window: portClock.close() });
     portDeletes.push(portBroker.deletes.flat().length);
   }
 
+  // Each run's writes: the old node's, stamped with the clock of that run —
+  // `observedAt` only; `dateObserved` is the counted day and compared as data.
+  portWrites.forEach((written, i) => {
+    const legacy = legacyWrites[i];
+    assert.ok(legacy !== undefined);
+    assertEntitiesEqual(legacy.entities, written.entities, VOLATILE);
+    assertClockStamps(legacy.entities, written.entities, {
+      ...VOLATILE,
+      legacy: legacy.window,
+      ported: written.window,
+    });
+  });
+
   assert.deepEqual(portDeletes, [0, 2], "armed in the first run, deleting in the second");
+  assertPruneSettings("eco-bw", legacyPruneSettings(NODE_ID), recorded.calls, ctx);
   assert.deepEqual(portDeletes, legacyDeletes);
   assert.deepEqual(portBroker.deletes.flat().sort(), legacyBroker.deletes.flat().sort());
   assert.ok(portBroker.entities.has("urn:ngsi-ld:TrafficFlowObserved:freiburg-zaehler-1"));
@@ -224,6 +281,7 @@ async function dailyPruneMatchesTheOldNode(): Promise<void> {
 
 export {
   entitiesAreIdentical as "eco-bw: old node and ported build() agree on sites and municipal sums (dateObserved compared as data)",
+  crossesTheChunkBoundary as "eco-bw: more entities than one chunk of 100 (synthetic copies) are chunked as by the old node",
   edgeCasesOfTheFeed as "eco-bw: newest ALL day, sites without ALL or polygon, zero counts agree",
   aDriftedDayFails as "eco-bw: a drifted counting day fails the comparison with its path",
   dailyPruneMatchesTheOldNode as "eco-bw: the daily prune arms and deletes as the old node did, foreign ids untouched",
