@@ -7,7 +7,8 @@
  * Parity: the source URL of every connector that has a static one, against
  * the `http request` node that fed the old function node.
  *
- * Found through the wires of flows.json, not by name: the request node whose
+ * Found through the wires of the frozen flows (test/fixtures/legacy-flows.json),
+ * not by name: the request node whose
  * output is wired into the connector's function node. Its `url`, or — where
  * the request node is empty and the URL came in on `msg.url` — the one
  * `msg.url = '…'` literal of the function node wired into the request node
@@ -37,7 +38,7 @@ import { DEFAULT_URL as STAMMDATEN_URL } from "../../src/connectors/stammdaten-b
 import { STATIONS_URL } from "../../src/connectors/uba-bw.js";
 import { DEFAULT_MUNICIPALITIES_URL } from "../../src/connectors/warnungen-bw.js";
 import { SOURCES_URL } from "../../src/connectors/wetter-dwd-station.js";
-import { flowsPath } from "../harness/fixtures.js";
+import { legacyFlowsPath } from "../harness/fixtures.js";
 import { isRecord } from "../harness/normalize.js";
 import { readFileSync } from "node:fs";
 
@@ -67,8 +68,8 @@ const SOURCES: readonly (readonly [connector: string, consumer: string, ported: 
 ];
 
 function flowNodes(): readonly Record<string, unknown>[] {
-  const parsed: unknown = JSON.parse(readFileSync(flowsPath(), "utf8"));
-  if (!Array.isArray(parsed)) throw new Error("flows.json is not an array");
+  const parsed: unknown = JSON.parse(readFileSync(legacyFlowsPath(), "utf8"));
+  if (!Array.isArray(parsed)) throw new Error("legacy-flows.json is not an array");
   return parsed.filter(isRecord);
 }
 

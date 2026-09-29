@@ -4,7 +4,12 @@
  */
 
 /**
- * Runs an OLD Node-RED function node out of `flows.json` in `node:vm`.
+ * Runs an OLD Node-RED function node out of the frozen flows in `node:vm`.
+ *
+ * The old code comes from `test/fixtures/legacy-flows.json` — the generated
+ * `flows.json` as it stood before the first cutover (see the README next to
+ * it), not from the live file, which drops a connector's nodes once it runs in
+ * the service.
  *
  * This is the half of the parity harness that makes the migration divisible at
  * all: without it "the rewrite is correct" stays an opinion. The old connector
@@ -54,7 +59,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createContext, Script } from "node:vm";
 import util from "node:util";
-import { flowsPath } from "./fixtures.js";
+import { legacyFlowsPath } from "./fixtures.js";
 import { isRecord } from "./normalize.js";
 
 export interface FunctionNodeLib {
@@ -115,7 +120,7 @@ function readLibs(value: unknown, where: string): FunctionNodeLib[] {
 /** Ids of all function nodes in the flow file — a map for the porting agents. */
 export function listFunctionNodes(flowsFile?: string): { id: string; name: string }[] {
   const found: { id: string; name: string }[] = [];
-  for (const node of readFlows(flowsFile ?? flowsPath())) {
+  for (const node of readFlows(flowsFile ?? legacyFlowsPath())) {
     if (!isRecord(node) || node.type !== "function") continue;
     const id = node.id;
     const name = node.name;
@@ -125,9 +130,9 @@ export function listFunctionNodes(flowsFile?: string): { id: string; name: strin
   return found;
 }
 
-/** Reads one function node out of `flows.json`. The file is never modified. */
+/** Reads one function node out of the frozen flows. The file is never modified. */
 export function loadFunctionNode(nodeId: string, flowsFile?: string): FunctionNodeDefinition {
-  const file = flowsFile ?? flowsPath();
+  const file = flowsFile ?? legacyFlowsPath();
   for (const node of readFlows(file)) {
     if (!isRecord(node) || node.id !== nodeId) continue;
     if (node.type !== "function") {
@@ -460,7 +465,7 @@ export async function runFunctionNode(nodeId: string, options: RunOptions): Prom
  * For the helpers the generator splices into many nodes — STRICT_LOOKUP sits
  * in fourteen, PRUNE_HELPER in eight — so a test can pin the helper itself on inputs no connector
  * fixture would ever contain (non-finite coordinates, a point in Basel). The
- * code still comes out of `flows.json`, i.e. it is what Node-RED runs.
+ * code still comes out of the frozen flows, i.e. it is what Node-RED ran.
  */
 export function extractSnippet(nodeId: string, start: string, end: string, flowsFile?: string): string {
   const body = loadFunctionNode(nodeId, flowsFile).func;

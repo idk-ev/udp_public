@@ -28,7 +28,7 @@ import { build, parse, run, signatureKey, stopFromParams } from "../../src/conne
 import type { StopConfig } from "../../src/connectors/efa-abfahrten.js";
 import { EFA_CONCURRENCY, EFA_MIN_INTERVAL_MS } from "../../src/connectors/efa.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
-import { flowsPath, messageFromFixture, readFixture } from "../harness/fixtures.js";
+import { legacyFlowsPath, messageFromFixture, readFixture } from "../harness/fixtures.js";
 import type { GRequest, GRig } from "../harness/g-transport.js";
 import {
   jsonHttp,
@@ -57,14 +57,14 @@ function nodePrefix(ags: string): string {
 }
 
 function flowNodes(): readonly Record<string, unknown>[] {
-  const parsed: unknown = JSON.parse(readFileSync(flowsPath(), "utf8"));
-  if (!Array.isArray(parsed)) throw new Error("flows.json is not an array");
+  const parsed: unknown = JSON.parse(readFileSync(legacyFlowsPath(), "utf8"));
+  if (!Array.isArray(parsed)) throw new Error("legacy-flows.json is not an array");
   return parsed.filter(isRecord);
 }
 
 function nodeById(id: string): Record<string, unknown> {
   const node = flowNodes().find((candidate) => candidate.id === id);
-  if (node === undefined) throw new Error(`flows.json has no node ${id}`);
+  if (node === undefined) throw new Error(`legacy-flows.json has no node ${id}`);
   return node;
 }
 
@@ -96,7 +96,7 @@ function fixturePayload(ags: string): unknown {
   return readFixture(fixtureName(ags)).payload;
 }
 
-/** Every stop the registry enables — each has its own generated pipeline in flows.json. */
+/** Every stop the registry enables — each has its own generated pipeline in the frozen flows. */
 function enabledStops(): string[] {
   const enabled = registryEntry("efa-abfahrten").enabledFor;
   if (enabled === null || enabled === "*") throw new Error("efa-abfahrten: the registry lists no stops");
@@ -387,7 +387,7 @@ async function noUsableDeparturesWarns(): Promise<void> {
 }
 
 async function requestProfileIsCapped(): Promise<void> {
-  // The old profile, pinned from flows.json: one inject per stop, all firing
+  // The old profile, pinned from the frozen flows: one inject per stop, all firing
   // together (once after 15 s, then every 300 s), no delay node in between.
   const nodes = flowNodes().filter((node) => typeof node.id === "string" && node.id.startsWith("udp-rt-o-"));
   const injects = nodes.filter((node) => node.type === "inject");

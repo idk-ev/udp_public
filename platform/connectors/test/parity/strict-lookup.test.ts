@@ -4,8 +4,9 @@
  */
 
 /**
- * Parity: the strict municipality lookup — STRICT_LOOKUP as it runs in
- * `flows.json` against `GeoIndex.agsAt` of src/kernel/geo.ts.
+ * Parity: the strict municipality lookup — STRICT_LOOKUP as it ran in the
+ * frozen flows (test/fixtures/legacy-flows.json) against `GeoIndex.agsAt` of
+ * src/kernel/geo.ts.
  *
  * Almost every connector assigns coordinates with it, so it is pinned on its
  * own, on points no connector fixture would contain: points just outside the

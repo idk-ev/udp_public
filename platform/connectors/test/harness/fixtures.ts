@@ -15,6 +15,12 @@
  * BEFORE anything is deleted. Once all 29 connectors are ported, `flows.json`
  * disappears and this directory is the regression suite that the project has
  * never had.
+ *
+ * The old side of that suite is `legacy-flows.json` in the same directory: the
+ * generated flows frozen at the last commit before the first connector was
+ * switched over (see `legacy-flows.README.md` there). Every parity test reads
+ * old node code from it, never from the live `platform/config/nodered/flows.json`,
+ * which loses a connector's nodes the moment it runs in the service.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -22,14 +28,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isRecord } from "./normalize.js";
 
-/** Anchor for both paths below; exists in the source tree and in `dist/`. */
-const FLOWS_RELATIVE = join("platform", "config", "nodered", "flows.json");
+/**
+ * The frozen Node-RED flows, relative to the repository root — anchor for the
+ * paths below. It is committed test data, not build output, so it exists for
+ * the source tree and for `dist/` alike, and it outlives the live flow file.
+ */
+const LEGACY_FLOWS_RELATIVE = join("platform", "connectors", "test", "fixtures", "legacy-flows.json");
 
 let cachedRoot: string | undefined;
 
 /**
- * Walks upwards from this module until the flow file appears. Deliberately not
- * a relative `../../..`: this file runs compiled from
+ * Walks upwards from this module until the frozen flow file appears.
+ * Deliberately not a relative `../../..`: this file runs compiled from
  * `dist/test/harness/` and, for a type check, from `test/harness/` — the depth
  * differs, the anchor does not.
  */
@@ -38,20 +48,26 @@ export function repositoryRoot(): string {
   const start = dirname(fileURLToPath(import.meta.url));
   let dir = start;
   for (;;) {
-    if (existsSync(join(dir, FLOWS_RELATIVE))) {
+    if (existsSync(join(dir, LEGACY_FLOWS_RELATIVE))) {
       cachedRoot = dir;
       return dir;
     }
     const parent = dirname(dir);
     if (parent === dir) {
-      throw new Error(`repository root not found above ${start}: no ${FLOWS_RELATIVE}`);
+      throw new Error(`repository root not found above ${start}: no ${LEGACY_FLOWS_RELATIVE}`);
     }
     dir = parent;
   }
 }
 
-export function flowsPath(): string {
-  return join(repositoryRoot(), FLOWS_RELATIVE);
+/**
+ * The OLD flows every parity test reads its old node code from: the generated
+ * `flows.json` frozen before the first cutover. Never regenerated, never
+ * deployed — the live file drops a connector's nodes once it runs in the
+ * service, the comparison must not lose its old side with it.
+ */
+export function legacyFlowsPath(): string {
+  return join(repositoryRoot(), LEGACY_FLOWS_RELATIVE);
 }
 
 /**

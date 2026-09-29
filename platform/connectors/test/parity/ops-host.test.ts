@@ -23,7 +23,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { build, COMMAND, EXEC_TIMEOUT_MS, parse, runWith } from "../../src/connectors/ops-host.js";
 import { ParseError } from "../../src/kernel/parse.js";
-import { flowsPath, messageFromFixture, readFixture } from "../harness/fixtures.js";
+import { legacyFlowsPath, messageFromFixture, readFixture } from "../harness/fixtures.js";
 import {
   assertClockStamps,
   assertEntitiesEqual,
@@ -166,8 +166,8 @@ function commandMatchesTheExecNode(): void {
 }
 
 function readExecCommand(): { command: string; timer: string } {
-  // The exec node is not a function node; read it through the same flow file.
-  const flows: unknown = JSON.parse(readFileSync(flowsPath(), "utf8"));
+  // The exec node is not a function node; read it through the same frozen flow file.
+  const flows: unknown = JSON.parse(readFileSync(legacyFlowsPath(), "utf8"));
   assert.ok(Array.isArray(flows));
   for (const node of flows) {
     if (!isRecord(node) || node.id !== EXEC_NODE_ID) continue;

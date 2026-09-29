@@ -10,9 +10,10 @@
  * settings agree for the entities that test seeds. A grace period of 1 h
  * instead of 24 h deletes the same entity that is three days old. So the
  * option objects themselves are compared: every `pruneStale({ … })` of the
- * old node is cut out of `flows.json` and evaluated in a vm (the code is what
- * Node-RED ran, not a copy in this file), and every `ctx.prune.stale(options)`
- * of the port is recorded by a wrapper around the kernel's pruner.
+ * old node is cut out of the frozen flows (`test/fixtures/legacy-flows.json`)
+ * and evaluated in a vm (the code is what Node-RED ran, not a copy in this
+ * file), and every `ctx.prune.stale(options)` of the port is recorded by a
+ * wrapper around the kernel's pruner.
  *
  * Both sides are RESOLVED before the comparison — the defaults of the old
  * PRUNE_HELPER (`o.maxFraction || 0.3`, `o.confirmMs || 24 h`, `o.attrs ||

@@ -9,8 +9,14 @@
    connector must never run in Node-RED and the service at the same time.
 
    The generator runs on a COPY (registry, flows.json, status export in a temp
-   directory); the checkout stays untouched. Needs Python 3: without one the test
-   skips locally, in CI (CI set) it fails instead of passing silently. */
+   directory); the checkout stays untouched. Its baseline is a registry copy
+   with EVERY connector reset to "nodered" — the full node set — so the test
+   means the same at every stage of the cutover, whatever the live registry has
+   switched over already. Needs Python 3: without one the generator tests skip
+   locally, in CI (CI set) they fail instead of passing silently.
+
+   The checked-in flows.json is held to the cutover invariant as well: no node
+   of a connector on "app", every node of each connector on "nodered". */
 "use strict";
 const assert = require("assert");
 const fs = require("fs");
@@ -53,6 +59,33 @@ function runGenerator(python, registry, flows, statusExport) {
 const prefixed = (flows, prefixes) =>
   flows.filter(n => prefixes.some(p => String(n.id || "").startsWith(p)));
 
+const runtimeOf = c => c.runtime ?? "nodered";
+
+/* The live registry with every connector back on Node-RED. */
+function allOnNodeRed() {
+  const registry = JSON.parse(fs.readFileSync(REGISTRY, "utf8"));
+  for (const c of registry.connectors) c.runtime = "nodered";
+  return registry;
+}
+
+/* Runs the generator on copies in `dir` (the registry object as
+   connectors.json, the flow file `flowsFrom` as flows.json) and returns the
+   generated flows and status export. */
+function generate(python, dir, registry, flowsFrom) {
+  const regCopy = path.join(dir, "connectors.json");
+  const flowsCopy = path.join(dir, "flows.json");
+  const statusCopy = path.join(dir, "connectors-status.json");
+  fs.writeFileSync(regCopy, JSON.stringify(registry, null, 2));
+  if (path.resolve(flowsFrom) !== path.resolve(flowsCopy)) fs.copyFileSync(flowsFrom, flowsCopy);
+  const { code, output } = runGenerator(python, regCopy, flowsCopy, statusCopy);
+  assert.strictEqual(code, 0, `generator failed:\n${output}`);
+  return {
+    flowsFile: flowsCopy,
+    flows: JSON.parse(fs.readFileSync(flowsCopy, "utf8")),
+    status: JSON.parse(fs.readFileSync(statusCopy, "utf8")).connectors,
+  };
+}
+
 exports['runtime "app" drops exactly that connector from flows.json'] = () => {
   const python = findPython();
   if (python === null) {
@@ -62,23 +95,21 @@ exports['runtime "app" drops exactly that connector from flows.json'] = () => {
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udp-runtime-"));
   try {
-    const registry = JSON.parse(fs.readFileSync(REGISTRY, "utf8"));
+    // Baseline: every connector on Node-RED — the full node set, independent
+    // of what the live registry has switched over already.
+    const baseline = generate(python, dir, allOnNodeRed(), FLOWS);
+    for (const c of baseline.status) assert.strictEqual(c.runtime, "nodered", `${c.id}: runtime in baseline export`);
+
+    const registry = allOnNodeRed();
     for (const id of SWITCHED) {
       const entry = registry.connectors.find(c => c.id === id);
       assert(entry, `test fixture: ${id} is no longer in the registry`);
       entry.runtime = "app";
     }
-    const regCopy = path.join(dir, "connectors.json");
-    const flowsCopy = path.join(dir, "flows.json");
-    const statusCopy = path.join(dir, "connectors-status.json");
-    fs.writeFileSync(regCopy, JSON.stringify(registry, null, 2));
-    fs.copyFileSync(FLOWS, flowsCopy);
+    const switched = generate(python, dir, registry, baseline.flowsFile);
 
-    const { code, output } = runGenerator(python, regCopy, flowsCopy, statusCopy);
-    assert.strictEqual(code, 0, `generator failed:\n${output}`);
-
-    const before = JSON.parse(fs.readFileSync(FLOWS, "utf8"));
-    const after = JSON.parse(fs.readFileSync(flowsCopy, "utf8"));
+    const before = baseline.flows;
+    const after = switched.flows;
     const byId = new Map(registry.connectors.map(c => [c.id, c]));
 
     // 1. Not a single node of a switched connector is left.
@@ -97,6 +128,7 @@ exports['runtime "app" drops exactly that connector from flows.json'] = () => {
 
     // 3. Nothing else changed: the new file is the old one minus the dropped nodes.
     const dropped = new Set(SWITCHED.flatMap(id => prefixed(before, byId.get(id).nodePrefixes).map(n => n.id)));
+    assert(dropped.size > 0, "test fixture: the switched connectors had no nodes in the baseline");
     assert.deepStrictEqual(
       after.map(n => n.id),
       before.map(n => n.id).filter(id => !dropped.has(id)),
@@ -114,9 +146,41 @@ exports['runtime "app" drops exactly that connector from flows.json'] = () => {
     assert.deepStrictEqual(urls, ["/warnungen.ics"]);
 
     // 6. The status export carries the runtime of every connector.
-    const status = JSON.parse(fs.readFileSync(statusCopy, "utf8")).connectors;
-    for (const c of status)
+    for (const c of switched.status)
       assert.strictEqual(c.runtime, SWITCHED.includes(c.id) ? "app" : "nodered", `${c.id}: runtime in export`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+exports["checked-in flows.json: no node of an app connector, every node of a Node-RED one"] = () => {
+  const registry = JSON.parse(fs.readFileSync(REGISTRY, "utf8")).connectors;
+  const live = JSON.parse(fs.readFileSync(FLOWS, "utf8"));
+  const onNodeRed = registry.filter(c => c.active !== false && runtimeOf(c) === "nodered");
+
+  // The cutover invariant itself: a connector never runs in Node-RED and the
+  // service at the same time. Holds without Python, too.
+  for (const c of registry.filter(c => runtimeOf(c) === "app")) {
+    const left = prefixed(live, c.nodePrefixes).map(n => n.id);
+    assert.deepStrictEqual(left, [], `${c.id} runs in the connector service but still has nodes in flows.json — run the generator`);
+  }
+  for (const c of onNodeRed)
+    assert(prefixed(live, c.nodePrefixes).length > 0, `${c.id} runs in Node-RED but has no nodes in flows.json`);
+
+  // Not just "some" nodes: each Node-RED connector keeps exactly the node set
+  // the generator produces for it with nothing switched over.
+  const python = findPython();
+  if (python === null) {
+    assert(!process.env.CI, "no Python 3 found (python3, python, py -3) — CI must have one");
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udp-runtime-"));
+  try {
+    const full = generate(python, dir, allOnNodeRed(), FLOWS).flows;
+    for (const c of onNodeRed) {
+      const ids = nodes => prefixed(nodes, c.nodePrefixes).map(n => n.id).sort();
+      assert.deepStrictEqual(ids(live), ids(full), `${c.id}: its nodes in flows.json differ from its full node set`);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

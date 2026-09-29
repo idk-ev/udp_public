@@ -305,7 +305,7 @@ async function everyAbortOfTheOldNodeAbortsThePort(): Promise<void> {
 }
 
 async function pageCapIsLoudAndIncomplete(): Promise<void> {
-  // The constants of the old node, read out of flows.json.
+  // The constants of the old node, read out of the frozen flows.
   const old = loadFunctionNode(FETCH_NODE).func;
   assert.equal(/const MAX_SEITEN = (\d+);/.exec(old)?.[1], String(MAX_PAGES));
   assert.equal(/const PRO_SEITE = (\d+);/.exec(old)?.[1], String(PAGE_SIZE));

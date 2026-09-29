@@ -8,20 +8,64 @@
    auf Gleichstand achtet, ein Regressionsversuch aber in jedem der beiden
    Artefakte beginnen kann. Anlass ist der ParkAPI-Vorfall vom 24.08.2026: eine
    wirkungslose offset-Pagination und aus Freitext gebaute Entitäts-IDs liefen
-   einen Monat lang unbemerkt und erzeugten rund die Hälfte aller TRoE-Zeilen. */
+   einen Monat lang unbemerkt und erzeugten rund die Hälfte aller TRoE-Zeilen.
+
+   Connector cutover (docs/migration-konnektoren.md, phase 4): a connector on
+   "runtime": "app" has no nodes in the live flows.json any more. Its nodes are
+   then taken from the frozen pre-cutover flows
+   (platform/connectors/test/fixtures/legacy-flows.json), so no check here goes
+   vacuous because a node vanished — a node missing from both files fails. For
+   the invariants that matter beyond the old code, the connector's check moves
+   to the PORTED module as well (inService below): directly on its source, or
+   through the connectors test that asserts the same thing there. */
 "use strict";
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const ROOT = path.join(__dirname, "..", "..");
 const GENERATOR = fs.readFileSync(path.join(ROOT, "scripts/generate-nodered-flows.py"), "utf8");
-const FLOWS = JSON.parse(fs.readFileSync(path.join(ROOT, "platform/config/nodered/flows.json"), "utf8"));
+const readJson = p => JSON.parse(fs.readFileSync(path.join(ROOT, p), "utf8"));
+const REGISTRY = readJson("platform/config/connectors.json").connectors;
+const LIVE_FLOWS = readJson("platform/config/nodered/flows.json");
+const LEGACY_FLOWS = readJson("platform/connectors/test/fixtures/legacy-flows.json");
+const runtimeOf = c => c.runtime ?? "nodered";
+const ON_APP = REGISTRY.filter(c => runtimeOf(c) === "app");
+const ownedByApp = n => ON_APP.some(c => c.nodePrefixes.some(p => String(n.id || "").startsWith(p)));
+/* The flows under test: live nodes of every connector still on Node-RED, frozen
+   nodes of every connector on "app" (tests/static/connector-runtime.test.js
+   holds the live file to having none of those). */
+const FLOWS = LIVE_FLOWS.filter(n => !ownedByApp(n)).concat(LEGACY_FLOWS.filter(ownedByApp));
 const FUNCS = FLOWS.filter(n => n.type === "function");
 
 /* Nur Code, keine Kommentarzeilen: Die Kommentare beschreiben absichtlich den
    behobenen Fehler (»vorher &offset=…«) und dürfen die Prüfungen nicht auslösen.
    Zeilen mit URLs bleiben erhalten, weil dort das // nie am Zeilenanfang steht. */
 const nurCode = t => t.split("\n").filter(l => !/^\s*\/\//.test(l)).join("\n");
+
+/* Source of a ported connector module (platform/connectors/src/connectors),
+   code only: block and line comments removed, adjacent string literals
+   ("…" + "…") joined, so a statement reads as the database gets it. */
+function portedCode(module) {
+  const src = fs.readFileSync(path.join(ROOT, "platform/connectors/src/connectors", module + ".ts"), "utf8");
+  return nurCode(src.replace(/\/\*[\s\S]*?\*\//g, "")).replace(/"\s*\+\s*"/g, "");
+}
+
+/* True when `connector` runs in the connector service. Its invariant is then
+   carried by the ported module; `portTests` names the connectors tests
+   ([file under platform/connectors/test/parity, export name]) that assert it
+   there — they run in the same suite (tests/run.js), and a renamed or deleted
+   one fails here instead of leaving the invariant unguarded. */
+function inService(connector, portTests) {
+  const c = REGISTRY.find(x => x.id === connector);
+  assert(c, `registry has no connector ${connector}`);
+  if (runtimeOf(c) !== "app") return false;
+  for (const [file, name] of portTests) {
+    const test = fs.readFileSync(path.join(ROOT, "platform/connectors/test/parity", file + ".test.ts"), "utf8");
+    assert(test.includes(`as ${JSON.stringify(name)}`),
+      `${connector} runs in the connector service, but ${file}.test.ts no longer asserts "${name}"`);
+  }
+  return true;
+}
 
 /* Alle ID-Ausdrücke einsammeln: ab »id: 'urn:ngsi-ld:« bis zum nächsten
    »type:« der Entität — die ID kann sich über mehrere Zeilen erstrecken. */
@@ -53,6 +97,8 @@ exports["Keine Entitäts-ID aus geslugtem Freitext"] = () => {
 };
 
 exports["Parkanlagen tragen stabile IDs aus dem ParkAPI-Schlüssel"] = () => {
+  inService("parken-bw", [["mobility-invariants", "mobility invariants: parking site ids from the ParkAPI key, without the AGS"],
+    ["mobility-invariants", "mobility invariants: no entity id from slugged free text in any ported module"]]);
   const bau = FUNCS.find(n => n.id === "udp-rt-bp-build");
   assert(bau, "Build-Node udp-rt-bp-build fehlt");
   assert(/'urn:ngsi-ld:' \+ typ \+ ':parkapi-' \+ a\[0\]/.test(bau.func),
@@ -69,6 +115,7 @@ exports["ParkAPI paginiert per Cursor, nicht per offset"] = () => {
   // Die ParkAPI v3 ignoriert offset stillschweigend: offset=0/500/…/2500
   // lieferten byteweise identische Antworten. Wer das wieder einbaut, holt
   // erneut 66× dieselben 500 Datensätze.
+  inService("parken-bw", [["mobility-invariants", "mobility invariants: ParkAPI paginates by cursor start=, never offset="]]);
   const parkapi = FUNCS.filter(n => (n.func || "").includes("park-api"));
   assert(parkapi.length, "kein Function-Node spricht die ParkAPI an");
   for (const n of parkapi) {
@@ -83,6 +130,7 @@ exports["ParkAPI paginiert per Cursor, nicht per offset"] = () => {
 };
 
 exports["ParkAPI-Abruf prüft Seitenüberschneidung und deckelt die Schleife"] = () => {
+  inService("parken-bw", [["mobility-invariants", "mobility invariants: ParkAPI checks page overlap, stalled cursors and caps the loop"]]);
   const f = FUNCS.find(n => n.id === "udp-rt-bp-fetch");
   assert(f, "Abruf-Node udp-rt-bp-fetch fehlt");
   assert(/gesehen\.has\(/.test(f.func), "keine Überschneidungsprüfung der Seiten");
@@ -97,6 +145,9 @@ exports["gateChanged: Ersetzen-Modus vorhanden, GBFS-Carsharing merged weiter"] 
   // Ganzbestands-Flows dürfen die Signaturtabelle ersetzen, Teilbestands-Flows
   // (je GBFS-System ein Lauf) müssen mergen — sonst greift dort die
   // Änderungserkennung nie.
+  const gateModes = "mobility invariants: gate replace for whole-stock runs, merge per system, commit only via the plan";
+  inService("carsharing-bw", [["mobility-invariants", gateModes]]);
+  inService("parken-bw", [["mobility-invariants", gateModes]]);
   const mitGate = FUNCS.filter(n => /function gateChanged\(/.test(n.func || ""));
   assert(mitGate.length, "gateChanged in keinem Flow enthalten");
   for (const n of mitGate) {
@@ -114,7 +165,23 @@ exports["gateChanged: Ersetzen-Modus vorhanden, GBFS-Carsharing merged weiter"] 
 };
 
 exports["TRoE-Statistik kennt das Zeilenbudget aus der Registry"] = () => {
-  const reg = JSON.parse(fs.readFileSync(path.join(ROOT, "platform/config/connectors.json"), "utf8")).connectors;
+  const reg = REGISTRY;
+  // Rückwärtskompatibel: Konnektoren ohne rowBudget24h bleiben unbeanstandet.
+  assert(reg.some(c => !c.rowBudget24h), "Testannahme hinfällig: alle Konnektoren tragen ein Budget");
+  if (inService("troe-stats", [
+    ["troe-stats", "troe-stats: the budget is the kernel's sumRowBudgets() — equal to the object the generator baked into the old node"],
+    ["troe-stats", "troe-stats: under, at and over budget, types without budget — warnings identical to the old node"],
+  ])) {
+    // The port takes the budget from the kernel, which sums the LIVE registry
+    // (the frozen node carries the registry of its day, so it is not compared).
+    const port = portedCode("troe-stats");
+    assert(/parse\(\{ \.\.\.snapshot, budget: ctx\.rowBudget \}\)/.test(port), "troe-stats does not check against ctx.rowBudget");
+    assert(/if \(stats\.budgetWarning !== null\) ctx\.log\.warn\(stats\.budgetWarning\)/.test(port), "budget overrun stays silent in troe-stats");
+    assert(/`TRoE-Zeilenbudget \(24 h\) überschritten — /.test(port), "budget warning text changed in troe-stats");
+    const context = fs.readFileSync(path.join(ROOT, "platform/connectors/src/kernel/context.ts"), "utf8");
+    assert(/rowBudget: sumRowBudgets\(kernel\.registry\.entries\)/.test(context), "ctx.rowBudget is no longer the registry sum");
+    return;
+  }
   const erwartet = {};
   for (const c of reg) for (const [t, n] of Object.entries(c.rowBudget24h || {})) erwartet[t] = (erwartet[t] || 0) + n;
   const troe = FUNCS.find(n => n.id === "udp-rt-db-fn");
@@ -123,15 +190,46 @@ exports["TRoE-Statistik kennt das Zeilenbudget aus der Registry"] = () => {
   assert(m, "kein Budget-Objekt im TRoE-Node — Generator und Registry aus dem Tritt?");
   assert.deepStrictEqual(JSON.parse(m[1]), erwartet, "Budget im Flow weicht von der Registry ab");
   assert(/node\.warn\('TRoE-Zeilenbudget/.test(troe.func), "Budgetüberschreitung bleibt stumm");
-  // Rückwärtskompatibel: Konnektoren ohne rowBudget24h bleiben unbeanstandet.
-  assert(reg.some(c => !c.rowBudget24h), "Testannahme hinfällig: alle Konnektoren tragen ein Budget");
 };
+
+/* A ported database connector's session: a server-side statement timeout that
+   fires before the client's query timeout (the latter only gives up and leaves
+   the query running). Returns the module's code for further checks. */
+function portHasServerTimeout(module) {
+  const code = portedCode(module);
+  const ms = key => {
+    const m = new RegExp(key + ":\\s*([\\d_]+)").exec(code);
+    return m ? Number(m[1].replace(/_/g, "")) : NaN;
+  };
+  assert(ms("statementTimeoutMs") > 0, `${module}: no server-side statement timeout`);
+  assert(ms("statementTimeoutMs") < ms("queryTimeoutMs"), `${module}: the server-side timeout does not fire before the client's`);
+  return code;
+}
 
 /* The 10-minute statistics once counted the whole attributes table.
    The client timeout did not stop the server query, runs piled up and kept
    TimescaleDB at its CPU limit. Guard both halves of the fix. */
 exports["TRoE statistics stay cheap: server-side timeout, no full scan, overlap guard"] = () => {
+  if (inService("troe-stats", [
+    ["troe-stats", "troe-stats: session settings are the old client's (udp-troe-stats, 50 s server / 60 s client)"],
+    ["troe-stats", "troe-stats: a previous run still active skips the run on both sides, nothing written"],
+  ])) {
+    const code = portHasServerTimeout("troe-stats");
+    assert(!/count\(DISTINCT/i.test(code), "count(DISTINCT …) in troe-stats – that is a full scan");
+    const reads = code.match(/FROM attributes\b[^"`]*/g) || [];
+    assert(reads.length > 0, "troe-stats: no read of attributes found – the check went blind");
+    for (const q of reads) assert(/WHERE ts >/.test(q), "unbounded query on attributes in troe-stats: " + q);
+    assert(/applicationName: "udp-troe-stats"/.test(code) && /application_name = 'udp-troe-stats'/.test(code),
+      "overlap guard missing in troe-stats");
+  }
+  if (inService("troe-retention", [
+    ["troe-retention", "troe-retention: a typical night — same statements, batches, warnings and summary as the old node"],
+  ])) {
+    assert(/INSERT INTO udp_troe_type_stats/.test(portHasServerTimeout("troe-retention")),
+      "retention no longer fills the nightly type statistics");
+  }
   const troe = FUNCS.find(n => n.id === "udp-rt-db-fn");
+  assert(troe, "TRoE statistics node udp-rt-db-fn missing");
   // SQL is written as concatenated string literals – join them first.
   const code = nurCode(troe.func).replace(/"\s*\+\s*"/g, "");
   assert(/statement_timeout:\s*\d+/.test(code), "no server-side statement_timeout in the 10-minute statistics");
@@ -142,6 +240,7 @@ exports["TRoE statistics stay cheap: server-side timeout, no full scan, overlap 
   }
   assert(/application_name = 'udp-troe-stats'/.test(code), "overlap guard missing");
   const ret = FUNCS.find(n => n.id === "udp-rt-rt-fn");
+  assert(ret, "TRoE retention node udp-rt-rt-fn missing");
   assert(/statement_timeout:\s*\d+/.test(nurCode(ret.func)), "no server-side statement_timeout in the retention run");
   assert(/INSERT INTO udp_troe_type_stats/.test(ret.func), "retention no longer fills the nightly type statistics");
 };
@@ -203,11 +302,12 @@ exports["Strict lookup: Stuttgart yes, Basel/Strasbourg/Kaiserslautern no"] = ()
 
 exports["Node-RED reaches the cockpit on its container port"] = () => {
   const raw = fs.readFileSync(path.join(ROOT, "platform/config/nodered/flows.json"), "utf8");
-  for (const [wo, text] of [["flows.json", raw], ["generate-nodered-flows.py", GENERATOR]]) {
+  const checked = JSON.stringify(FLOWS);
+  for (const [wo, text] of [["flows.json", raw], ["checked flows", checked], ["generate-nodered-flows.py", GENERATOR]]) {
     assert(!/http:\/\/cockpit(:80)?\//.test(text),
       `${wo}: http://cockpit/ without port 8080 — nginx-unprivileged listens on 8080 only (Compose)`);
   }
-  assert(/http:\/\/cockpit:8080\//.test(raw), "no cockpit:8080 URL in flows.json");
+  assert(/http:\/\/cockpit:8080\//.test(checked), "no cockpit:8080 URL in the checked flows");
   const apps = fs.readFileSync(path.join(ROOT, "helm/udp/templates/apps.yaml"), "utf8");
   const svc = apps.slice(apps.lastIndexOf("kind: Service"));
   assert(/name: cockpit/.test(svc) && /port: 8080, targetPort: 8080/.test(svc),
