@@ -383,6 +383,20 @@ von der GitHub Action **`.github/workflows/build-images.yml`** nach
 | GitHub-Release `v1.0.0` | `1.0.0`, `1.0`, `latest` |
 | Pull Request #42 | `pr-42` (wandert mit jedem Push), `pr-42-<sha>` (fest) |
 | PR aus einem Fork | wird nur gebaut, **nicht** gepusht (read-only Token) |
+| jeder Lauf | zusätzlich `inputs-<hash>` (Hash der Build-Eingaben) |
+
+**Unveränderte Images behalten ihren Digest.** Jeder Lauf hasht je Image dessen
+Build-Eingaben: Dockerfile, die per `COPY`/`ADD` übernommenen Dateien, die
+aktuellen Digests der `FROM`-Basis-Images und das Build-Rezept. Existiert
+`inputs-<hash>` schon, wird nicht gebaut – der vorhandene Digest bekommt nur die
+Tags des Laufs und wird so ins Chart gepinnt. Ein Chart-Release rollt damit nur
+die Komponenten neu aus, die sich wirklich geändert haben (ohne das bekäme z. B.
+die Datenbank bei jedem Release ein neues Image und CloudNativePG einen
+Switchover des Primary). Neu gebaut wird, wenn sich eine Eingabe ändert oder ein
+Basis-Image upstream aktualisiert wurde. Pakete, die `RUN`-Schritte ungepinnt
+aus dem Netz holen (apt, pip, npm), frischt ein manueller Lauf mit
+*Run workflow → force_rebuild* auf. Ob ein Image gebaut oder wiederverwendet
+wurde, steht in der Job-Zusammenfassung.
 
 ### Einen PR-Stand testen
 
@@ -399,7 +413,10 @@ Zurück auf den regulären Stand: `--set cockpit.image.tag=` (leer → `udpTag`)
 oder den `--set` beim nächsten Upgrade weglassen.
 
 > Die `pr-*`-Tags bleiben nach dem Merge in der Registry liegen. Gelegentlich
-> unter GitHub → Packages → \<image\> → Manage versions aufräumen.
+> unter GitHub → Packages → \<image\> → Manage versions aufräumen – aber **nur
+> Versionen löschen, die ausschließlich `pr-*`-Tags tragen**: durch die
+> Wiederverwendung kann dieselbe Version auch `main`-, SemVer- oder
+> `inputs-*`-Tags tragen und in einem ausgerollten Chart gepinnt sein.
 
 Registry und Tag gelten für alle drei gemeinsam – `global.udpRegistry` und
 `global.udpTag`. Wer die Images spiegelt, ändert nur `udpRegistry`
