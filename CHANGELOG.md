@@ -2,7 +2,16 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht — Hochverfügbarkeit des öffentlichen Pfads
+## 1.2.0 — Hochverfügbarkeit des öffentlichen Pfads, Datenqualität, Lastkapazität
+
+> **Upgrade bestehender Kubernetes-Installationen:** ohne neue Werte bleibt
+> MongoDB eine Einzelinstanz (jetzt mit Journaling). Wer das Replica Set
+> einschaltet, stellt in einem **eigenen** `helm upgrade` mit `--wait` um, nicht
+> mit `--atomic` – vorher `mongodump` (DEPLOY.md §10b). Ist das Replica Set
+> einmal aktiv, darf kein älteres Chart mehr ausgerollt werden: es startete
+> MongoDB wieder als Einzelinstanz. docker compose ist nicht betroffen.
+
+### Hochverfügbarkeit des öffentlichen Pfads
 
 - **MongoDB als Replica Set** (`mongo.replicaSet.enabled`): drei
   Datenmitglieder oder zwei plus Arbiter (`replicaSet.arbiter`, eigenes
@@ -20,7 +29,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   beim Rollout ohne Surge.
 - `global.clusterDomain` für abweichende Cluster-DNS-Domänen.
 
-## Unveröffentlicht — Datenqualität der Gemeindeseiten
+### Datenqualität der Gemeindeseiten
 
 Objekte außerhalb Baden-Württembergs landeten in der nächstgelegenen
 BW-Gemeinde (Leihräder aus Basel, Feinstaubsensoren aus dem Elsass).
@@ -61,7 +70,7 @@ BW-Gemeinde (Leihräder aus Basel, Feinstaubsensoren aus dem Elsass).
   gedrosselt; neue Zeilenbudgets für Ladepunkte, Ladesummen, Carsharing und
   Gemeinde-Puls.
 
-## Unveröffentlicht — Lastkapazität des Dashboards
+### Lastkapazität des Dashboards
 
 Ein Lasttest zeigte: Schon wenige gleichzeitige Besucher brachten die
 Gemeindeseiten auf Ladezeiten im zweistelligen Sekundenbereich – jede
