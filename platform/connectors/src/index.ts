@@ -98,7 +98,7 @@ async function main(): Promise<void> {
   scheduled.forEach((entry, position) => {
     const module = CONNECTORS.get(entry.id);
     if (module === undefined) return;
-    const schedule = scheduleOf(entry, position);
+    const schedule = scheduleOf(entry, position, module.routes !== undefined);
     const ctx = createCtx(kernel, entry);
     kernel.scheduler.add(entry.id, schedule, () => runConnector(kernel, ctx, module));
     // Built with the connector's own ctx: its log, its limiter share, its Orion.

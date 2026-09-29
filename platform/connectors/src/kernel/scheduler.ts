@@ -71,11 +71,21 @@ export const MAX_STARTUP_DELAY_SECONDS = 300;
  * @param position Index within the connectors this service runs; drives the
  *                 stagger only.
  */
-export function scheduleOf(entry: RegistryEntry, position: number): Schedule {
-  const staggered = Math.min(
-    DEFAULT_STARTUP_DELAY_SECONDS + position * DEFAULT_STARTUP_STEP_SECONDS,
-    MAX_STARTUP_DELAY_SECONDS,
-  );
+/**
+ * First run of a connector that serves public endpoints (`routes`): right after
+ * start, not in the stagger. Such a connector loads what its endpoint answers
+ * from (the stop directory behind /abfahrten); in the stagger it came last and
+ * the endpoint answered 503 for five minutes after every restart (seen live).
+ */
+export const ROUTE_STARTUP_DELAY_SECONDS = 1;
+
+export function scheduleOf(entry: RegistryEntry, position: number, servesRoutes = false): Schedule {
+  const staggered = servesRoutes
+    ? ROUTE_STARTUP_DELAY_SECONDS
+    : Math.min(
+        DEFAULT_STARTUP_DELAY_SECONDS + position * DEFAULT_STARTUP_STEP_SECONDS,
+        MAX_STARTUP_DELAY_SECONDS,
+      );
   const startupDelaySeconds = entry.refireOnRestart === false ? RESTART_DELAY_SECONDS : staggered;
 
   const kind: Schedule["kind"] =
