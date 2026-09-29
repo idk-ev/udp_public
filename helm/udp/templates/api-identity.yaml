@@ -12,7 +12,8 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "apisix") | nindent 4 }}
 spec:
   replicas: {{ .Values.apisix.replicas }}
-  {{- include "udp.rollingUpdate" .Values.apisix | nindent 2 }}
+  minReadySeconds: {{ .Values.apisix.minReadySeconds | default 0 }}
+  {{- include "udp.rollingUpdate" (dict "ctx" . "cfg" .Values.apisix) | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "apisix" | nindent 6 }}
@@ -24,7 +25,7 @@ spec:
         checksum/config: {{ (print (tpl (.Files.Get "files/apisix/apisix.yaml.tpl") .) (tpl (.Files.Get "files/apisix/config.yaml.tpl") .)) | sha256sum }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.apisix) | nindent 6 }}
-      {{- include "udp.spread" (dict "component" "apisix" "cfg" .Values.apisix) | nindent 6 }}
+      {{- include "udp.spread" (dict "ctx" . "component" "apisix" "cfg" .Values.apisix) | nindent 6 }}
       containers:
         - name: apisix
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.apisix.image) }}

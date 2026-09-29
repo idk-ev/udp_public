@@ -286,47 +286,103 @@ securityContext:
 
 {{/*
 Scheduling spread. An explicit <component>.affinity wins. Otherwise components
-running more than one replica get soft anti-affinity per node plus a soft
-spread across zones – both "preferred"/"ScheduleAnyway", so a single-node
-cluster still schedules everything. Nodes without a zone label are ignored by
-the zone constraint.
-Call: {{- include "udp.spread" (dict "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
+running more than one replica get anti-affinity per node plus a soft spread
+across zones. Nodes without a zone label are ignored by the zone constraint.
+
+The node anti-affinity follows <component>.spread.mode, falling back to
+global.spread.mode:
+  preferred  (default) the scheduler avoids a shared node but still places a
+             replica there when nothing else fits – a single-node cluster
+             keeps working. After a node drain all replicas may end up on the
+             same node and stay there until they are rescheduled.
+  required   never two replicas on one node. Needs at least as many
+             schedulable nodes as replicas; a replica without a free node
+             stays Pending. A surge pod during a rolling update would need
+             one node MORE than replicas, so Deployments switch to
+             maxSurge 0 / maxUnavailable 1 in this mode (s. udp.rollingUpdate).
+             A drain still proceeds (the PDB allows one missing replica), the
+             evicted replica just waits for a free node.
+Call: {{- include "udp.spread" (dict "ctx" . "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
 */}}
 {{- define "udp.spread" -}}
 {{- if .cfg.affinity -}}
 affinity:
 {{- toYaml .cfg.affinity | nindent 2 }}
 {{- else if gt (int (.cfg.replicas | default 1)) 1 -}}
+{{- $mode := include "udp.spreadMode" . -}}
+{{- $selector := include "udp.selectorLabels" .component -}}
 affinity:
   podAntiAffinity:
+    {{- if eq $mode "required" }}
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - topologyKey: kubernetes.io/hostname
+        labelSelector:
+          matchLabels:
+            {{- $selector | nindent 12 }}
+    {{- else }}
     preferredDuringSchedulingIgnoredDuringExecution:
       - weight: 100
         podAffinityTerm:
           topologyKey: kubernetes.io/hostname
           labelSelector:
             matchLabels:
-              {{- include "udp.selectorLabels" .component | nindent 14 }}
+              {{- $selector | nindent 14 }}
+    {{- end }}
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
     whenUnsatisfiable: ScheduleAnyway
     labelSelector:
       matchLabels:
-        {{- include "udp.selectorLabels" .component | nindent 8 }}
+        {{- $selector | nindent 8 }}
 {{- end -}}
 {{- end -}}
 
 {{/*
-Rollout strategy for replicated Deployments: never take a ready pod away
-before its replacement is ready (maxUnavailable 0) – the Service keeps at least
-the full replica count during an update. Needs room for one extra pod
-(maxSurge 1); if the cluster has none, the rollout waits instead of degrading.
-Call: {{- include "udp.rollingUpdate" .Values.orionLd | nindent 2 }}
+Effective spread mode of a component: <component>.spread.mode >
+global.spread.mode > "preferred". Anything else fails the render instead of
+silently falling back.
+Call: {{ include "udp.spreadMode" (dict "ctx" . "cfg" .Values.orionLd) }}
+*/}}
+{{- define "udp.spreadMode" -}}
+{{- $mode := "preferred" -}}
+{{- with .ctx.Values.global.spread }}{{ with .mode }}{{ $mode = . }}{{ end }}{{ end -}}
+{{- with .cfg.spread }}{{ with .mode }}{{ $mode = . }}{{ end }}{{ end -}}
+{{- if not (has $mode (list "preferred" "required")) -}}
+{{- fail (printf "spread.mode must be \"preferred\" or \"required\", got %q" $mode) -}}
+{{- end -}}
+{{- $mode -}}
+{{- end -}}
+
+{{/*
+Rollout strategy for replicated Deployments.
+
+spread.mode "preferred" (and single replicas): never take a ready pod away
+before its replacement is ready (maxUnavailable 0, maxSurge 1) – the Service
+keeps the full replica count during an update. Needs room for one extra pod;
+if the cluster has none, the rollout waits instead of degrading.
+
+spread.mode "required" with more than one replica: the extra pod would need a
+node without a replica. With exactly as many nodes as replicas there is none,
+the surge pod stays Pending forever and the rollout never finishes. The
+strategy therefore switches to replace-in-place (maxSurge 0, maxUnavailable 1):
+one replica at a time is stopped and recreated on its now free node – the
+Service runs on one replica less for the duration.
+
+<component>.rollingUpdate ({maxSurge, maxUnavailable}) overrides both, e.g.
+to get the surge behaviour back on clusters with spare nodes.
+Call: {{- include "udp.rollingUpdate" (dict "ctx" . "cfg" .Values.orionLd) | nindent 2 }}
 */}}
 {{- define "udp.rollingUpdate" -}}
+{{- $ru := dict "maxUnavailable" 0 "maxSurge" 1 -}}
+{{- if and (gt (int (.cfg.replicas | default 1)) 1) (not .cfg.affinity) (eq (include "udp.spreadMode" .) "required") -}}
+{{- $ru = dict "maxUnavailable" 1 "maxSurge" 0 -}}
+{{- end -}}
+{{- /* Key by key: merge would treat an explicit 0 as unset. */ -}}
+{{- range $k, $v := (.cfg.rollingUpdate | default dict) }}{{ $_ := set $ru $k $v }}{{ end -}}
 strategy:
   type: RollingUpdate
-  rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  rollingUpdate: { maxUnavailable: {{ $ru.maxUnavailable }}, maxSurge: {{ $ru.maxSurge }} }
 {{- end -}}
 
 {{/*
@@ -386,6 +442,45 @@ limit-req:
   # the excess with 429.
   nodelay: true
   rejected_code: 429
+{{- end -}}
+
+{{/*
+MongoDB addressing. Standalone (mongo.replicaSet.enabled false): the Service
+"mongo", exactly as before. Replica set: every member by its stable pod DNS
+name (StatefulSet "mongo" + headless Service "mongo"), so a client can reach
+the set through any surviving member and follows the primary on failover.
+The member list also ends up in the replica set config (files/mongo/replset.js)
+– both must build the names the same way.
+*/}}
+{{- define "udp.mongoMembers" -}}
+{{- $ns := .Release.Namespace -}}
+{{- $hosts := list -}}
+{{- range $i := until (int .Values.mongo.replicas) -}}
+{{- $hosts = append $hosts (printf "mongo-%d.mongo.%s.svc.%s:27017" $i $ns $.Values.global.clusterDomain) -}}
+{{- end -}}
+{{- join "," $hosts -}}
+{{- end -}}
+
+{{/*
+Replica set arbiter (mongo.replicaSet.arbiter): StatefulSet + headless Service
+"mongo-arbiter". Deliberately NOT part of the client connection strings – it
+serves no data; drivers learn about it from the members and only monitor it.
+*/}}
+{{- define "udp.mongoArbiterHost" -}}
+{{- printf "mongo-arbiter-0.mongo-arbiter.%s.svc.%s:27017" .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+
+{{/*
+Connection string for a database ("" = none).
+Call: {{ include "udp.mongoUri" (dict "ctx" . "db" "iotagentjson") }}
+*/}}
+{{- define "udp.mongoUri" -}}
+{{- $m := .ctx.Values.mongo -}}
+{{- if $m.replicaSet.enabled -}}
+{{- printf "mongodb://%s/%s?replicaSet=%s" (include "udp.mongoMembers" .ctx) .db $m.replicaSet.name -}}
+{{- else -}}
+{{- printf "mongodb://mongo.%s.svc.%s:27017/%s" .ctx.Release.Namespace .ctx.Values.global.clusterDomain .db -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

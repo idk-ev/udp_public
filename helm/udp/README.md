@@ -30,7 +30,7 @@ helm/udp/
     ├── serviceaccount.yaml
     ├── secrets.yaml            # generiert ODER extern (secrets.create)
     ├── configmaps.yaml
-    ├── persistence.yaml        # mongo (StatefulSet)
+    ├── persistence.yaml        # mongo (StatefulSet, optional Replica Set)
     ├── timescale.yaml          # PostgreSQL als CloudNativePG-Cluster (+ Migration)
     ├── context-broker.yaml     # orion-ld + mintaka
     ├── iot.yaml                # mosquitto + iot-agent-json + frost
@@ -112,6 +112,11 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `networkPolicies.extraFrom` | `{}` | zusätzliche Aufrufer pro Komponente |
 | `<komponente>.probes` | je Dienst | Startup-/Readiness-/Liveness-Probe, `null` schaltet ab |
 | `orionLd.reqTimeout` / `maxConnections` | `60` / `900` | hält Orion-LD unter FD_SETSIZE (1024) |
+| `global.spread.mode` | `preferred` | Anti-Affinität replizierter Dienste; `required` = nie zwei Replikate auf einem Knoten (pro Komponente `<komponente>.spread.mode`, s. DEPLOY.md §10b) |
+| `mongo.replicaSet.enabled` / `name` | `false` / `rs0` | MongoDB als Replica Set; bestehende Installation per `helm upgrade` umstellbar (DEPLOY.md §10b) |
+| `mongo.replicas` | `1` | Datenmitglieder des Replica Sets (> 1 nur mit `replicaSet.enabled`; 3, oder 2 mit Arbiter) |
+| `mongo.replicaSet.arbiter.enabled` | `false` | Arbiter als dritte Stimme ohne Daten; eigene `nodeSelector`/`tolerations`/`affinity`/`priorityClassName`/`resources` |
+| `<komponente>.rollingUpdate` | – | `{maxSurge, maxUnavailable}`; Default 1/0, mit `spread.mode: required` 0/1 |
 | `mongo.indexes.enabled` | `true` | Hook-Job legt nach Install/Upgrade Indizes in `orion` und allen `orion-<mandant>`-DBs an |
 | `mongo.indexes.entities` | `udp_type_ags` | Indizes auf `entities` (`name`, `key` als Liste von `[feld, richtung]`); geänderte Schlüssel brauchen einen neuen Namen |
 | `apisix.rateLimit.rate` / `burst` | `30` / `150` | Anfragen/s je Client auf `/ngsi-ld` und `/temporal`, darüber HTTP 429 |

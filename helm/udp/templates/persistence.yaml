@@ -3,7 +3,68 @@
 
 # =============================================================================
 # Persistenzschicht: MongoDB (Orion-LD). PostgreSQL: templates/timescale.yaml
+#
+# Standalone (default) or replica set (mongo.replicaSet.enabled). Both use the
+# same StatefulSet "mongo" with the same headless Service and volume template
+# – its immutable fields never change, so switching an existing install to a
+# replica set is a plain "helm upgrade" (DEPLOY.md §10b).
 # =============================================================================
+{{- $m := .Values.mongo }}
+{{- $rs := $m.replicaSet.enabled }}
+{{- $arb := and $rs $m.replicaSet.arbiter.enabled }}
+{{- $replicas := int $m.replicas }}
+{{- if and (not $rs) (gt $replicas 1) }}
+{{- fail "mongo.replicas > 1 needs mongo.replicaSet.enabled: several standalone instances would each hold a different part of the data" }}
+{{- end }}
+{{- if and (not $rs) $m.replicaSet.arbiter.enabled }}
+{{- fail "mongo.replicaSet.arbiter.enabled needs mongo.replicaSet.enabled" }}
+{{- end }}
+{{- /* A primary needs a majority of the voters: an even number of voters
+     survives no more failures than one voter less. One data member alone
+     (no arbiter) is the only exception – a single-member set. */}}
+{{- $voters := add $replicas (ternary 1 0 $arb) }}
+{{- if and $rs (or (gt $replicas 1) $arb) (or (lt $voters 3) (eq (mod $voters 2) 0)) }}
+{{- fail (printf "mongo: %d data member(s)%s = %d voters – a replica set needs an odd number of at least 3 voters: replicas 3, or replicas 2 with replicaSet.arbiter.enabled" $replicas (ternary " + arbiter" "" $arb) $voters) }}
+{{- end }}
+{{- if and $rs (not (regexMatch "^[A-Za-z0-9_-]+$" (toString $m.replicaSet.name))) }}
+{{- fail (printf "mongo.replicaSet.name %q: only letters, digits, \"_\" and \"-\" – it ends up in connection strings and mongod arguments" (toString $m.replicaSet.name)) }}
+{{- end }}
+{{- /* Stale copies after a way back to standalone (helm rollback, or
+     replicaSet.enabled false): the volumes data-mongo-1.. still hold the
+     OLD set config. Switching the set on again would start them first – with
+     a fresh arbiter they form a majority and elect a stale member primary,
+     and writes made on the standalone mongo-0 in the meantime are not in any
+     oplog, so they would be rolled back or silently missing. While the
+     running StatefulSet is standalone, the chart therefore refuses to enable
+     the set as long as such volumes exist (lookup: live install only). */}}
+{{- if $rs }}
+{{- $live := lookup "apps/v1" "StatefulSet" .Release.Namespace "mongo" }}
+{{- if $live }}
+{{- $liveArgs := list }}
+{{- range $live.spec.template.spec.containers }}{{ if eq .name "mongo" }}{{ $liveArgs = .args | default list }}{{ end }}{{ end }}
+{{- if not (has "--replSet" $liveArgs) }}
+{{- $stale := list }}
+{{- range (lookup "v1" "PersistentVolumeClaim" .Release.Namespace "").items | default list }}
+{{- if regexMatch "^data-mongo-[1-9][0-9]*$" .metadata.name }}{{ $stale = append $stale .metadata.name }}{{ end }}
+{{- end }}
+{{- if $stale }}
+{{- fail (printf "mongo runs standalone, but %s still hold(s) data of an earlier replica set. Enabling the set again would let these stale copies win. Delete them first (kubectl -n %s delete pvc %s), see DEPLOY.md §10b." (join ", " $stale) .Release.Namespace (join " " $stale)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $rs }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-replset
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mongo") | nindent 4 }}
+data:
+  replset.js: |
+{{ .Files.Get "files/mongo/replset.js" | indent 4 }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -12,7 +73,7 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "mongo") | nindent 4 }}
 spec:
   serviceName: mongo
-  replicas: 1
+  replicas: {{ $m.replicas }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "mongo" | nindent 6 }}
@@ -20,26 +81,93 @@ spec:
     metadata:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "mongo") | nindent 8 }}
+      {{- if $rs }}
+      annotations:
+        checksum/replset: {{ .Files.Get "files/mongo/replset.js" | sha256sum }}
+      {{- end }}
     spec:
-      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.mongo) | nindent 6 }}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" $m) | nindent 6 }}
+      {{- with include "udp.spread" (dict "ctx" . "component" "mongo" "cfg" $m) }}
+      {{- . | nindent 6 }}
+      {{- end }}
       containers:
         - name: mongo
-          image: {{ include "udp.image" (dict "ctx" . "image" .Values.mongo.image) }}
-          args: ["--nojournal", "--quiet"]
+          image: {{ include "udp.image" (dict "ctx" . "image" $m.image) }}
+          # Journaling stays on (mongod default): replica set members need
+          # it, and a standalone without it loses the writes since the last
+          # checkpoint on every unclean stop.
+          {{- if $rs }}
+          args:
+            - --replSet
+            - {{ $m.replicaSet.name | quote }}
+            - --quiet
+            {{- if and $arb $m.replicaSet.arbiter.disableFlowControl }}
+            # PSA: with a data member down the majority commit point cannot
+            # move, flow control would throttle every write to its minimum
+            # for nothing (s. mongo.replicaSet.arbiter in values.yaml).
+            - --setParameter
+            - enableFlowControl=false
+            {{- end }}
+          {{- else }}
+          args: ["--quiet"]
+          {{- end }}
           ports: [{ containerPort: 27017 }]
           securityContext:
-            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.mongo.containerSecurityContext) | nindent 12 }}
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" $m.containerSecurityContext) | nindent 12 }}
           volumeMounts:
             - { name: data, mountPath: /data/db }
           resources:
-            {{- toYaml .Values.mongo.resources | nindent 12 }}
-          {{- include "udp.probes" .Values.mongo.probes | nindent 10 }}
+            {{- toYaml $m.resources | nindent 12 }}
+          {{- include "udp.probes" $m.probes | nindent 10 }}
+        {{- if $rs }}
+        # Initiates the set and keeps its members in line with mongo.replicas
+        # (files/mongo/replset.js). Its readiness reflects the member state
+        # (PRIMARY/SECONDARY), which the plain TCP probes of mongod cannot.
+        - name: replset
+          image: {{ include "udp.image" (dict "ctx" . "image" $m.image) }}
+          command: ["mongosh", "--nodb", "--quiet", "/scripts/replset.js"]
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - { name: NAMESPACE, value: {{ .Release.Namespace | quote }} }
+            - { name: CLUSTER_DOMAIN, value: {{ .Values.global.clusterDomain | quote }} }
+            - { name: RS_NAME, value: {{ $m.replicaSet.name | quote }} }
+            - { name: RS_MEMBERS, value: {{ $m.replicas | quote }} }
+            # "" = no arbiter (an existing one is removed from the set).
+            - { name: RS_ARBITER, value: {{ ternary (include "udp.mongoArbiterHost" .) "" $arb | quote }} }
+            - { name: INTERVAL_SECONDS, value: {{ $m.replicaSet.reconciler.intervalSeconds | quote }} }
+            - { name: MAX_LAG_SECONDS, value: {{ $m.replicaSet.reconciler.maxLagSeconds | quote }} }
+            - { name: READY_FILE, value: /run/replset/ready }
+            # mongosh keeps its config and log under $HOME – the image's home
+            # directory is not writable for uid 999.
+            - { name: HOME, value: /run/replset }
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" $m.containerSecurityContext) | nindent 12 }}
+          volumeMounts:
+            - { name: replset-script, mountPath: /scripts, readOnly: true }
+            - { name: replset-state, mountPath: /run/replset }
+          readinessProbe:
+            # Fresh file = the loop is alive and the member is usable.
+            exec: { command: ["sh", "-c", "test -n \"$(find /run/replset/ready -mmin -1 2>/dev/null)\""] }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml $m.replicaSet.reconciler.resources | nindent 12 }}
+        {{- end }}
+      {{- if $rs }}
+      volumes:
+        - name: replset-script
+          configMap: { name: mongo-replset }
+        - name: replset-state
+          emptyDir: { sizeLimit: 64Mi }
+      {{- end }}
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:
         accessModes: [ReadWriteOnce]
-        {{- include "udp.storageClass" (dict "ctx" . "override" .Values.mongo.persistence.storageClass) | nindent 8 }}
-        resources: { requests: { storage: {{ .Values.mongo.persistence.size }} } }
+        {{- include "udp.storageClass" (dict "ctx" . "override" $m.persistence.storageClass) | nindent 8 }}
+        resources: { requests: { storage: {{ $m.persistence.size }} } }
 ---
 apiVersion: v1
 kind: Service
@@ -49,6 +177,102 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "mongo") | nindent 4 }}
 spec:
   clusterIP: None
+  {{- if $rs }}
+  # Members must resolve each other (and themselves) by their pod DNS name
+  # before they are ready: a member in initial sync is not ready, yet the
+  # primary has to reach it.
+  publishNotReadyAddresses: true
+  {{- end }}
   selector:
     {{- include "udp.selectorLabels" "mongo" | nindent 4 }}
   ports: [{ port: 27017 }]
+{{- if $arb }}
+{{- $a := $m.replicaSet.arbiter }}
+{{- /* Scheduling knobs of the arbiter, pod security of the data members. */}}
+{{- $acfg := dict "podSecurityContext" $m.podSecurityContext "nodeSelector" $a.nodeSelector "tolerations" $a.tolerations "priorityClassName" $a.priorityClassName }}
+{{- /* User affinity plus a required anti-affinity against the data members,
+     per node and per zone: an arbiter sharing a node or zone with a data
+     member would lose two votes with it. Nodes without a zone label are
+     outside the zone rule (the scheduler treats a missing topology key as
+     "no conflict") – the node rule still holds there. */}}
+{{- $aff := deepCopy ($a.affinity | default dict) }}
+{{- $anti := get $aff "podAntiAffinity" | default dict }}
+{{- $terms := get $anti "requiredDuringSchedulingIgnoredDuringExecution" | default list }}
+{{- range $key := list "kubernetes.io/hostname" "topology.kubernetes.io/zone" }}
+{{- $terms = append $terms (dict "topologyKey" $key "labelSelector" (dict "matchLabels" (dict "app" "mongo"))) }}
+{{- end }}
+{{- $_ := set $anti "requiredDuringSchedulingIgnoredDuringExecution" $terms }}
+{{- $_ := set $aff "podAntiAffinity" $anti }}
+---
+# Arbiter of the replica set (mongo.replicaSet.arbiter): votes, holds no data.
+# emptyDir instead of a volume – after a restart it receives the set config
+# from the primary again. Added to the set by the replset sidecar of the
+# primary (files/mongo/replset.js).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo-arbiter
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mongo-arbiter") | nindent 4 }}
+spec:
+  serviceName: mongo-arbiter
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "mongo-arbiter" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "mongo-arbiter") | nindent 8 }}
+    spec:
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" $acfg) | nindent 6 }}
+      affinity:
+        {{- toYaml $aff | nindent 8 }}
+      containers:
+        - name: mongo
+          image: {{ include "udp.image" (dict "ctx" . "image" $a.image) }}
+          args: ["--replSet", {{ $m.replicaSet.name | quote }}, "--wiredTigerCacheSizeGB", "0.25", "--quiet"]
+          ports: [{ containerPort: 27017 }]
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" (merge (dict "readOnlyRootFilesystem" true) ($m.containerSecurityContext | default dict))) | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /data/db }
+            - { name: tmp, mountPath: /tmp }   # mongod's unix socket
+          resources:
+            {{- toYaml $a.resources | nindent 12 }}
+          {{- with $m.probes.startup }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # Ready only once it has received the set config and acts as
+          # arbiter – a fresh arbiter accepts connections seconds before it
+          # can vote. The legacy "mongo" shell of the 5.0 image starts in a few
+          # milliseconds (mongosh would cost seconds of CPU per probe).
+          readinessProbe:
+            exec: { command: ["mongo", "--quiet", "--eval", "quit(db.isMaster().arbiterOnly ? 0 : 1)"] }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          {{- with $m.probes.liveness }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          emptyDir: { sizeLimit: 2Gi }
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-arbiter
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mongo-arbiter") | nindent 4 }}
+spec:
+  clusterIP: None
+  # Resolvable before ready, like the data members.
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "udp.selectorLabels" "mongo-arbiter" | nindent 4 }}
+  ports: [{ port: 27017 }]
+{{- end }}

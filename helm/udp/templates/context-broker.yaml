@@ -13,7 +13,7 @@ metadata:
 spec:
   replicas: {{ .Values.orionLd.replicas }}
   minReadySeconds: {{ .Values.orionLd.minReadySeconds | default 0 }}
-  {{- include "udp.rollingUpdate" .Values.orionLd | nindent 2 }}
+  {{- include "udp.rollingUpdate" (dict "ctx" . "cfg" .Values.orionLd) | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "orion-ld" | nindent 6 }}
@@ -23,19 +23,30 @@ spec:
         {{- include "udp.podLabels" (dict "ctx" . "component" "orion-ld") | nindent 8 }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.orionLd) | nindent 6 }}
-      {{- include "udp.spread" (dict "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
+      {{- include "udp.spread" (dict "ctx" . "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
       {{- if .Values.orionLd.waitForDatabases }}
       initContainers:
         # Same image (has bash with /dev/tcp) – no extra image to pull.
+        # Each entry is a space-separated list of alternatives: one reachable
+        # replica set member is enough.
         - name: wait-for-databases
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.orionLd.image) }}
+          env:
+            - name: MONGO_TARGETS
+              value: {{ ternary (include "udp.mongoMembers" . | replace "," " ") "mongo:27017" .Values.mongo.replicaSet.enabled | quote }}
           command:
             - bash
             - -c
             - |
-              for target in mongo:27017 timescale:5432; do
-                until timeout 2 bash -c "echo > /dev/tcp/${target%:*}/${target#*:}" 2>/dev/null; do
-                  echo "waiting for $target"; sleep 2
+              reachable() {
+                for target in $1; do
+                  timeout 2 bash -c "echo > /dev/tcp/${target%:*}/${target#*:}" 2>/dev/null && return 0
+                done
+                return 1
+              }
+              for targets in "$MONGO_TARGETS" timescale:5432; do
+                until reachable "$targets"; do
+                  echo "waiting for $targets"; sleep 2
                 done
               done
           securityContext:
@@ -50,8 +61,21 @@ spec:
           securityContext:
             {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.orionLd.containerSecurityContext) | nindent 12 }}
           args:
+            {{- if .Values.mongo.replicaSet.enabled }}
+            # Orion-LD 1.6 talks to MongoDB through TWO drivers: the legacy
+            # C++ driver only knows -dbhost (comma-separated seed list) plus
+            # -rplSet, the mongoc driver takes -dbURI as is (it would build
+            # the same URI from -dbhost/-rplSet, with a trailing "&").
+            - -dbhost
+            - {{ include "udp.mongoMembers" . | quote }}
+            - -rplSet
+            - {{ .Values.mongo.replicaSet.name | quote }}
+            - -dbURI
+            - {{ include "udp.mongoUri" (dict "ctx" . "db" "") | quote }}
+            {{- else }}
             - -dbhost
             - mongo
+            {{- end }}
             - -logLevel
             - WARN
             - -forwarding
@@ -98,7 +122,8 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "mintaka") | nindent 4 }}
 spec:
   replicas: {{ .Values.mintaka.replicas }}
-  {{- include "udp.rollingUpdate" .Values.mintaka | nindent 2 }}
+  minReadySeconds: {{ .Values.mintaka.minReadySeconds | default 0 }}
+  {{- include "udp.rollingUpdate" (dict "ctx" . "cfg" .Values.mintaka) | nindent 2 }}
   selector:
     matchLabels:
       {{- include "udp.selectorLabels" "mintaka" | nindent 6 }}
@@ -108,7 +133,7 @@ spec:
         {{- include "udp.podLabels" (dict "ctx" . "component" "mintaka") | nindent 8 }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.mintaka) | nindent 6 }}
-      {{- include "udp.spread" (dict "component" "mintaka" "cfg" .Values.mintaka) | nindent 6 }}
+      {{- include "udp.spread" (dict "ctx" . "component" "mintaka" "cfg" .Values.mintaka) | nindent 6 }}
       containers:
         - name: mintaka
           image: {{ include "udp.image" (dict "ctx" . "image" .Values.mintaka.image) }}

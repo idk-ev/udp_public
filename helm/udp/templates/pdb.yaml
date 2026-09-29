@@ -23,3 +23,27 @@ spec:
       {{- include "udp.selectorLabels" $comp.name | nindent 6 }}
 {{- end }}
 {{- end }}
+{{- /* MongoDB replica set: at most one VOTER down voluntarily – data members
+     and arbiter in one budget, so a drain never costs the set its majority.
+     A member still copying data or lagging (not ready, s.
+     files/mongo/replset.js) already counts as the one. */}}
+{{- if and .Values.mongo.replicaSet.enabled (gt (int .Values.mongo.replicas) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mongo
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "mongo") | nindent 4 }}
+spec:
+  {{- /* hasKey: an explicit 0 (no voluntary disruption at all) must stay 0. */}}
+  maxUnavailable: {{ ternary .Values.mongo.pdb.maxUnavailable 1 (hasKey (.Values.mongo.pdb | default dict) "maxUnavailable") }}
+  selector:
+    {{- if .Values.mongo.replicaSet.arbiter.enabled }}
+    matchExpressions:
+      - { key: app, operator: In, values: [mongo, mongo-arbiter] }
+    {{- else }}
+    matchLabels:
+      {{- include "udp.selectorLabels" "mongo" | nindent 6 }}
+    {{- end }}
+{{- end }}

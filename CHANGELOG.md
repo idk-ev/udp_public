@@ -2,6 +2,24 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Hochverfügbarkeit des öffentlichen Pfads
+
+- **MongoDB als Replica Set** (`mongo.replicaSet.enabled`): drei
+  Datenmitglieder oder zwei plus Arbiter (`replicaSet.arbiter`, eigenes
+  Scheduling, z. B. auf einem Control-Plane-Knoten). Failover in Sekunden, ein
+  PDB über alle Stimmen, Readiness erst nach dem Aufholen. Bestehende
+  Installationen werden per `helm upgrade` umgestellt, `mongo-0` behält seine
+  Daten (DEPLOY.md §10b).
+- **Journaling** für MongoDB immer an (vorher `--nojournal`).
+- **Verteilung** konfigurierbar: `global.spread.mode: required` hält
+  Replikate auf verschiedenen Knoten; Deployments rollen dann ohne Surge aus,
+  damit es auch mit so vielen Knoten wie Replikaten geht.
+- **Cockpit** liefert `/abfahrten` und `/warnungen.ics` bei
+  Node-RED-Ausfall aus dem Cache weiter (eigene Cache-Zone, 24 h).
+- `minReadySeconds: 10` für Cockpit, APISIX und Mintaka: kein kurzes 503 mehr
+  beim Rollout ohne Surge.
+- `global.clusterDomain` für abweichende Cluster-DNS-Domänen.
+
 ## Unveröffentlicht — Datenqualität der Gemeindeseiten
 
 Objekte außerhalb Baden-Württembergs landeten in der nächstgelegenen
