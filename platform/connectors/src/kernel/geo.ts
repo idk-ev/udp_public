@@ -5,7 +5,7 @@
 
 /**
  * Municipality assignment by coordinate — port of STRICT_LOOKUP and the
- * `geo_helper` prelude from scripts/generate-nodered-flows.py.
+ * `geo_helper` prelude from the former Node-RED flow generator (see git history).
  *
  * Almost every connector needs it: a gauge, an air quality station, a car
  * sharing bay or a road work carries a coordinate, and the dashboards are built

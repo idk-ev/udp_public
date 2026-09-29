@@ -203,6 +203,12 @@ der Registry `"refireOnRestart": false` und laufen dann erst **10 Minuten**
 nach dem Start — verzögert, nicht ausgelassen: Ein Konnektor, der öfter neu
 gestartet wird, als sein Intervall lang ist, verhungerte sonst.
 
+Nächtliche Jobs, denen ihr Cron genügt, tragen dagegen `"fireOnStart": false`
+und laufen beim Dienststart **gar nicht**: `troe-retention` (Indizes,
+Löschläufe und `VACUUM` der TRoE-Tabellen) und `mastr-bw` (~1.500 Anfragen an
+das Marktstammdatenregister je Lauf). Die Registry lehnt das Feld bei einem
+Eintrag ohne Intervall oder Cron ab.
+
 Erstbefüllung oder Nachziehen nach Änderungen:
 
     bash scripts/trigger-connector.sh ausflug-bw
@@ -278,19 +284,39 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
 Low-Code-Baustein (B.II.4) auf dem Upstream-Image `nodered/node-red` mit
 einem vorkonfigurierten Beispielfluss (`platform/config/nodered/flows.json`:
 NGSI-LD-Entität `WeatherObserved` → Upsert in Orion-LD alle 10 Minuten) und
-`settings.js`. Unter Compose sind beide Dateien aus dem Checkout eingebunden
-(Editor unter `WORKFLOW_PORT`, Vorgabe 4900; ein Deploy im Editor schreibt in
-den Checkout). Im Chart liefert die ConfigMap `node-red-config` dieselben
-Dateien (`helm/udp/files/nodered/`, ein statischer Test hält beide gleich); ein
-initContainer kopiert sie in ein `emptyDir` — was im Editor deployt wird,
-überlebt also keinen Pod-Neustart. Keine Ingress-Route: Der Editor ist per
+`settings.js`. Der Beispielfluss ist **deaktiviert** ausgeliefert: Er schriebe
+Zufallswerte (`urn:ngsi-ld:WeatherObserved:demo-station-1`) in den
+produktiven Broker. Zum Ausprobieren im Editor die Flow-Eigenschaften öffnen,
+aktivieren und deployen — danach wieder deaktivieren und die Demo-Entität
+löschen.
+
+Unter Compose sind beide Dateien aus dem Checkout eingebunden (Editor unter
+`WORKFLOW_PORT`, Vorgabe 4900, nur auf `127.0.0.1` — `WORKFLOW_BIND`; ein
+Deploy im Editor schreibt in den Checkout). Im Chart liefert die ConfigMap
+`node-red-config` dieselben Dateien (`helm/udp/files/nodered/`, ein
+statischer Test hält beide gleich); ein initContainer kopiert sie in ein
+`emptyDir` — was im Editor deployt wird, überlebt also keinen Pod-Neustart.
+Keine Ingress-Route und keine NetworkPolicy-Regel: Der Editor ist per
 `kubectl port-forward` erreichbar.
 
-Node-RED bekommt keine Datenbank- und keine hystreet-Zugangsdaten, darf unter
-`strictEgress` nicht ins Internet (für eigene Flüsse mit externen Quellen
-`node-red` in `networkPolicies.internetEgress.components` aufnehmen) und
-lädt keine npm-Module für Function-Nodes nach
-(`functionExternalModules: false`).
+**Den Editor nie ohne Anmeldung veröffentlichen.** Wer ihn erreicht, deployt
+Flows mit beliebigem Code. `settings.js` liest die Anmeldung aus
+`NODE_RED_ADMIN_USER` und `NODE_RED_ADMIN_PASSWORD_HASH` (bcrypt; Compose:
+`.env`, Helm: `nodeRed.adminAuth`); beide leer = offen, nur eines gesetzt =
+Node-RED startet nicht. Hash erzeugen:
+
+    docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw
+
+(oder `npx node-red-admin hash-pw`). In `.env` den Hash in einfache
+Anführungszeichen setzen, sonst ersetzt Compose seine `$`-Teile.
+
+Node-RED bekommt keine Datenbank- und keine hystreet-Zugangsdaten und lädt
+keine npm-Module für Function-Nodes nach (`functionExternalModules: false`).
+Ins Internet darf es nur ohne Einschränkung, solange keine Egress-Policy
+greift: Unter Compose und im Chart ohne `strictEgress` erreicht es jedes Ziel;
+mit `strictEgress` nichts außerhalb des Namespace (für eigene Flüsse mit
+externen Quellen `node-red` in `networkPolicies.internetEgress.components`
+aufnehmen).
 
 ## Zeitreihen-Retention (TRoE)
 
@@ -393,9 +419,23 @@ Einsatz — TRoE nutzt einfache Tabellen, keine Hypertables.
 **Vacuum:** Die Retention setzt vorab (nur bei Abweichung) je Tabelle
 `autovacuum_vacuum_insert_scale_factor` und `autovacuum_analyze_scale_factor`
 auf 0,01 und fährt nach dem Lauf `VACUUM (ANALYZE)` auf `attributes` und
-`subattributes` (eigene Sitzung, 45 min Timeout, Fehler nur `[warn]`) — sonst
-bleibt die Tabelle nach einem Switchover (Statistikzähler zurückgesetzt)
-unvacuumiert und `troe-stats` läuft in seinen Timeout.
+`subattributes` (eigene Sitzung, 45 min Timeout, gebremst wie Autovacuum mit
+`vacuum_cost_delay = 2ms`, Fehler nur `[warn]`) — sonst bleibt die Tabelle
+nach einem Switchover (Statistikzähler zurückgesetzt) unvacuumiert und
+`troe-stats` läuft in seinen Timeout. `VACUUM` wirkt nur als Eigentümer der
+Tabellen: Ist `TROE_DB_USER` es nicht, überspringt PostgreSQL sie mit einer
+WARNING, die als `[warn]` im Log landet. Der erste Lauf auf einer großen, nie
+gevakuumten Tabelle schreibt WAL in der Größenordnung der Tabelle.
+
+**Orion-Schreibzugriffe werden nie aufgehalten:** Orion-LD schreibt rund um
+die Uhr in `attributes`; eine Anweisung, die auf eine Sperre wartet, ließe
+alle folgenden Inserts hinter sich warten. Deshalb laufen die Sitzungen der
+Retention mit `lock_timeout` (5 s; `VACUUM` 60 s) — ein Schritt, der seine
+Sperre nicht bekommt, wird mit einem `[warn]` übersprungen, der Rest der Nacht
+läuft. `CREATE INDEX` geht nur noch für fehlende Indizes raus. Läuft noch eine
+andere `udp-troe-retention*`-Sitzung oder ein nicht nachgebendes `VACUUM` auf
+den beiden Tabellen, fällt die Nacht mit einem `[info]` aus. Beim
+Dienststart läuft die Retention nicht (`"fireOnStart": false`).
 
 **Alt-Schema-Reste von `parken-bw` (einmalig, ab Sprint 2.9):** Die Entitäten
 aus der Zeit vor dem Fix tragen IDs aus geslugten Anlagennamen

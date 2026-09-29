@@ -9,7 +9,7 @@
  * `departures` compound.
  *
  * Port of FN_OEPNV and the per-municipality loop in
- * scripts/generate-nodered-flows.py. The generator stamped the whole pipeline
+ * the former Node-RED flow generator (see git history). The generator stamped the whole pipeline
  * out once per AGS in `enabledFor` — inject, http request, function, upsert,
  * "Signaturen bestätigen", debug: 23 function plus 23 commit nodes and 46 http
  * request nodes that differed only in five substituted literals (entity id,

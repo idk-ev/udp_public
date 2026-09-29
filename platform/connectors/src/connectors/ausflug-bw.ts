@@ -8,7 +8,7 @@
  * municipality.
  *
  * Port of FN_AUSFLUG_REQ, FN_AUSFLUG_WRAP and FN_AUSFLUG_BUILD from
- * scripts/generate-nodered-flows.py. The original request node says why it is
+ * the former Node-RED flow generator (see git history). The original request node says why it is
  * built the way it is:
  *
  *   > 4 Overpass-Abfragen (je Quadrant alle Zielarten), streng serialisiert.

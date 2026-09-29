@@ -7,7 +7,7 @@
  * `wetter-bw` — current weather for every municipality of Baden-Württemberg.
  *
  * Port of the node chain `udp-rt-bw-*` (FN_WX_BATCH, FN_WX_WRAP, FN_WX_BUILD in
- * scripts/generate-nodered-flows.py): `bw-gemeinden.json` -> 8 Open-Meteo
+ * the former Node-RED flow generator (see git history)): `bw-gemeinden.json` -> 8 Open-Meteo
  * batches of ~140 coordinates -> join -> one `WeatherObserved:bw-<ags>` per
  * municipality. The fan-out, its pacing and the join semantics (partial groups
  * after 375 s, was 240 s; late batches as a group of their own) live in

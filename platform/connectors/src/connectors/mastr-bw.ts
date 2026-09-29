@@ -7,7 +7,7 @@
  * `mastr-bw` — photovoltaics per municipality from the Marktstammdatenregister,
  * 150 municipalities a night in rotation.
  *
- * Port of the nodes `udp-rt-bx-*` in scripts/generate-nodered-flows.py: the
+ * Port of the nodes `udp-rt-bx-*` in the former Node-RED flow generator (see git history): the
  * rotation (`udp-rt-bx-msgs`, {@link plan}), one request per page behind a
  * "1 Anfrage/s" delay, the slimming node `udp-rt-bx-wrap` ({@link slimPage}),
  * the join and the aggregation `udp-rt-bx-build` ({@link parse} + {@link

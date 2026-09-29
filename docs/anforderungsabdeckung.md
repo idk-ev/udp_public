@@ -41,7 +41,7 @@ aufgesetzt werden kann.
 
 | Anforderung | Umsetzung |
 |---|---|
-| Low-Code-Datenfluss-Management (**Node-RED**), ETL | Node-RED (Upstream-Image) als Low-Code-Werkzeug mit vorkonfiguriertem Beispielfluss (Open Data → NGSI-LD-Upsert in Orion-LD), in Compose und Helm ausgerollt; eigene Flüsse lassen sich im Editor bauen. Die Ingestion der 29 Referenz-Konnektoren läuft im Konnektordienst (`platform/connectors`, TypeScript, je Konnektor ein getestetes Modul), gesteuert über die Registry `platform/config/connectors.json` |
+| Low-Code-Datenfluss-Management (**Node-RED**), ETL | Node-RED (Upstream-Image) als Low-Code-Werkzeug mit vorkonfiguriertem Beispielfluss (Open Data → NGSI-LD-Upsert in Orion-LD; ausgeliefert deaktiviert, damit er keine Demo-Werte in den Broker schreibt — im Editor aktivieren, um ihn auszuprobieren), in Compose und Helm ausgerollt; eigene Flüsse lassen sich im Editor bauen, optional hinter einer Anmeldung (`adminAuth`). Die Ingestion der 29 Referenz-Konnektoren läuft im Konnektordienst (`platform/connectors`, TypeScript, je Konnektor ein getestetes Modul), gesteuert über die Registry `platform/config/connectors.json` |
 | **DCAT-AP.de**-Metadatenkatalog mit Open-Data-Portal (**CKAN**) | CKAN 2.10 + ckanext-dcat (RDF-Endpunkte, DCAT-AP-Profil), benutzerfreundliche Oberfläche + API |
 | Open-Source-**API-Management (Apisix)** | Apache APISIX, deklarative Routen (GitOps), granulare Zugriffskontrolle (OIDC-Plugin), Rate-Limiting, Prometheus-Monitoring, dokumentierte Schnittstellen |
 | **PostgreSQL** mit **PostGIS** und **TimescaleDB** (Apache-Edition) | Zentrale Instanz: TRoE-Zeitreihen (Orion-LD), FROST- und CKAN-Datenbanken, PostGIS für Georeferenzierung, TimescaleDB-Zeitreihenfunktionen für die Temporal-API |

@@ -214,9 +214,11 @@ exports["ParkAPI paginates by cursor, not by offset"] = () => {
   // The ParkAPI v3 ignores offset silently: offset=0/500/…/2500 returned
   // byte-identical answers. Reintroducing it fetches the same 500 records 66×.
   carriedBy("cursor");
-  for (const module of MODULES) {
+  const parkApi = MODULES.filter(module => portedCode(module).includes("park-api"));
+  // Not vacuous: a renamed host must not turn the check into a silent pass.
+  assert(parkApi.length > 0, "no connector module talks to the ParkAPI (park-api) any more — update this check");
+  for (const module of parkApi) {
     const c = portedCode(module);
-    if (!c.includes("park-api")) continue;
     assert(!/offset=/.test(c), `${module}: ParkAPI request with offset= again — the v3 API ignores it`);
     assert(/start=/.test(c), `${module}: ParkAPI request without the cursor parameter start=`);
   }

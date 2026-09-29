@@ -7,7 +7,7 @@
  * `hitze-bw` — DWD thermal hazard index (heat stress) for the five
  * Baden-Württemberg representative cities.
  *
- * Port of FN_HITZE (`udp-rt-hz-fn`) from scripts/generate-nodered-flows.py. The
+ * Port of FN_HITZE (`udp-rt-hz-fn`) from the former Node-RED flow generator (see git history). The
  * generator's note: a health-relevant summer warning, clean JSON (`gt.json`),
  * city-based — the dashboard picks the nearest of the five, as it does for the
  * DWD stations and the gauges. Hence the fixed coordinates below and no

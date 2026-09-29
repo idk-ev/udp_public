@@ -7,7 +7,7 @@
  * `rathaus-bw` — town halls from OpenStreetMap, the best one per municipality.
  *
  * Port of FN_RATHAUS_REQ and FN_RATHAUS_BUILD from
- * scripts/generate-nodered-flows.py. One Overpass query for the whole state
+ * the former Node-RED flow generator (see git history). One Overpass query for the whole state
  * (`amenity=townhall`, nodes and ways, `out tags center`), weekly, every hit
  * assigned by the strict municipality lookup and reduced to one
  * `CivicStructure:bw-<ags>-rathaus` per municipality.

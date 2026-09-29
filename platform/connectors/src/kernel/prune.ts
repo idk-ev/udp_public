@@ -5,7 +5,7 @@
 
 /**
  * Automatic removal of stale own entities — port of PRUNE_HELPER
- * (`pruneStale`) and PRUNE_OK_JS in scripts/generate-nodered-flows.py.
+ * (`pruneStale`) and PRUNE_OK_JS in the former Node-RED flow generator (see git history).
  *
  * The connectors only upsert. An entity a run no longer produces — the object
  * left the source, or it was wrongly assigned to a border municipality before

@@ -8,7 +8,7 @@
  * Baden-Württemberg.
  *
  * Port of the node chain `udp-rt-bv-*` (FN_FC_BATCH, FN_WX_WRAP, FN_FC_BUILD in
- * scripts/generate-nodered-flows.py). The original explains the design:
+ * the former Node-RED flow generator (see git history)). The original explains the design:
  *
  *   > Ein Aufruf trägt ~140 Koordinaten; 8 Aufrufe je Lauf, 96 am Tag — die
  *   > Stufe-3-Vorhersage kostet damit landesweit weniger als früher die eine

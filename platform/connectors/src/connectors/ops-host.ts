@@ -8,7 +8,7 @@
  * `PlatformStatus:udp`, the entity the main dashboard shows as server load.
  *
  * Port of the exec node `udp-rt-op-exec` and FN_OPS (`udp-rt-op-fn`) from
- * scripts/generate-nodered-flows.py. The container shares the kernel with the
+ * the former Node-RED flow generator (see git history). The container shares the kernel with the
  * host, so `/proc` shows the host's load and memory; the old flow read them
  * through a shell command in an `exec` node, and so does this port, through
  * `node:child_process` — same shell, same busybox tools (both images are

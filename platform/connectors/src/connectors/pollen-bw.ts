@@ -7,7 +7,7 @@
  * `pollen-bw` — DWD pollen-flight hazard index for the three
  * Baden-Württemberg part-regions.
  *
- * Port of FN_POLLEN (`udp-rt-po-fn`) from scripts/generate-nodered-flows.py:
+ * Port of FN_POLLEN (`udp-rt-po-fn`) from the former Node-RED flow generator (see git history):
  * DWD `s31fg.json` in, one `PollenForecast:bw-region-<id>` per BW part-region
  * out. The worked example of the parity harness (phase 2); `parseDwdPollen`,
  * `REGION_KREISE` and `build` were written in test/parity/pollen-bw.test.ts
@@ -83,7 +83,7 @@ export interface PollenForecastEntity extends NgsiEntity {
  * Curated district mapping of the three Baden-Württemberg part-regions
  * (111 Oberrhein/unteres Neckartal, 112 Hohenlohe/mittlerer Neckar/Oberschwaben,
  * 113 Mittelgebirge). Identical to `POLLEN_REGION` in
- * `scripts/generate-nodered-flows.py`; a difference here would show up as a
+ * the former Node-RED flow generator (see git history); a difference here would show up as a
  * parity failure in `kreise`.
  *
  * As blank-separated strings, not as arrays of literals: 43 district keys one

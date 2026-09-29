@@ -9,7 +9,7 @@
  *
  * Port of the `http in` → FN_ABF_HALT → `http request` → FN_ABF_BAUEN →
  * `http response` chain and of FN_ABF_HALTE_LADEN in
- * scripts/generate-nodered-flows.py. The generator explains why there is no
+ * the former Node-RED flow generator (see git history). The generator explains why there is no
  * periodic fetch for all municipalities:
  *
  *   > Warum kein Dauerabruf: 1.103 Gemeinden alle 5 Minuten wären 318.000 Anfragen

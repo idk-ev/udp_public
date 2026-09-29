@@ -7,7 +7,7 @@
  * `troe-stats` — TimescaleDB statistics as `PlatformStatus:udp-troe`, and the
  * row budget check.
  *
- * Port of FN_TROE (`udp-rt-db-fn`) from scripts/generate-nodered-flows.py. It
+ * Port of FN_TROE (`udp-rt-db-fn`) from the former Node-RED flow generator (see git history). It
  * replaces the former Grafana datasource API: the main dashboard reads this
  * entity instead of speaking SQL itself (no public SQL path any more).
  *
@@ -42,8 +42,8 @@
  * TimescaleDB sat at its CPU limit around the clock. Hence the server-side
  * `statement_timeout` below the client's `query_timeout`, and the check for a
  * previous run that is still busy. The SQL below is byte-identical to the old
- * node's; the application name is the same too, so the busy check also sees a
- * run of the other runtime while both stand side by side.
+ * node's, and so is the application name the busy check looks for: it sees any
+ * run still active on the server, including one whose client is gone.
  */
 
 import {

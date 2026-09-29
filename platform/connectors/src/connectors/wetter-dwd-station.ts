@@ -8,7 +8,7 @@
  * Baden-Württemberg (via BrightSky), one `WeatherObserved` entity per station.
  *
  * Port of FN_DWD_STATIONEN and FN_DWD_BUILD in
- * scripts/generate-nodered-flows.py. The generator gives the reason for the
+ * the former Node-RED flow generator (see git history). The generator gives the reason for the
  * shape:
  *
  *   > Vorher: eine fest verdrahtete Abfrage für Reutlingen. Eine Abfrage je Gemeinde

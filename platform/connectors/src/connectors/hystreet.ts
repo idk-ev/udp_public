@@ -8,7 +8,7 @@
  * (hystreet.com) as a `PedestrianFlowObserved` entity.
  *
  * Port of FN_HY_GUARD, FN_HY_FIND and FN_HY_BUILD in
- * scripts/generate-nodered-flows.py. Prepared, not live: the connector only
+ * the former Node-RED flow generator (see git history). Prepared, not live: the connector only
  * runs once `HYSTREET_API_TOKEN` is set (free registration). Without it a run
  * ends in a status line — no warning, so an instance that never configured the
  * token does not show up in the health check every hour. An EMPTY variable

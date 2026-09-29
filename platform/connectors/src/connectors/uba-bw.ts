@@ -6,7 +6,7 @@
 /**
  * `uba-bw` — air quality of all active UBA stations in Baden-Württemberg.
  *
- * Port of the five nodes `udp-rt-bu-*` in scripts/generate-nodered-flows.py:
+ * Port of the five nodes `udp-rt-bu-*` in the former Node-RED flow generator (see git history):
  * the station list (`udp-rt-bu-stations`), the selection of the active DEBW
  * stations (`udp-rt-bu-msgs`, {@link planRequests}), one airquality request
  * per station behind a "1 Anfrage/s" delay, the wrapper `udp-rt-bu-wrap`

@@ -8,10 +8,27 @@ Alle 29 Konnektoren laufen im Konnektordienst (`platform/connectors`,
 TypeScript) statt in generierten Node-RED-Flows. Node-RED bleibt als
 Low-Code-Baustein mit dem Beispielfluss.
 
-> **Upgrade:** Helm – einen Digest-Pin von `node-red-udp` unter
-> `nodeRed.image` und `cockpit.endpoints` aus den eigenen Values entfernen
-> (das Chart bricht sonst mit einem Hinweis ab). Compose – `UDP_ABFAHRTEN_UPSTREAM`
-> und `UDP_WARNUNGEN_UPSTREAM` aus `platform/.env` streichen (werden ignoriert).
+> **Upgrade:**
+>
+> - Helm – Werte von `node-red-udp` unter `nodeRed.image` (`name`, Tags wie
+>   `main`/`sha-…`/`pr-…`/Chart-Version) und `cockpit.endpoints` entfernen; das
+>   Chart bricht sonst mit einem Hinweis ab. Ebenso bei hystreet-Token **und**
+>   -Secret zugleich, leerem `networkPolicies.ingressControllerNamespaceLabel`
+>   und `connectors.enabled=false` ohne `connectors.disableIngestion=true`.
+>   `helm upgrade --reuse-values` scheitert an diesen Prüfungen –
+>   `--reset-then-reuse-values` verwenden.
+> - Eigene Images werden nur noch per Digest referenziert. Die Image-Strings
+>   ändern sich dadurch einmal: Das erste Upgrade löst noch **einen**
+>   Switchover der Datenbank aus (und startet ein noch vorhandenes altes
+>   StatefulSet neu).
+> - Der erste Lauf von `troe-retention` führt `VACUUM (ANALYZE)` auf den
+>   TRoE-Tabellen von Orion-LD aus. Auf einer großen, nie gevakuumten Tabelle
+>   schreibt das WAL in der Größenordnung der Tabelle (Replikations-Verzug,
+>   Archiv-Verkehr, Plattenplatz) – das Upgrade entsprechend einplanen.
+> - Air-gapped: `nodered/node-red` spiegeln (vorher das eigene `node-red-udp`).
+> - Compose – `UDP_ABFAHRTEN_UPSTREAM` und `UDP_WARNUNGEN_UPSTREAM` aus
+>   `platform/.env` streichen (werden ignoriert). Node-RED ist nur noch auf
+>   `127.0.0.1` veröffentlicht (`WORKFLOW_BIND`).
 
 - **Konnektordienst:** Compose-Dienst und Helm-Deployment `connectors` (eine
   Replik, `Recreate`, read-only). Zustand (Signaturen, Prune-Buchführung) in
@@ -19,8 +36,12 @@ Low-Code-Baustein mit dem Beispielfluss.
   Admin-Port 1881 (`/healthz`, `/trigger`) nirgends veröffentlicht.
 - **Node-RED** auf dem Upstream-Image `nodered/node-red:4.1`, Beispielfluss
   und `settings.js` in Helm aus einer ConfigMap; `node-red-udp` entfällt.
-  Keine Datenbank-, hystreet- oder Internet-Rechte mehr,
-  `functionExternalModules` aus.
+  Keine Datenbank- oder hystreet-Zugangsdaten mehr, `functionExternalModules`
+  aus; Internet nur noch ohne `strictEgress`. Der Beispielfluss ist
+  deaktiviert ausgeliefert (schrieb Zufallswerte in den Broker). Optionale
+  Anmeldung am Editor (`NODE_RED_ADMIN_USER`/`NODE_RED_ADMIN_PASSWORD_HASH`,
+  Helm `nodeRed.adminAuth`); keine NetworkPolicy-Freigabe mehr, Compose
+  bindet an `127.0.0.1`.
 - **Cockpit:** `/abfahrten` und `/warnungen.ics` gehen an den Konnektordienst
   (`UDP_CONNECTORS_UPSTREAM`, Helm `cockpit.connectorsUpstream`).
 - **Registry:** `runtime` und `nodePrefixes` entfallen; jeder aktive Eintrag
@@ -36,7 +57,10 @@ Low-Code-Baustein mit dem Beispielfluss.
   zählt dessen Logs und zeigt den Zustandsspeicher.
 - Wetter und Vorhersage (Open-Meteo) alle 6 h statt 4 bzw. 2 h
   (Tageskontingent); `troe-retention` mit Autovacuum-Schwellen und
-  `VACUUM (ANALYZE)`.
+  gebremstem `VACUUM (ANALYZE)`, `lock_timeout` (hält keine Orion-Schreibzugriffe
+  mehr auf), `CREATE INDEX` nur noch für fehlende Indizes und Überlappungsschutz.
+- **Registry:** `fireOnStart: false` – `troe-retention` und `mastr-bw` laufen
+  nicht mehr bei jedem Dienststart, nur per Cron.
 - **Compose-Cockpit:** Entrypoint-Skripte werden eingebunden; `nginx -t`
   scheiterte vorher an `${UDP_REALIP_FROM}`. `UDP_TRUSTED_PROXIES` ist über
   `.env` einstellbar.

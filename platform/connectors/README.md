@@ -3,7 +3,7 @@
 Ingestion of the open data sources into NGSI-LD — every active entry of the
 registry `platform/config/connectors.json` that has a module here.
 
-**Status: in production, all 29 connectors run here.** The migration from the
+**Status: runs all 29 reference connectors.** The migration from the
 generated Node-RED flows is complete (phase 6 of
 [`docs/migration-konnektoren.md`](../../docs/migration-konnektoren.md)):
 Node-RED stays as a low-code building block with an example flow, as B.II.4 of

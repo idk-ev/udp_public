@@ -9,7 +9,7 @@
  * a balanced list of at most 50 plus counts per municipality.
  *
  * Port of FN_POI_REQ, FN_AUSFLUG_WRAP (shared "bündeln" node) and FN_POI_BUILD
- * from scripts/generate-nodered-flows.py. Why the grid is fine:
+ * from the former Node-RED flow generator (see git history). Why the grid is fine:
  *
  *   > Overpass-Abfragen über ein FEINES Raster (4×3=12 Kacheln). Die
  *   > Versorgungs-Arten (v. a. Spielplätze/Trinkwasser als Flächenobjekte)

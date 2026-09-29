@@ -6,7 +6,7 @@
 /**
  * `eco-bw` — bicycle counters of all municipalities (Eco-Counter, via MobiData BW).
  *
- * Port of `udp-rt-be-fn` ("→ Radzähler BW") in scripts/generate-nodered-flows.py.
+ * Port of `udp-rt-be-fn` ("→ Radzähler BW") in the former Node-RED flow generator (see git history).
  * Once a day the daily totals of every counter site in the feed: per site the
  * newest day of its `ALL` channel as `TrafficFlowObserved:bw-eco-<site id>`,
  * per municipality the sum over its sites as `…:bw-<ags>-summary`. Sites are

@@ -8,7 +8,7 @@
  * per municipality into one index 0–100 (`CityPulse:bw-<ags>`).
  *
  * Port of `udp-rt-bz-build` ("→ CityPulse je Gemeinde") and the commit node
- * behind its upsert in scripts/generate-nodered-flows.py. It fetches no source:
+ * behind its upsert in the former Node-RED flow generator (see git history). It fetches no source:
  * it reads what the other connectors wrote to Orion-LD. The method is
  * documented in docs/framework-dashboards.md ("Gemeinde-Puls") and is ported
  * byte for byte — the scoring below must produce the same numbers as before:

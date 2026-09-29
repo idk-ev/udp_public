@@ -8,7 +8,7 @@
  * sensors of sensor.community, plus the single sensors once an hour.
  *
  * Port of `udp-rt-bs-fn` ("→ Median je Gemeinde") and the commit node behind
- * its upsert in scripts/generate-nodered-flows.py. One request for the whole
+ * its upsert in the former Node-RED flow generator (see git history). One request for the whole
  * BW box every 15 minutes; per SDS011 sensor the newest plausible reading;
  * sensors assigned STRICTLY to a municipality polygon (the box also covers
  * Alsace, Basel, the Palatinate and Bavaria — outside every BW polygon means

@@ -6,7 +6,7 @@
 /**
  * Change detection over value signatures, two-phase — port of `gateChanged`,
  * `sigPending`, `freshTurn` (CHUNK_HELPER) and SIG_COMMIT in
- * scripts/generate-nodered-flows.py.
+ * the former Node-RED flow generator (see git history).
  *
  * Why it exists, in the words of the original:
  *

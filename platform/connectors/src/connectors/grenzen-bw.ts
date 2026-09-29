@@ -6,7 +6,7 @@
 /**
  * `grenzen-bw` — municipality boundary cache for point-in-polygon assignment.
  *
- * Port of FN_GRENZEN from scripts/generate-nodered-flows.py. The whole connector
+ * Port of FN_GRENZEN from the former Node-RED flow generator (see git history). The whole connector
  * is three lines in the original, and it ingests nothing: it loads
  * `bw-grenzen.json` and puts it into the geo context, where the strict lookup
  * (STRICT_LOOKUP, src/kernel/geo.ts) reads it. Without it there is no

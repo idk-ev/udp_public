@@ -6,7 +6,7 @@
 /**
  * `stammdaten-bw` — municipality master data of Baden-Württemberg.
  *
- * Port of FN_MUNI from scripts/generate-nodered-flows.py. Reads
+ * Port of FN_MUNI from the former Node-RED flow generator (see git history). Reads
  * `bw-gemeinden.json` (built by scripts/generate-bw-municipalities.py from
  * opendatasoft georef plus Wikidata, served by the cockpit), writes one
  * `Municipality` entity per municipality and — the part everything else depends
