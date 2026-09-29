@@ -72,7 +72,8 @@ fetch("http://127.0.0.1:" + (process.env.UDP_CONNECTORS_ADMIN_PORT || "1881") + 
                + (if .stateStore.healthy then "healthy" else "UNHEALTHY" end)
                + " (writer: \(.stateStore.writer)"
                + (if .stateStore.reason then ", \(.stateStore.reason)" else "" end) + ")"
-               + (if (.stateStore.notLoaded | length) > 0 then "\n   not loaded: \(.stateStore.notLoaded | join(", "))" else "" end)
+               + (if (.stateStore.notLoaded | length) > 0 then "\n   not loaded" + (if .stateStore.reloading == true then " (reloading)" else "" end) + ": \(.stateStore.notLoaded | join(", "))" else "" end)
+               + (if ((.stateStore.loadFailed // []) | length) > 0 then "\n   failing loads: \(.stateStore.loadFailed | join(", "))" else "" end)
                + (if (.stateStore.failing | length) > 0 then "\n   failing writes: \(.stateStore.failing | join(", "))" else "" end)' <<<"$HEALTHZ"
         jq -e '(.connectors | length) == 0 or .stateStore.healthy' >/dev/null <<<"$HEALTHZ" || fail=1
     else

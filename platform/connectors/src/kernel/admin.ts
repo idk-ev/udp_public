@@ -83,8 +83,9 @@ export interface AdminOptions {
 
 /**
  * `GET /healthz` — liveness plus what is actually scheduled, the state
- * store (`stateStore.healthy`: writer lock held, every connector loaded, no
- * write failing) and the geo context (`geo`: municipality rows, polygons,
+ * store (`stateStore.healthy`: writer lock held, no load or write failing,
+ * every connector loaded or queued in the running reload; `reason` when not)
+ * and the geo context (`geo`: municipality rows, polygons,
  * degraded, and per file the geo bootstrap's last load and error). Neither
  * turns the answer into an error: restarting the process would not fix the
  * database or the cockpit, only repeat the load.

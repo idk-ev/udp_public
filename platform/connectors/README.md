@@ -186,8 +186,13 @@ every gated entity in full on its next run (~400k TRoE rows per restart,
   | `prune_state` | `connector` | the prune bookkeeping as one jsonb document |
   | `connector_state` | `connector, name` | one persisted `ctx.state` key (jsonb) |
 
-- **Load before the first run**, at startup and before every run until it
-  worked. While a connector's state is not loaded, the change gate and
+- **Load before the first run.** Every connector is loaded as soon as the
+  writer lock is held: at startup, and again in the background right after
+  the lock was lost and taken back (a database switchover, e.g. on every
+  release) — not each connector before its next run. A failed load is
+  retried after 30 s; before every run the connector's own load is checked
+  once more, so a run never proceeds on unloaded state (it waits for a load
+  in flight). While a connector's state is not loaded, the change gate and
   persisted state keys throw and the run is skipped with a `[warn]`; prunes
   are skipped with a `[warn]` and touch no bookkeeping; a gated upsert is not
   sent. Connectors that use none of it run normally. No connector on
@@ -204,8 +209,13 @@ every gated entity in full on its next run (~400k TRoE rows per restart,
   `replicas: 1`, `strategy: Recreate`). A session advisory lock held for the
   process lifetime enforces it: a second instance loads nothing, runs only
   ungated connectors and takes over once the lock is free.
-- **`/healthz`** reports `stateStore` (`healthy`, `writer`, loaded / not loaded
-  / failing connectors). It stays 200: restarting does not fix a database.
+- **`/healthz`** reports `stateStore` (`healthy`, `reason`, `writer`,
+  `reloading`, loaded / not loaded / load-failed / write-failing connectors).
+  `healthy` is false without the writer lock, while a load or write fails, or
+  when a connector is not loaded outside a running reload; a connector merely
+  queued in the reload after startup or a lock change (seconds) does not flip
+  it. `reason` is set exactly when `healthy` is false. It stays 200:
+  restarting does not fix a database.
 - **Cutover:** a connector switched to `runtime: "app"` has no signatures in
   the store yet, so its first run writes in full once — as a fresh Node-RED
   would. A one-time cost per connector, not per restart.

@@ -26,7 +26,7 @@ import { createSharedGeo } from "../../src/kernel/geo.js";
 import { createHttpServer } from "../../src/kernel/http.js";
 import { isArray } from "../../src/kernel/parse.js";
 import { Persistence } from "../../src/kernel/persistence.js";
-import type { StateBackend, StateWrite, StoredRows } from "../../src/kernel/persistence.js";
+import type { RetryTimer, StateBackend, StateWrite, StoredRows } from "../../src/kernel/persistence.js";
 import { createRateLimiter } from "../../src/kernel/rate-limit.js";
 import { createRegistry, parseRegistry } from "../../src/kernel/registry.js";
 import { createScheduler } from "../../src/kernel/scheduler.js";
@@ -58,6 +58,13 @@ class FakeDatabase {
   reachable = true;
   /** Fails the writes for which it answers `true` (after the lock check). */
   failWrite: (batch: StateWrite) => boolean = () => false;
+  /** Fails the loads of the connectors for which it answers `true`. */
+  failLoad: (connector: string) => boolean = () => false;
+  /** Loads of these connectors wait until {@link release}. */
+  readonly held = new Set<string>();
+  /** Connector id of every load that reached the database. */
+  readonly loads: string[] = [];
+  readonly #waiting: (() => void)[] = [];
   lockHolder: FakeBackend | null = null;
   readonly signatures = new Map<string, string>();
   readonly prune = new Map<string, string>();
@@ -76,6 +83,20 @@ class FakeDatabase {
   stateValue(connector: string, name: string): unknown {
     const text = this.state.get([connector, name].join(SEP));
     return text === undefined ? undefined : JSON.parse(text);
+  }
+
+  /** Resolves at once, or — for a held connector — on {@link release}. */
+  gate(connector: string): Promise<void> {
+    if (!this.held.has(connector)) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.#waiting.push(resolve);
+    });
+  }
+
+  /** Lets every held load go on. */
+  release(): void {
+    this.held.clear();
+    for (const resolve of this.#waiting.splice(0)) resolve();
   }
 }
 
@@ -112,8 +133,11 @@ class FakeBackend implements StateBackend {
     return Promise.resolve(this.locked);
   }
 
-  load(connector: string): Promise<StoredRows> {
-    if (!this.#db.reachable) return Promise.reject(refused());
+  async load(connector: string): Promise<StoredRows> {
+    if (!this.#db.reachable) throw refused();
+    this.#db.loads.push(connector);
+    await this.#db.gate(connector);
+    if (this.#db.failLoad(connector)) throw new Error("load failed (injected)");
     const prefix = `${connector}${SEP}`;
     const signatures: Record<string, unknown>[] = [];
     for (const [key, text] of this.#db.signatures) {
@@ -126,11 +150,11 @@ class FakeBackend implements StateBackend {
       if (key.startsWith(prefix)) state.push({ name: key.slice(prefix.length), value: JSON.parse(text) });
     }
     const pruneText = this.#db.prune.get(connector);
-    return Promise.resolve({
+    return {
       signatures,
       prune: pruneText === undefined ? null : fromJson(pruneText),
       state,
-    });
+    };
   }
 
   write(connector: string, batch: StateWrite): Promise<void> {
@@ -169,6 +193,38 @@ class FakeBackend implements StateBackend {
     if (this.#db.lockHolder === this) this.#db.lockHolder = null;
     this.#locked = false;
   }
+
+  /**
+   * The database switches over (a CloudNativePG switchover on every release):
+   * the lock connection drops, the process lives on and may take it again.
+   */
+  switchover(): void {
+    this.crash();
+  }
+}
+
+/** Retry timers, fired by hand. */
+class ManualTimers {
+  readonly pending: (() => void)[] = [];
+
+  readonly timer: RetryTimer = (task) => {
+    this.pending.push(task);
+    return () => {
+      const at = this.pending.indexOf(task);
+      if (at >= 0) this.pending.splice(at, 1);
+    };
+  };
+
+  fire(): void {
+    for (const task of this.pending.splice(0)) task();
+  }
+}
+
+/** Lets background work on the (immediate) fake database finish. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 }
 
 /* ── the fake broker ─────────────────────────────────────────────────────────*/
@@ -278,6 +334,7 @@ interface Process {
   readonly kernel: Kernel;
   readonly backend: FakeBackend;
   readonly log: RecordedLog;
+  readonly timers: ManualTimers;
   readonly gated: Ctx;
   readonly plain: Ctx;
 }
@@ -287,6 +344,7 @@ function start(db: FakeDatabase, broker: Broker, clock: { now: number }): Proces
   const log = recordingLog();
   const env = createEnv();
   const backend = new FakeBackend(db);
+  const timers = new ManualTimers();
   const geo = createSharedGeo(log);
   const master = plausibleGeo();
   geo.setMunicipalities(master.rows);
@@ -299,7 +357,7 @@ function start(db: FakeDatabase, broker: Broker, clock: { now: number }): Proces
     orionUrl: ORION,
     signatures: new SignatureStore(),
     state: new StateStore(),
-    persistence: new Persistence(backend, log, () => clock.now),
+    persistence: new Persistence(backend, log, () => clock.now, timers.timer),
     geo,
     registry: createRegistry(ENTRIES),
     publicHttp: createHttpServer(log),
@@ -313,6 +371,7 @@ function start(db: FakeDatabase, broker: Broker, clock: { now: number }): Proces
     kernel,
     backend,
     log,
+    timers,
     gated: createCtx(kernel, entry("gated")),
     plain: createCtx(kernel, entry("plain")),
   };
@@ -678,4 +737,137 @@ export async function gatedUpsertRefusedWhileNotUsable(): Promise<void> {
   // Ungated writes are not the store's business.
   await service.plain.orion.upsert(service.plain.gate.ungated([thing("p-1", now)]));
   assert.equal(broker.upserts.length, 1);
+}
+
+/** The first process of a lock-change test: one gated run, its signatures and counter in the store. */
+async function afterOneGatedRun(): Promise<{
+  db: FakeDatabase;
+  broker: Broker;
+  service: Process;
+  values: Map<string, number>;
+}> {
+  const events: string[] = [];
+  const db = new FakeDatabase(events);
+  const broker = new Broker(events);
+  const clock = { now: T0 };
+  const values = new Map([
+    ["t-0", 1],
+    ["t-1", 2],
+  ]);
+  const service = start(db, broker, clock);
+  await service.kernel.persistence?.prepareAll();
+  await runConnector(service.kernel, service.gated, gatedConnector(values));
+  assert.deepEqual(broker.lastFull(), [ID("t-0"), ID("t-1")]);
+  return { db, broker, service, values };
+}
+
+/**
+ * A database switchover takes the writer lock; the next run of ANY connector
+ * takes it back, and every connector is reloaded at once — not each before
+ * its own next run, which for some is twelve hours away (`healthy: false`
+ * for hours after every release).
+ */
+export async function lockRegainedReloadsEveryConnector(): Promise<void> {
+  const { db, broker, service, values } = await afterOneGatedRun();
+  const persistence = service.kernel.persistence;
+  assert.ok(persistence !== undefined);
+  db.loads.length = 0;
+
+  service.backend.switchover();
+  const lost = persistence.health();
+  assert.equal(lost.healthy, false);
+  assert.equal(lost.reason, "writer lock lost");
+
+  // Only the ungated connector runs; it notices the loss and takes the lock back.
+  await runConnector(service.kernel, service.plain, plainConnector);
+  await settle();
+  assert.equal(warned(service.log, "writer lock lost — every connector's state is reloaded"), 1);
+  assert.deepEqual([...db.loads].sort(), ["gated", "plain"], "both loaded, the gated one without a run");
+  assert.equal(broker.upserts.length, 2, "the gated connector did not run");
+  const health = persistence.health();
+  assert.deepEqual(
+    [health.healthy, health.reason, health.reloading, health.notLoaded, health.loadFailed],
+    [true, null, false, [], []],
+  );
+  assert.deepEqual(health.loaded, ["gated", "plain"]);
+
+  // Its next run finds its signatures: freshness only, and the counter goes on.
+  await runConnector(service.kernel, service.gated, gatedConnector(values));
+  assert.deepEqual(broker.lastFull(), []);
+  assert.equal(service.gated.state.slot(RUNS).get(), 2);
+  assert.equal(db.loads.filter((id) => id === "gated").length, 1, "loaded once, not again before the run");
+}
+
+/** A load failing in the eager reload is unhealthy with a reason, warned once, and retried until it works. */
+export async function reloadFailureIsUnhealthyAndRetried(): Promise<void> {
+  const { db, service } = await afterOneGatedRun();
+  const persistence = service.kernel.persistence;
+  assert.ok(persistence !== undefined);
+
+  service.backend.switchover();
+  db.failLoad = (connector) => connector === "gated";
+  await runConnector(service.kernel, service.plain, plainConnector);
+  await settle();
+
+  const failed = persistence.health();
+  assert.equal(failed.healthy, false);
+  assert.equal(failed.reason, "state load failing: gated (load failed (injected))");
+  assert.deepEqual([failed.loadFailed, failed.notLoaded, failed.loaded], [["gated"], ["gated"], ["plain"]]);
+  assert.equal(warned(service.log, "state not loaded (load failed (injected))"), 1);
+  assert.equal(service.timers.pending.length, 1, "one retry scheduled");
+
+  // Still failing: retried again, no second warning.
+  service.timers.fire();
+  await settle();
+  assert.equal(persistence.health().healthy, false);
+  assert.equal(warned(service.log, "state not loaded"), 1, "one [warn] per failure streak");
+  assert.equal(service.timers.pending.length, 1);
+
+  // The database answers again: the retry loads it, without any run.
+  db.failLoad = () => false;
+  service.timers.fire();
+  await settle();
+  const healed = persistence.health();
+  assert.deepEqual(
+    [healed.healthy, healed.reason, healed.loadFailed, healed.notLoaded],
+    [true, null, [], []],
+  );
+  assert.equal(service.timers.pending.length, 0);
+}
+
+/**
+ * A run that races the eager reload waits for the load of its state (one
+ * read, not two) and never runs on unloaded state; while the reload is merely
+ * under way, the store counts as healthy.
+ */
+export async function runRacingTheReloadWaitsForItsState(): Promise<void> {
+  const { db, broker, service, values } = await afterOneGatedRun();
+  const persistence = service.kernel.persistence;
+  assert.ok(persistence !== undefined);
+  db.loads.length = 0;
+  const sent = broker.upserts.length;
+
+  service.backend.switchover();
+  db.held.add("gated");
+  await runConnector(service.kernel, service.plain, plainConnector);
+  await settle();
+  const queued = persistence.health();
+  assert.deepEqual(
+    [queued.healthy, queued.reason, queued.reloading, queued.notLoaded],
+    [true, null, true, ["gated"]],
+    "queued in the running reload: healthy",
+  );
+
+  const racing = runConnector(service.kernel, service.gated, gatedConnector(values));
+  await settle();
+  assert.equal(broker.upserts.length, sent + 1, "only the plain run wrote; the gated run waits");
+  assert.equal(db.stateValue("gated", "runs"), 1, "not run on unloaded state");
+
+  db.release();
+  await racing;
+  assert.deepEqual(broker.lastFull(), [], "ran on its loaded signatures: freshness only");
+  assert.equal(service.gated.state.slot(RUNS).get(), 2);
+  assert.equal(db.loads.filter((id) => id === "gated").length, 1, "the run waited for the reload's read");
+  const done = persistence.health();
+  assert.deepEqual([done.healthy, done.reloading, done.notLoaded], [true, false, []]);
 }

@@ -26,13 +26,19 @@
  *
  * ## The rules
  *
- *  * **Load before the first run.** At startup, and again before every run
- *    until it worked. While a connector's state is not loaded, everything
- *    that would act on it refuses: the change gate and persisted `ctx.state`
- *    keys throw {@link StateUnavailableError} (the run is skipped with a
- *    `[warn]`), prunes are skipped, and a gated upsert is not sent. Running on
- *    empty tables is exactly the flood this exists to prevent. Connectors
- *    that use none of it (ungated writes only) run as before.
+ *  * **Load before the first run.** Every bound connector is loaded as soon
+ *    as the writer lock is held — at startup and again, eagerly and in the
+ *    background, whenever the lock was lost and taken again (a database
+ *    switchover): {@link Persistence.reloadAll}. A load that fails is retried
+ *    after 30 s. Before every run the connector's own load is checked once
+ *    more (the safety net: a run never proceeds on unloaded state, it waits
+ *    for a load in flight or loads itself). While a connector's state is not
+ *    loaded, everything that would act on it refuses: the change gate and
+ *    persisted `ctx.state` keys throw {@link StateUnavailableError} (the run
+ *    is skipped with a `[warn]`), prunes are skipped, and a gated upsert is
+ *    not sent. Running on empty tables is exactly the flood this exists to
+ *    prevent. Connectors that use none of it (ungated writes only) run as
+ *    before.
  *  * **The database never holds a signature the broker did not confirm.** A
  *    signature DROPPED in memory (the gate saw a change, a table was
  *    replaced, retained or forgotten) is persisted BEFORE the upsert goes out
@@ -51,7 +57,8 @@
  *    lifetime, enforces it: an instance without the lock loads nothing and so
  *    runs no connector that needs its state; it retries, and takes over (with
  *    a fresh load) once the other instance is gone. Losing the lock
- *    connection unloads every connector; the next run reloads.
+ *    connection unloads every connector; once the lock is back, all of them
+ *    are reloaded at once, not each before its next run.
  *
  * Prune bookkeeping and state values are written when they change (a state
  * key changed in place, a `Map`, is caught by the write at the end of every
@@ -132,8 +139,20 @@ export interface StateBackend {
   close(): Promise<void>;
 }
 
-/** After a failed connection attempt, the next one waits this long. */
-const RETRY_AFTER_MS = 30_000;
+/** After a failed connection attempt or load, the next one waits this long. */
+export const RETRY_AFTER_MS = 30_000;
+
+/** Runs `task` once after `ms`; returns what cancels it. */
+export type RetryTimer = (task: () => void, ms: number) => () => void;
+
+/** Unref'd: a pending retry never keeps the process alive. */
+const unrefTimer: RetryTimer = (task, ms) => {
+  const timer = setTimeout(task, ms);
+  timer.unref();
+  return () => {
+    clearTimeout(timer);
+  };
+};
 
 type WriterState = "idle" | "writer" | "standby" | "unreachable" | "closed";
 
@@ -159,11 +178,22 @@ function isSignatureValue(value: unknown): value is SignatureValue {
 export interface StateStoreHealth {
   readonly backend: string;
   readonly writer: WriterState;
-  /** Writer lock held, every connector loaded, no write failing — or no connector needs the store. */
+  /**
+   * Writer lock held, no load and no write failing, and every connector
+   * loaded — or still queued in the reload that is running right now
+   * (seconds after startup or a lock change, see `reloading`). Also `true`
+   * when no connector needs the store.
+   */
   readonly healthy: boolean;
+  /** Why `healthy` is false; `null` exactly when it is true. */
   readonly reason: string | null;
+  /** The eager reload of every connector is running (after startup or a lock change). */
+  readonly reloading: boolean;
   readonly loaded: readonly ConnectorId[];
   readonly notLoaded: readonly ConnectorId[];
+  /** Connectors whose last load failed; retried after 30 s and before their next run. */
+  readonly loadFailed: readonly ConnectorId[];
+  /** Connectors whose last write failed; retried with the next write. */
   readonly failing: readonly ConnectorId[];
 }
 
@@ -184,11 +214,23 @@ export class Persistence {
   #reason = "not connected yet";
   #failedAt: number | null = null;
   #checking: Promise<boolean> | null = null;
+  readonly #timer: RetryTimer;
+  /** The running reload of every connector, see {@link reloadAll}. */
+  #reloading: Promise<void> | null = null;
+  #reloadRequested = false;
+  /** Cancels the pending retry of failed loads. */
+  #cancelRetry: (() => void) | null = null;
 
-  constructor(backend: StateBackend, log: Log, nowMs: () => number = Date.now) {
+  constructor(
+    backend: StateBackend,
+    log: Log,
+    nowMs: () => number = Date.now,
+    timer: RetryTimer = unrefTimer,
+  ) {
     this.#backend = backend;
     this.#log = log;
     this.#nowMs = nowMs;
+    this.#timer = timer;
   }
 
   get backend(): StateBackend {
@@ -220,8 +262,10 @@ export class Persistence {
   }
 
   /**
-   * Before a run of `id` (and at startup): the writer lock, then the
-   * connector's load. Never throws; `true` = the state is usable.
+   * Before a run of `id`: the writer lock, then the connector's load — the
+   * safety net behind {@link reloadAll}. A load of `id` already in flight
+   * (the eager reload) is waited for, not repeated. Never throws; `true` =
+   * the state is usable.
    */
   async prepare(id: ConnectorId): Promise<boolean> {
     const connector = this.#connectors.get(id);
@@ -230,10 +274,59 @@ export class Persistence {
     return connector.ensureLoaded();
   }
 
-  /** Startup: the writer lock once, then every bound connector's load. */
+  /** Startup: the writer lock once, then every bound connector's load (awaited). */
   async prepareAll(): Promise<void> {
     if (!(await this.#ensureWriter())) return;
-    for (const connector of this.#connectors.values()) await connector.ensureLoaded();
+    // Taking the lock started the reload already; a second pass would only
+    // repeat a failed load at once instead of after the retry delay.
+    await (this.#reloading ?? this.reloadAll());
+  }
+
+  /**
+   * Loads every bound connector that is not loaded, one after the other, each
+   * on its own: a failure is that connector's, logged and retried after
+   * {@link RETRY_AFTER_MS}. Started whenever the writer lock is taken — at
+   * startup and after a lock change (a database switchover) — so that no
+   * connector waits for its next run, which for some is twelve hours away.
+   * One reload at a time; a request while one runs makes it go round once
+   * more. Never throws.
+   */
+  reloadAll(): Promise<void> {
+    this.#reloadRequested = true;
+    this.#reloading ??= this.#reloadPasses();
+    return this.#reloading;
+  }
+
+  async #reloadPasses(): Promise<void> {
+    // Yield first, so that #reloading is assigned before this can finish.
+    await Promise.resolve();
+    try {
+      while (this.#reloadRequested) {
+        this.#reloadRequested = false;
+        for (const connector of this.#connectors.values()) {
+          // The lock went again: taking it back requests the next pass.
+          if (!this.writable()) break;
+          await connector.ensureLoaded();
+        }
+      }
+    } finally {
+      this.#reloading = null;
+    }
+  }
+
+  /** A load failed: every failed one is retried after {@link RETRY_AFTER_MS} (one timer at a time). */
+  loadFailed(): void {
+    if (this.#cancelRetry !== null || this.closed) return;
+    this.#cancelRetry = this.#timer(() => {
+      this.#cancelRetry = null;
+      void this.#retryLoads();
+    }, RETRY_AFTER_MS);
+  }
+
+  async #retryLoads(): Promise<void> {
+    if (this.closed) return;
+    // The lock first: a lost one is taken again, which starts a reload itself.
+    if (await this.#ensureWriter()) await this.reloadAll();
   }
 
   /** `id` touched its persisted state before and so cannot run without it. */
@@ -259,6 +352,8 @@ export class Persistence {
   /** Shutdown: the last write, then the lock goes. */
   async close(): Promise<void> {
     if (this.#writer === "closed") return;
+    this.#cancelRetry?.();
+    this.#cancelRetry = null;
     if (this.writable()) await this.flushAll();
     this.#writer = "closed";
     this.#reason = "shutting down";
@@ -269,18 +364,47 @@ export class Persistence {
     const all = [...this.#connectors.values()];
     const loaded = all.filter((c) => c.loaded).map((c) => c.id);
     const notLoaded = all.filter((c) => !c.loaded).map((c) => c.id);
-    const failing = all.filter((c) => c.failing).map((c) => c.id);
-    const writable = this.writable();
+    const loadFailed = all.filter((c) => c.loadError !== null);
+    const failing = all.filter((c) => c.failing);
+    const reloading = this.#reloading !== null;
+    const reason = this.#unhealthyBecause(all.length, notLoaded, loadFailed, failing, reloading);
     return {
       backend: this.#backend.description,
       writer: this.#writer,
-      // Nothing bound (no connector on runtime "app"): nothing to be unhealthy about.
-      healthy: all.length === 0 || (writable && notLoaded.length === 0 && failing.length === 0),
-      reason: writable ? null : this.reason(),
+      healthy: reason === null,
+      reason,
+      reloading,
       loaded,
       notLoaded,
-      failing,
+      loadFailed: loadFailed.map((c) => c.id),
+      failing: failing.map((c) => c.id),
     };
+  }
+
+  /** `null` = healthy; otherwise never empty. */
+  #unhealthyBecause(
+    bound: number,
+    notLoaded: readonly ConnectorId[],
+    loadFailed: readonly ConnectorPersistence[],
+    failing: readonly ConnectorPersistence[],
+    reloading: boolean,
+  ): string | null {
+    // Nothing bound (no connector on runtime "app"): nothing to be unhealthy about.
+    if (bound === 0) return null;
+    if (!this.writable()) return this.reason() || "writer lock not held";
+    const [firstLoad] = loadFailed;
+    if (firstLoad !== undefined) {
+      const ids = loadFailed.map((c) => c.id).join(", ");
+      return `state load failing: ${ids} (${firstLoad.loadError ?? "unknown"})`;
+    }
+    const [firstWrite] = failing;
+    if (firstWrite !== undefined) {
+      const ids = failing.map((c) => c.id).join(", ");
+      return `state writes failing: ${ids} (${firstWrite.failure ?? "unknown"})`;
+    }
+    // Merely queued in the running reload: loaded within seconds, no problem.
+    if (notLoaded.length > 0 && !reloading) return `state not loaded: ${notLoaded.join(", ")}`;
+    return null;
   }
 
   #ensureWriter(): Promise<boolean> {
@@ -294,7 +418,9 @@ export class Persistence {
     if (this.#writer === "closed") return false;
     if (this.#writer === "writer") {
       if (await this.#backend.stillHeld()) return true;
-      this.#log.warn("state store: writer lock lost — every connector reloads its state before its next run");
+      this.#log.warn(
+        "state store: writer lock lost — every connector's state is reloaded as soon as it is back",
+      );
       this.#writer = "idle";
       this.#reason = "writer lock lost";
       for (const connector of this.#connectors.values()) connector.unload();
@@ -329,7 +455,12 @@ export class Persistence {
     this.#writer = "writer";
     this.#reason = "";
     this.#failedAt = null;
-    this.#log.info(`state store: writer lock held (${this.#backend.description})`);
+    this.#log.info(
+      `state store: writer lock held (${this.#backend.description}) — loading every connector's state`,
+    );
+    // In the background: a run that needs its state now waits for (or does)
+    // its own load; all others no longer wait for their next run.
+    void this.reloadAll();
     return true;
   }
 }
@@ -355,6 +486,10 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
   /** Touched the gate or a persisted state key: needs its state to run. */
   #needsState = false;
   #failing: string | null = null;
+  /** Why the last load failed; `null` after a successful one. */
+  #loadError: string | null = null;
+  /** Bumped by {@link unload}: a load that started before it is stale. */
+  #epoch = 0;
   #flushQueued = false;
   #queue: Promise<unknown> = Promise.resolve();
 
@@ -385,6 +520,16 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
 
   get failing(): boolean {
     return this.#failing !== null;
+  }
+
+  /** Why the last write failed; `null` when it did not. */
+  get failure(): string | null {
+    return this.#failing;
+  }
+
+  /** Why the last load failed; `null` when it did not. */
+  get loadError(): string | null {
+    return this.#loadError;
   }
 
   /** This connector used the gate or a persisted state key: without its state it does not run. */
@@ -418,27 +563,47 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
 
   /* ── load ── */
 
+  /**
+   * Loads the state unless it is loaded. Serialised with every other load and
+   * write of this connector: a caller while a load is in flight waits for it
+   * and gets its outcome. Never throws.
+   */
   ensureLoaded(): Promise<boolean> {
     if (this.#loaded) return Promise.resolve(true);
-    return this.#enqueue(() => this.#load());
+    return this.#enqueue(() => this.#load()).catch((error: unknown) => this.#loadFailed(describe(error)));
   }
 
   /** The writer lock was lost: whatever is in memory may be stale by the next run. */
   unload(): void {
     this.#loaded = false;
+    this.#loadError = null;
+    this.#epoch += 1;
     this.#dirty.clear();
     this.#pruneDirty = false;
   }
 
+  #loadFailed(reason: string): false {
+    if (this.#owner.closed) return false;
+    if (this.#loadError === null) {
+      this.#log.warn(`state not loaded (${reason}) — retried in 30 s and before the next run`);
+    }
+    this.#loadError = reason;
+    this.#owner.loadFailed();
+    return false;
+  }
+
   async #load(): Promise<boolean> {
     if (this.#loaded) return true;
+    const epoch = this.#epoch;
     let rows: StoredRows;
     try {
       rows = await this.#owner.backend.load(this.id);
     } catch (error) {
-      this.#log.warn(`state not loaded (${describe(error)}) — retried before the next run`);
-      return false;
+      if (epoch !== this.#epoch) return false;
+      return this.#loadFailed(describe(error));
     }
+    // The lock changed hands while this read: the reload after it reads again.
+    if (epoch !== this.#epoch) return false;
     const tables = new Map<string, Map<string, SignatureValue>>();
     let signatures = 0;
     let unreadable = 0;
@@ -470,6 +635,7 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
     this.#pruneDirty = !bookkeepingOk;
     this.#stateWritten = new Map([...values].map(([name, value]) => [name, JSON.stringify(value)]));
     this.#loaded = true;
+    this.#loadError = null;
     this.#state.restore(values);
     if (!bookkeepingOk) this.#log.warn("persisted prune bookkeeping not readable — starting empty");
     this.#log.info(

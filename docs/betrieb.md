@@ -249,9 +249,14 @@ beantwortet der Dienst nur `/healthz` und baut keine Verbindung auf.
   Antworten: 202 gestartet, 429 Sperrfrist (60 s) oder Lauf aktiv, 404 läuft
   dort nicht.
 - **Gesundheit:** `/healthz` (Admin-Port) meldet die eingeplanten Konnektoren,
-  den Zustandsspeicher (`stateStore.healthy`, `writer`) und den Geo-Kontext
-  (`geo`: Gemeinden, Grenzen, `boundariesDegraded`, letzter Ladezeitpunkt und
-  Fehler je Datei). Die Antwort bleibt
+  den Zustandsspeicher (`stateStore.healthy`, `reason`, `writer`) und den
+  Geo-Kontext (`geo`: Gemeinden, Grenzen, `boundariesDegraded`, letzter
+  Ladezeitpunkt und Fehler je Datei). Nicht gesund ist der Zustandsspeicher
+  ohne Schreib-Lock, bei scheiterndem Laden oder Schreiben oder wenn ein
+  Konnektor außerhalb eines laufenden Nachladens nicht geladen ist; `reason`
+  nennt dann den Grund. Nach einem Lock-Verlust (Datenbank-Switchover bei
+  jedem Release) lädt der Dienst alle Konnektoren sofort nach — die Sekunden,
+  in denen das läuft (`reloading`), zählen als gesund. Die Antwort bleibt
   200, auch wenn die Datenbank klemmt — Liveness-Probe und Compose-Healthcheck
   prüfen nur, ob der Prozess lebt; ein Neustart repariert keine Datenbank.
   `scripts/healthcheck.sh` zeigt den Zustandsspeicher an und schlägt nur fehl,

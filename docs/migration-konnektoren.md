@@ -218,10 +218,14 @@ es. `mastr-bw` hätte seine Rotation jedes Mal bei 0 begonnen.
   eigenes Schema `udp_connectors` (`signatures`, `prune_state`,
   `connector_state`, je Konnektor-id), beim Start idempotent angelegt. Orions
   TRoE-Tabellen bleiben unberührt.
-- **Laden vor dem ersten Lauf.** Ohne geladenen Zustand laufen Konnektoren mit
-  Gate oder persistiertem `ctx.state` nicht (`[warn]`, der nächste Lauf
-  versucht es erneut), Prunes werden übersprungen; ungegatete Konnektoren
-  laufen.
+- **Laden vor dem ersten Lauf.** Sobald der Schreib-Lock gehalten wird, lädt
+  der Dienst den Zustand aller Konnektoren — beim Start und nach einem
+  Lock-Verlust (Datenbank-Switchover, etwa bei jedem Release) sofort im
+  Hintergrund, nicht erst vor dem jeweils nächsten Lauf. Ein gescheitertes
+  Laden wird nach 30 s wiederholt. Ohne geladenen Zustand laufen Konnektoren
+  mit Gate oder persistiertem `ctx.state` nicht (`[warn]`, der nächste Lauf
+  versucht es erneut; ein Lauf wartet auf ein laufendes Laden), Prunes werden
+  übersprungen; ungegatete Konnektoren laufen.
 - **Durchschreiben:** Verworfene Signaturen gehen *vor* dem Upsert in die
   Datenbank, bestätigte danach (je Chunk). Scheitert das Vorab-Schreiben, geht
   ein gegateter Upsert nicht raus — die Datenbank enthält nie eine Signatur,
