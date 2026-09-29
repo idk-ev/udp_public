@@ -262,6 +262,35 @@ function fullBoundaryFileMatches(): void {
   );
 }
 
+/**
+ * Facts about the map on the full file the cockpit serves, stated absolutely:
+ * the parity above would pass as well if both sides went wrong together.
+ */
+function fullBoundaryFileFacts(): void {
+  const root = repositoryRoot();
+  const raw: unknown = JSON.parse(readFileSync(join(root, "gui", "public", "bw-grenzen.json"), "utf8"));
+  const rowsRaw: unknown = JSON.parse(readFileSync(join(root, "gui", "public", "bw-gemeinden.json"), "utf8"));
+  const rows = parseMunicipalities(rowsRaw).gemeinden;
+  const index = createGeoIndex(rows, parseBoundaries(raw).boundaries);
+
+  assert.equal(index.agsAt(48.7758, 9.1829), "08111000", "Stuttgart city centre");
+  for (const [label, lat, lon] of [
+    ["Basel", 47.5596, 7.5886],
+    ["Strasbourg", 48.5734, 7.7521],
+    ["Kaiserslautern", 49.4447, 7.769],
+  ] as const) {
+    assert.equal(index.agsAt(lat, lon), null, `${label} must not be assigned to a BW municipality`);
+  }
+  assert.equal(index.agsAt(Number.NaN, 9.18), null, "invalid coordinates");
+
+  // Sanity of the boundary file: nearly every municipal centroid lies in its own polygon.
+  const hits = rows.filter((row) => index.agsAt(row[2], row[3]) === row[0]).length;
+  assert.ok(
+    hits / rows.length > 0.95,
+    `only ${String(hits)} of ${String(rows.length)} municipal centroids found in their own polygon`,
+  );
+}
+
 function forRunSkipsWithoutBoundariesUnlessOptional(): void {
   const rows = parseMunicipalities(readFixture("stammdaten-bw").payload).gemeinden;
   const shared = createSharedGeo(recordingLog());
@@ -295,5 +324,6 @@ export {
   snippetIsTheSameEverywhere as "strict lookup: STRICT_LOOKUP is the same text in every function node that embeds it",
   fixtureProbesMatchAndCoverEveryBranch as "strict lookup: old STRICT_LOOKUP and GeoIndex.agsAt agree on border, notch, sliver and grid probes",
   fullBoundaryFileMatches as "strict lookup: old and new agree on the full gui/public/bw-grenzen.json",
+  fullBoundaryFileFacts as "strict lookup: on the full file Stuttgart is 08111000, Basel/Strasbourg/Kaiserslautern are no BW municipality, > 95 % of centroids hit their own polygon",
   forRunSkipsWithoutBoundariesUnlessOptional as "strict lookup: forRun skips with a warning unless boundaries are declared optional",
 };

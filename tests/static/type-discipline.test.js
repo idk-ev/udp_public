@@ -120,9 +120,9 @@ ${output}`
 };
 
 exports["Registry and service share the same place of maintenance"] = () => {
-  // The service reads connectors.json, the flow generator does too. As long as
-  // both runtimes stand side by side, there must not be a second copy of it —
-  // otherwise schedules and active connectors drift apart.
+  // The service reads connectors.json, the status export for the dashboards
+  // (scripts/export-connector-status.py) does too. There must not be a second
+  // copy of it — otherwise what runs and what is reported drift apart.
   const matches = fs
     .readdirSync(SERVICE, { recursive: true })
     .map(String)

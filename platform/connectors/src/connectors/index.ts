@@ -12,8 +12,8 @@
  * overpass.ts, open-meteo-batches.ts, http-payload.ts) are not connectors and
  * are not listed.
  *
- * A connector listed here does not run yet on that account. It runs when its
- * registry entry says `"runtime": "app"`, which is the cutover in phase 4.
+ * A connector runs when it is listed here AND its registry entry is active;
+ * test/parity/registry.test.ts holds both lists to each other.
  */
 
 import { connector as abfahrtenOnDemand } from "./abfahrten-on-demand.js";

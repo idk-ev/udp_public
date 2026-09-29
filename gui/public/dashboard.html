@@ -96,7 +96,7 @@
 
 <footer>
   UDP-Hauptdashboard · Metriken: NGSI-LD-Systemattribute (Orion-LD), Host- und TRoE-Statistiken
-  via Node-RED (PlatformStatus), Lastverlauf via Mintaka · Teil der UDP-Referenzimplementierung ·
+  via Konnektordienst (PlatformStatus), Lastverlauf via Mintaka · Teil der UDP-Referenzimplementierung ·
   <a href="/reutlingen" target="_blank" rel="noopener">Smart City Reutlingen (Referenz)</a> ·
   <a href="/mitmachen.html">Mitmachen →</a> · <a href="/cockpit">UDP-Cockpit</a>
 </footer>
@@ -248,7 +248,7 @@ async function load() {
   if (!CONNECTORS.length) await loadConnectorRegistry();
   const withSample = CONNECTORS.filter(c => c.sampleEntity);
   // 1) Dienste-Probes + Konnektoren + Host-Status + TRoE-Statistik parallel
-  // (DB-Kennzahlen kommen als PlatformStatus:udp-troe aus Node-RED — kein SQL im Browser)
+  // (DB-Kennzahlen kommen als PlatformStatus:udp-troe aus dem Konnektordienst — kein SQL im Browser)
   const [probes, sysList, platRes, troe] = await Promise.all([
     Promise.all(SERVICES.map(probe)),
     jget(GW + "/ngsi-ld/v1/entities?id=" + withSample.map(c => c.sampleEntity).join(",") + "&options=sysAttrs&limit=50").catch(() => []),
@@ -332,7 +332,7 @@ async function load() {
 }
 
 async function loadCharts() {
-  // Ingestion + Typen aus PlatformStatus:udp-troe (Node-RED), Lastverlauf via Mintaka (TRoE)
+  // Ingestion + Typen aus PlatformStatus:udp-troe (Konnektordienst), Lastverlauf via Mintaka (TRoE)
   const [troe, loadHist] = await Promise.all([
     jget(GW + "/ngsi-ld/v1/entities/urn:ngsi-ld:PlatformStatus:udp-troe").catch(() => null),
     SC.hist("urn:ngsi-ld:PlatformStatus:udp", "cpuLoadPct", 24),

@@ -26,7 +26,7 @@ import type { SignatureScope } from "../../src/kernel/change-gate.js";
 import { createGeoIndex } from "../../src/kernel/geo.js";
 import { chunk } from "../../src/kernel/orion.js";
 import { isArray } from "../../src/kernel/parse.js";
-import type { UpsertPlan } from "../../src/kernel/types.js";
+import type { HttpResponse, UpsertPlan } from "../../src/kernel/types.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import { httpResponse, recordingLog } from "../harness/kernel.js";
 import {
@@ -39,7 +39,7 @@ import {
 } from "../harness/normalize.js";
 import { runFunctionNode } from "../harness/vm-runner.js";
 import type { FunctionNodeRun } from "../harness/vm-runner.js";
-import { fixtureGeo, legacyChunks, rig, upsertBodies } from "../harness/water-warnings-rig.js";
+import { fixtureGeo, fullGeo, legacyChunks, rig, upsertBodies } from "../harness/water-warnings-rig.js";
 import type { LegacyChunks } from "../harness/water-warnings-rig.js";
 
 const NODE_ID = "udp-rt-pe-fn";
@@ -293,7 +293,99 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   assertStampsWithin(second, secondWindow, legacy.entities);
 }
 
+/** 60 synthetic gauges in Stuttgart: two chunks of 50 and 10. */
+function stuttgartGauges(level: (index: number) => number): unknown[] {
+  return Array.from({ length: 60 }, (_, i) => ({
+    latitude: 48.7758,
+    longitude: 9.1829,
+    number: String(i + 1),
+    shortname: `P${String(i + 1)}`,
+    water: { shortname: "NECKAR" },
+    timeseries: [
+      { shortname: "W", unit: "cm", currentMeasurement: { value: level(i), stateMnwMhw: "normal" } },
+    ],
+  }));
+}
+
+/**
+ * The fix for values frozen during Orion outages, end to end through run():
+ * a signature takes effect only for what the broker confirmed — per chunk, and
+ * per entity on a 207 — so everything else is sent in full again next run.
+ */
+async function onlyConfirmedWritesAreGated(): Promise<void> {
+  let stations: unknown[] = [];
+  const answers: (HttpResponse | Error)[] = [];
+  const r = rig("pegel-bw", (request) => {
+    if (request.url.host === "www.pegelonline.wsv.de") return httpResponse(200, JSON.stringify(stations));
+    return answers.shift() ?? httpResponse(204);
+  });
+  const geo = fullGeo();
+  r.geo.setMunicipalities(geo.rows);
+  r.geo.setBoundaries(geo.boundaries, 0);
+  const table = (): Map<string, unknown> => r.signatures.scope("pegel-bw").copy(GATE_KEY);
+  const runWith = async (
+    payload: unknown[],
+    ...brokerAnswers: (HttpResponse | Error)[]
+  ): Promise<{ sizes: number[]; full: string[] }> => {
+    stations = payload;
+    answers.push(...brokerAnswers);
+    const before = upsertBodies(r.seen).length;
+    await run(r.ctx);
+    const bodies = upsertBodies(r.seen).slice(before);
+    const full = bodies
+      .flat()
+      .filter((entity) => isRecord(entity) && "level" in entity)
+      .map((entity) => (isRecord(entity) ? String(entity.id) : ""));
+    return { sizes: bodies.map((body) => body.length), full };
+  };
+  const id = (n: number): string => `urn:ngsi-ld:WaterLevelObserved:bw-pegel-${String(n)}`;
+
+  // Orion down: both chunks refused, nothing committed, and said so.
+  let sent = await runWith(
+    stuttgartGauges(() => 100),
+    new Error("connect ECONNREFUSED"),
+    new Error("x"),
+  );
+  assert.deepEqual(sent.sizes, [50, 10]);
+  assert.equal(table().size, 0, "signatures stored although the upsert failed");
+  assert.ok(r.log.warnings().some((line) => line.startsWith("Upsert not confirmed")));
+
+  // Everything is resent; the first chunk times out, the second is confirmed.
+  sent = await runWith(
+    stuttgartGauges(() => 100),
+    new Error("ETIMEDOUT"),
+    httpResponse(204),
+  );
+  assert.equal(sent.full.length, 60, "values not resent after a failed upsert");
+  assert.equal(table().size, 10);
+
+  // Only the entities of the failed chunk go out in full again.
+  sent = await runWith(stuttgartGauges(() => 100));
+  assert.deepEqual(
+    sent.full,
+    Array.from({ length: 50 }, (_, i) => id(i + 1)),
+    "failed chunk not resent, or confirmed ones resent",
+  );
+  sent = await runWith(stuttgartGauges(() => 100));
+  assert.deepEqual(sent.full, [], "unchanged values written again");
+  assert.deepEqual(sent.sizes, [50, 10], "freshness stamps not written");
+
+  // 207: gauge 1 fails, gauge 2 is confirmed — only gauge 1 is resent.
+  const changed = (i: number): number => (i < 2 ? 200 : 100);
+  sent = await runWith(
+    stuttgartGauges(changed),
+    httpResponse(
+      207,
+      JSON.stringify({ success: [id(2)], errors: [{ entityId: id(1), error: { status: 400 } }] }),
+    ),
+  );
+  assert.deepEqual(sent.full, [id(1), id(2)]);
+  sent = await runWith(stuttgartGauges(changed));
+  assert.deepEqual(sent.full, [id(1)], "207: failed entity not resent, or confirmed one resent");
+}
+
 export {
+  onlyConfirmedWritesAreGated as "pegel-bw: a failed upsert resends, a confirmed one gates — per chunk, and per entity on a 207",
   firstRunIsIdentical as "pegel-bw: old FN_PEGEL and ported build() + change gate emit identical chunks and signatures",
   crossesTheChunkBoundary as "pegel-bw: more stations than one chunk of 50 (synthetic copies) are chunked as by the old node",
   commitThenFreshnessOnly as "pegel-bw: commit after a confirmed upsert matches the old commit node, next run is freshness only",

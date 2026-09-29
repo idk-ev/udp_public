@@ -99,19 +99,17 @@ exports["Alle /gateway-Locations sind auf lesende Methoden begrenzt"] = () => {
   }
 };
 
-exports["Node-RED und Konnektordienst sind nur über die beiden exakten Endpunkte erreichbar"] = () => {
+exports["Der Konnektordienst ist nur über die beiden exakten Endpunkte erreichbar"] = () => {
   const conf = read(NGINX);
-  // Je Endpunkt ein eigener Upstream (Vorgabe Node-RED, umschaltbar auf den
-  // Konnektordienst, s. gui/docker/17-udp-upstreams.envsh).
-  const UPSTREAM = /\$\{UDP_(NODERED|ABFAHRTEN|WARNUNGEN)_UPSTREAM\}/;
+  // Ein Upstream für beide Endpunkte (gui/docker/17-udp-upstreams.envsh);
+  // Node-RED bedient keinen mehr und wird von der Cockpit-nginx nie erreicht.
+  const UPSTREAM = /\$\{UDP_CONNECTORS_UPSTREAM\}/;
   const ingestion = [...conf.matchAll(/location\s+(=\s+)?(\/\S+)\s*\{([\s\S]*?)\n    \}/g)]
     .filter(([, , , body]) => UPSTREAM.test(body));
   assert.deepStrictEqual(ingestion.map(m => m[2]).sort(), ["/abfahrten", "/warnungen.ics"]);
   for (const [, exakt, pfad] of ingestion)
     assert(exakt, `${pfad}: Präfix-Match reicht in weitere Pfade durch (location = ... nötig)`);
-  const upstreamOf = pfad => ingestion.find(m => m[2] === pfad)[3].match(UPSTREAM)[1];
-  assert.strictEqual(upstreamOf("/abfahrten"), "ABFAHRTEN");
-  assert.strictEqual(upstreamOf("/warnungen.ics"), "WARNUNGEN");
+  assert(!/UDP_(NODERED|ABFAHRTEN|WARNUNGEN)_UPSTREAM|node-red/.test(conf), "cockpit.conf.template verweist wieder auf Node-RED");
   // Der Admin-Port des Konnektordienstes (/trigger, /healthz) wird nie proxied.
   assert(!/:1881\b/.test(conf), "cockpit.conf.template verweist auf den Admin-Port 1881");
 };

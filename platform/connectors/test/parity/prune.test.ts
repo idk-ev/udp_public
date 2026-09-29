@@ -400,36 +400,72 @@ const SCENARIOS: readonly Scenario[] = [
   },
 ];
 
-async function everyGuardBehavesAsBefore(): Promise<void> {
-  for (const scenario of SCENARIOS) {
-    const clock: Clock = { now: START };
-    const legacy = legacySide(clock);
-    const ported = portedSide(clock);
-    const deleted: { legacy: number[]; ported: number[] } = { legacy: [], ported: [] };
-    for (const step of scenario.steps) {
-      clock.now += step.advance;
-      step.before?.(legacy);
-      step.before?.(ported);
-      deleted.legacy.push(await legacy.stale(step.options));
-      deleted.ported.push(await ported.stale(step.options));
-    }
-    const at = `${scenario.name}:`;
-    assert.deepEqual(deleted.ported, deleted.legacy, `${at} deletions per run differ`);
-    assert.deepEqual(deleted.ported, scenario.expectDeleted, `${at} unexpected deletions`);
-    assert.deepEqual(
-      [...ported.broker.entities.keys()],
-      [...legacy.broker.entities.keys()],
-      `${at} broker differs`,
-    );
-    assert.ok(ported.broker.entities.has(FOREIGN), `${at} a foreign id was deleted`);
-    assert.deepEqual(ported.warnings(), legacy.warnings(), `${at} warnings differ`);
-    assert.deepEqual(ported.infos(), legacy.infos(), `${at} info lines differ`);
-    assert.deepEqual(
-      normalize(ported.signatures("rwSig")),
-      normalize(legacy.signatures("rwSig")),
-      `${at} signatures`,
-    );
+/** Replays one scenario on both sides; returns the port's warnings. */
+async function compareScenario(scenario: Scenario): Promise<string[]> {
+  const clock: Clock = { now: START };
+  const legacy = legacySide(clock);
+  const ported = portedSide(clock);
+  const deleted: { legacy: number[]; ported: number[] } = { legacy: [], ported: [] };
+  for (const step of scenario.steps) {
+    clock.now += step.advance;
+    step.before?.(legacy);
+    step.before?.(ported);
+    deleted.legacy.push(await legacy.stale(step.options));
+    deleted.ported.push(await ported.stale(step.options));
   }
+  const at = `${scenario.name}:`;
+  assert.deepEqual(deleted.ported, deleted.legacy, `${at} deletions per run differ`);
+  assert.deepEqual(deleted.ported, scenario.expectDeleted, `${at} unexpected deletions`);
+  assert.deepEqual(
+    [...ported.broker.entities.keys()],
+    [...legacy.broker.entities.keys()],
+    `${at} broker differs`,
+  );
+  assert.ok(ported.broker.entities.has(FOREIGN), `${at} a foreign id was deleted`);
+  assert.deepEqual(ported.warnings(), legacy.warnings(), `${at} warnings differ`);
+  assert.deepEqual(ported.infos(), legacy.infos(), `${at} info lines differ`);
+  assert.deepEqual(
+    normalize(ported.signatures("rwSig")),
+    normalize(legacy.signatures("rwSig")),
+    `${at} signatures`,
+  );
+  return ported.warnings();
+}
+
+async function everyGuardBehavesAsBefore(): Promise<void> {
+  for (const scenario of SCENARIOS) await compareScenario(scenario);
+}
+
+/**
+ * A failed listing between two confirmation runs is a skipped run: the
+ * candidates are forgotten and the 24 h start again from the next sighting.
+ * Runs every 3 h; OWN(9) is a candidate from 3 h on. Without the reset it
+ * would go at 27 h; with it, only 24 h after the sighting at 9 h, i.e. at 33 h.
+ */
+async function failedListingRestartsTheConfirmation(): Promise<void> {
+  const options: PruneOptions = { ...CONFIRM, intervalMs: 3 * HOUR };
+  const steps: Step[] = [
+    run(options, 0),
+    run(options, 3 * HOUR),
+    run(options, 3 * HOUR, (side) => {
+      side.broker.listAnswer = httpResponse(500, "boom");
+    }),
+    ...Array.from({ length: 10 }, (_, i) =>
+      run(options, 3 * HOUR, (side) => {
+        if (i === 0) side.broker.listAnswer = null;
+      }),
+    ),
+  ];
+  const warnings = await compareScenario({
+    name: "a failed listing between confirmation runs",
+    steps,
+    // Runs at 0, 3, 6 (failed), 9 … 36 h: the deletion falls on 33 h.
+    expectDeleted: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+  });
+  assert.ok(
+    warnings.some((line) => line.includes("500")),
+    `the failed listing was not reported: ${warnings.join(" | ")}`,
+  );
 }
 
 async function implausibleMasterDataNeverLists(): Promise<void> {
@@ -608,6 +644,7 @@ function pruneOkMatchesTheOldCheck(): void {
 
 export {
   everyGuardBehavesAsBefore as "prune: old pruneStale and Pruner.stale agree on every guard (deletions, broker, warnings, signatures)",
+  failedListingRestartsTheConfirmation as "prune: a failed listing between confirmation runs restarts the 24 h, as in the old node",
   implausibleMasterDataNeverLists as "prune: implausible master data (< 1000 municipalities) never even lists",
   restartWithTruncatedFileIsNotPlausible as "prune: after a restart the 95 % reference is seeded from Orion; a truncated file fails",
   implausibleMasterDataClearConfirmations as "prune: implausible master data clear the confirmation table",

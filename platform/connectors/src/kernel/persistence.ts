@@ -389,7 +389,7 @@ export class Persistence {
     failing: readonly ConnectorPersistence[],
     reloading: boolean,
   ): string | null {
-    // Nothing bound (no connector on runtime "app"): nothing to be unhealthy about.
+    // Nothing bound (no connector scheduled): nothing to be unhealthy about.
     if (bound === 0) return null;
     if (!this.writable()) return this.reason() || "writer lock not held";
     const [firstLoad] = loadFailed;

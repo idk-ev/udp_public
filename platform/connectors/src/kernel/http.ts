@@ -10,14 +10,9 @@
  *   public  UDP_CONNECTORS_PORT (1880)        only the routes connectors register
  *   admin   UDP_CONNECTORS_ADMIN_PORT (1881)  GET /healthz, POST /trigger/:id
  *
- * `/trigger/:id` replaces the detour that `scripts/trigger-connector.sh` has to
- * take today: it reads `nodePrefixes` from the registry, pulls the whole flow
- * definition from the Node-RED admin API, searches it for an inject node whose
- * id starts with that prefix, and posts to `/inject/<node>`. Three requests and
- * a registry field to keep in sync, in order to say "run ausflug-bw now". With
- * the id as the route, `nodePrefixes` loses its last reader
- * (docs/migration-konnektoren.md, "Was am Ende verschwindet"). Rewiring the
- * script is phase 5; the route exists from here on.
+ * `/trigger/:id` takes the registry id as the route: "run ausflug-bw now" is
+ * one request (`scripts/trigger-connector.sh`), where the Node-RED detour
+ * needed three and a registry field (`nodePrefixes`) to keep in sync.
  *
  * Connector routes are registered through {@link RouteRegistry}. Phase 3 needs
  * that for the two `http in` nodes of the old flows: `GET /abfahrten` and
@@ -62,10 +57,9 @@ import type {
 } from "./types.js";
 
 /**
- * Same container-internal port as Node-RED serves on. The cockpit nginx reaches
- * `/abfahrten` and `/warnungen.ics` through `UDP_NODERED_UPSTREAM:
- * "node-red:1880"`; keeping the port means the cutover in phase 5 changes the
- * host in one place and nothing else.
+ * Same container-internal port as Node-RED served these routes on. The cockpit
+ * nginx reaches `/abfahrten` and `/warnungen.ics` through
+ * `UDP_CONNECTORS_UPSTREAM` (default `connectors:1880`).
  */
 export const DEFAULT_PORT = 1880;
 

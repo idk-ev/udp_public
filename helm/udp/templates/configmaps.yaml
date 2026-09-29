@@ -46,11 +46,22 @@ data:
   config.js: |
 {{ include "udp.cockpitConfigJs" . | indent 4 }}
 ---
-# Hinweis: Node-RED bekommt seine Datenflüsse und settings.js NICHT über eine
-# ConfigMap, sondern fest aus dem eigenen Image (platform/config/nodered/
-# Dockerfile). flows.json liegt bei ~420 KB und wächst mit jedem Konnektor —
-# die etcd-Grenze für ConfigMaps liegt bei 1 MiB.
-#
+# Node-RED (Upstream-Image): Beispielfluss und settings.js. Kopien von
+# platform/config/nodered/ (Compose mountet die Originale); ein statischer Test
+# hält beide Stände gleich. Der initContainer kopiert sie nach /data, damit
+# Deploys aus dem Editor funktionieren (flüchtig, s. templates/apps.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-red-config
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "node-red") | nindent 4 }}
+data:
+  flows.json: |
+{{ .Files.Get "files/nodered/flows.json" | indent 4 }}
+  settings.js: |
+{{ .Files.Get "files/nodered/settings.js" | indent 4 }}
+---
 # PostgreSQL-Initialisierung (Datenbanken, Auth-Kompatibilität)
 apiVersion: v1
 kind: ConfigMap

@@ -13,8 +13,8 @@ global:
   # keine direkten Docker-Hub-Pulls) hier z. B. "harbor.example.org/udp-mirror".
   imageRegistry: ""
   # Registry der selbst gebauten Images – EINE Stelle für cockpit, ckan-dcat,
-  # postgres-timescale-cnpg (-oss nur zur Migration), node-red-udp und
-  # udp-connectors. Beim Spiegeln nur diesen Wert ändern.
+  # postgres-timescale-cnpg (-oss nur zur Migration) und udp-connectors. Beim
+  # Spiegeln nur diesen Wert ändern.
   udpRegistry: "ghcr.io/idk-ev/udp"
   # Nur nötig, wenn die GHCR-Pakete privat sind (siehe DEPLOY.md, Abschnitt 6).
   imagePullSecrets: []
@@ -26,7 +26,7 @@ global:
 # Secrets: NICHTS eintragen.
 # Das DB-Passwort ist eine reine App-zu-App-Zugangsdatei (die DB ist von außen
 # nicht erreichbar und per NetworkPolicy nur für orion-ld/mintaka/frost/keycloak
-# geöffnet). Es wird beim ERSTEN Install als starkes Zufallspasswort erzeugt und
+# und den Konnektordienst geöffnet). Es wird beim ERSTEN Install als starkes Zufallspasswort erzeugt und
 # danach stabil gehalten – auch in Produktion. Gleiches gilt für den Keycloak-
 # Admin (Passwort danach per kubectl auslesen, siehe DEPLOY.md).
 # -----------------------------------------------------------------------------
@@ -73,11 +73,9 @@ cockpit:
 ckan:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
-# Konnektordienst: immer zusammen mit node-red-udp auf denselben Stand pinnen –
-# beide tragen dieselbe Registry (ein Konnektor läuft in genau einem von beiden).
-nodeRed:
-  image:
-    tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+# Konnektordienst. (Node-RED läuft auf dem Upstream-Image nodered/node-red,
+# ein eigenes node-red-udp gibt es nicht mehr – einen alten Pin unter
+# nodeRed.image entfernen, das Chart bricht sonst mit einem Hinweis ab.)
 connectors:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"

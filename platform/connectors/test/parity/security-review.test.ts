@@ -674,20 +674,19 @@ function nginxKeysLimitsAndHeaders(): void {
   );
   assert.match(conf, /limit_req_zone \$binary_remote_addr zone=udp_abfahrten:\d+m rate=\d+r\/m;/);
   assert.match(conf, /limit_req_zone \$binary_remote_addr zone=udp_warnungen:\d+m rate=\d+r\/m;/);
-  // One upstream per endpoint: Node-RED by default, the connector service
-  // after the cutover (gui/docker/17-udp-upstreams.envsh).
-  for (const [path, param, zone, upstream] of [
-    ["/abfahrten", "ags", "udp_abfahrten", "abfahrten"],
-    ["/warnungen.ics", "kreis", "udp_warnungen", "warnungen"],
+  // Both endpoints go to the connector service (gui/docker/17-udp-upstreams.envsh).
+  for (const [path, param, zone] of [
+    ["/abfahrten", "ags", "udp_abfahrten"],
+    ["/warnungen.ics", "kreis", "udp_warnungen"],
   ] as const) {
     const block = locationBlock(conf, path);
     assert.ok(block.includes(`proxy_cache_key "$uri?${param}=$arg_${param}";`), `${path}: cache key`);
     assert.ok(
-      block.includes(`set $${upstream} http://\${UDP_${upstream.toUpperCase()}_UPSTREAM};`),
+      block.includes("set $connectors http://${UDP_CONNECTORS_UPSTREAM};"),
       `${path}: upstream variable`,
     );
     assert.ok(
-      block.includes(`proxy_pass $${upstream}${path}?${param}=$arg_${param};`),
+      block.includes(`proxy_pass $connectors${path}?${param}=$arg_${param};`),
       `${path}: upstream query`,
     );
     assert.match(block, new RegExp(`limit_req zone=${zone} burst=\\d+ nodelay;`));

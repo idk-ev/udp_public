@@ -9,18 +9,21 @@
  *
  * The file is **not** copied into this package; a static test
  * (tests/static/type-discipline.test.js, "Registry and service share the same
- * place of maintenance") fails if a second copy shows up here. As long as both
- * runtimes stand side by side, a second copy would let schedules and the set of
- * active connectors drift apart. In the image the file is mounted at
+ * place of maintenance") fails if a second copy shows up here: the status
+ * export for dashboards and monitoring (scripts/export-connector-status.py)
+ * reads the same file, and a second copy would let what runs and what is
+ * reported drift apart. In the image the file is mounted at
  * /app/config/connectors.json (see Dockerfile); in the checkout it is read
  * relative to this module.
  *
  * It is external JSON, so it is narrowed, never asserted. The guard below is
  * long-winded on purpose: every field the service acts on is checked once, here,
  * and everything downstream is typed. Fields the service does not read
- * (`nodePrefixes`, `supersededBy`, `_doc`) are ignored rather
- * than rejected — the same file is read by the flow generator and exported to
- * the frontend and will keep carrying members this service does not care about.
+ * (`supersededBy`, `_doc`) are ignored rather than rejected — the same file is
+ * exported to the frontend and carries members this service does not care
+ * about. That includes the two fields of the migration from Node-RED
+ * (`runtime`, `nodePrefixes`): a fork that still carries them loses nothing,
+ * every active entry runs here.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -41,7 +44,6 @@ import type {
   Ags,
   ConnectorId,
   ConnectorParams,
-  ConnectorRuntime,
   EntityId,
   EntityType,
   JsonValue,
@@ -126,12 +128,6 @@ function stringList(raw: unknown, at: string): readonly string[] {
   return raw.map((item, index) => requireString(item, `${at}[${String(index)}]`));
 }
 
-function runtime(raw: unknown, at: string): ConnectorRuntime | undefined {
-  if (raw === undefined || raw === null) return undefined;
-  if (raw === "nodered" || raw === "app") return raw;
-  throw new Error(`${at}: expected "nodered" or "app"`);
-}
-
 function sampleEntity(raw: unknown, at: string): EntityId | null {
   if (raw === undefined || raw === null) return null;
   if (!isEntityId(raw)) throw new Error(`${at}: expected an urn:ngsi-ld: id or null`);
@@ -190,7 +186,6 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
   const at = `connectors[${String(index)}]`;
   if (!isRecord(raw)) throw new Error(`${at}: expected an object`);
   const id = requireString(raw.id, `${at}.id`);
-  const entryRuntime = runtime(raw.runtime, `${at}.runtime`);
   return {
     id,
     name: requireString(raw.name, `${at}.name`),
@@ -199,10 +194,8 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
     intervalSeconds: optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`),
     cron: optionalString(raw.cron, `${at}.cron`),
     refireOnRestart: optionalBoolean(raw.refireOnRestart, `${at}.refireOnRestart`),
-    // Missing means active: the generator reads it the same way
-    // (`if not c.get("active", True): continue`).
+    // Missing means active, as the status export and the dashboards read it.
     active: optionalBoolean(raw.active, `${at}.active`) ?? true,
-    ...(entryRuntime === undefined ? {} : { runtime: entryRuntime }),
     requiresSecret: optionalString(raw.requiresSecret, `${at}.requiresSecret`),
     pending: optionalBoolean(raw.pending, `${at}.pending`) ?? false,
     sollMinutes: optionalNumber(raw.sollMinutes, `${at}.sollMinutes`),
@@ -255,11 +248,6 @@ export function intervalMsOf(entry: RegistryEntry, runs = 1): number {
   return (seconds === null || seconds === 0 ? 86_400 : seconds) * 1000 * factor;
 }
 
-/** Missing `runtime` means `"nodered"` — see platform/connectors/README.md. */
-export function runtimeOf(entry: RegistryEntry): ConnectorRuntime {
-  return entry.runtime ?? "nodered";
-}
-
 class FileRegistry implements Registry {
   readonly entries: readonly RegistryEntry[];
   readonly #byId: ReadonlyMap<ConnectorId, RegistryEntry>;
@@ -273,8 +261,8 @@ class FileRegistry implements Registry {
     return this.#byId.get(id);
   }
 
-  appEntries(): readonly RegistryEntry[] {
-    return this.entries.filter((entry) => entry.active && runtimeOf(entry) === "app");
+  activeEntries(): readonly RegistryEntry[] {
+    return this.entries.filter((entry) => entry.active);
   }
 }
 

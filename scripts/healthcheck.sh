@@ -3,7 +3,7 @@
 # © 2024–2026 Thomas Kieß and contributors
 
 # Registry-getriebener Health-Check aller Konnektoren (Masterplan §5 F1).
-# Quelle: gui/public/connectors-status.json (Export des Flow-Generators).
+# Quelle: gui/public/connectors-status.json (scripts/export-connector-status.py).
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 STATUS="$REPO/gui/public/connectors-status.json"
@@ -38,31 +38,28 @@ while IFS=$'\t' read -r name url; do
   printf '%-46s %s %s\n' "$name" "$st" "HTTP $code"
 done < <(jq -r '.connectors[] | select(.active != false and .healthUrl != null) | [.name, .healthUrl] | @tsv' "$STATUS")
 
-# [error]/[warn] lines of both ingestion runtimes (Node-RED and the connector
-# service, docs/migration-konnektoren.md). Both write "... [warn] [<component>] ...",
-# so the same grouping names the sources. Warnings count as well: a complete
-# outage of a source (e.g. every EFA city at once "JSON parse error") shows up
-# only as [warn]. The three most frequent warning sources are named.
-for container in udp-node-red udp-connectors; do
-    if ! docker inspect "$container" >/dev/null 2>&1; then
-        echo "-- $container: container not found"
-        continue
-    fi
-    LOGS=$(docker logs "$container" --since 70m 2>&1)
+# [error]/[warn] lines of the connector service, the ingestion runtime (Node-RED
+# only runs the low-code example flow). Lines read "... [warn] [<component>] ...",
+# so the grouping names the sources. Warnings count as well: a complete outage
+# of a source (e.g. every EFA city at once "JSON parse error") shows up only as
+# [warn]. The three most frequent warning sources are named.
+if docker inspect udp-connectors >/dev/null 2>&1; then
+    LOGS=$(docker logs udp-connectors --since 70m 2>&1)
     ERR=$(grep -cE '\[error\]' <<<"$LOGS")
     WARN=$(grep -cE '\[warn\]' <<<"$LOGS")
-    echo "-- $container errors (70 min): $ERR"
-    echo "-- $container warnings (70 min): $WARN"
+    echo "-- udp-connectors errors (70 min): $ERR"
+    echo "-- udp-connectors warnings (70 min): $WARN"
     if [ "$WARN" -gt 10 ]; then
         grep -E '\[warn\]' <<<"$LOGS" \
             | sed -E 's/.*\[warn\] \[([^]]*)\].*/   \1/' | sort | uniq -c | sort -rn | head -3
     fi
-done
+fi
 
 # Connector service: what it runs and its state store (/healthz on the admin
-# port, which answers only inside the container). Fails the check only when
-# connectors run there and the state store is unhealthy (or /healthz is gone).
-APP_COUNT=$(jq '[.connectors[] | select(.active != false and .runtime == "app")] | length' "$STATUS")
+# port, which answers only inside the container). Fails the check when active
+# connectors exist and the state store is unhealthy, /healthz is gone or the
+# container is missing.
+ACTIVE_COUNT=$(jq '[.connectors[] | select(.active != false)] | length' "$STATUS")
 if docker inspect udp-connectors >/dev/null 2>&1; then
     HEALTHZ=$(docker exec udp-connectors node -e '
 fetch("http://127.0.0.1:" + (process.env.UDP_CONNECTORS_ADMIN_PORT || "1881") + "/healthz")
@@ -78,10 +75,10 @@ fetch("http://127.0.0.1:" + (process.env.UDP_CONNECTORS_ADMIN_PORT || "1881") + 
         jq -e '(.connectors | length) == 0 or .stateStore.healthy' >/dev/null <<<"$HEALTHZ" || fail=1
     else
         echo "-- connector service: /healthz not answering"
-        [ "$APP_COUNT" -gt 0 ] && fail=1
+        [ "$ACTIVE_COUNT" -gt 0 ] && fail=1
     fi
-elif [ "$APP_COUNT" -gt 0 ]; then
-    echo "-- connector service: container not found, but $APP_COUNT connector(s) have runtime \"app\""
+elif [ "$ACTIVE_COUNT" -gt 0 ]; then
+    echo "-- connector service: container not found, but $ACTIVE_COUNT connector(s) are active"
     fail=1
 fi
 echo "-- TRoE gesamt: $(docker exec udp-timescale psql -U udp -d orion -Atc 'SELECT count(*) FROM attributes;')"

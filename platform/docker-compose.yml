@@ -200,21 +200,18 @@ services:
   # DATENMANAGEMENT: Low-Code-ETL + Open-Data-Katalog (LB B.II.4)
   # ---------------------------------------------------------------------------
 
+  # Node-RED: Low-Code-Baustein mit vorkonfiguriertem Beispielfluss (Open Data
+  # → NGSI-LD → Orion-LD). Die Ingestion läuft im Konnektordienst, nicht hier.
+  # Deploys aus dem Editor schreiben in ./config/nodered/flows.json im Checkout.
   node-red:
     image: nodered/node-red:4.1
     container_name: udp-node-red
     environment:
       TZ: Europe/Berlin
-      # Passantenfrequenz Wilhelmstraße (hystreet.com): Flow bleibt inaktiv, bis
-      # ein kostenloser API-Token in .env hinterlegt ist.
-      HYSTREET_API_TOKEN: ${HYSTREET_API_TOKEN:-}
-      # TRoE-Statistik-Flow (PlatformStatus:udp-troe) liest TimescaleDB direkt
-      TROE_DB_USER: ${POSTGRES_USER:-udp}
-      TROE_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
     volumes:
       - nodered-data:/data
       - ./config/nodered/flows.json:/data/flows.json
-      # settings.js versioniert (contextStorage-Härtung reproduzierbar, Sprint 1.8)
+      # settings.js versioniert (gleiche Datei wie im Helm-Chart)
       - ./config/nodered/settings.js:/data/settings.js
     ports:
       - "${WORKFLOW_PORT:-4900}:1880"   # Workflow-Slot gem. PORTS.md
@@ -222,10 +219,9 @@ services:
     networks: [udp]
     <<: *default-logging
 
-  # Konnektordienst (platform/connectors): löst die generierten Node-RED-Flows
-  # konnektorweise ab. Er führt genau die Registry-Einträge mit
-  # "runtime": "app" aus — ohne einen solchen Eintrag beantwortet er nur
-  # /healthz und verbindet sich mit nichts (docs/migration-konnektoren.md).
+  # Konnektordienst (platform/connectors): die Ingestion der Plattform. Er
+  # führt jeden aktiven Eintrag der Registry (config/connectors.json) aus und
+  # beantwortet /abfahrten und /warnungen.ics für das Cockpit.
   connectors:
     build:
       context: ..
@@ -241,10 +237,12 @@ services:
       TZ: Europe/Berlin
       ORION_URL: http://orion-ld:1026
       # Zustandsspeicher (Schema udp_connectors) und die beiden SQL-Konnektoren:
-      # dieselbe TimescaleDB und dieselben Zugangsdaten wie Node-RED.
+      # dieselbe TimescaleDB und dieselben Zugangsdaten wie Orion-LD.
       TROE_DB_HOST: timescale
       TROE_DB_USER: ${POSTGRES_USER:-udp}
       TROE_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+      # Passantenfrequenz (hystreet.com): der Konnektor setzt aus, bis ein
+      # API-Token in .env hinterlegt ist.
       HYSTREET_API_TOKEN: ${HYSTREET_API_TOKEN:-}
       UDP_CONNECTORS_PORT: "1880"
       UDP_CONNECTORS_ADMIN_PORT: "1881"
@@ -253,8 +251,8 @@ services:
       UDP_CONNECTORS_ADMIN_HOST: "127.0.0.1"
       UDP_TRIGGER_COOLDOWN_SECONDS: "60"
     volumes:
-      # Dieselbe Registry wie der Flow-Generator: runtime umstellen, Flows neu
-      # generieren und beide Container neu starten genügt — kein Image-Build.
+      # Registry aus dem Checkout: Takt oder Aktivierung ändern und den
+      # Container neu starten genügt — kein Image-Build.
       - ./config/connectors.json:/app/config/connectors.json:ro
     # 1880 (/abfahrten, /warnungen.ics) ist nicht veröffentlicht, aber — wie
     # jeder Dienst hier — von allen Containern im Compose-Netz erreichbar; die
@@ -470,11 +468,8 @@ services:
       NGINX_ENTRYPOINT_LOCAL_RESOLVERS: "1"
       NGINX_ENVSUBST_FILTER: "^(UDP_|NGINX_LOCAL_RESOLVERS)"
       UDP_GATEWAY_UPSTREAM: "apisix:9080"
-      UDP_NODERED_UPSTREAM: "node-red:1880"
-      # Leer = Node-RED; "connectors:1880" schaltet den Endpunkt auf den
-      # Konnektordienst um (s. .env.example, gui/docker/17-udp-upstreams.envsh).
-      UDP_ABFAHRTEN_UPSTREAM: ${UDP_ABFAHRTEN_UPSTREAM:-}
-      UDP_WARNUNGEN_UPSTREAM: ${UDP_WARNUNGEN_UPSTREAM:-}
+      # /abfahrten und /warnungen.ics (gui/docker/17-udp-upstreams.envsh).
+      UDP_CONNECTORS_UPSTREAM: "connectors:1880"
       # Proxy-Netze, deren X-Forwarded-For das Cockpit für den Rate-Limit-
       # Schlüssel übernimmt; leer = alle privaten Bereiche (s. .env.example).
       UDP_TRUSTED_PROXIES: ${UDP_TRUSTED_PROXIES:-}
@@ -482,8 +477,8 @@ services:
       - ../gui/dist:/usr/share/nginx/html:ro
       - ./config/nginx/cockpit.conf.template:/etc/nginx/templates/default.conf.template:ro
       # Dieselben Entrypoint-Skripte wie im Cockpit-Image (gui/Dockerfile):
-      # vertrauenswürdige Proxys (${UDP_REALIP_FROM} der Vorlage) und die
-      # Upstreams der beiden Endpunkte. Ohne sie bricht nginx -t ab.
+      # vertrauenswürdige Proxys (${UDP_REALIP_FROM} der Vorlage) und der
+      # Upstream der beiden Endpunkte. Ohne sie bricht nginx -t ab.
       - ../gui/docker/16-udp-realip.envsh:/docker-entrypoint.d/16-udp-realip.envsh:ro
       - ../gui/docker/17-udp-upstreams.envsh:/docker-entrypoint.d/17-udp-upstreams.envsh:ro
     ports:

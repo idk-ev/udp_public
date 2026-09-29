@@ -297,8 +297,8 @@ function fullOrFresh(entity: Readonly<Record<string, unknown>>): "full" | "fresh
 
 const ENTRIES = parseRegistry({
   connectors: [
-    { id: "gated", name: "Gated", scope: "land", intervalSeconds: 3600, runtime: "app" },
-    { id: "plain", name: "Plain", scope: "land", intervalSeconds: 3600, runtime: "app" },
+    { id: "gated", name: "Gated", scope: "land", intervalSeconds: 3600 },
+    { id: "plain", name: "Plain", scope: "land", intervalSeconds: 3600 },
   ],
 });
 

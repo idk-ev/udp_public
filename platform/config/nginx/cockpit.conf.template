@@ -14,14 +14,10 @@
 #                          NGINX_ENTRYPOINT_LOCAL_RESOLVERS gesetzt ist. Damit
 #                          stimmt der Resolver in Docker (127.0.0.11) UND in
 #                          Kubernetes (Cluster-DNS), ohne ihn zu pflegen.
-#   UDP_GATEWAY_UPSTREAM   host:port von APISIX
-#   UDP_NODERED_UPSTREAM   host:port von Node-RED
-#   UDP_ABFAHRTEN_UPSTREAM host:port für /abfahrten     (Vorgabe: UDP_NODERED_UPSTREAM)
-#   UDP_WARNUNGEN_UPSTREAM host:port für /warnungen.ics (Vorgabe: UDP_NODERED_UPSTREAM)
-#                          Die Vorgabe setzt gui/docker/17-udp-upstreams.envsh.
-#                          Auf den Konnektordienst (connectors:1880) gestellt,
-#                          ist das die Umschaltung des Endpunkts
-#                          (docs/migration-konnektoren.md, Phase 4); leer = zurück.
+#   UDP_GATEWAY_UPSTREAM    host:port von APISIX
+#   UDP_CONNECTORS_UPSTREAM host:port des Konnektordienstes (/abfahrten,
+#                           /warnungen.ics); geprüft von
+#                           gui/docker/17-udp-upstreams.envsh
 #
 # In Kubernetes MÜSSEN die Upstreams voll qualifiziert sein
 # (apisix.<ns>.svc.cluster.local): nginx wendet auf Namen, die es über den
@@ -32,11 +28,11 @@
 # öffentlichem Traffic; 60 s Kontext / 300 s Zeitreihen genügen den Takten.
 proxy_cache_path /var/cache/nginx/udp levels=1:2 keys_zone=udpapi:10m
                  max_size=100m inactive=15m use_temp_path=off;
-# Routes of the ingestion runtime (/abfahrten, /warnungen.ics – Node-RED or the
-# connector service): own zone with a long "inactive" – the stale copy that
-# bridges an outage of that single instance must still exist then. Calendar clients poll /warnungen.ics only every hour or so; with the
+# Routes of the connector service (/abfahrten, /warnungen.ics): own zone with
+# a long "inactive" – the stale copy that bridges an outage of that single
+# instance must still exist then. Calendar clients poll /warnungen.ics only every hour or so; with the
 # 15 min of udpapi the entry would usually be gone exactly when it is needed.
-proxy_cache_path /var/cache/nginx/nodered levels=1:2 keys_zone=udpnodered:2m
+proxy_cache_path /var/cache/nginx/connectors levels=1:2 keys_zone=udpconnectors:2m
                  max_size=20m inactive=24h use_temp_path=off;
 
 # Per-client request limits for the two endpoints that reach the connector
@@ -115,7 +111,7 @@ server {
         expires -1;
         try_files $uri =404;
     }
-    # Warnungen als iCal-Abo (Node-RED oder Konnektordienst). 5 min Cache — Kalender ziehen ohnehin selten.
+    # Warnungen als iCal-Abo (Konnektordienst). 5 min Cache — Kalender ziehen ohnehin selten.
     # Cache key and upstream request carry ONLY kreis: extra or repeated
     # parameters neither bypass the cache nor reach the upstream (one cache
     # entry per district, whatever else a client appends).
@@ -123,19 +119,17 @@ server {
         limit_except GET HEAD OPTIONS { deny all; }
         limit_req zone=udp_warnungen burst=10 nodelay;
         limit_req_status 429;
-        set $warnungen http://${UDP_WARNUNGEN_UPSTREAM};
-        proxy_pass $warnungen/warnungen.ics?kreis=$arg_kreis;
+        set $connectors http://${UDP_CONNECTORS_UPSTREAM};
+        proxy_pass $connectors/warnungen.ics?kreis=$arg_kreis;
         proxy_set_header Host $host;
-        proxy_cache udpnodered;
+        proxy_cache udpconnectors;
         proxy_cache_valid 200 300s;
         proxy_cache_key "$uri?kreis=$arg_kreis";
         proxy_cache_lock on;
-        # Node-RED and the connector service run as a single instance: while
-        # the upstream restarts (rollout, node drain) the last good calendar is
-        # served instead of an error, and an expired entry is refreshed in the
-        # background. http_404: Node-RED answers 404 until its flows are loaded
-        # after a restart. The connector service answers 503 while Orion is
-        # unreachable – served stale as well.
+        # The connector service runs as a single instance: while it restarts
+        # (rollout, node drain) the last good calendar is served instead of an
+        # error, and an expired entry is refreshed in the background. It
+        # answers 503 while Orion is unreachable – served stale as well.
         proxy_cache_use_stale updating error timeout http_404 http_500 http_502 http_503 http_504;
         proxy_cache_background_update on;
         # add_header here replaces the server-level headers; repeated.
@@ -202,12 +196,11 @@ server {
         proxy_cache_background_update on;
         add_header X-Cache $upstream_cache_status always;
     }
-    # ÖPNV-Abfahrten auf Anfrage (Node-RED oder Konnektordienst). 60 s Micro-Cache mit proxy_cache_lock:
+    # ÖPNV-Abfahrten auf Anfrage (Konnektordienst). 60 s Micro-Cache mit proxy_cache_lock:
     # Gleichzeitige Aufrufe desselben Halts werden zu einer einzigen Anfrage an
     # die EFA-BW-Auskunft zusammengefasst.
-    # Exakter Match (nicht Präfix): sonst reichte /abfahrten/<beliebig> in die
-    # Node-RED-Instanz bzw. den Konnektordienst durch, die selbst keine
-    # Authentifizierung haben.
+    # Exakter Match (nicht Präfix): sonst reichte /abfahrten/<beliebig> in den
+    # Konnektordienst durch, der selbst keine Authentifizierung hat.
     # Cache key and upstream request carry ONLY ags: `?ags=…&x=<random>` used
     # to bypass the cache and hit EFA-BW on every request, and a repeated ags
     # could plant a 404 under another request's key.
@@ -215,10 +208,10 @@ server {
         limit_except GET HEAD OPTIONS { deny all; }
         limit_req zone=udp_abfahrten burst=30 nodelay;
         limit_req_status 429;
-        set $abfahrten http://${UDP_ABFAHRTEN_UPSTREAM};
-        proxy_pass $abfahrten/abfahrten?ags=$arg_ags;
+        set $connectors http://${UDP_CONNECTORS_UPSTREAM};
+        proxy_pass $connectors/abfahrten?ags=$arg_ags;
         proxy_set_header Host $host;
-        proxy_cache udpnodered;
+        proxy_cache udpconnectors;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 60s;
         proxy_cache_valid 404 30s;
@@ -230,10 +223,9 @@ server {
         # "stand" timestamp, so a stale answer is visibly old rather than
         # wrong. Stops without a cached answer get the error itself – not
         # cached, so the next request after recovery is answered again.
-        # http_404 is in the list because Node-RED answers
-        # 404 while its flows are still loading after a restart – that must
-        # not overwrite the last good answer; an unknown stop has no stale
-        # entry and still gets its (briefly cached) 404.
+        # http_404 is in the list so a 404 of a restarting upstream never
+        # overwrites the last good answer; an unknown stop has no stale entry
+        # and still gets its (briefly cached) 404.
         proxy_cache_use_stale updating error timeout http_404 http_500 http_502 http_503 http_504;
         proxy_cache_background_update on;
         # add_header here replaces the server-level headers; repeated.

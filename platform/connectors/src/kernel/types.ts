@@ -227,9 +227,10 @@ export type BoundarySet = Readonly<Record<Ags, BoundaryEntry>>;
  *
  * The one connector that still falls back to centroids (`uba-bw`: stations
  * pre-selected by their DEBW code, guaranteed to be in BW) does so in its own
- * module, on top of {@link GeoIndex.municipalities}. The generator's static
- * tests keep a whitelist of exactly one node for that; the fallback is not
- * offered here so that nobody picks it up by accident.
+ * module, on top of {@link GeoIndex.municipalities}. The static invariant
+ * tests (tests/static/connector-invariants.test.js) keep a whitelist of exactly
+ * that module; the fallback is not offered here so that nobody picks it up by
+ * accident.
  */
 export interface GeoIndex {
   /** Empty when the run asked for `municipalities: "optional"` and none are loaded. */
@@ -881,13 +882,6 @@ export interface Pruner {
 /* ------------------------------------------------------------------ Registry */
 
 /**
- * Which runtime a connector belongs to. Missing field means `"nodered"` — the
- * cutover in phase 4 sets `"app"` per connector, and turning the field back is
- * the way out (platform/connectors/README.md).
- */
-export type ConnectorRuntime = "nodered" | "app";
-
-/**
  * Per-municipality parameters from the registry, e.g. `efa-abfahrten`:
  * `params.stopId["08111000"] === "de:08111:6115"`, `params.coords[…]` a
  * `[lon, lat]` pair. Two levels: parameter name, then AGS.
@@ -910,9 +904,9 @@ export type RowBudget = Readonly<Record<EntityType, number>>;
  * One entry of platform/config/connectors.json, after narrowing.
  *
  * Only the fields the service actually reads are typed. The file carries more
- * (`nodePrefixes`, `_doc`, `supersededBy`, …); unknown members are ignored
- * rather than rejected, because the registry is also read by the flow generator
- * and the frontend export and will keep fields this service does not care about.
+ * (`_doc`, `supersededBy`, …); unknown members are ignored rather than
+ * rejected, because the registry is also read by the status export for the
+ * frontend and keeps fields this service does not care about.
  */
 export interface RegistryEntry {
   readonly id: ConnectorId;
@@ -929,7 +923,6 @@ export interface RegistryEntry {
    */
   readonly refireOnRestart: boolean | null;
   readonly active: boolean;
-  readonly runtime?: ConnectorRuntime | undefined;
   readonly requiresSecret: string | null;
   readonly pending: boolean;
   readonly sollMinutes: number | null;
@@ -951,8 +944,8 @@ export interface RegistryEntry {
 export interface Registry {
   readonly entries: readonly RegistryEntry[];
   byId(id: ConnectorId): RegistryEntry | undefined;
-  /** Active entries whose `runtime` is `"app"` — exactly what this service runs. */
-  appEntries(): readonly RegistryEntry[];
+  /** Active entries — exactly what this service runs (given a module exists). */
+  activeEntries(): readonly RegistryEntry[];
 }
 
 /* ------------------------------------------------------------------ Scheduler */

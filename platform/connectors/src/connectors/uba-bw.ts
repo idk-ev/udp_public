@@ -25,8 +25,8 @@
  * to lie in Baden-Württemberg. A station that falls into a sliver between
  * simplified polygons, or a run during a boundary outage, should still get its
  * municipality rather than none — there is no Basel to be wrongly counted in.
- * `udp-rt-bu-build` is the only entry on the whitelist of the static flow tests
- * (tests/static/flow-invarianten.test.js), and this module is its port.
+ * This module (port of `udp-rt-bu-build`) is the only entry on the whitelist
+ * of the static invariant tests (tests/static/connector-invariants.test.js).
  * Hence the run declares `boundaries: "optional"`: without boundaries every
  * station is assigned by centroid, as before.
  *

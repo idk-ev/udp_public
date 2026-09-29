@@ -177,26 +177,39 @@ udp-geoserver
 {{- end -}}
 
 {{/*
-Name of the hystreet token secret (external or rendered by the chart from
-nodeRed/connectors.hystreetApiToken, templates/secrets.yaml).
+hystreet token and secret of the connector service. connectors.* is the
+place; nodeRed.hystreetApiToken / nodeRed.hystreetExistingSecret (where they
+lived while Node-RED ran the connectors) are still read as a fallback, so an
+upgrade with old values keeps the token.
 */}}
-{{- define "udp.hystreetSecretName" -}}
-{{- if .Values.nodeRed.hystreetExistingSecret -}}
-{{- .Values.nodeRed.hystreetExistingSecret -}}
-{{- else -}}
-udp-hystreet
+{{- define "udp.hystreetExistingSecret" -}}
+{{- .Values.connectors.hystreetExistingSecret | default (dig "hystreetExistingSecret" "" (.Values.nodeRed | default dict)) -}}
+{{- end -}}
+
+{{/* Chart-managed token; empty with an existing secret. */}}
+{{- define "udp.hystreetToken" -}}
+{{- if not (include "udp.hystreetExistingSecret" .) -}}
+{{- .Values.connectors.hystreetApiToken | default (dig "hystreetApiToken" "" (.Values.nodeRed | default dict)) -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-Pod annotation that rolls Node-RED and the connector service out again when a
-chart-managed hystreet token changes (the env comes from a secret now, which a
+Name of the hystreet token secret (external or rendered by the chart,
+templates/secrets.yaml).
+*/}}
+{{- define "udp.hystreetSecretName" -}}
+{{- include "udp.hystreetExistingSecret" . | default "udp-hystreet" -}}
+{{- end -}}
+
+{{/*
+Pod annotation that rolls the connector service out again when a
+chart-managed hystreet token changes (the env comes from a secret, which a
 running pod does not re-read). Empty without a chart-managed token.
 */}}
 {{- define "udp.hystreetChecksum" -}}
-{{- if and (or .Values.nodeRed.hystreetApiToken .Values.connectors.hystreetApiToken) (not .Values.nodeRed.hystreetExistingSecret) -}}
+{{- with include "udp.hystreetToken" . -}}
 annotations:
-  checksum/hystreet: {{ list .Values.nodeRed.hystreetApiToken .Values.connectors.hystreetApiToken | toJson | sha256sum }}
+  checksum/hystreet: {{ . | sha256sum }}
 {{- end -}}
 {{- end -}}
 

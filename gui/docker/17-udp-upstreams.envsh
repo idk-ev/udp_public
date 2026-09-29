@@ -3,43 +3,40 @@
 # © 2024–2026 Thomas Kieß and contributors
 #
 # Sourced by the nginx entrypoint before the templates are rendered: the
-# upstreams of /abfahrten and /warnungen.ics (cockpit.conf.template).
+# upstream of /abfahrten and /warnungen.ics (cockpit.conf.template).
 #
-#   UDP_ABFAHRTEN_UPSTREAM  host:port serving /abfahrten
-#   UDP_WARNUNGEN_UPSTREAM  host:port serving /warnungen.ics
+#   UDP_CONNECTORS_UPSTREAM  host:port of the connector service
+#                            (default connectors:1880, the Compose service;
+#                            Kubernetes sets the fully qualified name)
 #
-# Unset or empty, both follow UDP_NODERED_UPSTREAM. Pointing one at the
-# connector service (connectors:1880 in Compose, the fully qualified service
-# name in Kubernetes) is the cutover of that endpoint; clearing it again is the
-# way back (docs/migration-konnektoren.md, phase 4).
+# A value that is not host:port stops the container (non-zero exit of the
+# entrypoint) instead of rendering a broken nginx configuration. The check
+# also keeps anything but host:port characters out of it.
 #
-# A value that is set but is not host:port stops the container (non-zero exit
-# of the entrypoint): after a cutover Node-RED no longer serves the endpoint, so
-# silently falling back to it would answer from stale data. The check also
-# keeps anything but host:port characters out of the nginx configuration.
-: "${UDP_NODERED_UPSTREAM:=node-red:1880}"
-export UDP_NODERED_UPSTREAM
-for udp_name in UDP_ABFAHRTEN_UPSTREAM UDP_WARNUNGEN_UPSTREAM; do
+# The former per-endpoint variables UDP_ABFAHRTEN_UPSTREAM and
+# UDP_WARNUNGEN_UPSTREAM (switch between Node-RED and the connector service)
+# are gone; a leftover value is reported and ignored.
+: "${UDP_CONNECTORS_UPSTREAM:=connectors:1880}"
+# Exactly one colon, a non-empty host of [0-9A-Za-z._-], a numeric port.
+case "$UDP_CONNECTORS_UPSTREAM" in
+    *[!0-9A-Za-z.:_-]* | *:*:* | :* | *:) udp_valid=no ;;
+    *:*)
+        case "${UDP_CONNECTORS_UPSTREAM##*:}" in
+            *[!0-9]*) udp_valid=no ;;
+            *) udp_valid=yes ;;
+        esac ;;
+    *) udp_valid=no ;;
+esac
+if [ "$udp_valid" != yes ]; then
+    echo "17-udp-upstreams: ERROR: UDP_CONNECTORS_UPSTREAM must be host:port (e.g. connectors:1880), got '$UDP_CONNECTORS_UPSTREAM' - refusing to start" >&2
+    exit 1
+fi
+export UDP_CONNECTORS_UPSTREAM
+echo "17-udp-upstreams: UDP_CONNECTORS_UPSTREAM=$UDP_CONNECTORS_UPSTREAM"
+for udp_name in UDP_ABFAHRTEN_UPSTREAM UDP_WARNUNGEN_UPSTREAM UDP_NODERED_UPSTREAM; do
     eval "udp_value=\${$udp_name:-}"
-    if [ -z "$udp_value" ]; then
-        udp_value="$UDP_NODERED_UPSTREAM"
-    else
-        # Exactly one colon, a non-empty host of [0-9A-Za-z._-], a numeric port.
-        case "$udp_value" in
-            *[!0-9A-Za-z.:_-]* | *:*:* | :* | *:) udp_valid=no ;;
-            *:*)
-                case "${udp_value##*:}" in
-                    *[!0-9]*) udp_valid=no ;;
-                    *) udp_valid=yes ;;
-                esac ;;
-            *) udp_valid=no ;;
-        esac
-        if [ "$udp_valid" != yes ]; then
-            echo "17-udp-upstreams: ERROR: $udp_name must be host:port (e.g. connectors:1880) or empty for Node-RED, got '$udp_value' - refusing to start" >&2
-            exit 1
-        fi
+    if [ -n "$udp_value" ]; then
+        echo "17-udp-upstreams: $udp_name is no longer used (both endpoints go to UDP_CONNECTORS_UPSTREAM), ignored" >&2
     fi
-    eval "export $udp_name=\"\$udp_value\""
-    echo "17-udp-upstreams: $udp_name=$udp_value"
 done
 unset udp_name udp_value udp_valid

@@ -35,12 +35,18 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- $mongoArbiter := and .Values.mongo.replicaSet.enabled .Values.mongo.replicaSet.arbiter.enabled }}
 {{- /* Arbiter <-> members (heartbeats, votes). */}}
 {{- if $mongoArbiter }}{{ $mongoClients = append $mongoClients "mongo-arbiter" }}{{ end }}
-{{- $timescaleClients := list "orion-ld" "mintaka" "frost" "keycloak" "node-red" }}
+{{- $timescaleClients := list "orion-ld" "mintaka" "frost" "keycloak" }}
 {{- /* Connector service: state store (schema udp_connectors) + SQL connectors. */}}
 {{- if .Values.connectors.enabled }}{{ $timescaleClients = append $timescaleClients "connectors" }}{{ end }}
-{{- /* Callers of Orion-LD and of the cockpit's static data files (cockpit:8080). */}}
-{{- $ingestion := list "node-red" }}
-{{- if .Values.connectors.enabled }}{{ $ingestion = append $ingestion "connectors" }}{{ end }}
+{{- /* Callers of Orion-LD: the connector service and Node-RED (its example
+     flow upserts to Orion-LD). The cockpit's static data files (cockpit:8080,
+     geo context) are read by the connector service only. */}}
+{{- $orionWriters := list "node-red" }}
+{{- $cockpitClients := list }}
+{{- if .Values.connectors.enabled }}
+{{- $orionWriters = append $orionWriters "connectors" }}
+{{- $cockpitClients = append $cockpitClients "connectors" }}
+{{- end }}
 {{- if .Values.ckan.enabled }}{{ $timescaleClients = append $timescaleClients "ckan" }}{{ end }}
 {{- if .Values.backup.enabled }}{{ $timescaleClients = append $timescaleClients "db-backup" }}{{ end }}
 {{- $legacyTimescale := ne (.Values.timescale.migration.phase | default "") "" }}
@@ -48,13 +54,13 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- if $legacyTimescale }}{{ $timescaleClients = append $timescaleClients "timescale-migrate" }}{{ end }}
 {{- $rules := list
   (dict "app" "apisix"         "ports" (list 9080)      "from" (list "cockpit")                         "public" true "monitored" true)
-  (dict "app" "cockpit"        "ports" (list 8080)      "from" $ingestion                               "public" true "monitored" true)
+  (dict "app" "cockpit"        "ports" (list 8080)      "from" $cockpitClients                          "public" true "monitored" true)
   (dict "app" "keycloak"       "ports" (list 8080)      "from" (list "apisix")                          "public" true "monitored" true)
-  (dict "app" "orion-ld"       "ports" (list 1026)      "from" (concat (list "apisix" "iot-agent-json") $ingestion)   "monitored" true)
+  (dict "app" "orion-ld"       "ports" (list 1026)      "from" (concat (list "apisix" "iot-agent-json") $orionWriters) "monitored" true)
   (dict "app" "mintaka"        "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
   (dict "app" "frost"          "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
   (dict "app" "iot-agent-json" "ports" (list 4041 7896) "from" (list "apisix" "orion-ld")                             "monitored" true)
-  (dict "app" "node-red"       "ports" (list 1880)      "from" (list "cockpit")                                       "monitored" true)
+  (dict "app" "node-red"       "ports" (list 1880)      "from" (list)                                                 "monitored" true)
   (dict "app" "mongo"          "ports" (list 27017)     "from" $mongoClients)
   (dict "app" "mosquitto"      "ports" (list 1883 9001) "from" (list "iot-agent-json"))
 }}
@@ -99,6 +105,11 @@ spec:
   policyTypes: [Ingress]
 {{- range $rules }}
 {{- $extra := get ($np.extraFrom | default dict) .app }}
+{{- /* A rule without any source would render "from:" empty – that allows
+     EVERY peer. Never let that happen by accident. */}}
+{{- if not (or .from .public .monitored $extra) }}
+{{- fail (printf "networkpolicy: rule for %s has no allowed source" .app) }}
+{{- end }}
 ---
 # 2. {{ .app }}: {{ join ", " .from }}{{ if .public }} + ingress controller{{ end }}{{ if .monitored }} + monitoring{{ end }}
 apiVersion: networking.k8s.io/v1
@@ -113,9 +124,11 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
+        {{- if .from }}
         - podSelector:
             matchExpressions:
               - { key: app, operator: In, values: {{ toJson .from }} }
+        {{- end }}
         {{- if .public }}
         - namespaceSelector:
             matchLabels:
@@ -297,7 +310,7 @@ spec:
 {{- with $np.internetEgress.components }}
 ---
 # Internet access (HTTP/HTTPS) for components that fetch external data:
-# Node-RED and connector service, JSON-LD @contexts (Orion-LD, IoT agent), CKAN harvesting.
+# connector service, JSON-LD @contexts (Orion-LD, IoT agent), CKAN harvesting.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -6,8 +6,9 @@
 /**
  * Entry point of the UDP connector service.
  *
- * Wires registry, scheduler and the two HTTP servers together and starts the
- * connectors the registry marks as `"runtime": "app"`.
+ * Wires registry, scheduler and the two HTTP servers together and starts every
+ * active connector of the registry (platform/config/connectors.json) that has
+ * a module in src/connectors/index.ts.
  *
  * Two ports, deliberately (src/kernel/admin.ts):
  *
@@ -18,13 +19,13 @@
  *    UDP_CONNECTORS_ADMIN_HOST (default 0.0.0.0): `GET /healthz` and
  *    `POST /trigger/:id`, the latter answering loopback peers only (403
  *    otherwise). Never to be mapped by nginx, APISIX or an ingress;
- *    in Compose published on the host at most on 127.0.0.1. Phase 5 points
- *    `scripts/trigger-connector.sh` here.
+ *    in Compose published on the host at most on 127.0.0.1.
+ *    `scripts/trigger-connector.sh` calls it from inside the container.
  *
  * Geo context: loaded by the kernel itself before the first run and every
  * 6 h (src/kernel/geo-bootstrap.ts) — `bw-gemeinden.json` and
- * `bw-grenzen.json` from the cockpit, independent of where `stammdaten-bw` and
- * `grenzen-bw` run, and never written to Orion.
+ * `bw-grenzen.json` from the cockpit, independent of the schedules of
+ * `stammdaten-bw` and `grenzen-bw`, and never written to Orion.
  *
  * State: change signatures, prune bookkeeping and persisted `ctx.state`
  * keys live in PostgreSQL (schema `udp_connectors`, src/kernel/persistence.ts).
@@ -33,12 +34,9 @@
  * rest. The service must run as ONE replica: a second instance does not get
  * the writer lock and runs nothing that needs state.
  *
- * **Nothing runs yet.** Not because the wiring is missing — it is complete
- * below — but because no entry in platform/config/connectors.json carries the
- * field yet. That file is not touched here; the cutover is phase 4, one group of
- * connectors at a time with an observation window in between, and the way back
- * is to turn the field around. Until then the service starts, reports what it
- * WOULD run, and leaves the ingestion entirely to Node-RED.
+ * Node-RED is no longer an ingestion runtime (docs/migration-konnektoren.md):
+ * it stays as the low-code building block with an example flow, and every
+ * connector runs here.
  */
 
 import { CONNECTORS, GEO_SOURCES } from "./connectors/index.js";
@@ -47,40 +45,31 @@ import { createCtx, createKernel, runConnector, startGeoBootstrap } from "./kern
 import type { Kernel } from "./kernel/context.js";
 import { DEFAULT_PORT } from "./kernel/http.js";
 import { sanitizeLogText } from "./kernel/log.js";
-import { loadRegistry, resolveRegistryPath, runtimeOf, REGISTRY_PATH_ENV } from "./kernel/registry.js";
+import { loadRegistry, resolveRegistryPath, REGISTRY_PATH_ENV } from "./kernel/registry.js";
 import { scheduleOf } from "./kernel/scheduler.js";
 import type { RegistryEntry } from "./kernel/types.js";
 
 const VERSION = "1.0.0";
 
-/** One log line per registry entry: what runs here, what stays in Node-RED, why. */
+/** One log line per registry entry that does not run, and why. */
 function reportPlan(kernel: Kernel, scheduled: readonly RegistryEntry[]): void {
   const log = kernel.log;
   const total = kernel.registry.entries.length;
-  log.info(`registry: ${String(total)} connectors, ${String(scheduled.length)} with runtime=app`);
+  log.info(`registry: ${String(total)} connectors, ${String(scheduled.length)} scheduled`);
 
   for (const entry of kernel.registry.entries) {
     if (!entry.active) {
       log.debug(`${entry.id}: inactive, skipped`);
       continue;
     }
-    if (runtimeOf(entry) !== "app") {
-      log.debug(`${entry.id}: runtime=nodered — stays in the flows`);
-      continue;
-    }
     if (!CONNECTORS.has(entry.id)) {
-      // Registry and code disagree. Loud, because it means the cutover switched
-      // a connector over that has not been ported — it would then run nowhere.
-      log.warn(`${entry.id}: runtime=app but no module is implemented — connector runs NOWHERE`);
+      // Registry and code disagree: an active entry without a module runs
+      // nowhere. Loud, because its tiles and health check go stale silently.
+      log.warn(`${entry.id}: active in the registry but no module is implemented — connector runs NOWHERE`);
     }
   }
-
   if (scheduled.length === 0) {
-    log.info(
-      "no connector carries runtime=app — ingestion stays entirely in Node-RED " +
-        `(set the field per connector in the registry, see ${REGISTRY_PATH_ENV})`,
-    );
-    for (const [id] of CONNECTORS) log.info(`${id}: ported and ready, waiting for runtime=app`);
+    log.info(`no active connector in the registry (${REGISTRY_PATH_ENV}) — the service stays idle`);
   }
 }
 
@@ -92,8 +81,8 @@ async function main(): Promise<void> {
 
   kernel.log.info(`udp-connectors ${VERSION} — registry ${registryPath}`);
 
-  const scheduled = kernel.registry.appEntries().filter((entry) => CONNECTORS.has(entry.id));
-  reportPlan(kernel, kernel.registry.appEntries());
+  const scheduled = kernel.registry.activeEntries().filter((entry) => CONNECTORS.has(entry.id));
+  reportPlan(kernel, scheduled);
 
   scheduled.forEach((entry, position) => {
     const module = CONNECTORS.get(entry.id);

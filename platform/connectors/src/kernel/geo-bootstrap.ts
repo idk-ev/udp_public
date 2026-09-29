@@ -44,8 +44,8 @@
  * this service must not leave the geo-dependent connectors skipping for 6 h.
  *
  * Only with at least one connector scheduled here ({@link startGeoBootstrap}
- * in src/kernel/context.ts): with no `runtime: "app"` entry the service stays
- * idle and sends no request at all.
+ * in src/kernel/context.ts): with no active connector the service stays idle
+ * and sends no request at all.
  *
  * ## Failures
  *

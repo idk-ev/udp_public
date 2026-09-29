@@ -4,20 +4,21 @@
  */
 
 /**
- * The flow invariants of tests/static/flow-invarianten.test.js, asserted
- * against the PORTED sources of group E (mobility).
+ * The invariants of the connector service that grew out of the ParkAPI
+ * incident, asserted against the PORTED sources — mostly group E (mobility),
+ * the id rules for every module. tests/static/connector-invariants.test.js
+ * holds each of them to a test in here by name.
  *
- * The static test checks the generator and flows.json; once those are gone,
- * the same regressions must still be impossible to sneak into the TypeScript
- * modules. So the source text of the modules is read and checked, plus the
- * few behaviours that a regex cannot see (the URL the pager actually builds).
- * The ParkAPI incident of 24.08.2026 — offset pagination silently ignored, ids
- * from slugged free text — is the reason for every check in here.
+ * The source text of the modules is read and checked, plus the few behaviours
+ * that a regex cannot see (the URL the pager actually builds). The ParkAPI
+ * incident of 24.08.2026 — offset pagination silently ignored, ids from
+ * slugged free text — is the reason for every check in here.
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { build as buildHeat, parse as parseHeat } from "../../src/connectors/hitze-bw.js";
 import { MAX_PAGES, PAGE_SIZE, pageUrl, siteId } from "../../src/connectors/parken-bw.js";
 import type { ParkRecord } from "../../src/connectors/parken-bw.js";
 import { repositoryRoot } from "../harness/fixtures.js";
@@ -25,11 +26,16 @@ import { registryEntry } from "../harness/mobility.js";
 
 const MODULES = ["parken-bw", "sharing-bw", "carsharing-bw", "ladesaeulen-bw", "gbfs"] as const;
 
-function source(module: (typeof MODULES)[number]): string {
-  return readFileSync(
-    join(repositoryRoot(), "platform", "connectors", "src", "connectors", `${module}.ts`),
-    "utf8",
-  );
+const CONNECTOR_DIR = join(repositoryRoot(), "platform", "connectors", "src", "connectors");
+
+/** Every module of src/connectors, not only the mobility group. */
+const ALL_MODULES: readonly string[] = readdirSync(CONNECTOR_DIR)
+  .filter((file) => file.endsWith(".ts"))
+  .map((file) => file.slice(0, -".ts".length))
+  .sort();
+
+function source(module: string): string {
+  return readFileSync(join(CONNECTOR_DIR, `${module}.ts`), "utf8");
 }
 
 /**
@@ -46,14 +52,40 @@ function codeOnly(text: string): string {
 
 /**
  * Every entity id expression: from `urn:ngsi-ld:` inside a template literal
- * to the end of that literal.
+ * to the end of that literal, and a string literal opening with `urn:ngsi-ld:`
+ * together with what is concatenated to it on the same line.
  */
 function idExpressions(text: string): string[] {
   const found: string[] = [];
-  const pattern = /`urn:ngsi-ld:[^`]*`/g;
+  const pattern = /`urn:ngsi-ld:[^`]*`|"urn:ngsi-ld:[^"]*"(\s*\+[^,;\n]*)?/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) found.push(match[0]);
   return found;
+}
+
+/**
+ * The one slug function allowed inside an id: `hitze-bw` slugs the city name
+ * of the DWD index, but only for the five cities of its own fixed table (any
+ * other city is dropped before the id is built), so the id comes from a
+ * closed set, not from free text. Asserted below by behaviour, not trusted.
+ */
+const CLOSED_SET_SLUGS: Readonly<Record<string, string>> = {
+  "hitze-bw": "`urn:ngsi-ld:HeatHealthWarning:bw-${slugOf(forecast.city)}`",
+};
+
+function heatIdsComeFromTheCityTable(): void {
+  const cities = ["Stuttgart", "Freiburg", "Mannheim", "Konstanz", "Ulm"];
+  const content = [...cities, "Stuttgart-Ost", "Basel", "Ulm (Donau)"].map((city) => ({
+    city,
+    forecast: {},
+  }));
+  const ids = buildHeat(parseHeat({ content }), null, new Date().toISOString()).map((entity) => entity.id);
+  assert.equal(
+    ids.length,
+    cities.length,
+    `hitze-bw wrote ids for cities outside its table: ${ids.join(", ")}`,
+  );
+  assert.equal(new Set(ids).size, ids.length, "two cities of the hitze-bw table share one id");
 }
 
 function noIdFromSluggedText(): void {
@@ -61,16 +93,19 @@ function noIdFromSluggedText(): void {
   // Allowed: the official municipality slug of bw-gemeinden.json, which comes
   // in as a field (`g[8]`, `info.slug`, `slug`), and the GBFS system key.
   let checked = 0;
-  for (const module of MODULES) {
+  for (const module of ALL_MODULES) {
     for (const expression of idExpressions(codeOnly(source(module)))) {
       checked += 1;
+      if (CLOSED_SET_SLUGS[module] === expression) continue;
       assert.ok(
-        !/[A-Za-z]*[Ss]lug\s*\(/.test(expression),
+        !/[A-Za-z]*[Ss]lug\w*\s*\(/.test(expression),
         `${module}: entity id built from slugged free text: ${expression}`,
       );
     }
   }
-  assert.ok(checked >= 8, `only ${String(checked)} id expressions found — did the id construction move?`);
+  assert.ok(ALL_MODULES.length >= 30, `only ${String(ALL_MODULES.length)} connector modules found`);
+  assert.ok(checked >= 40, `only ${String(checked)} id expressions found — did the id construction move?`);
+  heatIdsComeFromTheCityTable();
 }
 
 function parkApiIdsFromTheParkApiKey(): void {
@@ -88,8 +123,8 @@ function parkApiIdsFromTheParkApiKey(): void {
       `site id with AGS: ${expression}`,
     );
   }
-  // No other module writes parking site ids.
-  for (const module of MODULES) {
+  // No other module of the service writes parking site ids.
+  for (const module of ALL_MODULES) {
     if (module === "parken-bw") continue;
     for (const expression of idExpressions(codeOnly(source(module)))) {
       assert.ok(!/ParkingSite|BikeParking/.test(expression), `${module} writes parking ids: ${expression}`);
@@ -114,8 +149,8 @@ function parkApiPaginatesByCursor(): void {
     pageUrl(1436),
     `https://api.mobidata-bw.de/park-api/api/public/v3/parking-sites?limit=500&start=1436`,
   );
-  // No other module talks to the ParkAPI.
-  for (const module of MODULES) {
+  // No other module of the service talks to the ParkAPI.
+  for (const module of ALL_MODULES) {
     if (module !== "parken-bw")
       assert.ok(!source(module).includes("park-api"), `${module} talks to the ParkAPI`);
   }
@@ -154,8 +189,8 @@ function gateModes(): void {
     2,
     "OCPDB tables not replace: complete",
   );
-  // No module writes a table value outside a plan.
-  for (const module of MODULES) {
+  // No module of the service writes a table value outside a plan.
+  for (const module of ALL_MODULES) {
     assert.ok(!codeOnly(source(module)).includes(".commit("), `${module} commits signatures itself`);
   }
 }

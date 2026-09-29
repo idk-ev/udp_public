@@ -43,7 +43,7 @@ import {
 import type { ParkInventory } from "../../src/connectors/parken-bw.js";
 import { createGeoIndex } from "../../src/kernel/geo.js";
 import { chunk } from "../../src/kernel/orion.js";
-import type { HttpResponse, UpsertPlan } from "../../src/kernel/types.js";
+import type { HttpResponse, NgsiEntity, UpsertPlan } from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, httpResponse, recordingLog, scriptedFetcher } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
@@ -405,6 +405,26 @@ async function buildAndTablesMatchAcrossRuns(): Promise<void> {
       .length,
     0,
   );
+  // Unchanged sites, stated absolutely: a realtime site refreshes its
+  // dateObserved only, a static site is not written at all.
+  const items = pages.flatMap(itemsOf);
+  const touched = new Set<unknown>([moved.id, renamed.id, vanished.id]);
+  const writtenFor = (item: Record<string, unknown>): NgsiEntity[] =>
+    secondPlan.entities.filter((entity) => entity.id.endsWith(`:parkapi-${String(item.id)}`));
+  const statics = items.filter((item) => item.has_realtime_data !== true);
+  assert.ok(statics.length > 0, "the fixture holds no static site");
+  for (const item of statics) {
+    assert.deepEqual(writtenFor(item), [], `static site ${String(item.id)} written although unchanged`);
+  }
+  const realtime = items.filter((item) => item.has_realtime_data === true && !touched.has(item.id));
+  const refreshed = realtime.flatMap(writtenFor);
+  assert.ok(refreshed.length > 0, "no unchanged realtime site refreshed");
+  for (const entity of refreshed) {
+    assert.ok(
+      "dateObserved" in entity && !("name" in entity) && !("availableSpotNumber" in entity),
+      `${entity.id}: an unchanged realtime site is written beyond its freshness stamp`,
+    );
+  }
 }
 
 async function missingBoundariesOnlyUseTheArs(): Promise<void> {
@@ -759,6 +779,81 @@ async function legacyGraceWindowRunByRun(): Promise<void> {
   assert.ok(world.broker.entities.has(GRACE_IN), "a legacy site inside the grace period was deleted");
 }
 
+const LEGACY = "urn:ngsi-ld:ParkingSite:";
+/** The legacy candidates the cleanup may delete: old slug ids of this connector, past the grace. */
+const LEGACY_DELETED = [`${LEGACY}reutlingen-48.49388-9.18829`, `${LEGACY}stuttgart-hauptbahnhof`];
+
+/**
+ * Every kind of slug-style id the cleanup lists, `at` the time of the run
+ * that acts: two it may delete, and five it must leave alone — an unknown
+ * municipality slug, one written inside the 7-day grace, one without a
+ * timestamp, one created after the switch to parkapi- ids, and a municipal
+ * connector's entity with the documented slug-prefixed id.
+ */
+function seedLegacyKinds(broker: Broker, at: number): void {
+  const provider = { type: "Property", value: "MobiData BW ParkAPI" };
+  const old = new Date(at - 8 * 24 * HOUR).toISOString();
+  const kinds: readonly (readonly [string, Record<string, unknown>])[] = [
+    ["stuttgart-hauptbahnhof", { modifiedAt: old }],
+    ["reutlingen-48.49388-9.18829", { modifiedAt: old }],
+    ["nirgendwo-parkplatz", { modifiedAt: old }],
+    ["stuttgart-neu", { modifiedAt: new Date(at - 12 * HOUR).toISOString() }],
+    ["stuttgart-ohne-zeit", {}],
+    ["stuttgart-spaet", { modifiedAt: old, createdAt: "2026-08-26T00:00:00Z" }],
+    ["stuttgart-br-hbf", { modifiedAt: old, dataProvider: { type: "Property", value: "Stadt Stuttgart" } }],
+  ];
+  for (const [slugId, fields] of kinds) {
+    const id = `${LEGACY}${slugId}`;
+    broker.entities.set(id, {
+      id,
+      type: "ParkingSite",
+      dataProvider: provider,
+      createdAt: "2026-07-01T00:00:00Z",
+      ...fields,
+    });
+  }
+}
+
+async function legacyOwnershipIsNarrow(): Promise<void> {
+  const pages = consistent(recordedPages());
+  const inventory = parse(pages.map((page) => page.payload));
+
+  // Old: one run of the daily legacy check, the previous one a day ago.
+  const oldBroker = new Broker(fullGeo().municipalities.length);
+  const now = Date.now();
+  seedLegacyKinds(oldBroker, now);
+  const legacy = await legacyBuild(inventory, oldBroker, {
+    pruneLastRun_Parken_BW_ParkingSite: now - 3 * HOUR,
+    pruneLastRun_Parken_BW_BikeParking: now - 3 * HOUR,
+    pruneLastRun_Parken_BW_ParkingSummary: now - 3 * HOUR,
+    pruneLastRun_Parken_BW_legacy_ParkingSite: now - 24 * HOUR,
+    pruneLastRun_Parken_BW_legacy_BikeParking: now - 24 * HOUR,
+  });
+  await oldBroker.idle();
+  assert.deepEqual(oldBroker.deletes.flat().sort(), LEGACY_DELETED);
+  assert.notEqual(legacy.run.flow.get("parkLegacyDone"), true, "old: switched off with legacy ids left");
+
+  // Port, every 3 h from cold: the legacy check acts at 21 h.
+  const start = Date.parse("2026-09-01T00:00:00Z");
+  const world = mobilityCtx({ id: "parken-bw", start });
+  seedLegacyKinds(world.broker, start + 21 * HOUR);
+  serve(world.broker, pages);
+  const deleting: (readonly [number, string[]])[] = [];
+  for (let hour = 0; hour <= 24; hour += 3) {
+    world.clock.now = start + hour * HOUR;
+    const before = world.broker.deletes.length;
+    await run(world.ctx);
+    const ids = world.broker.deletes.slice(before).flat().sort();
+    if (ids.length > 0) deleting.push([hour, ids]);
+  }
+  assert.deepEqual(deleting, [[21, LEGACY_DELETED]], "legacy deletions run by run differ");
+  // Legacy entities of this connector are left (inside the grace, no timestamp): the check stays on.
+  assert.ok(
+    !world.log.lines.some((line) => line.text.includes("cleanup switched off")),
+    "the legacy cleanup switched itself off with legacy ids left",
+  );
+}
+
 async function legacyCleanupSwitchesItselfOff(): Promise<void> {
   // Old: a complete listing without legacy entities sets parkLegacyDone.
   const legacy = await legacyCompleteRun(false);
@@ -790,4 +885,5 @@ export {
   confirmWindowRunByRun as "parken-bw: candidates just inside and just outside the 24 h confirmation are deleted run by run as by the old node",
   legacyGraceWindowRunByRun as "parken-bw: legacy sites just inside and just outside the 7-day grace are deleted as by the old node",
   legacyCleanupSwitchesItselfOff as "parken-bw: the legacy cleanup switches itself off after an empty listing",
+  legacyOwnershipIsNarrow as "parken-bw: the legacy cleanup deletes only own old slug ids past the grace — unknown slug, late, untimed and municipal ids stay",
 };

@@ -1,5 +1,5 @@
 {
- "stand": "2026-09-29T09:12:19+00:00",
+ "stand": "2026-09-29T09:27:46+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -15,8 +15,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "troe-stats",
@@ -32,8 +31,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "troe-retention",
@@ -49,8 +47,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "stammdaten-bw",
@@ -66,8 +63,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "grenzen-bw",
@@ -83,8 +79,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": "http://localhost:3700/bw-grenzen.json",
-   "runtime": "app"
+   "healthUrl": "http://localhost:3700/bw-grenzen.json"
   },
   {
    "id": "wetter-bw",
@@ -102,8 +97,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "vorhersage-bw",
@@ -122,8 +116,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "pollen-bw",
@@ -141,8 +134,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "hitze-bw",
@@ -160,8 +152,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": true,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "pegel-bw",
@@ -179,8 +170,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "pegel-lubw",
@@ -198,8 +188,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "rathaus-bw",
@@ -217,8 +206,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "ausflug-bw",
@@ -236,8 +224,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "poi-bw",
@@ -255,8 +242,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "warnungen-bw",
@@ -274,8 +260,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415",
-   "runtime": "app"
+   "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415"
   },
   {
    "id": "baustellen-bw",
@@ -293,8 +278,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "uba-bw",
@@ -312,8 +296,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "feinstaub-bw",
@@ -331,8 +314,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "parken-bw",
@@ -351,8 +333,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "sharing-bw",
@@ -370,8 +351,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "carsharing-bw",
@@ -389,8 +369,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "ladesaeulen-bw",
@@ -410,8 +389,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "eco-bw",
@@ -429,8 +407,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "mastr-bw",
@@ -448,8 +425,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "puls-bw",
@@ -467,8 +443,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "wetter-dwd-station",
@@ -486,8 +461,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": false,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "efa-abfahrten",
@@ -529,8 +503,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   },
   {
    "id": "abfahrten-on-demand",
@@ -548,8 +521,7 @@
    "supersededBy": null,
    "pending": null,
    "refireOnRestart": true,
-   "healthUrl": "http://localhost:3700/abfahrten?ags=08111000",
-   "runtime": "app"
+   "healthUrl": "http://localhost:3700/abfahrten?ags=08111000"
   },
   {
    "id": "hystreet",
@@ -569,8 +541,7 @@
    "supersededBy": null,
    "pending": true,
    "refireOnRestart": null,
-   "healthUrl": null,
-   "runtime": "app"
+   "healthUrl": null
   }
  ]
 }

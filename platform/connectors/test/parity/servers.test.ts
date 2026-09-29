@@ -50,8 +50,8 @@ async function rig(): Promise<Rig> {
   const registry = createRegistry(
     parseRegistry({
       connectors: [
-        { id: "demo", name: "Demo", scope: "land", intervalSeconds: 900, runtime: "app" },
-        { id: "nightly", name: "Nightly", scope: "land", cron: "20 02 * * *", runtime: "app" },
+        { id: "demo", name: "Demo", scope: "land", intervalSeconds: 900 },
+        { id: "nightly", name: "Nightly", scope: "land", cron: "20 02 * * *" },
       ],
     }),
   );

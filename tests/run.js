@@ -24,8 +24,8 @@ const { pathToFileURL } = require("url");
 
 const live = process.argv.includes("--live");
 const PARITY = path.join(__dirname, "..", "platform", "connectors", "dist", "test", "parity");
-// 42 parity test files today; the slack allows merging a few, not losing the suite.
-const MIN_PARITY_FILES = 38;
+// 44 parity test files today; the slack allows merging a few, not losing the suite.
+const MIN_PARITY_FILES = 40;
 if (process.env.REQUIRE_PARITY === "1") {
   const found = fs.existsSync(PARITY) ? fs.readdirSync(PARITY).filter(x => x.endsWith(".test.js")).length : 0;
   if (found < MIN_PARITY_FILES) {

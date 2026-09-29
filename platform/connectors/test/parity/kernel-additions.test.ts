@@ -68,8 +68,8 @@ function stateIsTypedSharedAndScoped(): void {
   const registry = createRegistry(
     parseRegistry({
       connectors: [
-        { id: "one", name: "One", scope: "land", intervalSeconds: 60, runtime: "app" },
-        { id: "two", name: "Two", scope: "land", intervalSeconds: 60, runtime: "app" },
+        { id: "one", name: "One", scope: "land", intervalSeconds: 60 },
+        { id: "two", name: "Two", scope: "land", intervalSeconds: 60 },
       ],
     }),
   );

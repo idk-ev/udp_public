@@ -249,7 +249,7 @@ async function fillsTheContextBeforeTheFirstRun(): Promise<void> {
 async function noAppConnectorNoRequest(): Promise<void> {
   const r = geoRig();
   await startGeoBootstrap(r.kernel, 0);
-  assert.equal(r.seen.length, 0, "the service must stay idle without a runtime=app connector");
+  assert.equal(r.seen.length, 0, "the service must stay idle without a scheduled connector");
   assert.equal(r.timers.length, 0);
   assert.equal(r.bootstrap.active, false);
   assert.equal(rowsOf(r), null);
@@ -402,7 +402,7 @@ function sourcesAreTheConnectorsOwn(): void {
 
 export {
   fillsTheContextBeforeTheFirstRun as "geo bootstrap: fills municipalities and boundaries before the first run, writes nothing to Orion, reports /healthz",
-  noAppConnectorNoRequest as "geo bootstrap: without a runtime=app connector not a single request",
+  noAppConnectorNoRequest as "geo bootstrap: without a scheduled connector not a single request",
   failedLoadKeepsTheContextAndRetries as "geo bootstrap: a failed load keeps the previous context, warns once per streak and retries (5 min while empty, else 6 h)",
   degradedBoundaryFileBlocksPrunes as "geo bootstrap: a boundary file with a dropped polygon marks the context degraded and blocks prunes",
   geoConnectorRunsOnTheBootstrapAlone as "geo bootstrap: pegel-bw runs on a geo context only the bootstrap filled",

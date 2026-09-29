@@ -2,12 +2,27 @@
 # © 2024–2026 Thomas Kieß and contributors
 
 # =============================================================================
-# Anwendungsdienste: Node-RED, Konnektordienst, UDP-Cockpit
+# Anwendungsdienste: Node-RED (Low-Code-Baustein), Konnektordienst, UDP-Cockpit
 #
 # Das Verfuegbarkeits-Monitoring (Uptime Kuma) gehoert bewusst NICHT hierher:
 # es soll nicht mit der Plattform ausgerollt werden, die es ueberwacht. Eigenes
 # Chart unter monitoring/helm/uptime-kuma (Migration s. monitoring/README.md).
 # =============================================================================
+{{- /*
+Node-RED runs the upstream image; flows.json and settings.js come from the
+ConfigMap node-red-config (templates/configmaps.yaml). A digest pin of the
+former own image node-red-udp does not belong on the upstream repository:
+Kubernetes would pull that digest from nodered/node-red and never find it.
+Caught: the tags build-images.yml pinned (main, sha-…, pr-…, the chart's
+SemVer) with a digest. A digest pin of the upstream image itself ("4.1@sha256:…")
+passes – Node-RED below 4 does not run this settings.js anyway.
+*/}}
+{{- $nrTag := toString .Values.nodeRed.image.tag }}
+{{- $nrBase := splitList "@" $nrTag | first }}
+{{- $ownPin := and (contains "@sha256:" $nrTag) (or (regexMatch "^(main|sha-[0-9a-f]{7,40}|pr-[0-9]+(-[0-9a-f]+)?|[0-3][.][0-9]+[.][0-9]+)$" $nrBase) (eq $nrBase .Chart.Version) (eq $nrBase (toString .Chart.AppVersion))) }}
+{{- if or .Values.nodeRed.image.name $ownPin }}
+{{- fail (printf "nodeRed.image: Node-RED runs the upstream image %s now, the own image node-red-udp is gone. Remove nodeRed.image.name/.tag from your values (tag %q looks like a pin of node-red-udp)." .Values.nodeRed.image.repository $nrTag) }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,8 +31,8 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "node-red") | nindent 4 }}
 spec:
   replicas: 1
-  # The flows poll and write on timers. During a rolling update two instances
-  # would run every connector twice (doubled TRoE rows, doubled API quota).
+  # A flow may poll and write on timers (the example flow does); during a
+  # rolling update two instances would run it twice.
   strategy: { type: Recreate }
   selector:
     matchLabels:
@@ -26,46 +41,47 @@ spec:
     metadata:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "node-red") | nindent 8 }}
-      {{- with include "udp.hystreetChecksum" . }}
-      {{- . | nindent 6 }}
-      {{- end }}
+      annotations:
+        # A changed example flow or settings.js rolls the pod.
+        checksum/config: {{ list (.Files.Get "files/nodered/flows.json") (.Files.Get "files/nodered/settings.js") | toJson | sha256sum }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.nodeRed) | nindent 6 }}
+      initContainers:
+        # Copy instead of mounting the ConfigMap onto /data: Node-RED writes
+        # flows.json on every deploy from the editor, a read-only mount would
+        # make each deploy fail. Same image – nothing extra to pull.
+        - name: copy-config
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.nodeRed.image) }}
+          command: ["sh", "-c", "cp /config/flows.json /config/settings.js /data/"]
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.nodeRed.containerSecurityContext) | nindent 12 }}
+          volumeMounts:
+            - { name: config, mountPath: /config, readOnly: true }
+            - { name: data, mountPath: /data }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
       containers:
         - name: node-red
-          image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.nodeRed.image) }}
-          {{ include "udp.ownImagePullPolicy" . }}
+          image: {{ include "udp.image" (dict "ctx" . "image" .Values.nodeRed.image) }}
           securityContext:
             {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.nodeRed.containerSecurityContext) | nindent 12 }}
           env:
             - { name: TZ, value: {{ .Values.nodeRed.timezone | quote }} }
-            # Der TRoE-Statistik-Flow (PlatformStatus:udp-troe) und die
-            # Retention lesen TimescaleDB direkt — gleiche Zugangsdaten wie
-            # Orion-LD, gleiche Quelle wie in Compose.
-            - name: TROE_DB_USER
-              valueFrom:
-                secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER }
-            - name: TROE_DB_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD }
-            # Passantenfrequenz (hystreet): aus dem Secret (templates/secrets.yaml
-            # bzw. nodeRed.hystreetExistingSecret); fehlt der Schlüssel, bleibt
-            # der Flow inaktiv.
-            - name: HYSTREET_API_TOKEN
-              valueFrom:
-                secretKeyRef: { name: {{ include "udp.hystreetSecretName" . }}, key: HYSTREET_API_TOKEN, optional: true }
           ports: [{ containerPort: 1880 }]
-          # KEIN Volume auf /data: Flows, settings.js und das npm-Modul "pg"
-          # liegen im Image (platform/config/nodered/Dockerfile) und würden von
-          # einem Volume-Mount verdeckt. Node-RED schreibt dort nur noch
-          # Laufzeitzustand (Kontext, .config.*.json) — der ist bewusst
-          # flüchtig, weil die Flows generiert und nicht im Editor gepflegt
-          # werden. Folge: nach einem Neustart fehlt die Signatur-Historie der
-          # Änderungserkennung, der erste Zyklus schreibt also einmalig alle
-          # Entitäten neu.
+          # /data is an emptyDir: flows deployed in the editor, context and
+          # .config.*.json live only as long as the pod. The versioned state is
+          # the ConfigMap (platform/config/nodered/ = helm/udp/files/nodered/).
+          volumeMounts:
+            - { name: data, mountPath: /data }
           resources:
             {{- toYaml .Values.nodeRed.resources | nindent 12 }}
           {{- include "udp.probes" .Values.nodeRed.probes | nindent 10 }}
+      volumes:
+        - name: config
+          configMap: { name: node-red-config }
+        - name: data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -79,11 +95,10 @@ spec:
   ports: [{ port: 1880 }]
 {{- if .Values.connectors.enabled }}
 ---
-# Connector service (platform/connectors): takes over the generated Node-RED
-# flows connector by connector. It runs exactly the registry entries with
-# "runtime": "app" (registry baked into the image, like the flows into
-# node-red-udp – both images move together). Without such an entry it only
-# answers /healthz and connects to nothing (docs/migration-konnektoren.md).
+# Connector service (platform/connectors): the ingestion of the platform. It
+# runs every active entry of the registry (platform/config/connectors.json,
+# baked into the image) and serves /abfahrten and /warnungen.ics to the
+# cockpit.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -119,8 +134,8 @@ spec:
             - { name: TZ, value: {{ .Values.connectors.timezone | quote }} }
             - { name: ORION_URL, value: {{ .Values.connectors.orionUrl | quote }} }
             # State store (schema udp_connectors) and the two SQL connectors:
-            # same database and credentials as Orion-LD and Node-RED. The user
-            # needs CREATE on the database "orion" (or the schema pre-created).
+            # same database and credentials as Orion-LD. The user needs CREATE
+            # on the database "orion" (or the schema pre-created).
             - { name: TROE_DB_HOST, value: {{ .Values.connectors.dbHost | quote }} }
             - name: TROE_DB_USER
               valueFrom:
@@ -128,17 +143,13 @@ spec:
             - name: TROE_DB_PASSWORD
               valueFrom:
                 secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD }
-            # Pedestrian counts (hystreet), from the same secret as Node-RED; a
-            # missing key = connector skips its runs. Its own key only when
-            # connectors.hystreetApiToken is set, otherwise Node-RED's token, so
-            # a cutover needs no second entry.
-            {{- $hystreetKey := "HYSTREET_API_TOKEN" }}
-            {{- if and .Values.connectors.hystreetApiToken (not .Values.nodeRed.hystreetExistingSecret) }}
-            {{- $hystreetKey = "HYSTREET_API_TOKEN_CONNECTORS" }}
-            {{- end }}
+            # Pedestrian counts (hystreet), from the secret of
+            # connectors.hystreetApiToken / .hystreetExistingSecret
+            # (templates/secrets.yaml); a missing key = the connector skips its
+            # runs.
             - name: HYSTREET_API_TOKEN
               valueFrom:
-                secretKeyRef: { name: {{ include "udp.hystreetSecretName" . }}, key: {{ $hystreetKey }}, optional: true }
+                secretKeyRef: { name: {{ include "udp.hystreetSecretName" . }}, key: HYSTREET_API_TOKEN, optional: true }
             - { name: UDP_CONNECTORS_PORT, value: "1880" }
             - { name: UDP_CONNECTORS_ADMIN_PORT, value: "1881" }
             - { name: UDP_TRIGGER_COOLDOWN_SECONDS, value: {{ .Values.connectors.triggerCooldownSeconds | quote }} }
@@ -205,27 +216,18 @@ spec:
             # die Upstreams deshalb voll qualifiziert sein. Den Resolver selbst
             # ermittelt der Entrypoint aus /etc/resolv.conf.
             - { name: UDP_GATEWAY_UPSTREAM, value: {{ .Values.cockpit.gatewayUpstream | default (printf "apisix.%s.svc.%s:9080" .Release.Namespace .Values.global.clusterDomain) | quote }} }
-            {{- $nodered := .Values.cockpit.noderedUpstream | default (printf "node-red.%s.svc.%s:1880" .Release.Namespace .Values.global.clusterDomain) }}
-            {{- $connectors := printf "connectors.%s.svc.%s:1880" .Release.Namespace .Values.global.clusterDomain }}
-            - { name: UDP_NODERED_UPSTREAM, value: {{ $nodered | quote }} }
-            # /abfahrten and /warnungen.ics: Node-RED, or the connector service
-            # once their connector runs there (cockpit.endpoints, phase 4). A
-            # value that is none of nodered/connectors/host:port fails the
-            # render: after a cutover Node-RED no longer serves the endpoint, so
-            # a typo must not quietly fall back to it.
-            {{- range $name, $raw := dict "ABFAHRTEN" .Values.cockpit.endpoints.abfahrten "WARNUNGEN" .Values.cockpit.endpoints.warnungen }}
-            {{- $endpoint := $raw | default "nodered" | toString }}
-            {{- if not (regexMatch "^(nodered|connectors|[A-Za-z0-9._-]+:[0-9]+)$" $endpoint) }}
-            {{- fail (printf "cockpit.endpoints.%s must be \"nodered\", \"connectors\" or host:port, got %q" (lower $name) $endpoint) }}
+            # /abfahrten and /warnungen.ics: the connector service (Node-RED no
+            # longer serves them). With connectors.enabled=false and no
+            # cockpit.connectorsUpstream both answer 502, the rest of the
+            # cockpit is unaffected. The former per-endpoint switch
+            # (cockpit.endpoints) is gone; a leftover "connectors" is ignored,
+            # anything else fails the render instead of being silently dropped.
+            {{- range $name, $value := .Values.cockpit.endpoints | default dict }}
+            {{- if and $value (ne (toString $value) "connectors") }}
+            {{- fail (printf "cockpit.endpoints.%s: %q – the switch is gone, both endpoints are served by the connector service (cockpit.connectorsUpstream for a different address)" $name (toString $value)) }}
             {{- end }}
-            {{- $upstream := $nodered }}
-            {{- if and (eq $endpoint "connectors") (not $.Values.connectors.enabled) }}
-            {{- fail (printf "cockpit.endpoints: %s points at the connector service, but connectors.enabled is false" (lower $name)) }}
             {{- end }}
-            {{- if eq $endpoint "connectors" }}{{ $upstream = $connectors }}
-            {{- else if ne $endpoint "nodered" }}{{ $upstream = $endpoint }}{{ end }}
-            - { name: UDP_{{ $name }}_UPSTREAM, value: {{ $upstream | quote }} }
-            {{- end }}
+            - { name: UDP_CONNECTORS_UPSTREAM, value: {{ .Values.cockpit.connectorsUpstream | default (printf "connectors.%s.svc.%s:1880" .Release.Namespace .Values.global.clusterDomain) | quote }} }
             {{- with .Values.cockpit.trustedProxies }}
             # Proxy networks allowed to set the client address (rate limit key).
             - { name: UDP_TRUSTED_PROXIES, value: {{ join " " . | quote }} }
@@ -259,10 +261,10 @@ metadata:
 spec:
   selector:
     {{- include "udp.selectorLabels" "cockpit" | nindent 4 }}
-  # 80 for the ingress; 8080 = container port, so Node-RED and the connector
-  # service can use the same URL (http://cockpit:8080/...) as in Docker
-  # Compose. The NetworkPolicy allows node-red/connectors -> cockpit:8080
-  # (policies match the pod port).
+  # 80 for the ingress; 8080 = container port, so the connector service can
+  # use the same URL (http://cockpit:8080/...) as in Docker Compose. The
+  # NetworkPolicy allows connectors -> cockpit:8080 (policies match the pod
+  # port).
   ports:
     - { name: http, port: 80, targetPort: 8080 }
     - { name: http-internal, port: 8080, targetPort: 8080 }

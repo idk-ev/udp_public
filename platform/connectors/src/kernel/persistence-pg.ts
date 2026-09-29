@@ -27,8 +27,8 @@
  * process (`pg_try_advisory_lock(1969516643, 1)`, "udpc"). The lock is what
  * makes this the single writer; it goes with that connection, so a crashed
  * process releases it by itself. Nothing connects before the first connector
- * that needs state is prepared: with no connector on `runtime: "app"` the
- * service never opens a connection.
+ * that needs state is prepared: with no scheduled connector the service never
+ * opens a connection.
  */
 
 import pg from "pg";

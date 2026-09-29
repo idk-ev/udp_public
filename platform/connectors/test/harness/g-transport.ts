@@ -122,7 +122,11 @@ export function rig(entry: RegistryEntry, fetcher: Fetcher): GRig {
     signatures: new SignatureStore(),
     state: new StateStore(),
     geo: createSharedGeo(log),
-    registry: { entries: [entry], byId: (id) => (id === entry.id ? entry : undefined), appEntries: () => [] },
+    registry: {
+      entries: [entry],
+      byId: (id) => (id === entry.id ? entry : undefined),
+      activeEntries: () => [],
+    },
     publicHttp: createHttpServer(log),
     adminHttp: createHttpServer(log),
     scheduler: createScheduler(log),

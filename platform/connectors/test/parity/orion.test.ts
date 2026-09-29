@@ -5,7 +5,7 @@
 
 /**
  * The Orion client: complete paged listing, the exact query the old pager
- * sent, chunk size validation and the redirect policy of writes.
+ * sent, chunk size validation, the redirect policy of writes and their pacing.
  *
  * The listing is what both the prune and the city pulse act on, and both exist
  * to NOT act on a partial picture — so the page arithmetic is pinned at its
@@ -14,9 +14,19 @@
  */
 
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
+import { createFetcher } from "../../src/kernel/fetcher.js";
 import { createOrion } from "../../src/kernel/orion.js";
-import type { EntityId, HttpResponse, ListResult, NgsiEntity, Orion } from "../../src/kernel/types.js";
+import { createRateLimiter } from "../../src/kernel/rate-limit.js";
+import type {
+  EntityId,
+  HttpResponse,
+  ListResult,
+  NgsiEntity,
+  Orion,
+  RateLimiter,
+} from "../../src/kernel/types.js";
 import { fakeHttpModule, httpResponse, recordingLog, scriptedFetcher } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
 import { contextApi, evaluateSnippetAsync, extractSnippet } from "../harness/vm-runner.js";
@@ -173,7 +183,63 @@ async function writesRefuseRedirects(): Promise<void> {
   );
 }
 
+/**
+ * The "1 Anfrage/s" delay node in front of every old upsert (OCPDB's among
+ * them) is the broker host's token bucket now: real limiter, real fetcher, a
+ * local broker — upsert chunks and deletes queue in one bucket, one a second.
+ */
+async function writesArePacedByTheBrokersBucket(): Promise<void> {
+  const arrivals: number[] = [];
+  const server = createServer((request, response) => {
+    if (request.method === "POST") arrivals.push(Date.now());
+    request.resume();
+    request.on("end", () => {
+      response.writeHead(204);
+      response.end();
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address !== null && typeof address === "object");
+    const base = `http://127.0.0.1:${String(address.port)}`;
+    const log = recordingLog();
+    const real = createRateLimiter(log);
+    const buckets: string[] = [];
+    const limiter: RateLimiter = {
+      acquire: (host, options) => {
+        buckets.push(host);
+        return real.acquire(host, options);
+      },
+      run: (host, task, options) => real.run(host, task, options),
+    };
+    const store = new SignatureStore().scope("test");
+    const orion = createOrion(log, createFetcher(log, limiter), createChangeGate(store, log), store, base);
+    const result = await orion.upsert({ entities: entities(3), pending: [] }, { chunkSize: 1 });
+    assert.equal(result.failedChunks, 0);
+    assert.equal((await orion.delete(["urn:ngsi-ld:T:0"])).chunks, 1);
+
+    assert.deepEqual(
+      buckets,
+      Array.from({ length: 4 }, () => new URL(base).host),
+      "a write left the bucket",
+    );
+    assert.equal(arrivals.length, 4);
+    for (let i = 1; i < arrivals.length; i += 1) {
+      const gap = (arrivals[i] ?? 0) - (arrivals[i - 1] ?? 0);
+      assert.ok(gap >= 900, `write ${String(i + 1)} only ${String(gap)} ms after the previous one`);
+    }
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+  }
+}
+
 export {
+  writesArePacedByTheBrokersBucket as "orion: upsert chunks and deletes queue in the broker's token bucket, one per second",
   listingEdgesOfThePageArithmetic as "orion: list over pages — exact multiples, short counts, no header, page limit",
   dedupeAndTheCountCheck as "orion: list dedupe collapses repeats and still catches a skipped entity",
   listingQueryIsByteIdenticalToTheOldPager as "orion: listing query is byte-identical to the one PRUNE_HELPER sent",

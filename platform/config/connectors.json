@@ -1,5 +1,5 @@
 {
-  "_doc": "Konnektor-Registry (Masterplan §5 F1). Eine Quelle für Takt, Scope, Aktivierung, Monitoring und Frontend-Fähigkeiten aller Ingestion-Konnektoren. Der Flow-Generator (scripts/generate-nodered-flows.py) interpretiert diese Datei: Takt/Cron werden auf die Inject-Nodes angewandt, inaktive Konnektoren werden aus flows.json entfernt, und gui/public/connectors-status.json wird für Hauptdashboard/Monitoring exportiert. Transform-Logik bleibt Code (nodePrefixes verweisen auf die Bausteine im Generator). supersededBy ist die Ablöse-Markierung (Migrationsmatrix); die Reutlingen-Migration ist abgeschlossen, aktuell setzt kein Konnektor das Feld. rowBudget24h ist optional und ordnet einem Konnektor sein erwartetes TRoE-Tagesvolumen je Entitätstyp zu ({\"ParkingSite\": 25000}); der Generator summiert die Budgets aller Konnektoren und gibt sie an die TRoE-Statistik-Funktion weiter, die bei Überschreitung eine Warnung ins Node-RED-Log schreibt. Konnektoren ohne das Feld verhalten sich unverändert. runtime ist optional: \"nodered\" (Vorgabe) oder \"app\". Mit \"app\" läuft der Konnektor im Konnektordienst (platform/connectors), und der Generator lässt ihn aus flows.json fallen — nie in beiden Laufzeiten zugleich (docs/migration-konnektoren.md, Phase 4).",
+  "_doc": "Konnektor-Registry (Masterplan §5 F1). Eine Quelle für Takt, Scope, Aktivierung, Monitoring und Frontend-Fähigkeiten aller Ingestion-Konnektoren. Der Konnektordienst (platform/connectors) führt jeden aktiven Eintrag aus, für den ein Modul existiert (src/connectors/index.ts); Takt und Cron kommen von hier, die Transform-Logik bleibt Code. scripts/export-connector-status.py exportiert daraus gui/public/connectors-status.json für Hauptdashboard und Monitoring. supersededBy ist die Ablöse-Markierung (Migrationsmatrix); die Reutlingen-Migration ist abgeschlossen, aktuell setzt kein Konnektor das Feld. rowBudget24h ist optional und ordnet einem Konnektor sein erwartetes TRoE-Tagesvolumen je Entitätstyp zu ({\"ParkingSite\": 25000}); der Dienst summiert die Budgets aller Konnektoren je Typ, und troe-stats warnt bei Überschreitung im Log des Konnektordienstes. Konnektoren ohne das Feld verhalten sich unverändert.",
   "connectors": [
     {
       "id": "ops-host",
@@ -13,11 +13,7 @@
       "provides": [],
       "attribution": null,
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-op-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "troe-stats",
@@ -31,11 +27,7 @@
       "provides": [],
       "attribution": null,
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-db-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "troe-retention",
@@ -49,11 +41,7 @@
       "provides": [],
       "attribution": null,
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-rt-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "stammdaten-bw",
@@ -67,11 +55,7 @@
       "provides": [],
       "attribution": "© EuroGeographics/BKG via opendatasoft · Wikidata",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-bm-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "grenzen-bw",
@@ -86,11 +70,7 @@
       "attribution": "© EuroGeographics/BKG via opendatasoft",
       "requiresSecret": null,
       "active": true,
-      "nodePrefixes": [
-        "udp-rt-bgr-"
-      ],
-      "healthUrl": "http://localhost:3700/bw-grenzen.json",
-      "runtime": "app"
+      "healthUrl": "http://localhost:3700/bw-grenzen.json"
     },
     {
       "id": "wetter-bw",
@@ -107,11 +87,7 @@
       "attribution": "Open-Meteo (CC-BY 4.0)",
       "requiresSecret": null,
       "active": true,
-      "nodePrefixes": [
-        "udp-rt-bw-"
-      ],
-      "refireOnRestart": false,
-      "runtime": "app"
+      "refireOnRestart": false
     },
     {
       "id": "vorhersage-bw",
@@ -129,11 +105,7 @@
       "attribution": "Open-Meteo (CC-BY 4.0)",
       "requiresSecret": null,
       "active": true,
-      "nodePrefixes": [
-        "udp-rt-bv-"
-      ],
-      "refireOnRestart": false,
-      "runtime": "app"
+      "refireOnRestart": false
     },
     {
       "id": "pollen-bw",
@@ -149,11 +121,7 @@
       ],
       "attribution": "DWD (GeoNutzV)",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-po-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "hitze-bw",
@@ -170,11 +138,7 @@
       "attribution": "DWD Thermischer Gefahrenindex (GeoNutzV)",
       "requiresSecret": null,
       "active": true,
-      "refireOnRestart": true,
-      "nodePrefixes": [
-        "udp-rt-hz-"
-      ],
-      "runtime": "app"
+      "refireOnRestart": true
     },
     {
       "id": "pegel-bw",
@@ -190,11 +154,7 @@
       ],
       "attribution": "WSV/PEGELONLINE (dl-de/by-2-0)",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-pe-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "pegel-lubw",
@@ -210,11 +170,7 @@
       ],
       "attribution": "LUBW / Hochwasservorhersagezentrale BW",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-pl-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "rathaus-bw",
@@ -231,11 +187,7 @@
       "attribution": "© OpenStreetMap contributors (ODbL)",
       "requiresSecret": null,
       "active": true,
-      "nodePrefixes": [
-        "udp-rt-rh-"
-      ],
-      "refireOnRestart": false,
-      "runtime": "app"
+      "refireOnRestart": false
     },
     {
       "id": "ausflug-bw",
@@ -252,11 +204,7 @@
       "attribution": "© OpenStreetMap contributors (ODbL)",
       "requiresSecret": null,
       "active": true,
-      "nodePrefixes": [
-        "udp-rt-az-"
-      ],
-      "refireOnRestart": false,
-      "runtime": "app"
+      "refireOnRestart": false
     },
     {
       "id": "poi-bw",
@@ -273,11 +221,7 @@
       "attribution": "© OpenStreetMap-Mitwirkende (ODbL)",
       "requiresSecret": null,
       "active": true,
-      "refireOnRestart": false,
-      "nodePrefixes": [
-        "udp-rt-poi-"
-      ],
-      "runtime": "app"
+      "refireOnRestart": false
     },
     {
       "id": "warnungen-bw",
@@ -294,12 +238,7 @@
       "attribution": "DWD via BrightSky (GeoNutzV) · BBK/NINA",
       "requiresSecret": null,
       "active": true,
-      "nodePrefixes": [
-        "udp-rt-bk-",
-        "udp-rt-wf-"
-      ],
-      "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415",
-      "runtime": "app"
+      "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415"
     },
     {
       "id": "baustellen-bw",
@@ -315,12 +254,7 @@
       ],
       "attribution": "MobiData BW / SVZ-BW",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-br-",
-        "udp-rt-brx-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "uba-bw",
@@ -336,11 +270,7 @@
       ],
       "attribution": "Umweltbundesamt",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-bu-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "feinstaub-bw",
@@ -357,11 +287,7 @@
       ],
       "attribution": "sensor.community",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-bs-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "parken-bw",
@@ -383,11 +309,7 @@
         "ParkingSite": 25000,
         "BikeParking": 8000,
         "ParkingSummary": 25000
-      },
-      "nodePrefixes": [
-        "udp-rt-bp-"
-      ],
-      "runtime": "app"
+      }
     },
     {
       "id": "sharing-bw",
@@ -403,11 +325,7 @@
       ],
       "attribution": "MobiData BW GBFS",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-bg-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "carsharing-bw",
@@ -426,12 +344,7 @@
       "active": true,
       "rowBudget24h": {
         "CarSharingStation": 200000
-      },
-      "nodePrefixes": [
-        "udp-rt-cs-",
-        "udp-rt-cz-"
-      ],
-      "runtime": "app"
+      }
     },
     {
       "id": "ladesaeulen-bw",
@@ -453,11 +366,7 @@
       "rowBudget24h": {
         "EVChargingStation": 170000,
         "ChargingSummary": 80000
-      },
-      "nodePrefixes": [
-        "udp-rt-bo-"
-      ],
-      "runtime": "app"
+      }
     },
     {
       "id": "eco-bw",
@@ -473,11 +382,7 @@
       ],
       "attribution": "MobiData BW / Eco-Counter",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-be-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "mastr-bw",
@@ -493,11 +398,7 @@
       ],
       "attribution": "Marktstammdatenregister (dl-de/by-2-0)",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-bx-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "puls-bw",
@@ -516,11 +417,7 @@
       "active": true,
       "rowBudget24h": {
         "CityPulse": 100000
-      },
-      "nodePrefixes": [
-        "udp-rt-bz-"
-      ],
-      "runtime": "app"
+      }
     },
     {
       "id": "wetter-dwd-station",
@@ -537,11 +434,7 @@
       "attribution": "Deutscher Wetterdienst über BrightSky (CC BY 4.0)",
       "requiresSecret": null,
       "active": true,
-      "nodePrefixes": [
-        "udp-rt-w-"
-      ],
-      "refireOnRestart": false,
-      "runtime": "app"
+      "refireOnRestart": false
     },
     {
       "id": "efa-abfahrten",
@@ -730,11 +623,7 @@
       ],
       "attribution": "EFA-BW (naldo/bwegt)",
       "requiresSecret": null,
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-o-"
-      ],
-      "runtime": "app"
+      "active": true
     },
     {
       "id": "abfahrten-on-demand",
@@ -752,12 +641,7 @@
       "requiresSecret": null,
       "active": true,
       "refireOnRestart": true,
-      "nodePrefixes": [
-        "udp-rt-ab-",
-        "udp-rt-ah-"
-      ],
-      "healthUrl": "http://localhost:3700/abfahrten?ags=08111000",
-      "runtime": "app"
+      "healthUrl": "http://localhost:3700/abfahrten?ags=08111000"
     },
     {
       "id": "hystreet",
@@ -776,11 +660,7 @@
       ],
       "attribution": "hystreet.com",
       "requiresSecret": "HYSTREET_API_TOKEN",
-      "active": true,
-      "nodePrefixes": [
-        "udp-rt-hy-"
-      ],
-      "runtime": "app"
+      "active": true
     }
   ]
 }

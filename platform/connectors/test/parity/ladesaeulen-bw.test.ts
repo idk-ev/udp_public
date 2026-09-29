@@ -497,7 +497,41 @@ async function completeRunReplacesTheTables(): Promise<void> {
   assert.ok(!world.store.copy(SUMMARY_GATE).has(goneSum), "the vanished sum keeps its signature");
 }
 
+/**
+ * A pure register entry (no live EVSE) must not stand as "0 free, current":
+ * no live values and no dateObserved, for stations and municipal sums alike.
+ */
+function registerEntriesCarryNoLiveStamp(): void {
+  const pages = [
+    recorded("ladesaeulen-bw-offset10000").payload,
+    recorded("ladesaeulen-bw-offset20000").payload,
+  ];
+  const answers: Answer[] = pages.map((payload) => ({ statusCode: 200, payload }));
+  const total = pages.reduce((sum, payload) => sum + items(payload).length, 0);
+  const built = build(
+    parse({ expectedPages: 2, announced: total, pages: answers }),
+    fullGeo().index,
+    new Date().toISOString(),
+  );
+  for (const [kind, entities] of [
+    ["station", built.stations],
+    ["sum", built.summaries],
+  ] as const) {
+    const live = entities.filter((entity) => entity.liveEvse !== undefined);
+    const register = entities.filter((entity) => entity.liveEvse === undefined);
+    assert.ok(live.length > 0 && register.length > 0, `the fixture holds no live or no register ${kind}`);
+    for (const entity of register) {
+      assert.ok(
+        entity.dateObserved === undefined && entity.availableEvse === undefined,
+        `${entity.id}: register ${kind} carries live values or dateObserved`,
+      );
+    }
+    for (const entity of live) assert.ok(entity.dateObserved !== undefined, `${entity.id}: no dateObserved`);
+  }
+}
+
 export {
+  registerEntriesCarryNoLiveStamp as "ladesaeulen-bw: register entries without live status carry no live values and no dateObserved",
   pagesFollowTotalCount as "ladesaeulen-bw: all pages from total_count, the cap of 60 and the skips match the old fan-out",
   incompleteRunMergesAndResets as "ladesaeulen-bw: an incomplete run writes the old chunks, merges the tables, resets the confirmations",
   dedupeKeepsTheOldOrder as "ladesaeulen-bw: deduplication and Object.keys order of the old build node",

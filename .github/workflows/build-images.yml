@@ -9,11 +9,10 @@
 #   postgres-timescale-cnpg  platform/config/postgres-cnpg  -> Helm: timescale.image
 #   postgres-timescale-oss   platform/config/postgres       -> Helm: timescale.legacy.image
 #                                                              (+ docker compose)
-#   node-red-udp             platform/config/nodered        -> Helm: nodeRed.image
 #   udp-connectors           platform/connectors            -> Helm: connectors.image
 #
-# Alle übrigen Images (Orion-LD, Keycloak, APISIX, …) kommen unverändert von
-# Upstream und werden hier bewusst NICHT gespiegelt.
+# Alle übrigen Images (Orion-LD, Keycloak, APISIX, Node-RED, …) kommen
+# unverändert von Upstream und werden hier bewusst NICHT gespiegelt.
 #
 # Anschließend verpackt der Job „chart“ das Helm-Chart und pusht es als
 # OCI-Artefakt nach oci://ghcr.io/<owner>/<repo>/charts/udp. Er hängt per
@@ -58,7 +57,6 @@ on:
       - 'platform/config/ckan/**'
       - 'platform/config/postgres/**'
       - 'platform/config/postgres-cnpg/**'
-      - 'platform/config/nodered/**'
       # The connector image carries the registry (connectors.json) as well.
       - 'platform/connectors/**'
       - 'platform/config/connectors.json'
@@ -71,7 +69,6 @@ on:
       - 'platform/config/ckan/**'
       - 'platform/config/postgres/**'
       - 'platform/config/postgres-cnpg/**'
-      - 'platform/config/nodered/**'
       # The connector image carries the registry (connectors.json) as well.
       - 'platform/connectors/**'
       - 'platform/config/connectors.json'
@@ -134,13 +131,6 @@ jobs:
             dockerfile: platform/config/postgres/Dockerfile
             valueKey: timescale.legacy
             description: PostgreSQL 16 + PostGIS + TimescaleDB Apache Edition
-          # Build-Kontext ist das Repo-Root: das Dockerfile kopiert die
-          # generierten Flows aus platform/config/nodered/.
-          - name: node-red-udp
-            context: .
-            dockerfile: platform/config/nodered/Dockerfile
-            valueKey: nodeRed
-            description: Node-RED mit den generierten UDP-Datenflüssen
           # Build context is the repository root: the Dockerfile copies the
           # registry from platform/config/connectors.json.
           - name: udp-connectors
@@ -394,7 +384,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           # Gelesen wird immer, geschrieben nur aus vertrauenswürdigen Läufen:
           # der Actions-Cache ist auf 10 GB je Repository gedeckelt und wird
-          # repo-weit nach LRU verdrängt. Sechs mode=max-Caches pro Fork-PR
+          # repo-weit nach LRU verdrängt. Fünf mode=max-Caches pro Fork-PR
           # schöben sonst die warmen Layer von main heraus.
           cache-to: ${{ steps.ctx.outputs.push == 'true' && format('type=gha,scope={0},mode=max', matrix.name) || '' }}
           # Signierte Herkunft + SBOM als OCI-Attestation am Image (Supply-Chain).
@@ -624,7 +614,7 @@ jobs:
 
             pinned=""
             if [ "$mode" = "pin" ]; then
-              for key in cockpit ckan timescale timescale.legacy nodeRed connectors; do
+              for key in cockpit ckan timescale timescale.legacy connectors; do
                 if [ ! -s "digests/$key" ]; then pinned=""; break; fi
                 TAGVAL="${tag}@$(cat "digests/$key")" \
                   yq -i ".${key}.image.tag = strenv(TAGVAL)" "$CHART_DIR/values.yaml"

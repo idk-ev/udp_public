@@ -45,7 +45,6 @@
 import { jsonResponse, textResponse } from "./http.js";
 import type { Kernel } from "./context.js";
 import { geoHealth } from "./geo-bootstrap.js";
-import { runtimeOf } from "./registry.js";
 import type { Env, RouteDefinition, RouteResponse } from "./types.js";
 
 export const DEFAULT_ADMIN_PORT = 1881;
@@ -116,9 +115,8 @@ function healthRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
 }
 
 /**
- * `POST /trigger/:id` — the replacement for `scripts/trigger-connector.sh`'s
- * detour over `nodePrefixes` and the Node-RED admin API. Answers immediately;
- * the run happens in the background, as posting to an inject node did.
+ * `POST /trigger/:id` — what `scripts/trigger-connector.sh` calls. Answers
+ * immediately; the run happens in the background.
  */
 function triggerRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
   return {
@@ -160,7 +158,7 @@ function triggerRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
           const reason =
             known === undefined
               ? `unknown connector "${id}"`
-              : `connector "${id}" is not scheduled here (runtime: ${runtimeOf(known)}, active: ${String(known.active)})`;
+              : `connector "${id}" is not scheduled here (${known.active ? "no module implemented" : "inactive in the registry"})`;
           return Promise.resolve(textResponse(404, `${reason}\n`));
         }
       }

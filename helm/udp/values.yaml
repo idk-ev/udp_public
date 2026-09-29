@@ -32,7 +32,6 @@ global:
   #   ckan-dcat                (platform/config/ckan)
   #   postgres-timescale-cnpg  (platform/config/postgres-cnpg)
   #   postgres-timescale-oss   (platform/config/postgres, nur zur Migration)
-  #   node-red-udp             (platform/config/nodered)
   #   udp-connectors           (platform/connectors)
   # Registry und Tag stehen hier EINMAL für alle. Pro Komponente
   # überschreibbar: <komponente>.image.registry / .image.tag.
@@ -181,11 +180,13 @@ networkPolicies:
   #       - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: analytics } }
   extraFrom: {}
   # Only with strictEgress: which components may reach the internet (TCP
-  # 80/443 to everything outside the private ranges below). Node-RED and the
-  # connector service pull the open-data sources from outside, Orion-LD and
-  # the IoT agent fetch JSON-LD @contexts, CKAN harvests remote catalogues.
+  # 80/443 to everything outside the private ranges below). The connector
+  # service pulls the open-data sources from outside, Orion-LD and the IoT
+  # agent fetch JSON-LD @contexts, CKAN harvests remote catalogues. Node-RED
+  # is not in the list: its example flow only writes to Orion-LD. Add
+  # node-red here for own flows that fetch external sources.
   internetEgress:
-    components: [node-red, connectors, orion-ld, iot-agent-json, ckan]
+    components: [connectors, orion-ld, iot-agent-json, ckan]
     ports: [80, 443]
     # Cluster/private networks stay excluded – internal traffic is governed by
     # the in-namespace rules, not by the internet exception.
@@ -972,31 +973,19 @@ keycloakApp:
 
 # ---------- Anwendungsdienste ----------
 nodeRed:
-  # Eigenes Image (platform/config/nodered/Dockerfile): Node-RED plus die
-  # GENERIERTEN Datenflüsse, die gehärtete settings.js und ein vorinstalliertes
-  # "pg". registry/tag leer -> global.udpRegistry / global.udpTag.
-  #
-  # Die Flows sind ein Build-Artefakt (scripts/generate-nodered-flows.py), kein
-  # im Editor gepflegter Zustand — deshalb Image statt ConfigMap/Volume:
-  #   * ~420 KB und wachsend sprengen absehbar die 1-MiB-Grenze für ConfigMaps,
-  #   * ein Volume auf /data würde die Flows aus dem Image verdecken,
-  #   * per Digest gepinnt läuft im Cluster exakt der gebaute Stand.
-  # Es gibt daher bewusst KEIN PVC: /data hält nur flüchtigen Laufzeitzustand.
-  image: { name: node-red-udp, registry: "", tag: "" }
+  # Low-code building block (requirement B.II.4): the upstream image with a
+  # preconfigured example flow (open data -> NGSI-LD -> Orion-LD). The
+  # ingestion runs in the connector service, not here. flows.json and
+  # settings.js come from the ConfigMap node-red-config
+  # (helm/udp/files/nodered/, copies of platform/config/nodered/). /data is an
+  # emptyDir: flows deployed in the editor last until the pod restarts. No PVC,
+  # no ingress route – the editor is reached via kubectl port-forward.
+  image: { repository: nodered/node-red, tag: "4.1" }
   timezone: "Europe/Berlin"
-  # Passantenfrequenz hystreet.com (kostenpflichtig/vertragsgebunden).
-  # Leer -> der Flow bleibt inaktiv, alles andere läuft normal weiter.
-  # Gesetzt -> das Chart legt das Secret udp-hystreet an (Schlüssel
-  # HYSTREET_API_TOKEN); Node-RED und Konnektordienst lesen es per secretKeyRef.
-  hystreetApiToken: ""
-  # Alternativ ein vorhandenes Secret mit dem Schlüssel HYSTREET_API_TOKEN
-  # (SealedSecrets / External Secrets); gesetzt -> hystreetApiToken und
-  # connectors.hystreetApiToken werden ignoriert, gilt auch für den
-  # Konnektordienst.
-  hystreetExistingSecret: ""
+  # Sized for the example flow and some editor use, no longer for 29 connectors.
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits:   { cpu: 500m, memory: 768Mi }
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 1000
@@ -1019,17 +1008,16 @@ nodeRed:
       timeoutSeconds: 10
       failureThreshold: 4
 
-# Connector service (platform/connectors): replaces the generated Node-RED
-# flows connector by connector. It runs exactly the registry entries with
-# "runtime": "app" (platform/config/connectors.json, baked into the image);
-# without one it only answers /healthz. Always ONE replica with strategy
-# Recreate (fixed in templates/apps.yaml): the state store in TimescaleDB
-# (schema udp_connectors) has a single writer.
+# Connector service (platform/connectors): the ingestion of the platform. It
+# runs every active entry of the registry (platform/config/connectors.json,
+# baked into the image) and serves /abfahrten and /warnungen.ics to the
+# cockpit. Always ONE replica with strategy Recreate (fixed in
+# templates/apps.yaml): the state store in TimescaleDB (schema udp_connectors)
+# has a single writer.
 connectors:
   enabled: true
   # Own image (platform/connectors/Dockerfile). registry/tag empty ->
-  # global.udpRegistry / global.udpTag. Roll it out together with node-red-udp:
-  # a connector must run in exactly one of the two.
+  # global.udpRegistry / global.udpTag.
   image: { name: udp-connectors, registry: "", tag: "" }
   timezone: "Europe/Berlin"
   orionUrl: "http://orion-ld:1026"
@@ -1037,10 +1025,15 @@ connectors:
   # The user needs CREATE on the database "orion" for the schema udp_connectors,
   # or the schema has to exist beforehand.
   dbHost: "timescale"
-  # Empty -> nodeRed.hystreetApiToken. Set -> own key
-  # HYSTREET_API_TOKEN_CONNECTORS in the secret udp-hystreet (ignored with
-  # nodeRed.hystreetExistingSecret).
+  # Pedestrian counts hystreet.com (paid/contract-bound). Empty -> the
+  # connector hystreet skips its runs, everything else keeps working. Set ->
+  # the chart renders the secret udp-hystreet (key HYSTREET_API_TOKEN).
+  # (Former place nodeRed.hystreetApiToken is still read as a fallback.)
   hystreetApiToken: ""
+  # Alternatively an existing secret with the key HYSTREET_API_TOKEN
+  # (SealedSecrets / External Secrets); set -> hystreetApiToken is ignored.
+  # (Former place nodeRed.hystreetExistingSecret is still read as a fallback.)
+  hystreetExistingSecret: ""
   # Minimum spacing of two manual triggers per connector (never below 60).
   triggerCooldownSeconds: 60
   resources:
@@ -1088,23 +1081,18 @@ cockpit:
   # endpoint – and with maxSurge 0 (spread mode required) the Service was
   # briefly empty (seen as ~3 s of 503 on every route during a rollout).
   minReadySeconds: 10
-  # nginx im Cockpit proxyt /gateway/ und /abfahrten intern weiter und löst die
+  # nginx im Cockpit proxyt /gateway/, /abfahrten und /warnungen.ics intern weiter und löst die
   # Upstreams zur Laufzeit auf (Gateway-Neustart erzwingt so keinen
   # Cockpit-Neustart). Diese Namen müssen VOLL QUALIFIZIERT sein: auf Namen, die
   # nginx über den resolver auflöst, wendet es die search-Domains aus
   # /etc/resolv.conf nicht an – "apisix" allein bliebe unauflösbar.
   # Den Resolver selbst ermittelt der Container-Entrypoint aus /etc/resolv.conf.
   gatewayUpstream: ""     # leer -> apisix.<Release-Namespace>.svc.<global.clusterDomain>:9080
-  noderedUpstream: ""     # leer -> node-red.<Release-Namespace>.svc.<global.clusterDomain>:1880
-  # Who answers /abfahrten and /warnungen.ics: "nodered" (default), "connectors"
-  # (the connector service, connectors.<namespace>.svc.<clusterDomain>:1880) or
-  # an explicit host:port. Flip to "connectors" together with the cutover of
-  # abfahrten-on-demand resp. warnungen-bw (docs/migration-konnektoren.md,
-  # phase 4); back to "nodered" is the way back. Any other value fails the
-  # render – a typo must not silently fall back to Node-RED after a cutover.
-  endpoints:
-    abfahrten: nodered
-    warnungen: nodered
+  # Who answers /abfahrten and /warnungen.ics: the connector service.
+  # Empty -> connectors.<Release-Namespace>.svc.<global.clusterDomain>:1880;
+  # host:port only when it runs elsewhere. (The former per-endpoint switch
+  # cockpit.endpoints between Node-RED and the connector service is gone.)
+  connectorsUpstream: ""
   # Proxy networks (ingress controller pods / load balancer) whose
   # X-Forwarded-For entries the cockpit trusts when resolving the client
   # address for the per-client rate limit (apisix.rateLimit). Empty -> all

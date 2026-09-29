@@ -161,6 +161,25 @@ async function listWithoutBwStationKeepsTheCache(): Promise<void> {
   );
 }
 
+async function masterDataReplacesTheSystemsStations(): Promise<void> {
+  // Test input: two systems cached, then a new list of system A — its old
+  // station leaves the cache, system B stays; a list without a station in BW
+  // (Basel) changes nothing.
+  const list = (id: string, lat: number, lon: number): unknown => ({
+    data: { stations: [{ station_id: id, lat, lon, name: `S${id}` }] },
+  });
+  const inputs = [
+    { system: "sysA", feed: "info" as const, payload: list("old", 48.7758, 9.1829) },
+    { system: "sysB", feed: "info" as const, payload: list("x", 48.7758, 9.1829) },
+    { system: "sysA", feed: "info" as const, payload: list("1", 48.7758, 9.1829) },
+    { system: "sysA", feed: "info" as const, payload: list("2", 47.5596, 7.5886) },
+  ];
+  const legacy = await legacyMasterData(inputs);
+  const ported = portedMasterData(inputs);
+  assert.deepEqual(cacheObject(ported.cache), normalize(legacy.flow.csStationen), "station cache differs");
+  assert.deepEqual([...(ported.cache?.keys() ?? [])].sort(), ["sysA::1", "sysB::x"]);
+}
+
 /* ── status ──────────────────────────────────────────────────────────────── */
 
 interface StatusRound {
@@ -426,6 +445,7 @@ async function statusWaitsForMasterData(): Promise<void> {
 export {
   masterDataMatches as "carsharing-bw: station cache and form factors match the old master data node on three live systems",
   listWithoutBwStationKeepsTheCache as "carsharing-bw: a station list without a station in BW leaves the cache alone",
+  masterDataReplacesTheSystemsStations as "carsharing-bw: a new station list replaces that system's stations, other systems stay",
   statusMatchesAcrossTwoRuns as "carsharing-bw: stations and fleets match across two runs (merge gate, freshEvery 3)",
   runMatchesTheOldFlows as "carsharing-bw: run() requests, upserts and prunes (ownGbfs, csSig) as the two old flows",
   statusWaitsForMasterData as "carsharing-bw: without master data the status run is skipped with a warning",
