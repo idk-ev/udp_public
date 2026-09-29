@@ -27,20 +27,32 @@
  * The DELIBERATE deviations (see the module header) are mapped out of the
  * comparison rather than hidden: the port never sends the old OffStreetParking
  * DELETE, and it asks SQL_LEGACY_OWN_IDS which candidates are parken-bw's own
- * before deleting. With every candidate owned, the retention session is the
- * old conversation. Around it the port opens two sessions the old node never
- * had — the autovacuum thresholds before, VACUUM (ANALYZE) after — and the
- * expected conversation pins those leading and trailing statements
- * explicitly. The tests at the end pin the new behaviour.
+ * before deleting. It also asks which indexes exist and creates only the
+ * missing ones instead of sending CREATE INDEX IF NOT EXISTS every night. With
+ * every candidate owned, the retention session is otherwise the old
+ * conversation. Around it the port opens two sessions the old node never had
+ * — the overlap guard and the autovacuum thresholds before, the paced VACUUM
+ * (ANALYZE) after — and the expected conversation pins those leading and
+ * trailing statements explicitly. The tests at the end pin the new behaviour.
  */
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { ParseError } from "../../src/kernel/parse.js";
-import type { Db } from "../../src/kernel/types.js";
+import type { Db, DbNotice } from "../../src/kernel/types.js";
 import {
   autovacuumTuned,
   build,
+  isLockTimeout,
+  LOCK_TIMEOUT_MS,
+  lockWarning,
+  overlapReason,
+  SQL_OVERLAP,
+  SQL_PRESENT_INDEXES,
+  SQL_VACUUM_PACING,
+  TROE_INDEXES,
+  VACUUM_LOCK_TIMEOUT_MS,
+  vacuumNoticeWarning,
   OLD_SCHEME_BATCH,
   OLD_SCHEME_CAP,
   parse,
@@ -120,13 +132,32 @@ interface Scenario {
   failOn?: string;
   /** `pg_class.reloptions` per table; default `null` (nothing set, as after the TRoE setup). */
   reloptions?: Readonly<Record<string, readonly string[] | null>>;
+  /** Indexes that exist; default all three (every night after the first). */
+  presentIndexes?: readonly string[];
+  /** Statements the server cancels with a lock timeout (SQLSTATE 55P03). */
+  lockTimeoutOn?: readonly string[];
+  /** What the overlap guard counts; default nothing. */
+  overlap?: { readonly retention?: number; readonly vacuum?: number };
+  /** Notices the server sends during a statement (the VACUUMs). */
+  notices?: Readonly<Record<string, readonly DbNotice[]>>;
 }
 
 /** The thresholds as Postgres stores them after the port's ALTER TABLE. */
 const TUNED = ["autovacuum_vacuum_insert_scale_factor=0.01", "autovacuum_analyze_scale_factor=0.01"];
 
-/** The statements only the port sends besides SQL_RELOPTIONS: the ALTERs and the VACUUMs. */
-const PORT_ONLY = new Set(VACUUMED_TABLES.flatMap((table) => [sqlAutovacuumTuning(table), sqlVacuum(table)]));
+/** The statements only the port sends besides SQL_RELOPTIONS: the ALTERs, the pacing and the VACUUMs. */
+const PORT_ONLY = new Set([
+  SQL_VACUUM_PACING,
+  ...VACUUMED_TABLES.flatMap((table) => [sqlAutovacuumTuning(table), sqlVacuum(table)]),
+]);
+
+const INDEX_NAMES = TROE_INDEXES.map(([name]) => name);
+const INDEX_STATEMENTS = new Set<string>(TROE_INDEXES.map(([, sql]) => sql));
+
+/** What node-postgres rejects with when `lock_timeout` cancels a statement. */
+function lockTimeout(): Error {
+  return Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" });
+}
 
 /** Failures injected into the port-only statements: the old side never sees them. */
 const PORT_ONLY_FAILURES = new Set([SQL_RELOPTIONS, ...PORT_ONLY]);
@@ -153,8 +184,18 @@ function responder(s: Scenario): SqlResponder {
   const counted = (rowCount: number): SqlAnswer => ({ rows: [], rowCount });
   return (sql, params) => {
     if (sql === s.failOn) return new Error("could not extend file: No space left on device");
-    if (PORT_ONLY.has(sql)) return { rows: [], rowCount: null };
+    if (s.lockTimeoutOn?.includes(sql) === true) return lockTimeout();
+    if (PORT_ONLY.has(sql)) return { rows: [], rowCount: null, notices: s.notices?.[sql] ?? [] };
     switch (sql) {
+      case SQL_OVERLAP:
+        return {
+          rows: [{ retention: s.overlap?.retention ?? 0, vacuum: s.overlap?.vacuum ?? 0 }],
+          rowCount: 1,
+        };
+      case SQL_PRESENT_INDEXES: {
+        const present = s.presentIndexes ?? INDEX_NAMES;
+        return { rows: present.map((name) => ({ name })), rowCount: present.length };
+      }
       case SQL_RELOPTIONS: {
         const table: unknown = Array.isArray(params) ? params[0] : undefined;
         const reloptions = typeof table === "string" ? (s.reloptions?.[table] ?? null) : null;
@@ -240,15 +281,26 @@ async function runPorted(s: Scenario, wrap: (db: Db) => Db = (db) => db): Promis
 }
 
 /**
- * The old conversation with the two deliberate deviations applied: no
- * OffStreetParking DELETE, and the port's ownership queries right after the
- * candidate query (checked on their own in {@link assertOwnershipQueries}).
+ * The old conversation with the deliberate deviations applied: the three
+ * CREATE INDEX become one look-up of the existing indexes and a CREATE only
+ * for the missing ones (in the old order), no OffStreetParking DELETE, and the
+ * port's ownership queries right after the candidate query (checked on their
+ * own in {@link assertOwnershipQueries}).
  */
-function expectedCalls(legacy: Legacy, ported: Ported): SqlCall[] {
+function expectedCalls(legacy: Legacy, ported: Ported, s: Scenario): SqlCall[] {
   const ownership = ported.db.calls.filter((call) => call.sql === SQL_LEGACY_OWN_IDS);
+  const present = s.presentIndexes ?? INDEX_NAMES;
   const out: SqlCall[] = [];
   for (const call of legacy.pg.calls) {
     if (call.sql === SQL_DELETE_ORPHANED) continue;
+    if (INDEX_STATEMENTS.has(call.sql)) {
+      if (call.sql !== SQL_INDEX_ATTRIBUTES_TS) continue;
+      out.push({ sql: SQL_PRESENT_INDEXES, params: [INDEX_NAMES] });
+      for (const [name, sql] of TROE_INDEXES) {
+        if (!present.includes(name)) out.push({ sql, params: undefined });
+      }
+      continue;
+    }
     out.push(call);
     if (call.sql === SQL_OLD_SCHEME_IDS) out.push(...ownership);
   }
@@ -270,12 +322,12 @@ function assertOwnershipQueries(ported: Ported, candidates: readonly string[]): 
 }
 
 /**
- * DELIBERATE (not in the old node): the leading autovacuum statements — per
- * table the reloptions read, then an ALTER TABLE only where the thresholds are
- * not in place; a failure ends the tuning session.
+ * DELIBERATE (not in the old node): the leading statements — the overlap
+ * guard, then per table the reloptions read and an ALTER TABLE only where the
+ * thresholds are not in place; a failure ends the tuning session.
  */
 function tuningCalls(s: Scenario): SqlCall[] {
-  const out: SqlCall[] = [];
+  const out: SqlCall[] = [{ sql: SQL_OVERLAP, params: undefined }];
   for (const table of VACUUMED_TABLES) {
     out.push({ sql: SQL_RELOPTIONS, params: [table] });
     if (s.failOn === SQL_RELOPTIONS) return out;
@@ -288,14 +340,24 @@ function tuningCalls(s: Scenario): SqlCall[] {
   return out;
 }
 
-/** DELIBERATE (not in the old node): the trailing VACUUMs, both tables, after a successful night only. */
+/** DELIBERATE (not in the old node): the paced trailing VACUUMs, both tables, after a successful night only. */
 function vacuumCalls(): SqlCall[] {
-  return VACUUMED_TABLES.map((table) => ({ sql: sqlVacuum(table), params: undefined }));
+  return [
+    { sql: SQL_VACUUM_PACING, params: undefined },
+    ...VACUUMED_TABLES.map((table) => ({ sql: sqlVacuum(table), params: undefined })),
+  ];
 }
+
+/** The statements of the vacuum session. */
+const VACUUM_TAIL = vacuumCalls().length;
 
 function assertSameConversation(legacy: Legacy, ported: Ported, s: Scenario): void {
   const succeeded = legacy.failure === null;
-  const expected = [...tuningCalls(s), ...expectedCalls(legacy, ported), ...(succeeded ? vacuumCalls() : [])];
+  const expected = [
+    ...tuningCalls(s),
+    ...expectedCalls(legacy, ported, s),
+    ...(succeeded ? vacuumCalls() : []),
+  ];
   assert.deepEqual(
     ported.db.calls.map((call) => call.sql),
     expected.map((call) => call.sql),
@@ -344,8 +406,9 @@ const WORDING: readonly [RegExp, (m: RegExpExecArray) => string][] = [
   ],
 ];
 
-/** Warnings of the port-only steps (autovacuum thresholds, VACUUM); pinned by their own tests. */
-const PORT_ONLY_WARNING = /^Retention: (autovacuum thresholds|VACUUM \(ANALYZE\))/;
+/** Warnings of the port-only steps (autovacuum thresholds, VACUUM, lock timeouts); pinned by their own tests. */
+const PORT_ONLY_WARNING =
+  /^Retention: (autovacuum thresholds|VACUUM \(ANALYZE\)|the server warned during VACUUM|.* skipped, lock not granted)/;
 
 /** The old warnings the port still gives: all but the dropped OffStreetParking step's. */
 function portedWarnings(old: readonly string[]): string[] {
@@ -424,8 +487,13 @@ async function typicalNight(): Promise<void> {
   assert.equal(ported.db.calls.filter((call) => call.sql === SQL_DELETE_BY_IDS).length, 3);
   assert.equal(ported.t.log.warnings().length, 2);
   assert.deepEqual(
-    ported.db.calls.slice(-6).map((call) => call.sql),
+    ported.db.calls.slice(-(4 + VACUUM_TAIL)).map((call) => call.sql),
     ["BEGIN", SQL_CLEAR_TYPE_STATS, SQL_FILL_TYPE_STATS, "COMMIT", ...vacuumCalls().map((call) => call.sql)],
+  );
+  // Every index exists on a normal night: not a single CREATE INDEX.
+  assert.equal(
+    ported.db.calls.some((call) => INDEX_STATEMENTS.has(call.sql)),
+    false,
   );
   assert.equal(
     ported.t.log.lines.find((line) => line.level === "info")?.text,
@@ -574,14 +642,14 @@ async function failedOwnershipCheckDeletesNothing(): Promise<void> {
       .some((line) => line.includes("ownership check of the old-scheme parking ids failed")),
   );
   assert.deepEqual(
-    ported.db.calls.slice(-6, -2).map((call) => call.sql),
+    ported.db.calls.slice(-(4 + VACUUM_TAIL), -VACUUM_TAIL).map((call) => call.sql),
     ["BEGIN", SQL_CLEAR_TYPE_STATS, SQL_FILL_TYPE_STATS, "COMMIT"],
     "the totals are refreshed anyway",
   );
 }
 
 async function autovacuumThresholdsOnlyWhereTheyDiffer(): Promise<void> {
-  // DELIBERATE DEVIATION (production finding, module header): the old node
+  // DELIBERATE DEVIATION (finding in a production installation, module header): the old node
   // never touched the autovacuum settings.
   assert.equal(
     sqlAutovacuumTuning("attributes"),
@@ -590,15 +658,17 @@ async function autovacuumThresholdsOnlyWhereTheyDiffer(): Promise<void> {
   assert.equal(SQL_RELOPTIONS, "SELECT reloptions FROM pg_class WHERE oid = $1::regclass");
   assert.ok(TUNING_SESSION.statementTimeoutMs < TUNING_SESSION.queryTimeoutMs);
 
-  // Nothing set yet: read and ALTER both tables, before the retention session.
+  // Nothing set yet: after the overlap guard, read and ALTER both tables,
+  // before the retention session.
   const fresh = await assertParity(NIGHT);
-  assert.deepEqual(fresh.ported.db.calls.slice(0, 4), [
+  assert.deepEqual(fresh.ported.db.calls.slice(0, 5), [
+    { sql: SQL_OVERLAP, params: undefined },
     { sql: SQL_RELOPTIONS, params: ["attributes"] },
     { sql: sqlAutovacuumTuning("attributes"), params: undefined },
     { sql: SQL_RELOPTIONS, params: ["subattributes"] },
     { sql: sqlAutovacuumTuning("subattributes"), params: undefined },
   ]);
-  assert.equal(fresh.ported.db.calls[4]?.sql, SQL_INDEX_ATTRIBUTES_TS);
+  assert.equal(fresh.ported.db.calls[5]?.sql, SQL_PRESENT_INDEXES);
   assert.deepEqual(fresh.ported.db.sessions[0], TUNING_SESSION);
 
   // attributes already tuned (among other options), subattributes half: one ALTER.
@@ -660,7 +730,7 @@ async function failedTuningOnlyWarns(): Promise<void> {
     readFails.ported.db.calls.some((call) => call.sql.startsWith("ALTER TABLE")),
     false,
   );
-  assert.deepEqual(readFails.ported.db.calls.slice(-2), vacuumCalls(), "the vacuum still runs");
+  assert.deepEqual(readFails.ported.db.calls.slice(-VACUUM_TAIL), vacuumCalls(), "the vacuum still runs");
 
   // The ALTER fails (a lock wait cut short): one warning, the tuning session ends there.
   const alterFails = await assertParity({ ...NIGHT, failOn: sqlAutovacuumTuning("attributes") });
@@ -669,13 +739,13 @@ async function failedTuningOnlyWarns(): Promise<void> {
 }
 
 async function vacuumRunsLastInItsOwnSession(): Promise<void> {
-  // DELIBERATE DEVIATION (production finding, module header): the old node
+  // DELIBERATE DEVIATION (finding in a production installation, module header): the old node
   // never vacuumed. Both tables, after the committed totals, in a session of
   // their own — no BEGIN in it, 45 min on the server, the client longer.
   const { ported } = await assertParity(NIGHT);
   assert.deepEqual(
     vacuumCalls().map((call) => call.sql),
-    ["VACUUM (ANALYZE) attributes", "VACUUM (ANALYZE) subattributes"],
+    ["SET vacuum_cost_delay = '2ms'", "VACUUM (ANALYZE) attributes", "VACUUM (ANALYZE) subattributes"],
   );
   const lastCommit = ported.db.calls.map((call) => call.sql).lastIndexOf("COMMIT");
   assert.deepEqual(ported.db.calls.slice(lastCommit + 1), vacuumCalls());
@@ -683,6 +753,12 @@ async function vacuumRunsLastInItsOwnSession(): Promise<void> {
   assert.equal(VACUUM_SESSION.statementTimeoutMs, 45 * 60_000);
   assert.ok(VACUUM_SESSION.statementTimeoutMs < VACUUM_SESSION.queryTimeoutMs);
   assert.ok(VACUUM_SESSION.statementTimeoutMs > SESSION.statementTimeoutMs);
+  // Every session has a lock timeout; a waiting VACUUM blocks no insert, so its own is longer.
+  assert.equal(SESSION.lockTimeoutMs, LOCK_TIMEOUT_MS);
+  assert.equal(TUNING_SESSION.lockTimeoutMs, LOCK_TIMEOUT_MS);
+  assert.equal(LOCK_TIMEOUT_MS, 5_000);
+  assert.equal(VACUUM_SESSION.lockTimeoutMs, VACUUM_LOCK_TIMEOUT_MS);
+  assert.equal(VACUUM_LOCK_TIMEOUT_MS, 60_000);
   assert.deepEqual(ported.db.events, ["connect", "end", "connect", "end", "connect", "end"]);
 }
 
@@ -693,7 +769,7 @@ async function failedVacuumOnlyWarns(): Promise<void> {
   const { legacy, ported } = await assertParity(s);
   assertSameSummary(legacy, ported);
   assert.equal(ported.failure, null);
-  assert.deepEqual(ported.db.calls.slice(-2), vacuumCalls());
+  assert.deepEqual(ported.db.calls.slice(-VACUUM_TAIL), vacuumCalls());
   const warnings = ported.t.log.warnings();
   assert.deepEqual(
     warnings.filter((line) => PORT_ONLY_WARNING.test(line)),
@@ -732,6 +808,159 @@ async function ownershipIsCheckedInBatches(): Promise<void> {
   assert.equal(ported.db.calls.filter((call) => call.sql === SQL_LEGACY_OWN_IDS).length, 2);
 }
 
+async function indexesAreCreatedOnlyWhenMissing(): Promise<void> {
+  // DELIBERATE (module header): CREATE INDEX IF NOT EXISTS takes its ShareLock
+  // before it notices the index exists and would queue every Orion-LD insert
+  // behind a running VACUUM. The port looks first and creates only what is
+  // missing — in the old order.
+  assert.equal(
+    SQL_PRESENT_INDEXES,
+    "SELECT name FROM unnest($1::text[]) AS name WHERE to_regclass(name) IS NOT NULL",
+  );
+  assert.deepEqual(INDEX_NAMES, ["attributes_ts_idx", "subattributes_ts_idx", "attributes_entityid_ts_idx"]);
+
+  const all = await assertParity(NIGHT);
+  const created = (ported: Ported): string[] =>
+    ported.db.calls.filter((call) => INDEX_STATEMENTS.has(call.sql)).map((call) => call.sql);
+  assert.deepEqual(created(all.ported), [], "every index present: no CREATE INDEX");
+  assert.deepEqual(all.ported.db.calls.find((call) => call.sql === SQL_PRESENT_INDEXES)?.params, [
+    INDEX_NAMES,
+  ]);
+
+  const one = await assertParity({ ...NIGHT, presentIndexes: ["subattributes_ts_idx"] });
+  assert.deepEqual(created(one.ported), [SQL_INDEX_ATTRIBUTES_TS, SQL_INDEX_ATTRIBUTES_ENTITYID_TS]);
+
+  const none = await assertParity({ ...NIGHT, presentIndexes: [] });
+  assert.deepEqual(created(none.ported), [
+    SQL_INDEX_ATTRIBUTES_TS,
+    SQL_INDEX_SUBATTRIBUTES_TS,
+    SQL_INDEX_ATTRIBUTES_ENTITYID_TS,
+  ]);
+}
+
+async function lockTimeoutSkipsTheStepAndTheNightGoesOn(): Promise<void> {
+  assert.equal(isLockTimeout(lockTimeout()), true);
+  assert.equal(isLockTimeout(new Error("canceling statement due to statement timeout")), false);
+
+  // The 12-month cut waits behind a lock: one [warn], nothing counted for it,
+  // every later step runs, the night succeeds and is vacuumed.
+  const cut = await runPorted({ ...NIGHT, lockTimeoutOn: [SQL_DELETE_ATTRIBUTES_12M] });
+  assert.equal(cut.failure, null);
+  const warned = cut.t.log.warnings().filter((line) => line.includes("lock not granted"));
+  assert.deepEqual(warned, [lockWarning("12-month cut of attributes", lockTimeout())]);
+  assert.match(warned[0] ?? "", /within 5 s .* the night goes on$/);
+  const sent = cut.db.calls.map((call) => call.sql);
+  for (const later of [SQL_DELETE_SUBATTRIBUTES_12M, SQL_DELETE_SHORT_TIER, SQL_DELETE_BY_IDS, "COMMIT"]) {
+    assert.ok(sent.includes(later), `${later} was not sent after the lock timeout`);
+  }
+  assert.deepEqual(cut.db.calls.slice(-VACUUM_TAIL), vacuumCalls(), "the night is still vacuumed");
+  assert.equal(
+    cut.t.log.lines.find((line) => line.level === "info")?.text,
+    `deleted: ${String(380_000 + 818_000)} attributes / 0 subattributes`,
+  );
+
+  // A missing index whose CREATE cannot get its lock: skipped, the next one is still created.
+  const index = await runPorted({ ...NIGHT, presentIndexes: [], lockTimeoutOn: [SQL_INDEX_ATTRIBUTES_TS] });
+  assert.equal(index.failure, null);
+  assert.deepEqual(
+    index.t.log.warnings().filter((line) => line.includes("lock not granted")),
+    [lockWarning("CREATE INDEX attributes_ts_idx", lockTimeout())],
+  );
+  assert.ok(index.db.calls.some((call) => call.sql === SQL_INDEX_ATTRIBUTES_ENTITYID_TS));
+
+  // The totals: rolled back (yesterday's figures stay), one [warn], the run succeeds.
+  const totals = await runPorted({ ...NIGHT, lockTimeoutOn: [SQL_FILL_TYPE_STATS] });
+  assert.equal(totals.failure, null);
+  assert.deepEqual(
+    totals.db.calls.slice(-(4 + VACUUM_TAIL), -VACUUM_TAIL).map((call) => call.sql),
+    ["BEGIN", SQL_CLEAR_TYPE_STATS, SQL_FILL_TYPE_STATS, "ROLLBACK"],
+  );
+  assert.deepEqual(
+    totals.t.log.warnings().filter((line) => line.includes("lock not granted")),
+    [lockWarning("nightly totals", lockTimeout())],
+  );
+
+  // A batch of the old-scheme cleanup: the loop stops there, the night goes on.
+  const batches = await runPorted({ ...NIGHT, lockTimeoutOn: [SQL_DELETE_BY_IDS] });
+  assert.equal(batches.failure, null);
+  assert.equal(batches.db.calls.filter((call) => call.sql === SQL_DELETE_BY_IDS).length, 1);
+  assert.ok(batches.db.calls.some((call) => call.sql === "COMMIT"));
+
+  // Any other error still ends the night, as the old node's did.
+  const other = await runPorted({ ...NIGHT, failOn: SQL_DELETE_ATTRIBUTES_12M });
+  assert.match(other.failure ?? "", /No space left on device/);
+}
+
+async function overlappingWorkSkipsTheNight(): Promise<void> {
+  assert.match(
+    SQL_OVERLAP,
+    /application_name LIKE 'udp-troe-retention%' AND state <> 'idle' AND pid <> pg_backend_pid\(\)/,
+  );
+  assert.match(SQL_OVERLAP, /FROM pg_stat_progress_vacuum p/);
+  assert.match(SQL_OVERLAP, /to_regclass\('attributes'\), to_regclass\('subattributes'\)/);
+  assert.match(
+    SQL_OVERLAP,
+    /backend_type IS DISTINCT FROM 'autovacuum worker' OR a\.query LIKE '%to prevent wraparound%'/,
+  );
+  assert.equal(overlapReason(0, 0), null);
+
+  for (const overlap of [{ retention: 1 }, { vacuum: 1 }, { retention: 2, vacuum: 1 }]) {
+    const busy = await runPorted({ ...NIGHT, overlap });
+    assert.equal(busy.failure, null);
+    assert.deepEqual(
+      busy.db.calls.map((call) => call.sql),
+      [SQL_OVERLAP],
+      "nothing but the guard is sent",
+    );
+    assert.deepEqual(busy.db.sessions, [TUNING_SESSION]);
+    assert.deepEqual(busy.db.events, ["connect", "end"]);
+    assert.deepEqual(busy.t.log.warnings(), []);
+    const info = busy.t.log.lines.filter((line) => line.level === "info").map((line) => line.text);
+    const retention = "retention" in overlap ? overlap.retention : 0;
+    const vacuum = "vacuum" in overlap ? overlap.vacuum : 0;
+    assert.deepEqual(info, [overlapReason(retention, vacuum)]);
+  }
+
+  // A guard that cannot be asked fails the run rather than risking the night.
+  const broken = await runPorted({ ...NIGHT, failOn: SQL_OVERLAP });
+  assert.match(broken.failure ?? "", /No space left on device/);
+  assert.deepEqual(
+    broken.db.calls.map((call) => call.sql),
+    [SQL_OVERLAP],
+  );
+}
+
+async function vacuumWarningsOfTheServerAreReported(): Promise<void> {
+  // PostgreSQL 16 skips a table the user does not own with a WARNING and
+  // reports success: one [warn] naming the owner requirement, the run succeeds.
+  const denied = (table: string): DbNotice => ({
+    severity: "WARNING",
+    message: `permission denied to vacuum "${table}", skipping it`,
+  });
+  const s: Scenario = {
+    ...NIGHT,
+    notices: {
+      [sqlVacuum("attributes")]: [denied("attributes"), { severity: "NOTICE", message: "ignored" }],
+      [sqlVacuum("subattributes")]: [denied("subattributes")],
+    },
+  };
+  const ported = await runPorted(s);
+  assert.equal(ported.failure, null);
+  const expected = vacuumNoticeWarning([
+    'permission denied to vacuum "attributes", skipping it',
+    'permission denied to vacuum "subattributes", skipping it',
+  ]);
+  assert.deepEqual(
+    ported.t.log.warnings().filter((line) => line.includes("VACUUM")),
+    [expected],
+  );
+  assert.match(expected, /TROE_DB_USER must own attributes\/subattributes$/);
+  assert.equal(vacuumNoticeWarning(["oldest xmin is far in the past"]).includes("TROE_DB_USER"), false);
+
+  // Pacing first, in the vacuum session.
+  assert.equal(ported.db.calls.slice(-VACUUM_TAIL)[0]?.sql, "SET vacuum_cost_delay = '2ms'");
+}
+
 export {
   typicalNight as "troe-retention: a typical night — same statements, batches, warnings and summary as the old node",
   capStopsTheOldSchemeLoop as "troe-retention: the old-scheme loop stops at the 5 M cap after the same batch on both sides",
@@ -745,4 +974,8 @@ export {
   failedTuningOnlyWarns as "troe-retention: a failing autovacuum check or ALTER only warns, the night runs as the old node's",
   vacuumRunsLastInItsOwnSession as "troe-retention: VACUUM (ANALYZE) of attributes and subattributes runs last, in its own 45-min session (deliberate)",
   failedVacuumOnlyWarns as "troe-retention: a failing or unreachable VACUUM is one warning, the night's deletes, totals and summary stand",
+  indexesAreCreatedOnlyWhenMissing as "troe-retention: an existing index gets no CREATE INDEX, a missing one is created (deliberate)",
+  lockTimeoutSkipsTheStepAndTheNightGoesOn as "troe-retention: a lock timeout is one warning and skips only that step, the night goes on (deliberate)",
+  overlappingWorkSkipsTheNight as "troe-retention: another retention session or a non-yielding VACUUM skips the night with one info line (deliberate)",
+  vacuumWarningsOfTheServerAreReported as "troe-retention: VACUUM runs paced, and the server's WARNINGs (table not owned) become one warning",
 };

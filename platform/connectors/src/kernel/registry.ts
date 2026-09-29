@@ -182,6 +182,23 @@ function params(raw: unknown, at: string): ConnectorParams {
   return byName;
 }
 
+/**
+ * `fireOnStart` (missing = `true`). `false` on an entry without an interval or
+ * cron would never run — rejected rather than scheduled into silence.
+ */
+function fireOnStart(raw: Readonly<Record<string, unknown>>, at: string): boolean {
+  const value = optionalBoolean(raw.fireOnStart, `${at}.fireOnStart`) ?? true;
+  if (value) return true;
+  const interval = optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`);
+  const cron = optionalString(raw.cron, `${at}.cron`);
+  if ((interval === null || interval <= 0) && (cron === null || cron === "")) {
+    throw new Error(
+      `${at}.fireOnStart: false needs an intervalSeconds or a cron, the connector would never run`,
+    );
+  }
+  return false;
+}
+
 function parseEntry(raw: unknown, index: number): RegistryEntry {
   const at = `connectors[${String(index)}]`;
   if (!isRecord(raw)) throw new Error(`${at}: expected an object`);
@@ -194,6 +211,7 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
     intervalSeconds: optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`),
     cron: optionalString(raw.cron, `${at}.cron`),
     refireOnRestart: optionalBoolean(raw.refireOnRestart, `${at}.refireOnRestart`),
+    fireOnStart: fireOnStart(raw, at),
     // Missing means active, as the status export and the dashboards read it.
     active: optionalBoolean(raw.active, `${at}.active`) ?? true,
     requiresSecret: optionalString(raw.requiresSecret, `${at}.requiresSecret`),

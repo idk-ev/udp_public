@@ -216,7 +216,7 @@ export type BoundarySet = Readonly<Record<Ags, BoundaryEntry>>;
 /**
  * The geo context almost every connector sits on: municipality master data plus
  * the boundary cache. Port of STRICT_LOOKUP and `geo_helper` in
- * scripts/generate-nodered-flows.py (see src/kernel/geo.ts for the algorithm).
+ * the former Node-RED flow generator (see git history) (see src/kernel/geo.ts for the algorithm).
  *
  * There is deliberately NO centroid lookup here any more. The former helper
  * (NEAREST_HELPER) fell back to the nearest municipality centre, so points
@@ -555,7 +555,7 @@ export interface ChangeGateOptions {
 
 /**
  * Change detection over value signatures, two-phase. Port of `gateChanged`,
- * `sigPending` and SIG_COMMIT in scripts/generate-nodered-flows.py.
+ * `sigPending` and SIG_COMMIT in the former Node-RED flow generator (see git history).
  *
  * Phase one is {@link check}: it decides what to send and returns the new
  * signatures as PENDING. Phase two, the commit, is not on this interface on
@@ -922,6 +922,15 @@ export interface RegistryEntry {
    * src/kernel/scheduler.ts.
    */
   readonly refireOnRestart: boolean | null;
+  /**
+   * `false`: no run on service start at all — the interval or cron is the
+   * only trigger. For nightly jobs whose schedule is enough and whose run is
+   * expensive (a database maintenance pass, ~1,500 requests to one source).
+   * Missing means `true`. Unlike `refireOnRestart: false` (delayed, not
+   * skipped) this does skip; the registry refuses it on an entry without an
+   * interval or cron, which would then never run.
+   */
+  readonly fireOnStart: boolean;
   readonly active: boolean;
   readonly requiresSecret: string | null;
   readonly pending: boolean;
@@ -1074,10 +1083,23 @@ export interface RouteRegistry {
  */
 export type SqlParam = string | number | boolean | null | readonly string[];
 
+/** A notice the server sent while a statement ran (`WARNING`, `NOTICE`, …). */
+export interface DbNotice {
+  /** `WARNING`, `NOTICE`, `INFO`, … as the server names it. */
+  readonly severity: string;
+  readonly message: string;
+}
+
 export interface DbQueryResult {
   /** Narrow them — column types are whatever the SQL says. */
   readonly rows: readonly Readonly<Record<string, unknown>>[];
   readonly rowCount: number | null;
+  /**
+   * Notices the server sent during this statement. A statement can succeed
+   * and still only warn — `VACUUM` of a table the user does not own skips it
+   * with a `WARNING` and reports success.
+   */
+  readonly notices?: readonly DbNotice[] | undefined;
 }
 
 export interface DbSession {
@@ -1097,6 +1119,13 @@ export interface DbSessionOptions {
   readonly queryTimeoutMs: number;
   /** Default 10 s. */
   readonly connectionTimeoutMs?: number | undefined;
+  /**
+   * `lock_timeout` on the server: a statement that waits longer for a lock
+   * fails with SQLSTATE 55P03 instead of queueing — and making every later
+   * writer of the same table queue behind it. Unset: no limit (the server's
+   * default).
+   */
+  readonly lockTimeoutMs?: number | undefined;
 }
 
 /**

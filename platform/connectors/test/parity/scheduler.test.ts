@@ -6,7 +6,8 @@
 /**
  * Startup order of the scheduler. A connector that serves a public endpoint
  * starts right away: in the stagger, abfahrten-on-demand came last and
- * /abfahrten answered 503 for five minutes after every restart (seen live).
+ * /abfahrten answered 503 for five minutes after every restart (observed in a
+ * production installation).
  * refireOnRestart: false still wins — it protects rate-limited sources.
  */
 
@@ -24,6 +25,7 @@ import {
   createScheduler,
   scheduleOf,
 } from "../../src/kernel/scheduler.js";
+import { parseRegistry } from "../../src/kernel/registry.js";
 import { recordingLog } from "../harness/kernel.js";
 import { registryEntry } from "../harness/g-transport.js";
 
@@ -51,7 +53,7 @@ function refireOnRestartFalseStillWins(): void {
 }
 
 async function intervalCountsFromTheFirstRun(): Promise<void> {
-  // Startup delay equal to the interval, as efa-abfahrten has in production
+  // Startup delay equal to the interval, as efa-abfahrten has in the registry
   // (300 s each), scaled down to 1 s. Before, the first interval tick came right
   // on top of the delayed first run and was skipped with a [warn].
   const log = recordingLog();
@@ -83,7 +85,58 @@ async function intervalCountsFromTheFirstRun(): Promise<void> {
   );
 }
 
+function nightlyJobsDoNotFireOnStart(): void {
+  // Both nightly jobs: their cron is their only trigger. A restart must not
+  // start a database maintenance pass or ~1,500 MaStR requests.
+  for (const id of ["troe-retention", "mastr-bw"]) {
+    const schedule = scheduleOf(registryEntry(id), 0, false);
+    assert.equal(schedule.kind, "cron", id);
+    assert.equal(schedule.fireOnStart, false, `${id} fires on start`);
+  }
+  // Missing means true, as before.
+  assert.equal(scheduleOf(registryEntry("pegel-bw"), 0, false).fireOnStart, true);
+  assert.equal(scheduleOf(registryEntry("pegel-bw", { refireOnRestart: false }), 0, false).fireOnStart, true);
+
+  // The registry refuses what would never run, and anything but a boolean.
+  const entry = (extra: Record<string, unknown>): unknown => ({
+    connectors: [{ id: "x", name: "X", scope: "land", ...extra }],
+  });
+  assert.equal(parseRegistry(entry({ cron: "40 03 * * *", fireOnStart: false }))[0]?.fireOnStart, false);
+  assert.equal(parseRegistry(entry({ intervalSeconds: 60, fireOnStart: false }))[0]?.fireOnStart, false);
+  assert.equal(parseRegistry(entry({ intervalSeconds: 60 }))[0]?.fireOnStart, true);
+  assert.throws(() => parseRegistry(entry({ fireOnStart: false })), /would never run/);
+  assert.throws(
+    () => parseRegistry(entry({ intervalSeconds: 0, cron: "", fireOnStart: false })),
+    /would never run/,
+  );
+  assert.throws(() => parseRegistry(entry({ intervalSeconds: 60, fireOnStart: "no" })), /expected boolean/);
+}
+
+async function noStartRunWithoutFireOnStart(): Promise<void> {
+  const log = recordingLog();
+  const scheduler = createScheduler(log);
+  const t0 = Date.now();
+  const started: number[] = [];
+  scheduler.add(
+    "nightly",
+    { kind: "interval", intervalSeconds: 1, cron: null, fireOnStart: false, startupDelaySeconds: 0 },
+    () => {
+      started.push(Date.now() - t0);
+      return Promise.resolve();
+    },
+  );
+  scheduler.start();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(started.length, 0, "fired on start");
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  scheduler.stop();
+  assert.equal(started.length, 1, `runs started at ${started.join(", ")} ms`);
+  assert.ok((started[0] ?? 0) >= 900, "the first run is the first interval tick");
+}
+
 export {
+  nightlyJobsDoNotFireOnStart as "scheduler: fireOnStart false (troe-retention, mastr-bw) skips the start run; the registry refuses it without a schedule",
+  noStartRunWithoutFireOnStart as "scheduler: a job without fireOnStart runs first on its schedule, not on start",
   intervalCountsFromTheFirstRun as "scheduler: the interval counts from the first run, so a delay equal to it causes no skip",
   routeConnectorsStartFirst as "scheduler: connectors serving public endpoints start right away, not in the stagger",
   refireOnRestartFalseStillWins as "scheduler: refireOnRestart false keeps its 600 s delay even for an endpoint connector",

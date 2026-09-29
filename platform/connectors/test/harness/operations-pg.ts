@@ -20,7 +20,14 @@
  * `Date`.
  */
 
-import type { Db, DbQueryResult, DbSession, DbSessionOptions, SqlParam } from "../../src/kernel/types.js";
+import type {
+  Db,
+  DbNotice,
+  DbQueryResult,
+  DbSession,
+  DbSessionOptions,
+  SqlParam,
+} from "../../src/kernel/types.js";
 
 /** One statement as a side sent it. Params stay `unknown`: the old node's come from the vm realm. */
 export interface SqlCall {
@@ -31,6 +38,8 @@ export interface SqlCall {
 export interface SqlAnswer {
   readonly rows?: readonly Readonly<Record<string, unknown>>[];
   readonly rowCount?: number | null;
+  /** Server notices during the statement; only the port's `Db` passes them on. */
+  readonly notices?: readonly DbNotice[];
 }
 
 /** Answers a statement; an `Error` makes the query reject with it. */
@@ -51,7 +60,11 @@ function answer(
   recorder.calls.push({ sql, params });
   const result = respond(sql, params);
   if (result instanceof Error) return Promise.reject(result);
-  return Promise.resolve({ rows: result.rows ?? [], rowCount: result.rowCount ?? null });
+  return Promise.resolve({
+    rows: result.rows ?? [],
+    rowCount: result.rowCount ?? null,
+    notices: result.notices ?? [],
+  });
 }
 
 export interface FakePg extends Recorder {

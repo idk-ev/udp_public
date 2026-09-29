@@ -21,11 +21,14 @@
  * of the old node: the first cancels on the SERVER, the second only makes the
  * client give up and would leave the query running — a statistics scan that
  * outlives its run is how the database ended up at its CPU limit.
+ * `lock_timeout` is set where a session asks for it (`lockTimeoutMs`): a
+ * statement queued behind a lock makes every later writer of the table queue
+ * behind it.
  */
 
 import pg from "pg";
 
-import type { Db, DbQueryResult, DbSession, DbSessionOptions, Env, SqlParam } from "./types.js";
+import type { Db, DbNotice, DbQueryResult, DbSession, DbSessionOptions, Env, SqlParam } from "./types.js";
 
 const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000;
 
@@ -68,16 +71,24 @@ class PgDb implements Db {
       connectionTimeoutMillis: options.connectionTimeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS,
       statement_timeout: options.statementTimeoutMs,
       query_timeout: options.queryTimeoutMs,
+      ...(options.lockTimeoutMs === undefined ? {} : { lock_timeout: options.lockTimeoutMs }),
+    });
+    // The protocol delivers a statement's notices before its completion, so
+    // they are all in by the time the query settles.
+    const notices: DbNotice[] = [];
+    client.on("notice", (notice) => {
+      notices.push({ severity: notice.severity ?? "NOTICE", message: notice.message ?? "" });
     });
     await client.connect();
     try {
       return await work({
         query: async (sql: string, params?: readonly SqlParam[]): Promise<DbQueryResult> => {
+          notices.length = 0;
           const result = await client.query<Record<string, unknown>>(
             sql,
             params === undefined ? [] : [...params],
           );
-          return { rows: result.rows, rowCount: result.rowCount };
+          return { rows: result.rows, rowCount: result.rowCount, notices: notices.splice(0) };
         },
       });
     } finally {

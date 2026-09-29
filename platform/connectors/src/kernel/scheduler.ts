@@ -38,6 +38,16 @@
  * intent — do not send every source a request in the same second after a
  * restart — is preserved; the exact seconds are not. That is a deviation, and
  * the only one in this module.
+ *
+ * ## fireOnStart: false means SKIPPED
+ *
+ * The registry's `"fireOnStart": false` takes the start run away completely:
+ * the interval or cron is the only trigger. Meant for nightly jobs whose cron
+ * is enough and whose run is expensive — `troe-retention` (index checks,
+ * deletes and a VACUUM of the TRoE tables on every restart) and `mastr-bw`
+ * (~1,500 MaStR requests per run). The registry refuses it on an entry that
+ * has neither, so it cannot starve a connector the way reading
+ * `refireOnRestart: false` as "skip" would.
  */
 
 import type {
@@ -75,7 +85,8 @@ export const MAX_STARTUP_DELAY_SECONDS = 300;
  * First run of a connector that serves public endpoints (`routes`): right after
  * start, not in the stagger. Such a connector loads what its endpoint answers
  * from (the stop directory behind /abfahrten); in the stagger it came last and
- * the endpoint answered 503 for five minutes after every restart (seen live).
+ * the endpoint answered 503 for five minutes after every restart (observed in a
+ * production installation).
  */
 export const ROUTE_STARTUP_DELAY_SECONDS = 1;
 
@@ -101,12 +112,12 @@ export function scheduleOf(entry: RegistryEntry, position: number, servesRoutes 
     // clears `repeat`, never both.
     intervalSeconds: kind === "interval" ? entry.intervalSeconds : null,
     cron: kind === "cron" ? entry.cron : null,
-    // Every inject node in the flows has once: true. The single exception,
-    // poi-bw (once: false), is set by hand in the generator right after the
-    // helper call and is not represented in the registry — it would be lost
-    // here. Noted for the cutover; poi-bw carries refireOnRestart: false, so it
+    // Every inject node in the flows had once: true. The single exception,
+    // poi-bw (once: false), was set by hand in the former generator and never
+    // reached the registry; poi-bw carries refireOnRestart: false, so it
     // starts 600 s delayed instead of not at all, which is the safe direction.
-    fireOnStart: true,
+    // `"fireOnStart": false` in the registry skips the start run (see above).
+    fireOnStart: entry.fireOnStart,
     startupDelaySeconds,
   };
 }
@@ -259,7 +270,8 @@ class TimerScheduler implements Scheduler {
         // Node-RED's inject node counted from deploy: with a startup delay
         // equal to the interval (efa-abfahrten, 300 s) the first tick hit one
         // second after the first run and was skipped with a [warn] after
-        // every restart (seen live). Deliberate deviation.
+        // every restart (observed in a production installation). Deliberate
+        // deviation.
         this.#track(
           setTimeout(() => {
             this.#fire(job, "start");
