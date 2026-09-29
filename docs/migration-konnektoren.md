@@ -313,7 +313,8 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - `troe-retention`: Altschema-Bereinigung nur für nachweislich eigene
   `parken-bw`-Altlasten (Anbieter + vor der Umstellung geschrieben, alt: alle
   Nicht-`parkapi-`-Ids inkl. kommunaler B+R); der `OffStreetParking`-Schritt
-  entfällt.
+  entfällt; neu: Autovacuum-Schwellen (1 %) vorab und `VACUUM (ANALYZE)` von
+  `attributes`/`subattributes` nach dem Lauf, Fehler nur als `[warn]`.
 - `wetter-dwd-station`: ein Batch-Upsert statt einem je Station; Ausfälle als
   ein `[warn]` je Lauf statt `[error]` je Station; Stations-Id URL-kodiert
   (heutige Ids bytegleich).

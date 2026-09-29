@@ -24,21 +24,37 @@
  * scenario below. The ids are shaped like the old parken-bw scheme (slugged
  * site names) the step exists to clean up.
  *
- * Two DELIBERATE deviations (see the module header) are mapped out of the
+ * The DELIBERATE deviations (see the module header) are mapped out of the
  * comparison rather than hidden: the port never sends the old OffStreetParking
  * DELETE, and it asks SQL_LEGACY_OWN_IDS which candidates are parken-bw's own
- * before deleting. With every candidate owned, everything else is the old
- * conversation; the tests at the end pin the new behaviour.
+ * before deleting. With every candidate owned, the retention session is the
+ * old conversation. Around it the port opens two sessions the old node never
+ * had — the autovacuum thresholds before, VACUUM (ANALYZE) after — and the
+ * expected conversation pins those leading and trailing statements
+ * explicitly. The tests at the end pin the new behaviour.
  */
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { ParseError } from "../../src/kernel/parse.js";
+import type { Db } from "../../src/kernel/types.js";
 import {
+  autovacuumTuned,
   build,
   OLD_SCHEME_BATCH,
   OLD_SCHEME_CAP,
   parse,
+  parseReloptions,
   run,
+  SESSION,
+  SQL_RELOPTIONS,
+  sqlAutovacuumTuning,
+  sqlVacuum,
+  TUNING_SESSION,
+  tuningWarning,
+  VACUUM_SESSION,
+  VACUUMED_TABLES,
+  vacuumWarning,
   SQL_CLEAR_TYPE_STATS,
   SQL_CREATE_TYPE_STATS,
   SQL_DELETE_ATTRIBUTES_12M,
@@ -102,7 +118,18 @@ interface Scenario {
   /** rowCount of the n-th old-scheme batch. */
   perBatch: (batch: number) => number;
   failOn?: string;
+  /** `pg_class.reloptions` per table; default `null` (nothing set, as after the TRoE setup). */
+  reloptions?: Readonly<Record<string, readonly string[] | null>>;
 }
+
+/** The thresholds as Postgres stores them after the port's ALTER TABLE. */
+const TUNED = ["autovacuum_vacuum_insert_scale_factor=0.01", "autovacuum_analyze_scale_factor=0.01"];
+
+/** The statements only the port sends besides SQL_RELOPTIONS: the ALTERs and the VACUUMs. */
+const PORT_ONLY = new Set(VACUUMED_TABLES.flatMap((table) => [sqlAutovacuumTuning(table), sqlVacuum(table)]));
+
+/** Failures injected into the port-only statements: the old side never sees them. */
+const PORT_ONLY_FAILURES = new Set([SQL_RELOPTIONS, ...PORT_ONLY]);
 
 function oldIds(count: number): string[] {
   return Array.from({ length: count }, (_, i) =>
@@ -126,7 +153,13 @@ function responder(s: Scenario): SqlResponder {
   const counted = (rowCount: number): SqlAnswer => ({ rows: [], rowCount });
   return (sql, params) => {
     if (sql === s.failOn) return new Error("could not extend file: No space left on device");
+    if (PORT_ONLY.has(sql)) return { rows: [], rowCount: null };
     switch (sql) {
+      case SQL_RELOPTIONS: {
+        const table: unknown = Array.isArray(params) ? params[0] : undefined;
+        const reloptions = typeof table === "string" ? (s.reloptions?.[table] ?? null) : null;
+        return { rows: [{ reloptions }], rowCount: 1 };
+      }
       case SQL_INDEX_ATTRIBUTES_TS:
       case SQL_INDEX_SUBATTRIBUTES_TS:
       case SQL_INDEX_ATTRIBUTES_ENTITYID_TS:
@@ -194,9 +227,10 @@ interface Ported {
   readonly failure: string | null;
 }
 
-async function runPorted(s: Scenario): Promise<Ported> {
+/** @param wrap Stands between the port and the scripted database (a session that cannot connect). */
+async function runPorted(s: Scenario, wrap: (db: Db) => Db = (db) => db): Promise<Ported> {
   const db = scriptedDb(responder(s));
-  const t = testCtx({ id: "troe-retention", db: db.db });
+  const t = testCtx({ id: "troe-retention", db: wrap(db.db) });
   try {
     await run(t.ctx);
     return { db, t, failure: null };
@@ -235,8 +269,33 @@ function assertOwnershipQueries(ported: Ported, candidates: readonly string[]): 
   );
 }
 
-function assertSameConversation(legacy: Legacy, ported: Ported): void {
-  const expected = expectedCalls(legacy, ported);
+/**
+ * DELIBERATE (not in the old node): the leading autovacuum statements — per
+ * table the reloptions read, then an ALTER TABLE only where the thresholds are
+ * not in place; a failure ends the tuning session.
+ */
+function tuningCalls(s: Scenario): SqlCall[] {
+  const out: SqlCall[] = [];
+  for (const table of VACUUMED_TABLES) {
+    out.push({ sql: SQL_RELOPTIONS, params: [table] });
+    if (s.failOn === SQL_RELOPTIONS) return out;
+    const options = s.reloptions?.[table] ?? null;
+    if (options !== null && TUNED.every((entry) => options.includes(entry))) continue;
+    const alter = sqlAutovacuumTuning(table);
+    out.push({ sql: alter, params: undefined });
+    if (s.failOn === alter) return out;
+  }
+  return out;
+}
+
+/** DELIBERATE (not in the old node): the trailing VACUUMs, both tables, after a successful night only. */
+function vacuumCalls(): SqlCall[] {
+  return VACUUMED_TABLES.map((table) => ({ sql: sqlVacuum(table), params: undefined }));
+}
+
+function assertSameConversation(legacy: Legacy, ported: Ported, s: Scenario): void {
+  const succeeded = legacy.failure === null;
+  const expected = [...tuningCalls(s), ...expectedCalls(legacy, ported), ...(succeeded ? vacuumCalls() : [])];
   assert.deepEqual(
     ported.db.calls.map((call) => call.sql),
     expected.map((call) => call.sql),
@@ -248,11 +307,18 @@ function assertSameConversation(legacy: Legacy, ported: Ported): void {
     "the parameters differ on the wire",
   );
   assert.deepEqual(legacy.pg.events, ["connect", "end"], "the old node left its connection open");
-  assert.deepEqual(ported.db.events, ["connect", "end"], "the port left its connection open");
+  // Tuning, retention and — after a successful night — vacuum: one connection each, all closed.
+  const sessions = succeeded ? [TUNING_SESSION, SESSION, VACUUM_SESSION] : [TUNING_SESSION, SESSION];
+  assert.deepEqual(ported.db.sessions, sessions);
+  assert.deepEqual(
+    ported.db.events,
+    sessions.flatMap(() => ["connect", "end"]),
+    "the port left a connection open",
+  );
 
   const config = normalize(legacy.pg.configs[0]);
   assert.ok(isRecord(config));
-  const session = ported.db.sessions[0];
+  const session = ported.db.sessions[1];
   assert.ok(session !== undefined);
   assert.equal(session.applicationName, config.application_name);
   assert.equal(session.statementTimeoutMs, config.statement_timeout);
@@ -278,6 +344,9 @@ const WORDING: readonly [RegExp, (m: RegExpExecArray) => string][] = [
   ],
 ];
 
+/** Warnings of the port-only steps (autovacuum thresholds, VACUUM); pinned by their own tests. */
+const PORT_ONLY_WARNING = /^Retention: (autovacuum thresholds|VACUUM \(ANALYZE\))/;
+
 /** The old warnings the port still gives: all but the dropped OffStreetParking step's. */
 function portedWarnings(old: readonly string[]): string[] {
   return old.map(reworded).filter((line) => !line.includes("OffStreetParking"));
@@ -294,17 +363,29 @@ function reworded(old: string): string {
 async function assertParity(s: Scenario): Promise<{ legacy: Legacy; ported: Ported }> {
   const legacy = await runLegacy(s);
   const ported = await runPorted(s);
-  assertSameConversation(legacy, ported);
+  assertSameConversation(legacy, ported, s);
   assertOwnershipQueries(ported, s.oldIds);
   assert.equal(
     ported.failure === null,
     legacy.failure === null,
     `${String(legacy.failure)} / ${String(ported.failure)}`,
   );
+  const warnings = ported.t.log.warnings();
   // A node that threw hands no warnings out of the harness; that case is
   // checked against the same night without the failure instead.
   if (legacy.run !== null) {
-    assert.deepEqual(ported.t.log.warnings(), portedWarnings(legacy.run.warnings), "the warnings differ");
+    assert.deepEqual(
+      warnings.filter((line) => !PORT_ONLY_WARNING.test(line)),
+      portedWarnings(legacy.run.warnings),
+      "the warnings differ",
+    );
+  }
+  // The port-only steps are silent unless one of their statements fails.
+  if (s.failOn === undefined || !PORT_ONLY_FAILURES.has(s.failOn)) {
+    assert.deepEqual(
+      warnings.filter((line) => PORT_ONLY_WARNING.test(line)),
+      [],
+    );
   }
   assert.equal(ported.t.seen.length, 0, "the retention never writes to Orion");
   return { legacy, ported };
@@ -343,8 +424,8 @@ async function typicalNight(): Promise<void> {
   assert.equal(ported.db.calls.filter((call) => call.sql === SQL_DELETE_BY_IDS).length, 3);
   assert.equal(ported.t.log.warnings().length, 2);
   assert.deepEqual(
-    ported.db.calls.slice(-4).map((call) => call.sql),
-    ["BEGIN", SQL_CLEAR_TYPE_STATS, SQL_FILL_TYPE_STATS, "COMMIT"],
+    ported.db.calls.slice(-6).map((call) => call.sql),
+    ["BEGIN", SQL_CLEAR_TYPE_STATS, SQL_FILL_TYPE_STATS, "COMMIT", ...vacuumCalls().map((call) => call.sql)],
   );
   assert.equal(
     ported.t.log.lines.find((line) => line.level === "info")?.text,
@@ -399,6 +480,11 @@ async function failedTotalsRollBack(): Promise<void> {
   assert.deepEqual(
     ported.db.calls.slice(-4).map((call) => call.sql),
     ["BEGIN", SQL_CLEAR_TYPE_STATS, SQL_FILL_TYPE_STATS, "ROLLBACK"],
+  );
+  assert.equal(
+    ported.db.calls.some((call) => call.sql.startsWith("VACUUM")),
+    false,
+    "a failed night is not vacuumed",
   );
   // The warnings of the steps done before the failure are not lost: the same
   // two the old node logged on this night without the failure.
@@ -488,9 +574,153 @@ async function failedOwnershipCheckDeletesNothing(): Promise<void> {
       .some((line) => line.includes("ownership check of the old-scheme parking ids failed")),
   );
   assert.deepEqual(
-    ported.db.calls.slice(-4).map((call) => call.sql),
+    ported.db.calls.slice(-6, -2).map((call) => call.sql),
     ["BEGIN", SQL_CLEAR_TYPE_STATS, SQL_FILL_TYPE_STATS, "COMMIT"],
     "the totals are refreshed anyway",
+  );
+}
+
+async function autovacuumThresholdsOnlyWhereTheyDiffer(): Promise<void> {
+  // DELIBERATE DEVIATION (production finding, module header): the old node
+  // never touched the autovacuum settings.
+  assert.equal(
+    sqlAutovacuumTuning("attributes"),
+    "ALTER TABLE attributes SET (autovacuum_vacuum_insert_scale_factor = 0.01, autovacuum_analyze_scale_factor = 0.01)",
+  );
+  assert.equal(SQL_RELOPTIONS, "SELECT reloptions FROM pg_class WHERE oid = $1::regclass");
+  assert.ok(TUNING_SESSION.statementTimeoutMs < TUNING_SESSION.queryTimeoutMs);
+
+  // Nothing set yet: read and ALTER both tables, before the retention session.
+  const fresh = await assertParity(NIGHT);
+  assert.deepEqual(fresh.ported.db.calls.slice(0, 4), [
+    { sql: SQL_RELOPTIONS, params: ["attributes"] },
+    { sql: sqlAutovacuumTuning("attributes"), params: undefined },
+    { sql: SQL_RELOPTIONS, params: ["subattributes"] },
+    { sql: sqlAutovacuumTuning("subattributes"), params: undefined },
+  ]);
+  assert.equal(fresh.ported.db.calls[4]?.sql, SQL_INDEX_ATTRIBUTES_TS);
+  assert.deepEqual(fresh.ported.db.sessions[0], TUNING_SESSION);
+
+  // attributes already tuned (among other options), subattributes half: one ALTER.
+  const half: Scenario = {
+    ...NIGHT,
+    reloptions: {
+      attributes: ["fillfactor=100", ...TUNED],
+      subattributes: ["autovacuum_analyze_scale_factor=0.01"],
+    },
+  };
+  const partly = await assertParity(half);
+  assert.deepEqual(
+    partly.ported.db.calls.filter((call) => call.sql.startsWith("ALTER TABLE")).map((call) => call.sql),
+    [sqlAutovacuumTuning("subattributes")],
+  );
+
+  // Both in place: no ALTER TABLE at all, night after night.
+  const done = await assertParity({ ...NIGHT, reloptions: { attributes: TUNED, subattributes: TUNED } });
+  assert.equal(
+    done.ported.db.calls.some((call) => call.sql.startsWith("ALTER TABLE")),
+    false,
+  );
+
+  // The comparison is numeric, the parse strict.
+  assert.equal(
+    autovacuumTuned(
+      parseReloptions(
+        ["autovacuum_vacuum_insert_scale_factor=0.010", "autovacuum_analyze_scale_factor=1e-2"],
+        "r",
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    autovacuumTuned(
+      parseReloptions(
+        ["autovacuum_vacuum_insert_scale_factor=0.2", "autovacuum_analyze_scale_factor=0.01"],
+        "r",
+      ),
+    ),
+    false,
+  );
+  assert.equal(autovacuumTuned(parseReloptions(null, "r")), false);
+  assert.throws(() => parseReloptions("autovacuum_analyze_scale_factor=0.01", "r"), ParseError);
+  assert.throws(() => parseReloptions(["=0.01"], "r"), ParseError);
+}
+
+async function failedTuningOnlyWarns(): Promise<void> {
+  // The read fails: one warning first, no ALTER, the night is the old one.
+  const readFails = await assertParity({ ...NIGHT, failOn: SQL_RELOPTIONS });
+  assertSameSummary(readFails.legacy, readFails.ported);
+  assert.equal(readFails.ported.failure, null);
+  assert.equal(
+    readFails.ported.t.log.warnings()[0],
+    tuningWarning(new Error("could not extend file: No space left on device")),
+  );
+  assert.equal(readFails.ported.t.log.warnings().filter((line) => PORT_ONLY_WARNING.test(line)).length, 1);
+  assert.equal(
+    readFails.ported.db.calls.some((call) => call.sql.startsWith("ALTER TABLE")),
+    false,
+  );
+  assert.deepEqual(readFails.ported.db.calls.slice(-2), vacuumCalls(), "the vacuum still runs");
+
+  // The ALTER fails (a lock wait cut short): one warning, the tuning session ends there.
+  const alterFails = await assertParity({ ...NIGHT, failOn: sqlAutovacuumTuning("attributes") });
+  assertSameSummary(alterFails.legacy, alterFails.ported);
+  assert.equal(alterFails.ported.t.log.warnings().filter((line) => PORT_ONLY_WARNING.test(line)).length, 1);
+}
+
+async function vacuumRunsLastInItsOwnSession(): Promise<void> {
+  // DELIBERATE DEVIATION (production finding, module header): the old node
+  // never vacuumed. Both tables, after the committed totals, in a session of
+  // their own — no BEGIN in it, 45 min on the server, the client longer.
+  const { ported } = await assertParity(NIGHT);
+  assert.deepEqual(
+    vacuumCalls().map((call) => call.sql),
+    ["VACUUM (ANALYZE) attributes", "VACUUM (ANALYZE) subattributes"],
+  );
+  const lastCommit = ported.db.calls.map((call) => call.sql).lastIndexOf("COMMIT");
+  assert.deepEqual(ported.db.calls.slice(lastCommit + 1), vacuumCalls());
+  assert.deepEqual(ported.db.sessions[2], VACUUM_SESSION);
+  assert.equal(VACUUM_SESSION.statementTimeoutMs, 45 * 60_000);
+  assert.ok(VACUUM_SESSION.statementTimeoutMs < VACUUM_SESSION.queryTimeoutMs);
+  assert.ok(VACUUM_SESSION.statementTimeoutMs > SESSION.statementTimeoutMs);
+  assert.deepEqual(ported.db.events, ["connect", "end", "connect", "end", "connect", "end"]);
+}
+
+async function failedVacuumOnlyWarns(): Promise<void> {
+  // attributes times out: one warning, subattributes is still vacuumed, the
+  // run succeeds and everything before is the old night.
+  const s: Scenario = { ...NIGHT, failOn: sqlVacuum("attributes") };
+  const { legacy, ported } = await assertParity(s);
+  assertSameSummary(legacy, ported);
+  assert.equal(ported.failure, null);
+  assert.deepEqual(ported.db.calls.slice(-2), vacuumCalls());
+  const warnings = ported.t.log.warnings();
+  assert.deepEqual(
+    warnings.filter((line) => PORT_ONLY_WARNING.test(line)),
+    [vacuumWarning(["attributes: could not extend file: No space left on device"])],
+  );
+  assert.equal(
+    warnings.at(-1),
+    vacuumWarning(["attributes: could not extend file: No space left on device"]),
+  );
+
+  // The vacuum session cannot even connect: one warning, the run still succeeds.
+  const refusing = (db: Db): Db => ({
+    session: (options, work) =>
+      options === VACUUM_SESSION
+        ? Promise.reject(new Error("connect ECONNREFUSED"))
+        : db.session(options, work),
+  });
+  const cut = await runPorted(NIGHT, refusing);
+  assert.equal(cut.failure, null);
+  assert.deepEqual(
+    cut.t.log.warnings().filter((line) => PORT_ONLY_WARNING.test(line)),
+    [vacuumWarning(["connect ECONNREFUSED"])],
+  );
+  assert.equal(
+    cut.t.log.lines.filter((line) => line.level === "info").length,
+    1,
+    "the summary is logged regardless",
   );
 }
 
@@ -511,4 +741,8 @@ export {
   municipalStationsKeepTheirHistory as "troe-retention: only parken-bw's own legacy ids lose their history, municipal B+R stations and OffStreetParking stay (deliberate)",
   failedOwnershipCheckDeletesNothing as "troe-retention: a failing ownership check skips the legacy cleanup with a warning, the night goes on",
   ownershipIsCheckedInBatches as "troe-retention: ownership is asked per batch of candidates, with parken-bw's provider",
+  autovacuumThresholdsOnlyWhereTheyDiffer as "troe-retention: autovacuum thresholds are set first, only on tables whose reloptions differ (deliberate)",
+  failedTuningOnlyWarns as "troe-retention: a failing autovacuum check or ALTER only warns, the night runs as the old node's",
+  vacuumRunsLastInItsOwnSession as "troe-retention: VACUUM (ANALYZE) of attributes and subattributes runs last, in its own 45-min session (deliberate)",
+  failedVacuumOnlyWarns as "troe-retention: a failing or unreachable VACUUM is one warning, the night's deletes, totals and summary stand",
 };

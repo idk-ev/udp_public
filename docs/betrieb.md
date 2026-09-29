@@ -361,6 +361,13 @@ und pflegt idempotente Indizes (`ts` sowie `(entityid, ts)` mit
 und die LIKE-Staffeln der Retention). `drop_chunks` ist bewusst NICHT im
 Einsatz — TRoE nutzt einfache Tabellen, keine Hypertables.
 
+**Vacuum:** Die Retention setzt vorab (nur bei Abweichung) je Tabelle
+`autovacuum_vacuum_insert_scale_factor` und `autovacuum_analyze_scale_factor`
+auf 0,01 und fährt nach dem Lauf `VACUUM (ANALYZE)` auf `attributes` und
+`subattributes` (eigene Sitzung, 45 min Timeout, Fehler nur `[warn]`) — sonst
+bleibt die Tabelle nach einem Switchover (Statistikzähler zurückgesetzt)
+unvacuumiert und `troe-stats` läuft in seinen Timeout.
+
 **Alt-Schema-Reste von `parken-bw` (einmalig, ab Sprint 2.9):** Die Entitäten
 aus der Zeit vor dem Fix tragen IDs aus geslugten Anlagennamen
 (`urn:ngsi-ld:ParkingSite:karlsruhe-parkgarage-fasanengarten`) statt

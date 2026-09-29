@@ -13,9 +13,9 @@
  * `entities` table stays complete so Mintaka can reconstruct entity metadata.
  * Nothing is written to Orion: the old node's result went to a debug node.
  *
- * Every statement below is byte-identical to the old node's, in the same
- * order, on one connection with the same server-side limit (an aborted client
- * never leaves a query behind). The run is I/O from start to end; the pure
+ * Every statement of the retention session ({@link SESSION}) is byte-identical
+ * to the old node's, in the same order, on one connection with the same
+ * server-side limit (an aborted client never leaves a query behind). The run is I/O from start to end; the pure
  * part is small — the wording of the warnings and the summary.
  *
  * The old node bound a JavaScript array to `$1::text[]`; so does the port
@@ -41,12 +41,37 @@
  *  * The one-off `OffStreetParking` cleanup deleted every OffStreetParking
  *    row, whoever writes that type today. Dropped: its one intended run is
  *    long done, and every later run could only hit someone else's data.
+ *
+ * ## Deliberate deviation (production finding; the old node did neither)
+ *
+ * `attributes` is a plain table (~28 GB, ~2.5 M inserts/day). On the current
+ * primary it had never been vacuumed or analysed: every CloudNativePG
+ * switchover (each chart release) resets the table's statistics counters, and
+ * autovacuum on an insert-mostly table this size only triggers after millions
+ * more inserts (`autovacuum_vacuum_insert_scale_factor` defaults to 0.2).
+ * Without a vacuum the visibility map stays empty, so index-only scans fetch
+ * every heap row (2.5 M for one day): `troe-stats`' 24 h aggregation took 80 s
+ * and hit its 50 s statement timeout on every run. So the port
+ *
+ *  * first sets per-table autovacuum thresholds on `attributes` and
+ *    `subattributes` ({@link AUTOVACUUM_SETTINGS}) — only where
+ *    `pg_class.reloptions` differ, since the ALTER TABLE takes a (brief)
+ *    lock — in a short session of its own ({@link TUNING_SESSION});
+ *  * and after the night's work runs `VACUUM (ANALYZE)` on both tables in a
+ *    long session of its own ({@link VACUUM_SESSION}, 45 min on the server):
+ *    VACUUM cannot run in a transaction block and can take many minutes on
+ *    28 GB.
+ *
+ * Either failing is one `[warn]`; the night's deletes, totals and summary
+ * stand. The retention session in between is the old node's conversation,
+ * unchanged.
  */
 
-import { isFiniteNumber, ParseError, requireRecord, requireString } from "../kernel/parse.js";
+import { isFiniteNumber, ParseError, requireArray, requireRecord, requireString } from "../kernel/parse.js";
 import type {
   ConnectorModule,
   Ctx,
+  Db,
   DbQueryResult,
   DbSession,
   DbSessionOptions,
@@ -64,6 +89,49 @@ export const SESSION: DbSessionOptions = {
   queryTimeoutMs: 1_900_000,
   connectionTimeoutMs: 10_000,
 };
+
+/** The autovacuum check and ALTER: small statements, a lock wait is cut short on the server. */
+export const TUNING_SESSION: DbSessionOptions = {
+  applicationName: "udp-troe-retention-tuning",
+  statementTimeoutMs: 60_000,
+  queryTimeoutMs: 70_000,
+  connectionTimeoutMs: 10_000,
+};
+
+/** VACUUM (ANALYZE) on ~28 GB takes many minutes: 45 min on the server, the client a little longer. */
+export const VACUUM_SESSION: DbSessionOptions = {
+  applicationName: "udp-troe-retention-vacuum",
+  statementTimeoutMs: 2_700_000,
+  queryTimeoutMs: 2_820_000,
+  connectionTimeoutMs: 10_000,
+};
+
+/** The tables the retention cuts — and therefore tunes and vacuums. */
+export const VACUUMED_TABLES = ["attributes", "subattributes"] as const;
+export type VacuumedTable = (typeof VACUUMED_TABLES)[number];
+
+/**
+ * Per-table autovacuum thresholds: vacuum and analyse after 1 % new or changed
+ * rows instead of the defaults (20 % inserted / 10 % changed) — at today's
+ * volume about daily, whatever a switchover did to the counters.
+ */
+export const AUTOVACUUM_SETTINGS = [
+  ["autovacuum_vacuum_insert_scale_factor", 0.01],
+  ["autovacuum_analyze_scale_factor", 0.01],
+] as const;
+
+/** A table's storage parameters (`text[]` of `name=value`, `NULL` when none are set). */
+export const SQL_RELOPTIONS = "SELECT reloptions FROM pg_class WHERE oid = $1::regclass";
+
+export function sqlAutovacuumTuning(table: VacuumedTable): string {
+  const settings = AUTOVACUUM_SETTINGS.map(([name, value]) => `${name} = ${String(value)}`).join(", ");
+  return `ALTER TABLE ${table} SET (${settings})`;
+}
+
+/** Sent on its own, outside any transaction block — VACUUM refuses to run in one. */
+export function sqlVacuum(table: VacuumedTable): string {
+  return `VACUUM (ANALYZE) ${table}`;
+}
 
 // ts indexes (idempotent): they carry the retention AND the 10-minute statistics queries.
 export const SQL_INDEX_ATTRIBUTES_TS = "CREATE INDEX IF NOT EXISTS attributes_ts_idx ON attributes (ts)";
@@ -218,6 +286,39 @@ export function oldSchemeWarning(rows: number, idsDone: number, idsTotal: number
   );
 }
 
+/** `pg_class.reloptions` (`name=value` entries) as a map; `null` means none are set. */
+export function parseReloptions(value: unknown, at: string): ReadonlyMap<string, string> {
+  const options = new Map<string, string>();
+  if (value === null) return options;
+  requireArray(value, at).forEach((item, index) => {
+    const entry = requireString(item, `${at}[${String(index)}]`);
+    const eq = entry.indexOf("=");
+    if (eq <= 0) throw new ParseError(`${at}[${String(index)}]`, "a name=value entry", entry);
+    options.set(entry.slice(0, eq), entry.slice(eq + 1));
+  });
+  return options;
+}
+
+/** Whether every {@link AUTOVACUUM_SETTINGS} value is already in place (compared as numbers). */
+export function autovacuumTuned(options: ReadonlyMap<string, string>): boolean {
+  return AUTOVACUUM_SETTINGS.every(([name, value]) => {
+    const set = options.get(name);
+    return set !== undefined && Number(set) === value;
+  });
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function tuningWarning(error: unknown): string {
+  return `Retention: autovacuum thresholds could not be checked or set (${errorText(error)})`;
+}
+
+export function vacuumWarning(failures: readonly string[]): string {
+  return `Retention: VACUUM (ANALYZE) failed, the night's deletes and totals stand (${failures.join("; ")})`;
+}
+
 /* ------------------------------------------------------------------ Run */
 
 /**
@@ -294,7 +395,51 @@ async function retain(db: DbSession, log: Log): Promise<RetentionCounts> {
   return { attributes, subattributes };
 }
 
+/** Sets {@link AUTOVACUUM_SETTINGS} where they are not in place yet; a failure is one `[warn]`. */
+async function tuneAutovacuum(db: Db, log: Log): Promise<void> {
+  try {
+    await db.session(TUNING_SESSION, async (session) => {
+      for (const table of VACUUMED_TABLES) {
+        const result = await session.query(SQL_RELOPTIONS, [table]);
+        const [row] = result.rows;
+        if (row === undefined || result.rows.length !== 1) {
+          throw new ParseError(`reloptions of ${table}`, "exactly one pg_class row", result.rows);
+        }
+        if (!autovacuumTuned(parseReloptions(row.reloptions, `reloptions of ${table}`))) {
+          await session.query(sqlAutovacuumTuning(table));
+        }
+      }
+    });
+  } catch (error) {
+    log.warn(tuningWarning(error));
+  }
+}
+
+/**
+ * `VACUUM (ANALYZE)` of both tables in a session of its own: no transaction
+ * block, its own long timeouts. Each table is tried; all failures together
+ * are one `[warn]`, never a failed run.
+ */
+async function vacuum(db: Db, log: Log): Promise<void> {
+  const failures: string[] = [];
+  try {
+    await db.session(VACUUM_SESSION, async (session) => {
+      for (const table of VACUUMED_TABLES) {
+        try {
+          await session.query(sqlVacuum(table));
+        } catch (error) {
+          failures.push(`${table}: ${errorText(error)}`);
+        }
+      }
+    });
+  } catch (error) {
+    failures.push(errorText(error));
+  }
+  if (failures.length > 0) log.warn(vacuumWarning(failures));
+}
+
 export async function run(ctx: Ctx): Promise<void> {
+  await tuneAutovacuum(ctx.db, ctx.log);
   const counts = await ctx.db.session(SESSION, (db) => retain(db, ctx.log));
   const summary = build(parse(counts), null, ctx.now());
   const text =
@@ -303,6 +448,8 @@ export async function run(ctx: Ctx): Promise<void> {
   ctx.log.status(text);
   // The old node sent this to a debug node; a daily line in the log is its equivalent.
   ctx.log.info(text);
+  // Only after a successful night: a failed one has thrown above, as the old node's did.
+  await vacuum(ctx.db, ctx.log);
 }
 
 export const connector: ConnectorModule<RetentionCounts, RetentionSummary> = {
