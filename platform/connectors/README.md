@@ -46,6 +46,7 @@ The full migration plan with phases and work split is in
     src/kernel/orion.ts        upsert + signature commit, delete, find, paged list
     src/kernel/change-gate.ts  change detection, two-phase (check -> commit)
     src/kernel/geo.ts          geo context, strict municipality lookup
+    src/kernel/geo-bootstrap.ts  loads the geo context at startup and every 6 h, no Orion write
     src/kernel/prune.ts        removal of stale own entities, with its guards
     src/kernel/scheduler.ts    interval/cron, delayed start
     src/kernel/http.ts         HTTP server (used twice: public and admin port)
@@ -72,6 +73,18 @@ flows learned the hard way:
   ~330 m sliver tolerance — and there is no centroid fallback: that put rental
   bikes from Basel into Lörrach. Without boundaries the run is skipped unless
   the module declares `{ boundaries: "optional" }` by name.
+  The context is filled by the kernel itself (the **geo bootstrap**,
+  `src/kernel/geo-bootstrap.ts`): before the scheduler starts, and then every
+  6 h (the files change only with a rebuilt platform; every 5 min while it is
+  still empty), it loads `bw-gemeinden.json` and `bw-grenzen.json` from the
+  cockpit (`UDP_MUNICIPALITIES_URL` / `UDP_BOUNDARIES_URL` override) with the
+  parsers of `stammdaten-bw` and `grenzen-bw` — so the geo-dependent
+  connectors run here while those two still run in Node-RED. It writes
+  nothing to Orion, runs only with at least one `runtime: "app"` connector,
+  keeps the previous context on a failed load (one `[warn]` per failure
+  streak) and keeps a degraded boundary file degraded (no prune). When the two
+  connectors run here as well they fill the same context from the same files;
+  last write wins. `/healthz` reports it under `geo`.
 - **Change gate:** `ctx.gate.check(...)` returns an `UpsertPlan` whose new
   signatures are only *pending*; `ctx.orion.upsert(plan)` commits them for the
   ids the broker confirmed (2xx, or per entity on 207). Storing them before

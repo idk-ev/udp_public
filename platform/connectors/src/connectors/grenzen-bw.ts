@@ -18,6 +18,12 @@
  * `healthUrl` instead of a `sampleEntity` — there is no entity whose freshness
  * could be measured, so the health check pulls the file itself.
  *
+ * In this service the kernel's geo bootstrap (src/kernel/geo-bootstrap.ts)
+ * loads the same file with {@link parse} at startup and every 6 h, so the
+ * connectors here have boundaries even while this connector still runs in
+ * Node-RED. Both write the same data into the same context; the last write
+ * wins.
+ *
  * `build` therefore returns the boundary set, not entities. The contract allows
  * that (`ConnectorModule<Raw, Built>`), and it keeps the pure part diffable: the
  * parity harness compares the parsed structure rather than nothing at all.
@@ -25,11 +31,24 @@
 
 import { COCKPIT_URL } from "../kernel/env.js";
 import { isArray, isFiniteNumber, isRecord, nullPrototypeRecord } from "../kernel/parse.js";
-import type { BoundaryEntry, BoundarySet, ConnectorModule, Ctx, GeoIndex, IsoTime } from "../kernel/types.js";
+import type {
+  BoundaryEntry,
+  BoundarySet,
+  ConnectorModule,
+  Ctx,
+  Env,
+  GeoIndex,
+  IsoTime,
+} from "../kernel/types.js";
 
 export const ID = "grenzen-bw";
 
 export const DEFAULT_URL = `${COCKPIT_URL}/bw-grenzen.json`;
+
+/** Where `run` loads the file — and the kernel's geo bootstrap (src/kernel/geo-bootstrap.ts). */
+export function sourceUrl(env: Env): string {
+  return env.get("UDP_BOUNDARIES_URL") ?? DEFAULT_URL;
+}
 
 /** Result of parsing, with the count of entries that had to be dropped. */
 export interface BoundaryFile {
@@ -101,8 +120,7 @@ export function build(raw: BoundaryFile, _geo: GeoIndex | null, _now: IsoTime): 
 }
 
 export async function run(ctx: Ctx): Promise<void> {
-  const url = ctx.env.get("UDP_BOUNDARIES_URL") ?? DEFAULT_URL;
-  const response = await ctx.fetch.json(url);
+  const response = await ctx.fetch.json(sourceUrl(ctx.env));
   if (!response.ok || !isRecord(response.body)) {
     // Wording of the original. The previous boundaries stay in place, as the
     // old node returned before `global.set`.

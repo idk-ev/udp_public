@@ -14,7 +14,10 @@
  *
  * This connector and `grenzen-bw` are in phase 1 rather than phase 3 for that
  * second reason: `global.set('bwGemeinden', …)` is what twenty other connectors
- * read before they can assign a coordinate to a municipality.
+ * read before they can assign a coordinate to a municipality. In this service
+ * the kernel's geo bootstrap (src/kernel/geo-bootstrap.ts) loads the same file
+ * with {@link parse} as well, so the connectors here get their geo context
+ * wherever this connector runs; the Orion writes stay this connector's job.
  *
  * The change gate matters here more than anywhere else. The original says why:
  *
@@ -45,6 +48,7 @@ import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   ConnectorModule,
   Ctx,
+  Env,
   GeoIndex,
   GeoJsonPoint,
   IsoTime,
@@ -59,6 +63,15 @@ export const ID = "stammdaten-bw";
 
 /** Served by the cockpit; overridable so a dev run can point at a local build. */
 export const DEFAULT_URL = `${COCKPIT_URL}/bw-gemeinden.json`;
+
+/**
+ * Where `run` loads the file — and the kernel's geo bootstrap
+ * (src/kernel/geo-bootstrap.ts), which fills the same geo context from the
+ * same file without writing to Orion.
+ */
+export function sourceUrl(env: Env): string {
+  return env.get("UDP_MUNICIPALITIES_URL") ?? DEFAULT_URL;
+}
 
 /** As FN_MUNI: `emitChunks(node, msg, geaendert, 150)`. */
 const CHUNK_SIZE = 150;
@@ -168,8 +181,7 @@ export function signatureOf(entity: MunicipalityEntity): string {
 }
 
 export async function run(ctx: Ctx): Promise<void> {
-  const url = ctx.env.get("UDP_MUNICIPALITIES_URL") ?? DEFAULT_URL;
-  const response = await ctx.fetch.json(url);
+  const response = await ctx.fetch.json(sourceUrl(ctx.env));
   if (!response.ok) {
     // Same diagnosis as the original: the file is produced by the GUI build, so
     // a 404 here almost always means the build did not run.

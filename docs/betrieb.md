@@ -248,8 +248,10 @@ beantwortet der Dienst nur `/healthz` und baut keine Verbindung auf.
   `CONNECTORS_EXEC="kubectl -n <namespace> exec deploy/connectors --"`.
   Antworten: 202 gestartet, 429 Sperrfrist (60 s) oder Lauf aktiv, 404 läuft
   dort nicht.
-- **Gesundheit:** `/healthz` (Admin-Port) meldet die eingeplanten Konnektoren
-  und den Zustandsspeicher (`stateStore.healthy`, `writer`). Die Antwort bleibt
+- **Gesundheit:** `/healthz` (Admin-Port) meldet die eingeplanten Konnektoren,
+  den Zustandsspeicher (`stateStore.healthy`, `writer`) und den Geo-Kontext
+  (`geo`: Gemeinden, Grenzen, `boundariesDegraded`, letzter Ladezeitpunkt und
+  Fehler je Datei). Die Antwort bleibt
   200, auch wenn die Datenbank klemmt — Liveness-Probe und Compose-Healthcheck
   prüfen nur, ob der Prozess lebt; ein Neustart repariert keine Datenbank.
   `scripts/healthcheck.sh` zeigt den Zustandsspeicher an und schlägt nur fehl,

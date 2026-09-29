@@ -269,8 +269,11 @@ export class MasterDataCheck {
 
 /**
  * The shared geo context — replaces `global.get('bwGemeinden')` and
- * `global.set('bwGrenzen', …)`. `stammdaten-bw` and `grenzen-bw` fill it,
- * every other connector reads it through its own {@link GeoStore} view.
+ * `global.set('bwGrenzen', …)`. The kernel's geo bootstrap
+ * (src/kernel/geo-bootstrap.ts) fills it at startup and every 6 h, and so do
+ * `stammdaten-bw` and `grenzen-bw` when they run here — same files, same
+ * parsers, last write wins. Every other connector reads it through its own
+ * {@link GeoStore} view.
  */
 export class SharedGeo {
   readonly #log: Log;

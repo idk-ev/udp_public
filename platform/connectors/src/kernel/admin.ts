@@ -44,6 +44,7 @@
 
 import { jsonResponse, textResponse } from "./http.js";
 import type { Kernel } from "./context.js";
+import { geoHealth } from "./geo-bootstrap.js";
 import { runtimeOf } from "./registry.js";
 import type { Env, RouteDefinition, RouteResponse } from "./types.js";
 
@@ -81,11 +82,12 @@ export interface AdminOptions {
 }
 
 /**
- * `GET /healthz` — liveness plus what is actually scheduled, and the state
+ * `GET /healthz` — liveness plus what is actually scheduled, the state
  * store (`stateStore.healthy`: writer lock held, every connector loaded, no
- * write failing). A state store problem does not turn the answer into an
- * error: restarting the process would not fix the database, only repeat the
- * load.
+ * write failing) and the geo context (`geo`: municipality rows, polygons,
+ * degraded, and per file the geo bootstrap's last load and error). Neither
+ * turns the answer into an error: restarting the process would not fix the
+ * database or the cockpit, only repeat the load.
  */
 function healthRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
   return {
@@ -105,6 +107,7 @@ function healthRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
             startupDelaySeconds: job.schedule.startupDelaySeconds,
           })),
           stateStore: kernel.persistence?.health() ?? null,
+          geo: geoHealth(kernel.geo, kernel.geoBootstrap),
         }),
       );
     },

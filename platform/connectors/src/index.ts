@@ -21,6 +21,11 @@
  *    in Compose published on the host at most on 127.0.0.1. Phase 5 points
  *    `scripts/trigger-connector.sh` here.
  *
+ * Geo context: loaded by the kernel itself before the first run and every
+ * 6 h (src/kernel/geo-bootstrap.ts) — `bw-gemeinden.json` and
+ * `bw-grenzen.json` from the cockpit, independent of where `stammdaten-bw` and
+ * `grenzen-bw` run, and never written to Orion.
+ *
  * State: change signatures, prune bookkeeping and persisted `ctx.state`
  * keys live in PostgreSQL (schema `udp_connectors`, src/kernel/persistence.ts).
  * They are loaded before the first run — a connector that needs them does not
@@ -36,9 +41,9 @@
  * WOULD run, and leaves the ingestion entirely to Node-RED.
  */
 
-import { CONNECTORS } from "./connectors/index.js";
+import { CONNECTORS, GEO_SOURCES } from "./connectors/index.js";
 import { adminRoutes, DEFAULT_ADMIN_HOST, DEFAULT_ADMIN_PORT, triggerCooldownMs } from "./kernel/admin.js";
-import { createCtx, createKernel, runConnector } from "./kernel/context.js";
+import { createCtx, createKernel, runConnector, startGeoBootstrap } from "./kernel/context.js";
 import type { Kernel } from "./kernel/context.js";
 import { DEFAULT_PORT } from "./kernel/http.js";
 import { sanitizeLogText } from "./kernel/log.js";
@@ -83,7 +88,7 @@ async function main(): Promise<void> {
   const started = Date.now();
   const registryPath = resolveRegistryPath(process.env[REGISTRY_PATH_ENV]);
   const registry = loadRegistry(registryPath);
-  const kernel = createKernel(registry);
+  const kernel = createKernel(registry, GEO_SOURCES);
 
   kernel.log.info(`udp-connectors ${VERSION} — registry ${registryPath}`);
 
@@ -122,12 +127,18 @@ async function main(): Promise<void> {
     kernel.env.number("UDP_CONNECTORS_ADMIN_PORT", DEFAULT_ADMIN_PORT),
     kernel.env.get("UDP_CONNECTORS_ADMIN_HOST") ?? DEFAULT_ADMIN_HOST,
   );
+  // The geo context before the first run (src/kernel/geo-bootstrap.ts): the
+  // two files from the cockpit, wherever stammdaten-bw/grenzen-bw run. After
+  // listen, so the probes answer while the cockpit is slow; with no scheduled
+  // connector nothing is fetched.
+  await startGeoBootstrap(kernel, scheduled.length);
   kernel.scheduler.start();
 
   const stop = (signal: string): void => {
     kernel.log.info(`${signal} received, shutting down`);
     kernel.shutdown.abort();
     kernel.scheduler.stop();
+    kernel.geoBootstrap?.stop();
     // The state store last: its close writes what is still marked and
     // releases the writer lock for the next instance.
     void Promise.all([kernel.publicHttp.close(), kernel.adminHttp.close()])

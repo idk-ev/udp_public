@@ -354,9 +354,16 @@ Rückweg: dieselben Schritte rückwärts (Feld entfernen, Flows neu generieren,
 beide ausrollen, Endpunkt zurück auf Node-RED) — unter Compose vorher den
 Node-RED-Kontext der zurückkehrenden Konnektoren leeren (s. unten).
 
-**Erste Gruppe:** `stammdaten-bw`, `grenzen-bw` und `wetter-bw` — sie füllen
-den Geo-Kontext (Gemeinden, Grenzen), von dem rund 20 Konnektoren des Dienstes
-abhängen; ohne sie überspringen diese ihre Läufe.
+**Letzte Gruppe:** `stammdaten-bw` und `grenzen-bw`. Node-RED hat in
+Kubernetes kein Volume; sein Geo-Kontext (`global.bwGemeinden`/`bwGrenzen`)
+wird nach jedem Neustart nur von diesen beiden Flows neu gefüllt, und alle
+Konnektoren, die noch in Node-RED laufen, brauchen ihn. Der Dienst dagegen
+lädt seinen Geo-Kontext selbst: beim Start (vor dem ersten Lauf) und dann alle
+6 h holt der Kernel `bw-gemeinden.json` und `bw-grenzen.json` vom Cockpit,
+mit den Parsern der beiden Konnektoren und ohne Schreibzugriff auf Orion
+(`platform/connectors/src/kernel/geo-bootstrap.ts`). Die übrigen Konnektoren
+können deshalb vorher umziehen; `wetter-bw` ist dafür nicht mehr maßgeblich.
+Stand des Geo-Kontexts: `/healthz`, Feld `geo`.
 
 **Nie in beiden Laufzeiten zugleich:** Ein Konnektor läuft entweder in
 Node-RED oder im Dienst. Registry-Änderung und Node-RED-Redeploy (neu
