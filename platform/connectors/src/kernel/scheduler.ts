@@ -245,19 +245,29 @@ class TimerScheduler implements Scheduler {
     this.#started = true;
 
     for (const job of this.#jobs.values()) {
-      if (job.schedule.fireOnStart) {
-        this.#track(
-          setTimeout(() => {
-            this.#fire(job, "start");
-          }, job.schedule.startupDelaySeconds * 1000),
-        );
-      }
-      if (job.schedule.intervalSeconds !== null) {
+      const intervalSeconds = job.schedule.intervalSeconds;
+      const startInterval = (): void => {
+        if (intervalSeconds === null) return;
         this.#track(
           setInterval(() => {
             this.#fire(job, "interval");
-          }, job.schedule.intervalSeconds * 1000),
+          }, intervalSeconds * 1000),
         );
+      };
+      if (job.schedule.fireOnStart) {
+        // The interval counts from the first run, not from service start.
+        // Node-RED's inject node counted from deploy: with a startup delay
+        // equal to the interval (efa-abfahrten, 300 s) the first tick hit one
+        // second after the first run and was skipped with a [warn] after
+        // every restart (seen live). Deliberate deviation.
+        this.#track(
+          setTimeout(() => {
+            this.#fire(job, "start");
+            startInterval();
+          }, job.schedule.startupDelaySeconds * 1000),
+        );
+      } else {
+        startInterval();
       }
     }
 

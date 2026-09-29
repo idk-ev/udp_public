@@ -21,8 +21,10 @@ import {
   MAX_STARTUP_DELAY_SECONDS,
   RESTART_DELAY_SECONDS,
   ROUTE_STARTUP_DELAY_SECONDS,
+  createScheduler,
   scheduleOf,
 } from "../../src/kernel/scheduler.js";
+import { recordingLog } from "../harness/kernel.js";
 import { registryEntry } from "../harness/g-transport.js";
 
 function routeConnectorsStartFirst(): void {
@@ -48,7 +50,41 @@ function refireOnRestartFalseStillWins(): void {
   assert.equal(guarded.startupDelaySeconds, RESTART_DELAY_SECONDS);
 }
 
+async function intervalCountsFromTheFirstRun(): Promise<void> {
+  // Startup delay equal to the interval, as efa-abfahrten has in production
+  // (300 s each), scaled down to 1 s. Before, the first interval tick came right
+  // on top of the delayed first run and was skipped with a [warn].
+  const log = recordingLog();
+  const scheduler = createScheduler(log);
+  const started: number[] = [];
+  const t0 = Date.now();
+  scheduler.add(
+    "demo",
+    { kind: "interval", intervalSeconds: 1, cron: null, fireOnStart: true, startupDelaySeconds: 1 },
+    () => {
+      started.push(Date.now() - t0);
+      return new Promise((resolve) => setTimeout(resolve, 300));
+    },
+  );
+  scheduler.start();
+  // Keeps the event loop alive while only the scheduler's timers are pending.
+  await new Promise((resolve) => setTimeout(resolve, 2600));
+  scheduler.stop();
+  assert.equal(started.length, 2, `runs started at ${started.join(", ")} ms`);
+  const [first = 0, second = 0] = started;
+  assert.ok(
+    second - first >= 900,
+    `second run ${String(second - first)} ms after the first, expected about one interval`,
+  );
+  assert.deepEqual(
+    log.lines.filter((line) => line.level === "warn"),
+    [],
+    "no skipped-trigger warning after the start",
+  );
+}
+
 export {
+  intervalCountsFromTheFirstRun as "scheduler: the interval counts from the first run, so a delay equal to it causes no skip",
   routeConnectorsStartFirst as "scheduler: connectors serving public endpoints start right away, not in the stagger",
   refireOnRestartFalseStillWins as "scheduler: refireOnRestart false keeps its 600 s delay even for an endpoint connector",
 };
