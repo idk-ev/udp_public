@@ -196,7 +196,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           # Gelesen wird immer, geschrieben nur aus vertrauenswürdigen Läufen:
           # der Actions-Cache ist auf 10 GB je Repository gedeckelt und wird
-          # repo-weit nach LRU verdrängt. Vier mode=max-Caches pro Fork-PR
+          # repo-weit nach LRU verdrängt. Sechs mode=max-Caches pro Fork-PR
           # schöben sonst die warmen Layer von main heraus.
           cache-to: ${{ steps.ctx.outputs.push == 'true' && format('type=gha,scope={0},mode=max', matrix.name) || '' }}
           # Signierte Herkunft + SBOM als OCI-Attestation am Image (Supply-Chain).

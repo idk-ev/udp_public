@@ -202,7 +202,7 @@ every gated entity in full on its next run (~400k TRoE rows per restart,
 | Port | Env (default) | Serves | Exposure |
 |---|---|---|---|
 | public | `UDP_CONNECTORS_PORT` (1880) | only the routes connectors register (`/abfahrten`, `/warnungen.ics`) | proxied by the cockpit nginx |
-| admin | `UDP_CONNECTORS_ADMIN_PORT` (1881), bound to `UDP_CONNECTORS_ADMIN_HOST` (0.0.0.0) | `GET /healthz`, `POST /trigger/:id` | **never** mapped by nginx, APISIX or an ingress; not published in Compose, in no Kubernetes Service |
+| admin | `UDP_CONNECTORS_ADMIN_PORT` (1881), bound to `UDP_CONNECTORS_ADMIN_HOST` (0.0.0.0) | `GET /healthz`, `POST /trigger/:id` | **never** mapped by nginx, APISIX or an ingress; Compose binds it to 127.0.0.1 (in-container only), in no Kubernetes Service |
 
 Around every route the server answers what Express answered around the old
 `http in` nodes: `HEAD` on a `GET` route (same status and headers, no body),
@@ -214,10 +214,22 @@ src/kernel/http.ts). Routes see the request headers, names lowercased.
 write to Orion, which must not be reachable from the internet. A trigger within
 `UDP_TRIGGER_COOLDOWN_SECONDS` (60, never less) of the previous one, or while a
 run is active, answers 429 with a `Retry-After` instead of starting another run.
-The admin host defaults to all interfaces so container probes reach `/healthz`;
-`/trigger` itself answers only a loopback peer (403 otherwise), so
-`scripts/trigger-connector.sh` runs it inside the container (`docker exec` /
-`kubectl exec`). No route reads a request body.
+The admin host defaults to all interfaces so kubelet probes reach `/healthz`;
+Compose sets `UDP_CONNECTORS_ADMIN_HOST=127.0.0.1`, since its healthcheck runs
+inside the container. `/trigger` itself answers only a loopback peer (403
+otherwise), so `scripts/trigger-connector.sh` runs it inside the container
+(`docker exec` / `kubectl exec`). No route reads a request body.
+
+In Kubernetes the admin port is protected by two things only: the
+NetworkPolicy (no rule opens 1881) and the loopback check of `/trigger`.
+Consequences:
+
+- Never run the pod behind a service mesh sidecar (or any proxy) that forwards
+  inbound traffic to the application from 127.0.0.1 — every peer would then look
+  like loopback and `/trigger` would be open to whoever reaches the pod.
+- With `networkPolicies.enabled=false` port 1881 is reachable from the whole
+  cluster: `/trigger` still refuses non-loopback peers, but `/healthz` is
+  readable by anyone.
 
 ## Deployment
 
@@ -226,8 +238,8 @@ The admin host defaults to all interfaces so container probes reach `/healthz`;
 | unit | service `connectors`, container `udp-connectors` | Deployment + Service `connectors`, `replicas: 1`, `Recreate` |
 | image | built from this Dockerfile (context: repository root) | `udp-connectors` (`connectors.image`), built by `.github/workflows/build-images.yml` |
 | registry | the checkout's `connectors.json`, mounted read-only | baked into the image |
-| public port 1880 | compose network only (cockpit nginx) | Service port; NetworkPolicy: cockpit only |
-| admin port 1881 | not published | in no Service |
+| public port 1880 | not published; reachable from every container on the compose network | Service port; NetworkPolicy: cockpit only |
+| admin port 1881 | bound to 127.0.0.1, in-container only | in no Service; no NetworkPolicy rule |
 | health | Compose healthcheck: `/healthz` inside the container | startup/liveness `/healthz`, readiness TCP 1880 |
 
 Liveness never looks at `stateStore.healthy`. The cockpit reaches the two

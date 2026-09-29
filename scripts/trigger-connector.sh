@@ -49,7 +49,8 @@ read -r -a PY <<<"${PYTHON:-python3}"
 REG="${CONNECTORS_REGISTRY:-$(dirname "$0")/../platform/config/connectors.json}"
 
 # "<runtime> <prefix> <prefix> …" of the connector; the id is passed as an
-# argument, never spliced into the code.
+# argument, never spliced into the code. The runtime is checked exactly like the
+# generator and the service do it: absent/null = "nodered", else "nodered" or "app".
 INFO=$("${PY[@]}" -c '
 import json, sys
 reg, cid = sys.argv[1], sys.argv[2]
@@ -59,9 +60,22 @@ match = [c for c in entries if c["id"] == cid]
 if not match:
     sys.exit("error: unknown connector: " + cid)
 c = match[0]
-print(c.get("runtime") or "nodered", *c.get("nodePrefixes", []))
+runtime = c.get("runtime")
+if runtime is None:
+    runtime = "nodered"
+if runtime not in ("nodered", "app"):
+    sys.exit("error: %s: runtime must be \"nodered\" or \"app\", got %r" % (cid, runtime))
+print(runtime, *c.get("nodePrefixes", []))
 ' "$REG" "$ID")
-read -r RUNTIME PREFIXES <<<"$INFO"
+# An array, not word splitting of a string: no glob expansion of the prefixes.
+read -r -a FIELDS <<<"$INFO"
+RUNTIME="${FIELDS[0]}"
+PREFIXES=("${FIELDS[@]:1}")
+
+case "$RUNTIME" in
+  app|nodered) ;;
+  *) echo "error: $ID: invalid runtime '$RUNTIME'" >&2; exit 1 ;;
+esac
 
 if [ "$RUNTIME" = "app" ]; then
   read -r -a EXEC <<<"${CONNECTORS_EXEC:-docker exec udp-connectors}"
@@ -78,7 +92,9 @@ fetch("http://127.0.0.1:" + port + "/trigger/" + encodeURIComponent(id), { metho
   })
   .catch((e) => process.stdout.write("000\t-\t" + e.message + "\n"));'
   if ! OUT=$("${EXEC[@]}" node -e "$JS" "$ID"); then
-    echo "$ID: cannot reach the connector service container (${EXEC[*]})" >&2
+    # Only the command name: CONNECTORS_EXEC may carry credentials (a token,
+    # a kubeconfig path) that do not belong in a log.
+    echo "$ID: cannot reach the connector service container (via ${EXEC[0]})" >&2
     exit 1
   fi
   IFS=$'\t' read -r CODE RETRY REASON <<<"$OUT"
@@ -94,7 +110,7 @@ fi
 
 # runtime "nodered": fire every inject node of the connector's node prefixes.
 NR="${NODERED_URL:-http://localhost:4900}"
-for p in $PREFIXES; do
+for p in ${PREFIXES[@]+"${PREFIXES[@]}"}; do
   NODE=$(curl -s "$NR/flows" | "${PY[@]}" -c '
 import json, sys
 prefix = sys.argv[1]

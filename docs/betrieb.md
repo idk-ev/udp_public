@@ -224,8 +224,8 @@ beantwortet der Dienst nur `/healthz` und baut keine Verbindung auf.
 |---|---|---|
 | Dienst | Container `udp-connectors`, Image aus `platform/connectors/Dockerfile` | Deployment `connectors`, Image `udp-connectors` (`connectors.image`) |
 | Registry | `platform/config/connectors.json`, read-only eingebunden | im Image (wie die Flows im Node-RED-Image) |
-| Port 1880 | nur im Compose-Netz (Cockpit-nginx) | Service `connectors:1880`, NetworkPolicy nur vom Cockpit |
-| Port 1881 | nicht veröffentlicht | in keinem Service |
+| Port 1880 | nicht veröffentlicht, im Compose-Netz für alle Container erreichbar | Service `connectors:1880`, NetworkPolicy nur vom Cockpit |
+| Port 1881 | nur `127.0.0.1` im Container | in keinem Service, keine NetworkPolicy-Regel |
 
 - **Ports:** 1880 trägt nur die Endpunkte `/abfahrten` und `/warnungen.ics`,
   die die Cockpit-nginx weiterreicht. Der Admin-Port 1881 (`/healthz`,

@@ -43,6 +43,29 @@ def runtime_of(c):
 for _c in REGISTRY:
     runtime_of(_c)
 
+# nodePrefixes assign every generated node to exactly one connector (conn_of
+# below takes the first match). An empty prefix would claim every node, and a
+# prefix that starts another connector's prefix would let the registry order
+# decide which connector a node belongs to – so a cutover could drop or keep the
+# wrong nodes. Both stop the generator before anything is written.
+def check_node_prefixes(registry):
+    owned = []
+    for c in registry:
+        prefixes = c.get("nodePrefixes")
+        if not isinstance(prefixes, list):
+            sys.exit(f"connectors.json: {c.get('id')}: nodePrefixes must be a list")
+        for p in prefixes:
+            if not isinstance(p, str) or not p:
+                sys.exit(f"connectors.json: {c.get('id')}: empty or non-string entry in nodePrefixes")
+            owned.append((c.get("id"), p))
+    for cid, p in owned:
+        for other, q in owned:
+            if other != cid and q.startswith(p):
+                sys.exit(f"connectors.json: nodePrefixes overlap: {cid!r} has {p!r}, "
+                         f"a prefix of {other!r}'s {q!r}")
+
+check_node_prefixes(REGISTRY)
+
 def reg_param(conn_id, key, ags):
     return REG[conn_id].get("params", {}).get(key, {}).get(ags)
 

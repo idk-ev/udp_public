@@ -165,6 +165,30 @@ udp-geoserver
 {{- end -}}
 
 {{/*
+Name of the hystreet token secret (external or rendered by the chart from
+nodeRed/connectors.hystreetApiToken, templates/secrets.yaml).
+*/}}
+{{- define "udp.hystreetSecretName" -}}
+{{- if .Values.nodeRed.hystreetExistingSecret -}}
+{{- .Values.nodeRed.hystreetExistingSecret -}}
+{{- else -}}
+udp-hystreet
+{{- end -}}
+{{- end -}}
+
+{{/*
+Pod annotation that rolls Node-RED and the connector service out again when a
+chart-managed hystreet token changes (the env comes from a secret now, which a
+running pod does not re-read). Empty without a chart-managed token.
+*/}}
+{{- define "udp.hystreetChecksum" -}}
+{{- if and (or .Values.nodeRed.hystreetApiToken .Values.connectors.hystreetApiToken) (not .Values.nodeRed.hystreetExistingSecret) -}}
+annotations:
+  checksum/hystreet: {{ list .Values.nodeRed.hystreetApiToken .Values.connectors.hystreetApiToken | toJson | sha256sum }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Öffentliche Basis-Adresse der Plattform (Schema + Host des Ingress), OHNE
 abschließenden Slash. Alles, was der BROWSER aufruft, muss daraus gebaut werden:
 die Keycloak-URL des Cockpits, die Redirect-URIs im Realm, die Modul-Kacheln.

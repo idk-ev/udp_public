@@ -362,6 +362,16 @@ von der GitHub Action **`.github/workflows/build-images.yml`** nach
 > `cockpit.endpoints.abfahrten` / `.warnungen: connectors`
 > (`docs/migration-konnektoren.md`, Phase 4). Auslösen eines Konnektors:
 > `CONNECTORS_EXEC="kubectl -n <ns> exec deploy/connectors --" bash scripts/trigger-connector.sh <id>`.
+>
+> **Admin-Port 1881:** lauscht auf allen Interfaces (für die Kubelet-Probes)
+> und ist nur durch zwei Dinge geschützt – die NetworkPolicy (keine Regel öffnet
+> 1881) und die Loopback-Prüfung von `/trigger`. Deshalb den Pod **nie** hinter
+> einen Service-Mesh-Sidecar (oder anderen Proxy) stellen, der eingehenden
+> Verkehr von 127.0.0.1 an die Anwendung weiterreicht: dann sieht jeder Aufrufer
+> wie Loopback aus und `/trigger` steht offen. Mit
+> `networkPolicies.enabled=false` ist 1881 clusterweit erreichbar – `/trigger`
+> lehnt Nicht-Loopback-Aufrufer weiterhin ab, `/healthz` ist aber für jeden
+> lesbar.
 
 > Das Datenbank-Image ist Pflicht, kein Komfort: `files/postgres/01-databases.sql`
 > legt `CREATE EXTENSION timescaledb` an – mit einem reinen `postgis/postgis`

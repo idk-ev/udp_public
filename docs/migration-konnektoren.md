@@ -381,8 +381,8 @@ Frische der Entitäten in Orion, nicht die Laufzeit, die sie geschrieben hat.
 Umgesetzt, siehe `docs/betrieb.md`, Abschnitt „Konnektordienst“:
 
 - **Compose:** Dienst `connectors` (Container `udp-connectors`), Registry
-  read-only aus dem Checkout, 1880 nur im Compose-Netz, 1881 nicht
-  veröffentlicht, Healthcheck auf `/healthz` im Container.
+  read-only aus dem Checkout, 1880 nur im Compose-Netz, 1881 nur auf
+  `127.0.0.1` im Container, Healthcheck auf `/healthz` im Container.
 - **Helm:** Deployment `connectors` (`replicas: 1`, `Recreate`,
   read-only Root-FS), Service nur mit 1880, NetworkPolicy 1880 nur vom
   Cockpit; der Dienst darf zu Orion-LD, TimescaleDB und zum Cockpit (statische

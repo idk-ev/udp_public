@@ -248,14 +248,18 @@ services:
       HYSTREET_API_TOKEN: ${HYSTREET_API_TOKEN:-}
       UDP_CONNECTORS_PORT: "1880"
       UDP_CONNECTORS_ADMIN_PORT: "1881"
+      # Admin-Port nur im Container: Healthcheck und trigger-connector.sh
+      # (docker exec) sprechen ihn über 127.0.0.1 an, kein anderer Container.
+      UDP_CONNECTORS_ADMIN_HOST: "127.0.0.1"
       UDP_TRIGGER_COOLDOWN_SECONDS: "60"
     volumes:
       # Dieselbe Registry wie der Flow-Generator: runtime umstellen, Flows neu
       # generieren und beide Container neu starten genügt — kein Image-Build.
       - ./config/connectors.json:/app/config/connectors.json:ro
-    # 1880 (/abfahrten, /warnungen.ics) erreicht nur die Cockpit-nginx über das
-    # Compose-Netz. Der Admin-Port 1881 (/healthz, /trigger) wird NICHT
-    # veröffentlicht: /trigger antwortet nur auf Loopback, also per
+    # 1880 (/abfahrten, /warnungen.ics) ist nicht veröffentlicht, aber — wie
+    # jeder Dienst hier — von allen Containern im Compose-Netz erreichbar; die
+    # Cockpit-nginx leitet dorthin weiter. Der Admin-Port 1881 (/healthz,
+    # /trigger) lauscht nur auf 127.0.0.1 im Container, also per
     #   docker exec udp-connectors … (scripts/trigger-connector.sh)
     expose: ["1880"]
     healthcheck:
@@ -267,6 +271,8 @@ services:
       start_period: 20s
       retries: 3
     read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
     networks: [udp]
     <<: *default-logging
@@ -469,6 +475,9 @@ services:
       # Konnektordienst um (s. .env.example, gui/docker/17-udp-upstreams.envsh).
       UDP_ABFAHRTEN_UPSTREAM: ${UDP_ABFAHRTEN_UPSTREAM:-}
       UDP_WARNUNGEN_UPSTREAM: ${UDP_WARNUNGEN_UPSTREAM:-}
+      # Proxy-Netze, deren X-Forwarded-For das Cockpit für den Rate-Limit-
+      # Schlüssel übernimmt; leer = alle privaten Bereiche (s. .env.example).
+      UDP_TRUSTED_PROXIES: ${UDP_TRUSTED_PROXIES:-}
     volumes:
       - ../gui/dist:/usr/share/nginx/html:ro
       - ./config/nginx/cockpit.conf.template:/etc/nginx/templates/default.conf.template:ro

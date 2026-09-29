@@ -12,15 +12,23 @@ Plattform ändert sich nicht.
   `flows.json` und übergibt ihn dem Dienst; der Status-Export trägt die
   Laufzeit.
 - **Compose-Dienst `connectors`** und **Helm-Deployment `connectors`** (eine
-  Replik, `Recreate`, read-only). Nur Port 1880 ist erreichbar, und nur vom
-  Cockpit; der Admin-Port bleibt intern.
+  Replik, `Recreate`, read-only). Für andere Dienste ist nur Port 1880
+  erreichbar — in Helm per NetworkPolicy nur vom Cockpit, in Compose von jedem
+  Container im Compose-Netz. Der Admin-Port 1881 lauscht in Compose nur auf
+  `127.0.0.1` im Container und steht in Helm in keinem Service.
 - **Cockpit:** `/abfahrten` und `/warnungen.ics` einzeln umschaltbar
   (`UDP_ABFAHRTEN_UPSTREAM`/`UDP_WARNUNGEN_UPSTREAM`, Helm
-  `cockpit.endpoints`), Vorgabe Node-RED.
+  `cockpit.endpoints`), Vorgabe Node-RED. Ein ungültiger Wert bricht den
+  Start bzw. das Rendern ab, statt still auf Node-RED zurückzufallen.
 - **Skripte:** `trigger-connector.sh` löst umgeschaltete Konnektoren im Dienst
   aus, `healthcheck.sh` zählt dessen Logs mit und zeigt den Zustandsspeicher.
 - **Compose-Cockpit:** Entrypoint-Skripte werden eingebunden; `nginx -t`
-  scheiterte vorher an `${UDP_REALIP_FROM}`.
+  scheiterte vorher an `${UDP_REALIP_FROM}`. `UDP_TRUSTED_PROXIES` ist über
+  `.env` einstellbar.
+- **Helm:** Der hystreet-Token liegt jetzt im Secret `udp-hystreet` (oder
+  `nodeRed.hystreetExistingSecret`) statt als Klartext-Env; die Values-Schlüssel
+  bleiben.
+- **Generator:** leere oder überlappende `nodePrefixes` brechen ab.
 - Image `udp-connectors` in der Image-Pipeline und im Digest-Pinning.
 
 ## 1.2.0 — Hochverfügbarkeit des öffentlichen Pfads, Datenqualität, Lastkapazität

@@ -986,7 +986,14 @@ nodeRed:
   timezone: "Europe/Berlin"
   # Passantenfrequenz hystreet.com (kostenpflichtig/vertragsgebunden).
   # Leer -> der Flow bleibt inaktiv, alles andere läuft normal weiter.
+  # Gesetzt -> das Chart legt das Secret udp-hystreet an (Schlüssel
+  # HYSTREET_API_TOKEN); Node-RED und Konnektordienst lesen es per secretKeyRef.
   hystreetApiToken: ""
+  # Alternativ ein vorhandenes Secret mit dem Schlüssel HYSTREET_API_TOKEN
+  # (SealedSecrets / External Secrets); gesetzt -> hystreetApiToken und
+  # connectors.hystreetApiToken werden ignoriert, gilt auch für den
+  # Konnektordienst.
+  hystreetExistingSecret: ""
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { cpu: 500m, memory: 768Mi }
@@ -1030,7 +1037,9 @@ connectors:
   # The user needs CREATE on the database "orion" for the schema udp_connectors,
   # or the schema has to exist beforehand.
   dbHost: "timescale"
-  # Empty -> nodeRed.hystreetApiToken.
+  # Empty -> nodeRed.hystreetApiToken. Set -> own key
+  # HYSTREET_API_TOKEN_CONNECTORS in the secret udp-hystreet (ignored with
+  # nodeRed.hystreetExistingSecret).
   hystreetApiToken: ""
   # Minimum spacing of two manual triggers per connector (never below 60).
   triggerCooldownSeconds: 60
@@ -1091,7 +1100,8 @@ cockpit:
   # (the connector service, connectors.<namespace>.svc.<clusterDomain>:1880) or
   # an explicit host:port. Flip to "connectors" together with the cutover of
   # abfahrten-on-demand resp. warnungen-bw (docs/migration-konnektoren.md,
-  # phase 4); back to "nodered" is the way back.
+  # phase 4); back to "nodered" is the way back. Any other value fails the
+  # render – a typo must not silently fall back to Node-RED after a cutover.
   endpoints:
     abfahrten: nodered
     warnungen: nodered

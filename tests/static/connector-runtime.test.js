@@ -145,6 +145,41 @@ exports["an unknown runtime value stops the generator"] = () => {
   }
 };
 
+exports["overlapping or empty nodePrefixes stop the generator"] = () => {
+  const python = findPython();
+  if (python === null) {
+    assert(!process.env.CI, "no Python 3 found (python3, python, py -3) — CI must have one");
+    return;
+  }
+  const base = JSON.parse(fs.readFileSync(REGISTRY, "utf8"));
+  const cases = {
+    // A prefix of another connector's prefix: first-come matching would hand
+    // that connector's nodes to whichever entry comes first.
+    overlap: reg => reg.connectors[1].nodePrefixes.push(reg.connectors[0].nodePrefixes[0].slice(0, -1)),
+    // An empty prefix matches every node.
+    empty: reg => reg.connectors[0].nodePrefixes.push(""),
+  };
+  for (const [name, mutate] of Object.entries(cases)) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udp-runtime-"));
+    try {
+      const registry = structuredClone(base);
+      mutate(registry);
+      const regCopy = path.join(dir, "connectors.json");
+      const flowsCopy = path.join(dir, "flows.json");
+      const statusCopy = path.join(dir, "status.json");
+      fs.writeFileSync(regCopy, JSON.stringify(registry, null, 2));
+      fs.copyFileSync(FLOWS, flowsCopy);
+      const { code, output } = runGenerator(python, regCopy, flowsCopy, statusCopy);
+      assert.notStrictEqual(code, 0, `${name}: generator accepted the registry`);
+      assert(/nodePrefixes/.test(output), `${name}: unexpected message:\n${output}`);
+      assert.strictEqual(fs.readFileSync(flowsCopy, "utf8"), fs.readFileSync(FLOWS, "utf8"), `${name}: flows.json was written`);
+      assert(!fs.existsSync(statusCopy), `${name}: status export was written`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+};
+
 exports["checked-in status export matches the registry runtime"] = () => {
   const registry = JSON.parse(fs.readFileSync(REGISTRY, "utf8")).connectors;
   const status = JSON.parse(fs.readFileSync(path.join(ROOT, "gui", "public", "connectors-status.json"), "utf8"))

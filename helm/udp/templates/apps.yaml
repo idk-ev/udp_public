@@ -26,6 +26,9 @@ spec:
     metadata:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "node-red") | nindent 8 }}
+      {{- with include "udp.hystreetChecksum" . }}
+      {{- . | nindent 6 }}
+      {{- end }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.nodeRed) | nindent 6 }}
       containers:
@@ -45,8 +48,12 @@ spec:
             - name: TROE_DB_PASSWORD
               valueFrom:
                 secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD }
-            # Passantenfrequenz (hystreet): leer = Flow bleibt inaktiv.
-            - { name: HYSTREET_API_TOKEN, value: {{ .Values.nodeRed.hystreetApiToken | quote }} }
+            # Passantenfrequenz (hystreet): aus dem Secret (templates/secrets.yaml
+            # bzw. nodeRed.hystreetExistingSecret); fehlt der Schlüssel, bleibt
+            # der Flow inaktiv.
+            - name: HYSTREET_API_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ include "udp.hystreetSecretName" . }}, key: HYSTREET_API_TOKEN, optional: true }
           ports: [{ containerPort: 1880 }]
           # KEIN Volume auf /data: Flows, settings.js und das npm-Modul "pg"
           # liegen im Image (platform/config/nodered/Dockerfile) und würden von
@@ -97,6 +104,9 @@ spec:
     metadata:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "connectors") | nindent 8 }}
+      {{- with include "udp.hystreetChecksum" . }}
+      {{- . | nindent 6 }}
+      {{- end }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.connectors) | nindent 6 }}
       containers:
@@ -118,9 +128,17 @@ spec:
             - name: TROE_DB_PASSWORD
               valueFrom:
                 secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD }
-            # Pedestrian counts (hystreet): empty = connector skips its runs.
-            # Falls back to Node-RED's token, so a cutover needs no second entry.
-            - { name: HYSTREET_API_TOKEN, value: {{ .Values.connectors.hystreetApiToken | default .Values.nodeRed.hystreetApiToken | quote }} }
+            # Pedestrian counts (hystreet), from the same secret as Node-RED; a
+            # missing key = connector skips its runs. Its own key only when
+            # connectors.hystreetApiToken is set, otherwise Node-RED's token, so
+            # a cutover needs no second entry.
+            {{- $hystreetKey := "HYSTREET_API_TOKEN" }}
+            {{- if and .Values.connectors.hystreetApiToken (not .Values.nodeRed.hystreetExistingSecret) }}
+            {{- $hystreetKey = "HYSTREET_API_TOKEN_CONNECTORS" }}
+            {{- end }}
+            - name: HYSTREET_API_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ include "udp.hystreetSecretName" . }}, key: {{ $hystreetKey }}, optional: true }
             - { name: UDP_CONNECTORS_PORT, value: "1880" }
             - { name: UDP_CONNECTORS_ADMIN_PORT, value: "1881" }
             - { name: UDP_TRIGGER_COOLDOWN_SECONDS, value: {{ .Values.connectors.triggerCooldownSeconds | quote }} }
@@ -191,14 +209,21 @@ spec:
             {{- $connectors := printf "connectors.%s.svc.%s:1880" .Release.Namespace .Values.global.clusterDomain }}
             - { name: UDP_NODERED_UPSTREAM, value: {{ $nodered | quote }} }
             # /abfahrten and /warnungen.ics: Node-RED, or the connector service
-            # once their connector runs there (cockpit.endpoints, phase 4).
-            {{- range $name, $endpoint := dict "ABFAHRTEN" .Values.cockpit.endpoints.abfahrten "WARNUNGEN" .Values.cockpit.endpoints.warnungen }}
+            # once their connector runs there (cockpit.endpoints, phase 4). A
+            # value that is none of nodered/connectors/host:port fails the
+            # render: after a cutover Node-RED no longer serves the endpoint, so
+            # a typo must not quietly fall back to it.
+            {{- range $name, $raw := dict "ABFAHRTEN" .Values.cockpit.endpoints.abfahrten "WARNUNGEN" .Values.cockpit.endpoints.warnungen }}
+            {{- $endpoint := $raw | default "nodered" | toString }}
+            {{- if not (regexMatch "^(nodered|connectors|[A-Za-z0-9._-]+:[0-9]+)$" $endpoint) }}
+            {{- fail (printf "cockpit.endpoints.%s must be \"nodered\", \"connectors\" or host:port, got %q" (lower $name) $endpoint) }}
+            {{- end }}
             {{- $upstream := $nodered }}
             {{- if and (eq $endpoint "connectors") (not $.Values.connectors.enabled) }}
             {{- fail (printf "cockpit.endpoints: %s points at the connector service, but connectors.enabled is false" (lower $name)) }}
             {{- end }}
             {{- if eq $endpoint "connectors" }}{{ $upstream = $connectors }}
-            {{- else if and $endpoint (ne $endpoint "nodered") }}{{ $upstream = $endpoint }}{{ end }}
+            {{- else if ne $endpoint "nodered" }}{{ $upstream = $endpoint }}{{ end }}
             - { name: UDP_{{ $name }}_UPSTREAM, value: {{ $upstream | quote }} }
             {{- end }}
             {{- with .Values.cockpit.trustedProxies }}
