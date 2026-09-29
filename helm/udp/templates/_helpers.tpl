@@ -80,7 +80,19 @@ Aufruf: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.cockpit.image) }
 {{- define "udp.ownImage" -}}
 {{- $reg := .image.registry | default .ctx.Values.global.udpRegistry -}}
 {{- $tag := .image.tag | default .ctx.Values.global.udpTag -}}
+{{- /*
+Pinned as "<tag>@sha256:…" (build-images.yml): render only the digest. The tag
+changes with every build even when the image does not (per-run tags such as
+pr-<n>-<sha> are added to a reused digest), and CloudNativePG compares the image
+reference as a string - a new tag alone rolled the database cluster with a
+primary switchover on every release (seen live). Kubernetes pulls by digest
+either way; the tag was informational only.
+*/ -}}
+{{- if contains "@sha256:" $tag -}}
+{{- printf "%s/%s@%s" $reg .image.name (splitList "@" $tag | last) -}}
+{{- else -}}
 {{- printf "%s/%s:%s" $reg .image.name $tag -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
