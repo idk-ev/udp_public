@@ -1,5 +1,5 @@
 {
- "stand": "2026-09-29T07:35:57+00:00",
+ "stand": "2026-09-29T07:53:51+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -50,7 +50,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "stammdaten-bw",
@@ -218,7 +218,7 @@
    "pending": null,
    "refireOnRestart": false,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "ausflug-bw",
@@ -237,7 +237,7 @@
    "pending": null,
    "refireOnRestart": false,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "poi-bw",
@@ -256,7 +256,7 @@
    "pending": null,
    "refireOnRestart": false,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "warnungen-bw",
@@ -275,7 +275,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415",
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "baustellen-bw",
@@ -294,7 +294,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "uba-bw",
@@ -449,7 +449,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "puls-bw",

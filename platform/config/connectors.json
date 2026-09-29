@@ -52,7 +52,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-rt-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "stammdaten-bw",
@@ -231,7 +232,8 @@
       "nodePrefixes": [
         "udp-rt-rh-"
       ],
-      "refireOnRestart": false
+      "refireOnRestart": false,
+      "runtime": "app"
     },
     {
       "id": "ausflug-bw",
@@ -251,7 +253,8 @@
       "nodePrefixes": [
         "udp-rt-az-"
       ],
-      "refireOnRestart": false
+      "refireOnRestart": false,
+      "runtime": "app"
     },
     {
       "id": "poi-bw",
@@ -271,7 +274,8 @@
       "refireOnRestart": false,
       "nodePrefixes": [
         "udp-rt-poi-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "warnungen-bw",
@@ -292,7 +296,8 @@
         "udp-rt-bk-",
         "udp-rt-wf-"
       ],
-      "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415"
+      "healthUrl": "http://localhost:3700/warnungen.ics?kreis=08415",
+      "runtime": "app"
     },
     {
       "id": "baustellen-bw",
@@ -312,7 +317,8 @@
       "nodePrefixes": [
         "udp-rt-br-",
         "udp-rt-brx-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "uba-bw",
@@ -484,7 +490,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-bx-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "puls-bw",
