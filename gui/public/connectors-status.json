@@ -1,5 +1,5 @@
 {
- "stand": "2026-09-29T04:04:52+00:00",
+ "stand": "2026-09-29T07:07:53+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -16,7 +16,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "troe-stats",
@@ -33,7 +33,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "troe-retention",
@@ -123,7 +123,7 @@
    "pending": null,
    "refireOnRestart": false,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "pollen-bw",
@@ -142,7 +142,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "hitze-bw",
@@ -161,7 +161,7 @@
    "pending": null,
    "refireOnRestart": true,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "pegel-bw",
@@ -570,7 +570,7 @@
    "pending": true,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   }
  ]
 }

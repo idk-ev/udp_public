@@ -16,7 +16,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-op-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "troe-stats",
@@ -33,7 +34,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-db-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "troe-retention",
@@ -126,7 +128,8 @@
       "nodePrefixes": [
         "udp-rt-bv-"
       ],
-      "refireOnRestart": false
+      "refireOnRestart": false,
+      "runtime": "app"
     },
     {
       "id": "pollen-bw",
@@ -145,7 +148,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-po-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "hitze-bw",
@@ -165,7 +169,8 @@
       "refireOnRestart": true,
       "nodePrefixes": [
         "udp-rt-hz-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "pegel-bw",
@@ -751,7 +756,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-hy-"
-      ]
+      ],
+      "runtime": "app"
     }
   ]
 }
