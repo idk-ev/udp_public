@@ -107,7 +107,8 @@
       "nodePrefixes": [
         "udp-rt-bw-"
       ],
-      "refireOnRestart": false
+      "refireOnRestart": false,
+      "runtime": "app"
     },
     {
       "id": "vorhersage-bw",
@@ -189,7 +190,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-pe-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "pegel-lubw",
@@ -208,7 +210,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-pl-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "rathaus-bw",
@@ -328,7 +331,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-bu-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "feinstaub-bw",
@@ -348,7 +352,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-bs-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "parken-bw",
@@ -459,7 +464,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-be-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "mastr-bw",
@@ -520,7 +526,8 @@
       "nodePrefixes": [
         "udp-rt-w-"
       ],
-      "refireOnRestart": false
+      "refireOnRestart": false,
+      "runtime": "app"
     },
     {
       "id": "efa-abfahrten",

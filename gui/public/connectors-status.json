@@ -1,5 +1,5 @@
 {
- "stand": "2026-09-29T07:35:12+00:00",
+ "stand": "2026-09-29T07:35:57+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -103,7 +103,7 @@
    "pending": null,
    "refireOnRestart": false,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "vorhersage-bw",
@@ -180,7 +180,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "pegel-lubw",
@@ -199,7 +199,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "rathaus-bw",
@@ -313,7 +313,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "feinstaub-bw",
@@ -332,7 +332,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "parken-bw",
@@ -430,7 +430,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "mastr-bw",
@@ -487,7 +487,7 @@
    "pending": null,
    "refireOnRestart": false,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "efa-abfahrten",
