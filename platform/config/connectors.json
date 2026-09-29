@@ -384,7 +384,8 @@
       },
       "nodePrefixes": [
         "udp-rt-bp-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "sharing-bw",
@@ -403,7 +404,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-bg-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "carsharing-bw",
@@ -426,7 +428,8 @@
       "nodePrefixes": [
         "udp-rt-cs-",
         "udp-rt-cz-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "ladesaeulen-bw",
@@ -451,7 +454,8 @@
       },
       "nodePrefixes": [
         "udp-rt-bo-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "eco-bw",
@@ -726,7 +730,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-o-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "abfahrten-on-demand",
@@ -748,7 +753,8 @@
         "udp-rt-ab-",
         "udp-rt-ah-"
       ],
-      "healthUrl": "http://localhost:3700/abfahrten?ags=08111000"
+      "healthUrl": "http://localhost:3700/abfahrten?ags=08111000",
+      "runtime": "app"
     },
     {
       "id": "hystreet",

@@ -1,5 +1,5 @@
 {
- "stand": "2026-09-29T07:53:51+00:00",
+ "stand": "2026-09-29T08:51:11+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -352,7 +352,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "sharing-bw",
@@ -371,7 +371,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "carsharing-bw",
@@ -390,7 +390,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "ladesaeulen-bw",
@@ -411,7 +411,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "eco-bw",
@@ -530,7 +530,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "abfahrten-on-demand",
@@ -549,7 +549,7 @@
    "pending": null,
    "refireOnRestart": true,
    "healthUrl": "http://localhost:3700/abfahrten?ags=08111000",
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "hystreet",
