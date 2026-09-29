@@ -3,7 +3,8 @@
         "id": "udp-tab-1",
         "type": "tab",
         "label": "Beispiel: Open Data → NGSI-LD",
-        "info": "Beispiel-ETL-Fluss: Zyklischer Abruf einer offenen Datenquelle, Transformation in eine NGSI-LD-Entität (FIWARE Smart Data Model 'WeatherObserved') und Upsert in den Context Broker."
+        "disabled": true,
+        "info": "Beispiel-ETL-Fluss: Zyklischer Abruf einer offenen Datenquelle, Transformation in eine NGSI-LD-Entität (FIWARE Smart Data Model 'WeatherObserved') und Upsert in den Context Broker.\n\nAusgeliefert DEAKTIVIERT: Der Fluss schreibt Zufallswerte (urn:ngsi-ld:WeatherObserved:demo-station-1) in den Context Broker. Zum Ausprobieren im Editor die Flow-Eigenschaften öffnen, den Fluss aktivieren und deployen; danach wieder deaktivieren und die Demo-Entität löschen."
     },
     {
         "id": "udp-inject-1",

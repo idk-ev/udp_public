@@ -315,7 +315,8 @@ Mindestens anpassen:
 - `cockpit.image` – euer selbst gebautes, in eure Registry gepushtes Image
 - `frost.serviceRootUrl` – auf den echten Host zeigen
 - `networkPolicies.ingressControllerNamespaceLabel` – Namespace eures Ingress-
-  Controllers (Default: `ingress-nginx`)
+  Controllers (Default: `ingress-nginx`; leer bricht das Rendern ab – ein
+  leerer Selektor öffnete die öffentlichen Dienste für jeden Namespace)
 - `networkPolicies.monitoringNamespaceLabel` – Namespace von Uptime Kuma /
   Prometheus, sonst erreicht das Monitoring die Dienste nicht (leer = aus)
 
@@ -339,12 +340,36 @@ von der GitHub Action **`.github/workflows/build-images.yml`** nach
 
 > **Node-RED** läuft auf dem Upstream-Image `nodered/node-red` (`nodeRed.image`,
 > kein eigenes Image mehr): Low-Code-Baustein mit einem Beispielfluss, keine
-> Ingestion. `flows.json` und `settings.js` kommen aus der ConfigMap
+> Ingestion. Der Beispielfluss ist **deaktiviert** ausgeliefert (er schriebe
+> Zufallswerte in den Broker); zum Ausprobieren im Editor aktivieren.
+> `flows.json` und `settings.js` kommen aus der ConfigMap
 > `node-red-config` (`helm/udp/files/nodered/`); ein initContainer kopiert sie
 > in ein `emptyDir` auf `/data`, damit Deploys aus dem Editor funktionieren –
-> sie überleben keinen Pod-Neustart. Kein PVC, keine Ingress-Route (Editor per
-> `kubectl port-forward`). Ein alter Digest-Pin von `node-red-udp` unter
-> `nodeRed.image` lässt das Rendern mit einem Hinweis abbrechen – entfernen.
+> sie überleben keinen Pod-Neustart. Kein PVC, keine Ingress-Route und keine
+> NetworkPolicy-Regel: Der Editor ist nur per
+> `kubectl -n <ns> port-forward deploy/node-red 1880` erreichbar. Werte des
+> früheren eigenen Images `node-red-udp` unter `nodeRed.image` (`name`, ein Tag
+> wie `main`, `sha-…`, `pr-…` oder die Chart-Version – mit oder ohne Digest)
+> lassen das Rendern mit einem Hinweis abbrechen – entfernen.
+>
+> **Editor nie ohne Anmeldung veröffentlichen.** Wer den Editor erreicht,
+> deployt Flows mit beliebigem Code und dem Netzzugang des Pods. Ohne
+> `nodeRed.adminAuth` ist er offen – vertretbar nur hinter `port-forward`. Vor
+> jeder Ingress-Route, jedem LoadBalancer oder `networkPolicies.extraFrom.node-red`
+> eine Anmeldung setzen:
+>
+> ```bash
+> # bcrypt-Hash erzeugen (fragt das Passwort ab)
+> docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw
+> ```
+>
+> ```yaml
+> nodeRed:
+>   adminAuth:
+>     username: admin
+>     passwordHash: "$2y$08$…"      # oder existingSecret mit den Schlüsseln
+>                                   # NODE_RED_ADMIN_USER / NODE_RED_ADMIN_PASSWORD_HASH
+> ```
 
 > **Konnektordienst** (Deployment `connectors`): die Ingestion der Plattform.
 > Er führt jeden aktiven Eintrag der Registry aus (im Image) und beantwortet

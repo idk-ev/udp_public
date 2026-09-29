@@ -106,10 +106,11 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.tenants` | Standard/lkrt/lktue | Mandanten-Auswahl im Cockpit |
 | `cockpit.gatewayUpstream` | `""` | FQDN von APISIX für den nginx-Proxy im Cockpit (leer → `apisix.<ns>.svc.cluster.local:9080`) |
 | `cockpit.connectorsUpstream` | `""` | wer `/abfahrten` und `/warnungen.ics` beantwortet (leer → `connectors.<ns>.svc.cluster.local:1880`); `cockpit.endpoints` gibt es nicht mehr |
-| `connectors.enabled` | `true` | Konnektordienst: die Ingestion (eine Replik, `Recreate`) |
+| `connectors.enabled` | `true` | Konnektordienst: die Ingestion (eine Replik, `Recreate`); `false` nur zusammen mit `connectors.disableIngestion: true` |
 | `connectors.image` | `udp-connectors` | Image des Konnektordienstes samt Registry |
-| `connectors.hystreetApiToken` / `.hystreetExistingSecret` | `""` | hystreet-Token bzw. vorhandenes Secret (Schlüssel `HYSTREET_API_TOKEN`); `nodeRed.hystreet*` wird weiter gelesen |
-| `nodeRed.image` | `nodered/node-red:4.1` | Upstream-Image; Beispielfluss und `settings.js` aus der ConfigMap `node-red-config` |
+| `connectors.hystreetApiToken` / `.hystreetExistingSecret` | `""` | hystreet-Token bzw. vorhandenes Secret (Schlüssel `HYSTREET_API_TOKEN`), genau eines; `nodeRed.hystreet*` wird weiter gelesen |
+| `nodeRed.image` | `nodered/node-red:4.1` | Upstream-Image; Beispielfluss (deaktiviert) und `settings.js` aus der ConfigMap `node-red-config` |
+| `nodeRed.adminAuth` | leer | Anmeldung am Editor (`username` + bcrypt-`passwordHash` oder `existingSecret`); Pflicht, bevor der Editor irgendwo veröffentlicht wird |
 | `connectors.dbHost` / `orionUrl` | `timescale` / `http://orion-ld:1026` | Ziele des Dienstes; DB-Zugang aus dem DB-Secret |
 | `ingress.clusterIssuer` | `letsencrypt` | cert-manager für TLS |
 | `networkPolicies.enabled` | `true` | Netzsegmentierung (CNI mit Policy nötig) |

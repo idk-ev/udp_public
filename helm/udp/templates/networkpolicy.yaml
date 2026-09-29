@@ -14,7 +14,8 @@
 #      caller needs a line here (or networkPolicies.extraFrom).
 #   3. The ingress controller reaches the public frontends; the monitoring
 #      namespace (networkPolicies.monitoringNamespaceLabel) and an Uptime Kuma
-#      in this namespace reach the HTTP services, never the data stores.
+#      in this namespace reach the HTTP services, never the data stores –
+#      and never Node-RED, which no pod reaches (kubectl port-forward only).
 #   4. optional strictEgress: default-deny outgoing, allowed are DNS, the
 #      namespace itself and – for the listed components – the internet.
 #      Without strictEgress there is deliberately NO egress policy: a single
@@ -60,10 +61,16 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
   (dict "app" "mintaka"        "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
   (dict "app" "frost"          "ports" (list 8080)      "from" (list "apisix")                                        "monitored" true)
   (dict "app" "iot-agent-json" "ports" (list 4041 7896) "from" (list "apisix" "orion-ld")                             "monitored" true)
-  (dict "app" "node-red"       "ports" (list 1880)      "from" (list)                                                 "monitored" true)
   (dict "app" "mongo"          "ports" (list 27017)     "from" $mongoClients)
   (dict "app" "mosquitto"      "ports" (list 1883 9001) "from" (list "iot-agent-json"))
 }}
+{{- /* Node-RED: no caller at all. Nothing probes it but the kubelet, the
+     editor is reached via kubectl port-forward, and it must never be exposed
+     without nodeRed.adminAuth. Only networkPolicies.extraFrom.node-red opens
+     it (a deliberate decision, e.g. for an authenticated proxy). */}}
+{{- if get ($np.extraFrom | default dict) "node-red" }}
+{{- $rules = append $rules (dict "app" "node-red" "ports" (list 1880) "from" (list)) }}
+{{- end }}
 {{- /* Arbiter: the members, and every client – drivers monitor all hosts the
      set reports, the arbiter included (no data is ever read from it). */}}
 {{- if $mongoArbiter }}
@@ -109,6 +116,11 @@ spec:
      EVERY peer. Never let that happen by accident. */}}
 {{- if not (or .from .public .monitored $extra) }}
 {{- fail (printf "networkpolicy: rule for %s has no allowed source" .app) }}
+{{- end }}
+{{- /* An empty label renders "namespaceSelector: {matchLabels: null}", which
+     selects EVERY namespace – the public frontends would be open to all. */}}
+{{- if and .public (empty $np.ingressControllerNamespaceLabel) }}
+{{- fail (printf "networkPolicies.ingressControllerNamespaceLabel is empty – the rule for %s would admit every namespace. Set the label of the ingress controller's namespace (e.g. kubernetes.io/metadata.name: ingress-nginx)." .app) }}
 {{- end }}
 ---
 # 2. {{ .app }}: {{ join ", " .from }}{{ if .public }} + ingress controller{{ end }}{{ if .monitored }} + monitoring{{ end }}
@@ -210,6 +222,9 @@ spec:
         - { protocol: TCP, port: 9091 }
 {{- end }}
 {{- if .Values.ingress.clusterIssuer }}
+{{- if empty $np.ingressControllerNamespaceLabel }}
+{{- fail "networkPolicies.ingressControllerNamespaceLabel is empty – the ACME solver policy would admit every namespace. Set the label of the ingress controller's namespace." }}
+{{- end }}
 ---
 # 3b. HTTP-01 solver of cert-manager. cert-manager creates these pods itself
 #     during issuance – they carry NO app label and would fall under

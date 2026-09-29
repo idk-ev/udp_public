@@ -164,6 +164,8 @@ networkPolicies:
   # – nur aktivieren, wenn bewusst gewünscht.
   strictEgress: false
   # Namespace-Selector-Label des Ingress-Controllers (für Freigabe → Gateway).
+  # Pflicht: leer würde die öffentlichen Dienste für JEDEN Namespace öffnen –
+  # das Chart bricht dann ab.
   ingressControllerNamespaceLabel:
     kubernetes.io/metadata.name: ingress-nginx
   # Namespace of the availability monitoring / metrics scraper
@@ -184,7 +186,9 @@ networkPolicies:
   # service pulls the open-data sources from outside, Orion-LD and the IoT
   # agent fetch JSON-LD @contexts, CKAN harvests remote catalogues. Node-RED
   # is not in the list: its example flow only writes to Orion-LD. Add
-  # node-red here for own flows that fetch external sources.
+  # node-red here for own flows that fetch external sources. (Without
+  # strictEgress there is no egress policy at all: every pod, Node-RED
+  # included, reaches the internet.)
   internetEgress:
     components: [connectors, orion-ld, iot-agent-json, ckan]
     ports: [80, 443]
@@ -979,8 +983,23 @@ nodeRed:
   # settings.js come from the ConfigMap node-red-config
   # (helm/udp/files/nodered/, copies of platform/config/nodered/). /data is an
   # emptyDir: flows deployed in the editor last until the pod restarts. No PVC,
-  # no ingress route – the editor is reached via kubectl port-forward.
+  # no ingress route, no NetworkPolicy rule – the editor is reached via
+  # kubectl port-forward. The example flow ships DISABLED (it would write
+  # random values into the broker); enable it in the editor to try it.
   image: { repository: nodered/node-red, tag: "4.1" }
+  # Login for the editor and the admin API (settings.js adminAuth). Empty =
+  # no login, as before – acceptable only while the editor stays behind
+  # kubectl port-forward. NEVER expose it (ingress, LoadBalancer,
+  # networkPolicies.extraFrom.node-red) without a login: a flow runs arbitrary
+  # code with the pod's network access. passwordHash is a bcrypt hash:
+  #   docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw
+  # Set -> the chart renders the secret udp-node-red-admin.
+  adminAuth:
+    username: ""
+    passwordHash: ""
+    # Alternatively an existing secret with the keys NODE_RED_ADMIN_USER and
+    # NODE_RED_ADMIN_PASSWORD_HASH (username/passwordHash then stay empty).
+    existingSecret: ""
   timezone: "Europe/Berlin"
   # Sized for the example flow and some editor use, no longer for 29 connectors.
   resources:
@@ -1015,7 +1034,11 @@ nodeRed:
 # templates/apps.yaml): the state store in TimescaleDB (schema udp_connectors)
 # has a single writer.
 connectors:
+  # false switches the platform's ingestion off completely (Node-RED ingests
+  # nothing) and /abfahrten and /warnungen.ics answer 502 – the chart refuses
+  # it unless disableIngestion is set as well.
   enabled: true
+  disableIngestion: false
   # Own image (platform/connectors/Dockerfile). registry/tag empty ->
   # global.udpRegistry / global.udpTag.
   image: { name: udp-connectors, registry: "", tag: "" }
@@ -1031,7 +1054,8 @@ connectors:
   # (Former place nodeRed.hystreetApiToken is still read as a fallback.)
   hystreetApiToken: ""
   # Alternatively an existing secret with the key HYSTREET_API_TOKEN
-  # (SealedSecrets / External Secrets); set -> hystreetApiToken is ignored.
+  # (SealedSecrets / External Secrets); set -> hystreetApiToken must stay empty
+  # (both set fail the render).
   # (Former place nodeRed.hystreetExistingSecret is still read as a fallback.)
   hystreetExistingSecret: ""
   # Minimum spacing of two manual triggers per connector (never below 60).
@@ -1090,8 +1114,9 @@ cockpit:
   gatewayUpstream: ""     # leer -> apisix.<Release-Namespace>.svc.<global.clusterDomain>:9080
   # Who answers /abfahrten and /warnungen.ics: the connector service.
   # Empty -> connectors.<Release-Namespace>.svc.<global.clusterDomain>:1880;
-  # host:port only when it runs elsewhere. (The former per-endpoint switch
-  # cockpit.endpoints between Node-RED and the connector service is gone.)
+  # host:port only when it runs elsewhere (checked at render time). (The
+  # former per-endpoint switch cockpit.endpoints between Node-RED and the
+  # connector service is gone.)
   connectorsUpstream: ""
   # Proxy networks (ingress controller pods / load balancer) whose
   # X-Forwarded-For entries the cockpit trusts when resolving the client
@@ -1122,7 +1147,7 @@ cockpit:
   # Node-RED hat bewusst KEINE Ingress-Route (Betriebswerkzeug), und Uptime
   # Kuma wird gar nicht mehr von diesem Chart ausgerollt (eigenes Release,
   # s. monitoring/). Wer sie veröffentlicht, trägt die Adressen hier ein:
-  #   nodered: "https://nodered.example.org"
+  #   nodered: "https://nodered.example.org"   # nur mit nodeRed.adminAuth!
   #   uptimeKuma: "https://status.example.org"
   extraModuleUrls: {}
   # Auswahlliste der Mandanten (NGSI-LD-Tenant) im Cockpit; "" = Standard.

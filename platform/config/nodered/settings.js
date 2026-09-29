@@ -25,6 +25,27 @@
  *
  **/
 
+/**
+ * UDP: login for the editor and the admin API, from the environment.
+ * NODE_RED_ADMIN_USER and NODE_RED_ADMIN_PASSWORD_HASH (a bcrypt hash, e.g.
+ * from `node-red admin hash-pw`) both set = login required; both unset = open,
+ * as before (then keep the port bound to localhost / reached only through
+ * kubectl port-forward). Only one of them set, or a value that is not a bcrypt
+ * hash, stops the runtime instead of letting it run open by mistake.
+ */
+const udpAdminAuth = (() => {
+    const username = process.env.NODE_RED_ADMIN_USER || "";
+    const password = process.env.NODE_RED_ADMIN_PASSWORD_HASH || "";
+    if (!username && !password) return undefined;
+    if (!username || !password) {
+        throw new Error("settings.js: set NODE_RED_ADMIN_USER and NODE_RED_ADMIN_PASSWORD_HASH together, or neither");
+    }
+    if (!/^\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}$/.test(password)) {
+        throw new Error("settings.js: NODE_RED_ADMIN_PASSWORD_HASH is not a bcrypt hash (node-red admin hash-pw)");
+    }
+    return { type: "credentials", users: [{ username, password, permissions: "*" }] };
+})();
+
 module.exports = {
 
 /*******************************************************************************
@@ -77,7 +98,9 @@ module.exports = {
 
     /** To password protect the Node-RED editor and admin API, the following
      * property can be used. See https://nodered.org/docs/security.html for details.
+     * UDP: set from NODE_RED_ADMIN_USER / NODE_RED_ADMIN_PASSWORD_HASH (above).
      */
+    adminAuth: udpAdminAuth,
     //adminAuth: {
     //    type: "credentials",
     //    users: [{

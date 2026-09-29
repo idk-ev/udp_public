@@ -49,11 +49,18 @@ exports["Node-RED: nur der Beispielfluss, gleiche Dateien in Compose und Helm"] 
   assert(!flows.some(n => n.type === "http in"), "Node-RED bedient wieder einen HTTP-Endpunkt");
   assert(/^http:\/\/orion-ld:1026\/ngsi-ld\/v1\/entityOperations\/upsert/.test(flows.find(n => n.id === "udp-http-1").url),
     "Beispielfluss schreibt nicht mehr nach Orion-LD");
+  // Ausgeliefert deaktiviert: sonst schriebe er alle 10 min Zufallswerte in
+  // den produktiven Broker. Zum Ausprobieren im Editor aktivieren.
+  assert.strictEqual(flows.find(n => n.type === "tab").disabled, true, "Beispielfluss ist nicht deaktiviert ausgeliefert");
 
   // settings.js: nichts mehr, was nur die Ingestion brauchte.
   const settings = fs.readFileSync(path.join(ROOT, "platform/config/nodered/settings.js"), "utf8");
   assert(!/^\s*contextStorage:/m.test(settings), "contextStorage ist wieder aktiv");
   assert(/^\s*functionExternalModules:\s*false/m.test(settings), "functionExternalModules ist nicht aus");
+  // Anmeldung am Editor aus der Umgebung (leer = offen, wie bisher).
+  assert(/^\s*adminAuth:\s*udpAdminAuth,/m.test(settings), "adminAuth kommt nicht aus NODE_RED_ADMIN_*");
+  assert(/process\.env\.NODE_RED_ADMIN_USER/.test(settings) && /process\.env\.NODE_RED_ADMIN_PASSWORD_HASH/.test(settings),
+    "settings.js liest NODE_RED_ADMIN_USER/NODE_RED_ADMIN_PASSWORD_HASH nicht");
 
   // Das Chart liefert dieselben Dateien per ConfigMap aus (Upstream-Image).
   const eol = t => t.replace(/\r\n/g, "\n");
@@ -70,4 +77,11 @@ exports["Node-RED: nur der Beispielfluss, gleiche Dateien in Compose und Helm"] 
   const compose = fs.readFileSync(path.join(ROOT, "platform/docker-compose.yml"), "utf8");
   const nrCompose = compose.slice(compose.indexOf("\n  node-red:"), compose.indexOf("\n  connectors:"));
   assert(!/TROE_DB_|HYSTREET_API_TOKEN/.test(nrCompose), "Compose: Node-RED bekommt wieder Zugangsdaten der Ingestion");
+  // Editor/Admin-API: standardmäßig nur lokal veröffentlicht, Anmeldung durchgereicht.
+  assert(/"\$\{WORKFLOW_BIND:-127\.0\.0\.1\}:\$\{WORKFLOW_PORT:-4900\}:1880"/.test(nrCompose),
+    "Compose: Node-RED ist nicht standardmäßig an 127.0.0.1 gebunden");
+  for (const name of ["NODE_RED_ADMIN_USER", "NODE_RED_ADMIN_PASSWORD_HASH"]) {
+    assert(new RegExp(`${name}: \\$\\{${name}:-\\}`).test(nrCompose), `Compose: ${name} wird nicht durchgereicht`);
+    assert(new RegExp(`name: ${name}\\n\\s+valueFrom:`).test(nodeRed), `Helm: ${name} fehlt im Node-RED-Container`);
+  }
 };

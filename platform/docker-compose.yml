@@ -201,20 +201,28 @@ services:
   # ---------------------------------------------------------------------------
 
   # Node-RED: Low-Code-Baustein mit vorkonfiguriertem Beispielfluss (Open Data
-  # → NGSI-LD → Orion-LD). Die Ingestion läuft im Konnektordienst, nicht hier.
-  # Deploys aus dem Editor schreiben in ./config/nodered/flows.json im Checkout.
+  # → NGSI-LD → Orion-LD; ausgeliefert deaktiviert, im Editor einschalten). Die
+  # Ingestion läuft im Konnektordienst, nicht hier. Deploys aus dem Editor
+  # schreiben in ./config/nodered/flows.json im Checkout.
   node-red:
     image: nodered/node-red:4.1
     container_name: udp-node-red
     environment:
       TZ: Europe/Berlin
+      # Anmeldung für Editor und Admin-API (settings.js): beide gesetzt =
+      # Login-Pflicht, beide leer = offen. Hash erzeugen s. .env.example.
+      NODE_RED_ADMIN_USER: ${NODE_RED_ADMIN_USER:-}
+      NODE_RED_ADMIN_PASSWORD_HASH: ${NODE_RED_ADMIN_PASSWORD_HASH:-}
     volumes:
       - nodered-data:/data
       - ./config/nodered/flows.json:/data/flows.json
       # settings.js versioniert (gleiche Datei wie im Helm-Chart)
       - ./config/nodered/settings.js:/data/settings.js
     ports:
-      - "${WORKFLOW_PORT:-4900}:1880"   # Workflow-Slot gem. PORTS.md
+      # Nur lokal veröffentlicht: der Editor kann Flows deployen, die beliebigen
+      # Code ausführen. Für andere Rechner WORKFLOW_BIND setzen – nie ohne
+      # NODE_RED_ADMIN_USER/NODE_RED_ADMIN_PASSWORD_HASH.
+      - "${WORKFLOW_BIND:-127.0.0.1}:${WORKFLOW_PORT:-4900}:1880"   # Workflow-Slot gem. PORTS.md
     restart: unless-stopped
     networks: [udp]
     <<: *default-logging
@@ -468,8 +476,9 @@ services:
       NGINX_ENTRYPOINT_LOCAL_RESOLVERS: "1"
       NGINX_ENVSUBST_FILTER: "^(UDP_|NGINX_LOCAL_RESOLVERS)"
       UDP_GATEWAY_UPSTREAM: "apisix:9080"
-      # /abfahrten und /warnungen.ics (gui/docker/17-udp-upstreams.envsh).
-      UDP_CONNECTORS_UPSTREAM: "connectors:1880"
+      # /abfahrten und /warnungen.ics (gui/docker/17-udp-upstreams.envsh);
+      # host:port, per .env überschreibbar.
+      UDP_CONNECTORS_UPSTREAM: ${UDP_CONNECTORS_UPSTREAM:-connectors:1880}
       # Proxy-Netze, deren X-Forwarded-For das Cockpit für den Rate-Limit-
       # Schlüssel übernimmt; leer = alle privaten Bereiche (s. .env.example).
       UDP_TRUSTED_PROXIES: ${UDP_TRUSTED_PROXIES:-}

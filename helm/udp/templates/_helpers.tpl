@@ -85,7 +85,8 @@ Pinned as "<tag>@sha256:…" (build-images.yml): render only the digest. The tag
 changes with every build even when the image does not (per-run tags such as
 pr-<n>-<sha> are added to a reused digest), and CloudNativePG compares the image
 reference as a string - a new tag alone rolled the database cluster with a
-primary switchover on every release (seen live). Kubernetes pulls by digest
+primary switchover on every release (observed in a production installation).
+Kubernetes pulls by digest
 either way; the tag was informational only.
 */ -}}
 {{- if contains "@sha256:" $tag -}}
@@ -180,10 +181,18 @@ udp-geoserver
 hystreet token and secret of the connector service. connectors.* is the
 place; nodeRed.hystreetApiToken / nodeRed.hystreetExistingSecret (where they
 lived while Node-RED ran the connectors) are still read as a fallback, so an
-upgrade with old values keeps the token.
+upgrade with old values keeps the token. A token AND an existing secret (in
+any combination of the old and new keys) fail the render: which one wins
+would otherwise be a silent guess.
 */}}
 {{- define "udp.hystreetExistingSecret" -}}
-{{- .Values.connectors.hystreetExistingSecret | default (dig "hystreetExistingSecret" "" (.Values.nodeRed | default dict)) -}}
+{{- $old := .Values.nodeRed | default dict -}}
+{{- $secret := .Values.connectors.hystreetExistingSecret | default (dig "hystreetExistingSecret" "" $old) -}}
+{{- $token := .Values.connectors.hystreetApiToken | default (dig "hystreetApiToken" "" $old) -}}
+{{- if and $secret $token -}}
+{{- fail "hystreet: both a token (connectors.hystreetApiToken / nodeRed.hystreetApiToken) and an existing secret (connectors.hystreetExistingSecret / nodeRed.hystreetExistingSecret) are set – keep exactly one. (The nodeRed.* keys are the former place; move the value to connectors.*.)" -}}
+{{- end -}}
+{{- $secret -}}
 {{- end -}}
 
 {{/* Chart-managed token; empty with an existing secret. */}}
@@ -540,5 +549,42 @@ Aufruf: {{ include "udp.storageClass" (dict "ctx" . "override" .Values.mongo.per
 {{- $sc := .override | default .ctx.Values.global.storageClass -}}
 {{- if $sc -}}
 storageClassName: {{ $sc }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Login of the Node-RED editor and admin API (settings.js adminAuth, from the
+env NODE_RED_ADMIN_USER / NODE_RED_ADMIN_PASSWORD_HASH). Name of the secret
+that carries both – external (nodeRed.adminAuth.existingSecret) or rendered by
+the chart (udp-node-red-admin, templates/secrets.yaml) – or empty: no login.
+Half a login, both sources, or a hash that is not bcrypt fail the render;
+settings.js would refuse to start with them anyway.
+*/}}
+{{- define "udp.nodeRedAdminSecretName" -}}
+{{- $auth := .Values.nodeRed.adminAuth | default dict -}}
+{{- $user := toString ($auth.username | default "") -}}
+{{- $hash := toString ($auth.passwordHash | default "") -}}
+{{- $existing := toString ($auth.existingSecret | default "") -}}
+{{- if and $existing (or $user $hash) -}}
+{{- fail "nodeRed.adminAuth: set either existingSecret or username/passwordHash, not both" -}}
+{{- end -}}
+{{- if ne (empty $user) (empty $hash) -}}
+{{- fail "nodeRed.adminAuth: username and passwordHash must be set together (or neither)" -}}
+{{- end -}}
+{{- if and $hash (not (regexMatch "^[$]2[aby][$][0-9]{2}[$][./A-Za-z0-9]{53}$" $hash)) -}}
+{{- fail "nodeRed.adminAuth.passwordHash: not a bcrypt hash – generate it with: docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw" -}}
+{{- end -}}
+{{- if $existing -}}
+{{- $existing -}}
+{{- else if $user -}}
+udp-node-red-admin
+{{- end -}}
+{{- end -}}
+
+{{/* Checksum of a chart-managed Node-RED login; empty otherwise. */}}
+{{- define "udp.nodeRedAdminChecksum" -}}
+{{- $auth := .Values.nodeRed.adminAuth | default dict -}}
+{{- if and (include "udp.nodeRedAdminSecretName" .) (not $auth.existingSecret) -}}
+{{- list $auth.username $auth.passwordHash | toJson | sha256sum -}}
 {{- end -}}
 {{- end -}}

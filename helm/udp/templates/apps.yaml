@@ -10,18 +10,32 @@
 # =============================================================================
 {{- /*
 Node-RED runs the upstream image; flows.json and settings.js come from the
-ConfigMap node-red-config (templates/configmaps.yaml). A digest pin of the
-former own image node-red-udp does not belong on the upstream repository:
-Kubernetes would pull that digest from nodered/node-red and never find it.
-Caught: the tags build-images.yml pinned (main, sha-…, pr-…, the chart's
-SemVer) with a digest. A digest pin of the upstream image itself ("4.1@sha256:…")
-passes – Node-RED below 4 does not run this settings.js anyway.
+ConfigMap node-red-config (templates/configmaps.yaml). Values of the former
+own image node-red-udp do not belong on the upstream repository – with or
+without a digest, Kubernetes would pull that tag (main, sha-…, pr-…, the
+chart's version) from nodered/node-red and never find it, or find something
+else. Caught: nodeRed.image.name (the own image's key), and every tag that
+looks like a pin of build-images.yml: main, sha-*, pr-*, a 0.x-3.x version
+(the chart's SemVer line; Node-RED below 4 does not run this settings.js
+anyway) and the chart's version/appVersion. A pin of the upstream image
+itself ("4.1", "4.1@sha256:…") passes.
 */}}
+{{- if .Values.nodeRed.image.name }}
+{{- fail (printf "nodeRed.image.name: %q is a value of the former own image node-red-udp, which is gone – Node-RED runs the upstream image %s. Remove nodeRed.image.name (and a node-red-udp tag) from your values." (toString .Values.nodeRed.image.name) .Values.nodeRed.image.repository) }}
+{{- end }}
 {{- $nrTag := toString .Values.nodeRed.image.tag }}
 {{- $nrBase := splitList "@" $nrTag | first }}
-{{- $ownPin := and (contains "@sha256:" $nrTag) (or (regexMatch "^(main|sha-[0-9a-f]{7,40}|pr-[0-9]+(-[0-9a-f]+)?|[0-3][.][0-9]+[.][0-9]+)$" $nrBase) (eq $nrBase .Chart.Version) (eq $nrBase (toString .Chart.AppVersion))) }}
-{{- if or .Values.nodeRed.image.name $ownPin }}
-{{- fail (printf "nodeRed.image: Node-RED runs the upstream image %s now, the own image node-red-udp is gone. Remove nodeRed.image.name/.tag from your values (tag %q looks like a pin of node-red-udp)." .Values.nodeRed.image.repository $nrTag) }}
+{{- if or (regexMatch "^(main|sha-.*|pr-.*|[0-3][.].*)$" $nrBase) (eq $nrBase .Chart.Version) (eq $nrBase (toString .Chart.AppVersion)) }}
+{{- fail (printf "nodeRed.image.tag: %q looks like a pin of the former own image node-red-udp (main, sha-*, pr-*, the chart version) – Node-RED runs the upstream image %s now. Remove nodeRed.image.tag from your values (default %q) or set an upstream Node-RED tag (4.x)." $nrTag .Values.nodeRed.image.repository "4.1") }}
+{{- end }}
+{{- /*
+connectors.enabled=false switches the WHOLE ingestion off – Node-RED ingests
+nothing any more – and /abfahrten and /warnungen.ics answer 502 unless
+cockpit.connectorsUpstream points elsewhere. Only with an explicit
+acknowledgement.
+*/}}
+{{- if and (not .Values.connectors.enabled) (not .Values.connectors.disableIngestion) }}
+{{- fail "connectors.enabled=false: the connector service is the only ingestion of the platform (Node-RED ingests nothing) – without it no source is fetched and /abfahrten and /warnungen.ics answer 502 (unless cockpit.connectorsUpstream points to a service elsewhere). Set connectors.disableIngestion=true to confirm, or leave connectors.enabled=true." }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment
@@ -44,6 +58,10 @@ spec:
       annotations:
         # A changed example flow or settings.js rolls the pod.
         checksum/config: {{ list (.Files.Get "files/nodered/flows.json") (.Files.Get "files/nodered/settings.js") | toJson | sha256sum }}
+        {{- with include "udp.nodeRedAdminChecksum" . }}
+        # A changed chart-managed login rolls the pod (env comes from a secret).
+        checksum/admin-auth: {{ . }}
+        {{- end }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.nodeRed) | nindent 6 }}
       initContainers:
@@ -68,6 +86,16 @@ spec:
             {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.nodeRed.containerSecurityContext) | nindent 12 }}
           env:
             - { name: TZ, value: {{ .Values.nodeRed.timezone | quote }} }
+            {{- with include "udp.nodeRedAdminSecretName" . }}
+            # Login for the editor and the admin API (settings.js adminAuth),
+            # from nodeRed.adminAuth.
+            - name: NODE_RED_ADMIN_USER
+              valueFrom:
+                secretKeyRef: { name: {{ . }}, key: NODE_RED_ADMIN_USER }
+            - name: NODE_RED_ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef: { name: {{ . }}, key: NODE_RED_ADMIN_PASSWORD_HASH }
+            {{- end }}
           ports: [{ containerPort: 1880 }]
           # /data is an emptyDir: flows deployed in the editor, context and
           # .config.*.json live only as long as the pod. The versioned state is
@@ -217,14 +245,22 @@ spec:
             # ermittelt der Entrypoint aus /etc/resolv.conf.
             - { name: UDP_GATEWAY_UPSTREAM, value: {{ .Values.cockpit.gatewayUpstream | default (printf "apisix.%s.svc.%s:9080" .Release.Namespace .Values.global.clusterDomain) | quote }} }
             # /abfahrten and /warnungen.ics: the connector service (Node-RED no
-            # longer serves them). With connectors.enabled=false and no
-            # cockpit.connectorsUpstream both answer 502, the rest of the
-            # cockpit is unaffected. The former per-endpoint switch
-            # (cockpit.endpoints) is gone; a leftover "connectors" is ignored,
-            # anything else fails the render instead of being silently dropped.
+            # longer serves them). With connectors.enabled=false (only with
+            # connectors.disableIngestion) and no cockpit.connectorsUpstream
+            # both answer 502, the rest of the cockpit is unaffected. The
+            # former per-endpoint switch (cockpit.endpoints) is gone; a
+            # leftover "connectors" is ignored, anything else fails the render
+            # instead of being silently dropped. cockpit.connectorsUpstream
+            # must be host:port – the same rule gui/docker/17-udp-upstreams.envsh
+            # enforces at container start, checked here already at render time.
             {{- range $name, $value := .Values.cockpit.endpoints | default dict }}
             {{- if and $value (ne (toString $value) "connectors") }}
             {{- fail (printf "cockpit.endpoints.%s: %q – the switch is gone, both endpoints are served by the connector service (cockpit.connectorsUpstream for a different address)" $name (toString $value)) }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.cockpit.connectorsUpstream }}
+            {{- if not (regexMatch "^[0-9A-Za-z._-]+:[0-9]+$" (toString .)) }}
+            {{- fail (printf "cockpit.connectorsUpstream: %q must be host:port (e.g. connectors.other-namespace.svc.cluster.local:1880) – the cockpit container refuses anything else at start" (toString .)) }}
             {{- end }}
             {{- end }}
             - { name: UDP_CONNECTORS_UPSTREAM, value: {{ .Values.cockpit.connectorsUpstream | default (printf "connectors.%s.svc.%s:1880" .Release.Namespace .Values.global.clusterDomain) | quote }} }
