@@ -3760,7 +3760,7 @@
                 "p": "payload"
             }
         ],
-        "repeat": "14400",
+        "repeat": "21600",
         "crontab": "",
         "once": true,
         "onceDelay": "600",

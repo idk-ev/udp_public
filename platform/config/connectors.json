@@ -94,9 +94,9 @@
       "name": "Wetter alle Gemeinden (Open-Meteo)",
       "scope": "land",
       "enabledFor": "*",
-      "intervalSeconds": 14400,
+      "intervalSeconds": 21600,
       "cron": null,
-      "sollMinutes": 260,
+      "sollMinutes": 390,
       "sampleEntity": "urn:ngsi-ld:WeatherObserved:bw-08111000",
       "provides": [
         "wetter"
@@ -111,12 +111,12 @@
     },
     {
       "id": "vorhersage-bw",
-      "name": "Vorhersage landesweit (Open-Meteo, 2-h-Takt)",
+      "name": "Vorhersage landesweit (Open-Meteo, 6-h-Takt)",
       "scope": "land",
       "enabledFor": "*",
-      "intervalSeconds": 7200,
+      "intervalSeconds": 21600,
       "cron": null,
-      "sollMinutes": 180,
+      "sollMinutes": 390,
       "sampleEntity": "urn:ngsi-ld:WeatherForecast:bw-08111000",
       "provides": [
         "vorhersage-basis",
