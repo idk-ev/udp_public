@@ -443,6 +443,23 @@ function loopbackMeansTheThreeSpellings(): void {
   }
 }
 
+/**
+ * POST whose body the server may refuse to read. The server answers and closes
+ * the connection without draining the upload, so a client still sending can see
+ * the reset before it reads the answer — a race inherent to HTTP, not a server
+ * failure. Returns the status, or null when the connection was reset first.
+ */
+async function postMayReset(url: string, body: string): Promise<number | null> {
+  try {
+    return (await fetch(url, { method: "POST", body })).status;
+  } catch (error) {
+    const cause = error instanceof Error ? error.cause : undefined;
+    const code = cause instanceof Error && "code" in cause ? String(cause.code) : "";
+    if (code === "ECONNRESET" || code === "EPIPE" || code === "UND_ERR_SOCKET") return null;
+    throw error;
+  }
+}
+
 async function triggerOnlyFromLoopbackAndBodiesNeverError(): Promise<void> {
   const g = rig(registryEntry("abfahrten-on-demand"), recordingFetcher(() => EFA_OK).fetcher);
   const kernel = g.kernel;
@@ -492,14 +509,14 @@ async function triggerOnlyFromLoopbackAndBodiesNeverError(): Promise<void> {
 
     // From loopback, with a 2 MB body the route never reads: 202, no [error].
     const big = "x".repeat(2 * 1024 * 1024);
-    const accepted = await fetch(`${base}/trigger/demo`, { method: "POST", body: big });
-    assert.equal(accepted.status, 202);
+    const accepted = await postMayReset(`${base}/trigger/demo`, big);
+    assert.ok(accepted === 202 || accepted === null, `trigger answered ${String(accepted)}`);
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(runs, 1);
 
     // A route that reads bodies: 413 above the limit, no [error]; a small one arrives.
-    const tooLarge = await fetch(`${base}/echo`, { method: "POST", body: "y".repeat(MAX_BODY_BYTES + 1) });
-    assert.equal(tooLarge.status, 413);
+    const tooLarge = await postMayReset(`${base}/echo`, "y".repeat(MAX_BODY_BYTES + 1));
+    assert.ok(tooLarge === 413 || tooLarge === null, `oversized body answered ${String(tooLarge)}`);
     const small = await fetch(`${base}/echo`, { method: "POST", body: "hello" });
     assert.equal(small.status, 200);
     assert.equal(received, "hello");
