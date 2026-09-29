@@ -1,5 +1,5 @@
 {
- "stand": "2026-09-29T08:51:11+00:00",
+ "stand": "2026-09-29T09:12:19+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -67,7 +67,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "grenzen-bw",
@@ -84,7 +84,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": "http://localhost:3700/bw-grenzen.json",
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "wetter-bw",
@@ -468,7 +468,7 @@
    "pending": null,
    "refireOnRestart": null,
    "healthUrl": null,
-   "runtime": "nodered"
+   "runtime": "app"
   },
   {
    "id": "wetter-dwd-station",

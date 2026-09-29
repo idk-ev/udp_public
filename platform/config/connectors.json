@@ -70,7 +70,8 @@
       "active": true,
       "nodePrefixes": [
         "udp-rt-bm-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "grenzen-bw",
@@ -88,7 +89,8 @@
       "nodePrefixes": [
         "udp-rt-bgr-"
       ],
-      "healthUrl": "http://localhost:3700/bw-grenzen.json"
+      "healthUrl": "http://localhost:3700/bw-grenzen.json",
+      "runtime": "app"
     },
     {
       "id": "wetter-bw",
@@ -517,7 +519,8 @@
       },
       "nodePrefixes": [
         "udp-rt-bz-"
-      ]
+      ],
+      "runtime": "app"
     },
     {
       "id": "wetter-dwd-station",
