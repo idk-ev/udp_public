@@ -2,6 +2,34 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Konnektordienst: Zustand und Schreibvolumen
+
+- Schreib-Lock: gilt nur noch als verloren, wenn die Datenbank das bestätigt
+  (kein clientseitiges Query-Timeout mehr, Abgleich über `pg_locks`). Nach
+  einem echten Verlust bleiben die Signaturen im Speicher und werden
+  nachgeschrieben, statt ältere Stände darüberzuladen; hielt zwischenzeitlich
+  eine andere Instanz den Lock, überleben nur übereinstimmende Signaturen.
+- Leere Signaturtabellen (Neuinstallation, Zustandsverlust) werden bei
+  Parken, Laden und Carsharing aus dem Broker befüllt – kein Vollschrieb.
+- Ladepunkte, Ladesummen und Carsharing-Stationen trennen Stammdaten von
+  Messwerten: Statusänderungen schreiben nur die geänderten Werte plus
+  `dateObserved`. Zeilenbudgets neu: `EVChargingStation` 460.000,
+  `ChargingSummary` 95.000, `CarSharingStation` 180.000 (docs/betrieb.md).
+- Prune: Altbestand (älter als 7 Tage) wird in Portionen von 1.000 je Lauf
+  abgebaut, der 30-%-Deckel gilt nur noch für frisch Verschwundenes.
+  Blockierte Prunes stehen in `/healthz` (`stateStore.blockedPrunes`).
+- Carsharing löscht Stationen, die zwei Läufe in Folge in der vollständigen
+  Stationsliste ihres Systems fehlen (je System höchstens 50 %).
+- Ein 207 auf ein Delete ohne `success`/`errors` zählt nicht mehr als
+  gelöscht.
+- Log: je Gate-Schreibvorgang „geändert/gesamt“; Warnung, wenn mehr als die
+  Hälfte trotz gespeicherter Signaturen als geändert gilt.
+
+> **Upgrade:** Der erste Lauf füllt die neuen Signaturtabellen von Laden und
+> Carsharing aus dem Broker (einige Listenabrufe, keine Schreiblast). Der
+> Carsharing-Altbestand wird ab dem zweiten Lauf mit höchstens 1.000
+> Löschungen je Stunde abgebaut.
+
 ## 1.3.0 — Ingestion im Konnektordienst
 
 Alle 29 Konnektoren laufen im Konnektordienst (`platform/connectors`,
