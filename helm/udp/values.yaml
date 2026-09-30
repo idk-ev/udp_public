@@ -458,7 +458,9 @@ timescale:
   # the chart disables its PDB).
   instances: 2
   resources:
-    requests: { cpu: 500m, memory: 1Gi }
+    # The request covers shared_buffers (parameters below), /dev/shm and
+    # maintenance_work_mem – the node must really have that memory.
+    requests: { cpu: 500m, memory: 2Gi }
     limits:   { cpu: "2",  memory: 4Gi }
   # One volume PER INSTANCE of this size.
   persistence:
@@ -477,8 +479,26 @@ timescale:
   # primary alone. Only rendered with instances > 1.
   synchronous: { method: any, number: 1, dataDurability: preferred }
   # Additional postgresql.conf parameters (CNPG rejects the ones it manages
-  # itself, e.g. shared_preload_libraries, archive_*, log_*).
-  parameters: {}
+  # itself, e.g. shared_preload_libraries, archive_*, log_*). The defaults are
+  # sized for the default resources above (4Gi limit) and must be SCALED WITH
+  # THEM: shared_buffers ~25 %, effective_cache_size ~75 % of the memory limit.
+  # shared_buffers counts towards the limit together with work_mem per sort,
+  # maintenance_work_mem and /dev/shm (shmSize). Changing shared_buffers (or
+  # max_connections) restarts the instances – with switchover, see DEPLOY.md
+  # §10. Override single keys in your values; set a key to null to drop it.
+  parameters:
+    shared_buffers: 1GB
+    effective_cache_size: 3GB
+    work_mem: 16MB
+    maintenance_work_mem: 256MB
+    # SSD/network block storage: random reads cost little more than sequential ones.
+    random_page_cost: "1.1"
+    effective_io_concurrency: "200"
+    # Fewer, larger checkpoints under the steady TRoE insert load.
+    max_wal_size: 4GB
+    checkpoint_completion_target: "0.9"
+    # Autovacuum of insert-mostly tables (TRoE) keeps pace with the inflow.
+    autovacuum_vacuum_cost_limit: "1000"
   # Size of /dev/shm. Container runtimes default to 64 MiB, and parallel
   # queries (TimescaleDB chunk scans) then fail with "could not resize shared
   # memory segment". Counts towards the memory limit.
@@ -562,6 +582,12 @@ orionLd:
   # CrashLoopBackOff with growing back-off (up to 5 min) – long after the
   # databases are back. An init container waits for both ports instead.
   waitForDatabases: true
+  # Creates the TRoE schema of Orion-LD before the broker starts
+  # (files/postgres/troe-schema.sql, init container troe-schema): attributes as
+  # a TimescaleDB hypertable without primary key. Idempotent; leaves an
+  # existing plain attributes table alone – converting it is
+  # scripts/migrate-troe-hypertable.sh (DEPLOY.md §10c).
+  troeSchema: true
   # A new pod must stay ready this long before the rollout continues – catches
   # the crash-right-after-start pattern above before the old pod is gone.
   minReadySeconds: 10

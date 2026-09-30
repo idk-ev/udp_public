@@ -21,11 +21,18 @@ spec:
     metadata:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "orion-ld") | nindent 8 }}
+      {{- if .Values.orionLd.troeSchema }}
+      annotations:
+        # A changed schema script runs on the next start of each replica.
+        checksum/troe-schema: {{ .Files.Get "files/postgres/troe-schema.sql" | sha256sum }}
+      {{- end }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.orionLd) | nindent 6 }}
       {{- include "udp.spread" (dict "ctx" . "component" "orion-ld" "cfg" .Values.orionLd) | nindent 6 }}
-      {{- if .Values.orionLd.waitForDatabases }}
+      {{- if or .Values.orionLd.waitForDatabases .Values.orionLd.troeSchema }}
       initContainers:
+      {{- end }}
+      {{- if .Values.orionLd.waitForDatabases }}
         # Same image (has bash with /dev/tcp) – no extra image to pull.
         # Each entry is a space-separated list of alternatives: one reachable
         # replica set member is enough.
@@ -54,6 +61,52 @@ spec:
           resources:
             requests: { cpu: 10m, memory: 16Mi }
             limits:   { cpu: 100m, memory: 64Mi }
+      {{- end }}
+      {{- if .Values.orionLd.troeSchema }}
+        # TRoE schema before the broker starts (files/postgres/troe-schema.sql):
+        # attributes as a hypertable without primary key; Orion-LD's own DDL
+        # then aborts harmlessly. Idempotent, serialised by an advisory lock,
+        # a no-op on an existing database. The database image brings psql.
+        - name: troe-schema
+          image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.timescale.image) }}
+          {{- /* A digest never changes its content: no registry round trip, so
+               a registry outage does not block a restart of the broker. */}}
+          {{- if contains "@sha256:" (.Values.timescale.image.tag | default .Values.global.udpTag | toString) }}
+          imagePullPolicy: IfNotPresent
+          {{- else }}
+          {{ include "udp.ownImagePullPolicy" . }}
+          {{- end }}
+          env:
+            - { name: PGHOST, value: timescale }
+            - { name: PGDATABASE, value: {{ .Values.timescale.db.name | quote }} }
+            - { name: PGCONNECT_TIMEOUT, value: "5" }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
+          # The database (a CNPG Database resource) may appear a moment after
+          # the port: retry for up to 5 min, then let the kubelet restart it.
+          command:
+            - bash
+            - -c
+            - |
+              for i in $(seq 1 60); do
+                psql -X -q -v ON_ERROR_STOP=1 -f /troe/troe-schema.sql && exit 0
+                echo "troe-schema: attempt $i failed, retrying in 5 s"; sleep 5
+              done
+              exit 1
+          volumeMounts:
+            - { name: troe-schema, mountPath: /troe, readOnly: true }
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" (dict "runAsNonRoot" true "runAsUser" 26 "readOnlyRootFilesystem" true)) | nindent 12 }}
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+      {{- end }}
+      {{- if .Values.orionLd.troeSchema }}
+      volumes:
+        - name: troe-schema
+          configMap: { name: troe-schema }
       {{- end }}
       containers:
         - name: orion-ld
