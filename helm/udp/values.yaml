@@ -1159,7 +1159,11 @@ cockpit:
     - { id: "lktue", name: "Landkreis Tübingen" }
   resources:
     requests: { cpu: 50m,  memory: 64Mi }
-    limits:   { cpu: 250m, memory: 128Mi }
+    # One core: every page view of a public dashboard (HTML, assets and the
+    # ~25 API calls answered from the micro-cache) is served by this nginx.
+    # With 250m it was the first thing to saturate under load, long before
+    # Orion-LD or MongoDB – while it sat idle the rest of the time.
+    limits:   { cpu: "1",  memory: 128Mi }
   pdb: { minAvailable: 1 }
   # Basis ist nginx-unprivileged (s. gui/Dockerfile): der Master laeuft selbst
   # als 101, laesst den "user"-Wechsel und damit das chown der Cache-Pfade

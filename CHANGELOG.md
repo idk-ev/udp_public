@@ -2,6 +2,14 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Cockpit-Durchsatz
+
+- Cockpit-nginx liefert vorkomprimierte statische Dateien aus (`gzip_static`),
+  puffert das Access-Log und hält Dateien offen – ein Mehrfaches an
+  Seitenaufrufen je CPU. CPU-Limit des Cockpits 250m → 1.
+- Kontext-API: 404 wird 10 s gecacht.
+- Stadt-Dashboard fragt keine Daten wartender Konnektoren (`pending`) mehr ab.
+
 ## 1.3.0 — Ingestion im Konnektordienst
 
 Alle 29 Konnektoren laufen im Konnektordienst (`platform/connectors`,
