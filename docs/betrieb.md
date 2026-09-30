@@ -120,6 +120,121 @@ DevTools → Application → Service Workers → Unregister.
 - Secrets ausschließlich über Kubernetes-Secrets/External-Secrets, nie im
   Repository (Beispielwerte sind als solche markiert und zu ersetzen).
 
+## Webanalyse, Impressum und Datenschutz
+
+Betreiber binden eine Webanalyse ihrer Wahl (z. B. Rybbit, Plausible, Umami,
+Matomo) und ihr eigenes Impressum samt Datenschutzerklärung ein, ohne das Image
+neu zu bauen. Kubernetes (Helm-Werte):
+
+```yaml
+cockpit:
+  legal:
+    impressumUrl: "https://www.example.org/impressum"
+    datenschutzUrl: "https://www.example.org/datenschutz"
+  analytics:
+    headHtml: |
+      <script src="https://analytics.example.org/script.js" data-site-id="…" defer></script>
+    includeCockpit: false   # Standard; true = auch im Cockpit
+```
+
+Docker Compose: dieselben Schlüssel (`legal`, `analytics`) in
+`gui/public/config.js` eintragen.
+
+**Impressum/Datenschutz:** Die Links erscheinen unter der Fußzeile aller
+öffentlichen Seiten (Kommunen-Suche, Gemeinde- und Kreisseiten, Mitmachen,
+404) und in der Seitenleiste des Cockpits; im Einbettungsmodus (`?embed=1`)
+sind sie ausgeblendet. Erlaubt sind `https://…`, `http://…` oder ein Pfad auf
+dieser Domain mit genau einem führenden `/` (`/impressum`). Andere Werte
+(`javascript:`, `//host`, …) lässt das Chart nicht rendern; im Browser werden
+sie zusätzlich verworfen. Leer = kein Link.
+
+**Webanalyse:** Der Einbettungscode wird **unverändert** in den `<head>` jeder
+öffentlichen Seite eingefügt – Kommunen-Suche, alle Gemeinde- und Kreisseiten
+(auch eingebettet per `?embed=1`), Mitmachen und 404. Im Cockpit nur mit
+`analytics.includeCockpit: true`. Das übernimmt `gui/public/site.js`: Die
+Elemente werden nacheinander eingefügt, `<script>`-Elemente mit allen
+Attributen neu erzeugt, `<link>`/`<meta>` übernommen, `<noscript>` entfällt.
+Nach einem externen Skript **ohne** `async` wartet das nächste Element, bis es
+geladen ist (höchstens 10 s) – ein Inline-Skript, das die Bibliothek davor
+aufruft, funktioniert also wie in statischem HTML. Skripte mit `async` halten
+die Reihenfolge nicht auf.
+
+- Der Code ist **vertrauenswürdige Eingabe des Betreibers**: Er läuft mit
+  vollem Skriptzugriff auf allen Seiten, auf denen er eingebunden ist – mit
+  `includeCockpit: true` auch auf angemeldete Cockpit-Sitzungen samt
+  Keycloak-Tokens. Deshalb ist das Cockpit standardmäßig ausgenommen. Nur
+  Anbieter einsetzen, denen du vertraust; wo der Anbieter es unterstützt,
+  ein `integrity`-Attribut (SRI) mit angeben.
+- Cookielose Werkzeuge kommen in der Regel ohne Einwilligungsbanner aus.
+  Speichert ein Werkzeug Cookies oder nutzt localStorage o. Ä., ist nach
+  § 25 TDDDG eine Einwilligung nötig – ein Einwilligungsbanner bringt die
+  Plattform **nicht** mit.
+- Die Datenschutzerklärung muss das Werkzeug nennen. Das Chart warnt in den
+  Installationshinweisen, wenn `analytics.headHtml` gesetzt, aber
+  `legal.datenschutzUrl` leer ist. Die rechtliche Bewertung liegt beim
+  Betreiber; dieser Abschnitt ist keine Rechtsberatung.
+- Der Service Worker liefert `config.js` aus seinem Cache und frischt sie im
+  Hintergrund auf: Eine geänderte Konfiguration wirkt bei wiederkehrenden
+  Besuchern erst ab dem **zweiten** Seitenaufruf.
+- Der Service Worker legt außerdem jede GET-Anfrage an den **eigenen** Origin
+  im Cache Storage ab. Einen Analyse-Anbieter, der über denselben Origin
+  geproxyt wird und per GET mit wechselnden Query-Strings zählt, daher über
+  seinen eigenen Origin anbinden – sonst füllt jeder Zählaufruf den Cache des
+  Browsers. Alternativ den Pfad in `gui/public/sw.js` ausnehmen.
+- Eine künftige Content-Security-Policy muss den Origin des Analyse-Anbieters
+  (`script-src`, `connect-src`) und ggf. Inline-Skripte des Einbettungscodes
+  zulassen. Für die Seiten selbst setzt die Plattform derzeit keine CSP.
+
+### Logo und Favicon
+
+Logo und Favicon des Betreibers liefert die Plattform **selbst** aus (kein
+Hotlinking). Der Dateiinhalt steht base64-kodiert in den Helm-Werten:
+
+```yaml
+cockpit:
+  branding:
+    logo:
+      data: "iVBORw0KGgo…"          # base64 -w0 logo.png
+      type: image/png               # image/png | image/svg+xml | image/webp | image/jpeg
+      alt: "Musterstadt"            # leer -> "Logo"
+      href: "https://www.example.org/"   # optional, gleiche Regel wie legal.*
+    favicon:
+      data: "PHN2ZyB4bWxucz0…"      # base64 -w0 favicon.svg
+      type: image/svg+xml           # image/png | image/svg+xml | image/x-icon
+```
+
+- Kodieren: `base64 -w0 logo.png` (macOS: `base64 -i logo.png`).
+  Zeilenumbrüche im Wert sind erlaubt und werden entfernt.
+- Das Chart prüft beim Rendern: Typ aus der Liste, gültiges base64, die
+  Dateisignatur passend zum Typ (PNG, JPEG, WebP, ICO; SVG muss ein
+  `<svg`-Element enthalten) und die Größe: höchstens 128 KiB für das Logo und
+  64 KiB für das Favicon. Grund ist das Release-Secret von Helm (höchstens
+  1 MiB, gzip der Werte und Manifeste, base64-kodiert): Jedes Bild steht darin
+  zweimal – in den Werten und in der ConfigMap – und lässt sich als base64
+  kaum komprimieren. Größere Bilder brächen `helm install`/`upgrade` mit
+  „data: Too long“ ab.
+- Logo: PNG mit etwa 120 px Höhe (Anzeige mit rund 38 px, also scharf auch auf
+  hochauflösenden Displays) oder SVG. Es erscheint am Anfang des Seitenkopfs
+  der öffentlichen Seiten und statt des „UD“-Zeichens in der Seitenleiste des
+  Cockpits. Im dunklen Farbschema liegt es auf einem hellen, abgerundeten
+  Hintergrund, damit dunkle Schrift auf transparentem Grund lesbar bleibt.
+- Favicon: alle Seiten verweisen auf `/favicon`. nginx liefert das Favicon des
+  Betreibers (`favicon.png`, `.svg` oder `.ico`) und sonst das Plattform-Icon
+  `/icon.svg` aus. Das PWA-Manifest behält `/icon.svg` – installierte Apps
+  brauchen ein großes, skalierbares Icon.
+- Die Bilder liegen in der ConfigMap `cockpit-branding` und werden unter
+  `/branding/` ausgeliefert. Dort und unter `/favicon` gilt eine
+  Content-Security-Policy mit `sandbox`: Ein direkt geöffnetes SVG kann so
+  kein Skript auf der Plattform-Domain ausführen.
+- Ohne `branding` wird nichts gerendert oder gemountet; die Seiten sehen aus
+  wie bisher.
+
+Docker Compose: die Dateien vor dem GUI-Build nach `gui/public/branding/`
+legen (`logo.png`, `favicon.png` bzw. `.svg`/`.ico`) und das Logo in
+`gui/public/config.js` eintragen:
+`branding: { logo: { src: "/branding/logo.png", alt: "Musterstadt", href: "" } }`.
+Das Favicon braucht keinen Eintrag.
+
 ## Bekannte Einschränkungen Orion-LD TRoE (1.6.0)
 
 Zwei Bugs lassen den TRoE-Insert einer Entität **stillschweigend**

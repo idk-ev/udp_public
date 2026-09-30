@@ -34,4 +34,25 @@ window.UDP_CONFIG = {
     { id: "lkrt", name: "Landkreis Reutlingen" },
     { id: "lktue", name: "Landkreis Tübingen" },
   ],
+  // Footer links on every page (docs/betrieb.md). Accepted: https://…,
+  // http://… or a site-relative path like /impressum; empty = no link.
+  legal: {
+    impressumUrl: "",
+    datenschutzUrl: "",
+  },
+  // Web-analytics snippet of any vendor, inserted verbatim into <head> of
+  // every public page by /site.js. Trusted operator input; empty = no
+  // analytics. includeCockpit: also in the cockpit SPA (admin sessions).
+  analytics: {
+    headHtml: "",
+    includeCockpit: false,
+  },
+  // Operator logo in the page headers and the cockpit sidebar (null = none).
+  // Compose: put the file into gui/public/branding/ before the build, e.g.
+  //   logo: { src: "/branding/logo.png", alt: "Musterstadt", href: "" },
+  // The favicon needs no entry: nginx serves gui/public/branding/favicon.png
+  // (or .svg/.ico) under /favicon when the file exists.
+  branding: {
+    logo: null,
+  },
 };

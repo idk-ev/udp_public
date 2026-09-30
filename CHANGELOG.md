@@ -21,6 +21,16 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   korrigiert.
 - `sharing-bw` meldet jeden Lauf mit einer Info-Zeile.
 
+## Unveröffentlicht — Webanalyse, Impressum, Datenschutz und Logo
+
+- Helm: `cockpit.analytics.headHtml` bindet den Einbettungscode einer beliebigen
+  Webanalyse auf allen öffentlichen Seiten ein (Cockpit nur mit
+  `includeCockpit`), `cockpit.legal.impressumUrl` / `datenschutzUrl` verlinken
+  Impressum und Datenschutzerklärung in der Fußzeile. Standard leer; s.
+  `docs/betrieb.md`.
+- Helm: `cockpit.branding` liefert Logo (Seitenkopf, Cockpit) und Favicon des
+  Betreibers selbst aus; alle Seiten verweisen dafür auf `/favicon`.
+
 ## Unveröffentlicht — Konnektordienst: Zustand und Schreibvolumen
 
 - Schreib-Lock: gilt nur noch als verloren, wenn die Datenbank das bestätigt

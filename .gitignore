@@ -8,6 +8,8 @@ platform/config/masterportal/Basic/
 __pycache__/
 gui/tsconfig.tsbuildinfo
 helm/udp/values-prod.yaml
+# Operator logo/favicon for Compose (docs/betrieb.md) – per installation.
+gui/public/branding/
 platform/connectors/dist/
 platform/connectors/tsconfig.tsbuildinfo
 

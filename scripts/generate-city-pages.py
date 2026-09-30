@@ -41,7 +41,7 @@ TPL = """<!DOCTYPE html>
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0074e8">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon">
 <script>window.STADT = {stadt_json};</script>
 <script>
 // Bundle-Loader: gemeinsames Template übernimmt ab hier (Skripte sequenziell!)
@@ -81,7 +81,7 @@ KREIS_TPL = """<!DOCTYPE html>
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0074e8">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon">
 <script>window.KREIS = {{"krs": "{krs}", "slug": "{slug}", "name": {name_json}}};</script>
 <script>
 // Bundle-Loader: gemeinsames Kreis-Template übernimmt ab hier (Skripte sequenziell!)

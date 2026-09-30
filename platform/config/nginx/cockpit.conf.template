@@ -119,6 +119,34 @@ server {
         try_files $uri =404;
     }
 
+    # Operator logo and favicon (Helm: cockpit.branding -> ConfigMap
+    # cockpit-branding mounted here; Compose: gui/public/branding/ in the
+    # build). Uploaded images may be SVG: opened directly, an SVG is a
+    # document that could run script on this origin. The CSP sandbox forbids
+    # that (inline styles stay allowed for SVGs that use them); <img> never
+    # runs SVG script anyway. add_header here drops the server-level headers,
+    # so they are repeated.
+    location ^~ /branding/ {
+        expires -1;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; sandbox" always;
+        try_files $uri =404;
+    }
+    # Stable favicon address for every page: the operator's favicon if one is
+    # mounted, else the platform icon. The Content-Type follows the file that
+    # matched (try_files re-derives the extension). The PWA manifest keeps
+    # /icon.svg – installable apps need a large, scalable icon.
+    location = /favicon {
+        expires -1;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; sandbox" always;
+        try_files /branding/favicon.png /branding/favicon.svg /branding/favicon.ico /icon.svg =404;
+    }
+
     # PWA-Manifest mit korrektem MIME-Typ ausliefern (Installierbarkeit).
     location = /manifest.webmanifest {
         types { } default_type application/manifest+json;

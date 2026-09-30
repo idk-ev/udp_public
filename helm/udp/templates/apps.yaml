@@ -229,6 +229,12 @@ spec:
       annotations:
         # Neue Adressen in config.js sollen die Pods auch wirklich neu ausrollen.
         checksum/config: {{ include "udp.cockpitConfigJs" . | sha256sum }}
+        {{- $branding := include "udp.branding" . | fromJson }}
+        {{- if $branding.files }}
+        # Logo/favicon (ConfigMap cockpit-branding): a new image rolls the pods
+        # instead of waiting for the kubelet to sync the mounted directory.
+        checksum/branding: {{ toJson $branding.files | sha256sum }}
+        {{- end }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.cockpit) | nindent 6 }}
       {{- include "udp.spread" (dict "ctx" . "component" "cockpit" "cfg" .Values.cockpit) | nindent 6 }}
@@ -281,6 +287,12 @@ spec:
               mountPath: /usr/share/nginx/html/config.js
               subPath: config.js
               readOnly: true
+            {{- if $branding.files }}
+            # Operator logo/favicon, served by nginx under /branding/ and /favicon.
+            - name: branding
+              mountPath: /usr/share/nginx/html/branding
+              readOnly: true
+            {{- end }}
           resources:
             {{- toYaml .Values.cockpit.resources | nindent 12 }}
           {{- include "udp.probes" .Values.cockpit.probes | nindent 10 }}
@@ -288,6 +300,10 @@ spec:
       volumes:
         - name: config
           configMap: { name: cockpit-config }
+        {{- if $branding.files }}
+        - name: branding
+          configMap: { name: cockpit-branding }
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
