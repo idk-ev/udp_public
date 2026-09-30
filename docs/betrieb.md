@@ -216,8 +216,11 @@ sein Intervall lang ist, läuft trotzdem, sobald sein Intervall um ist.
 des Intervalls ab 00:00 UTC plus Versatz, statt „Start + Intervall“. So
 behalten `wetter-bw` und `vorhersage-bw` ihren Abstand über jeden Neustart
 (s. [Open-Meteo-Kontingent](#open-meteo-kontingent)). Ein Slot, der seinen
-Lauf schon hatte, bekommt nach einem Neustart keinen zweiten; ein verpasster
-wird einmal nachgeholt, wenn der nächste Slot nicht ohnehin zuerst kommt.
+Lauf schon hatte (bis 5 min Vorlauf zählen mit), bekommt nach einem Neustart
+keinen zweiten; ein verpasster wird einmal nachgeholt, wenn danach noch
+mindestens das halbe Intervall bis zum nächsten Slot bleibt (bei unbekanntem
+letztem Lauf: höchstens eine Stunde). Ein durch Herunterfahren abgebrochener
+Lauf gilt nicht als gelaufen.
 
 Nächtliche Jobs, denen ihr Cron genügt, tragen dagegen `"fireOnStart": false`
 und laufen beim Dienststart **gar nicht**: `troe-retention` (Indizes,
@@ -255,7 +258,8 @@ anteilig mehr. Wetter (7 Variablen, 1 Tag) und Vorhersage (10 Variablen,
   Grenze 4.500 je gleitender Stunde (nur im Speicher).
 - **Tag:** 8 Läufe × 1.103 = **8.824** je UTC-Tag. Ein Neustart ändert daran
   nichts (kein Zusatzlauf, s. oben); ein verpasster Slot wird nur ersetzt.
-  Weiche Grenze **9.000** (`UDP_OPEN_METEO_DAILY_CAP`), gezählt je Host im
+  Weiche Grenze **9.000** (`UDP_OPEN_METEO_DAILY_CAP`, Helm
+  `connectors.openMeteoDailyCap`), gezählt je Host im
   Zustandsspeicher, Tageswechsel 00:00 UTC (Open-Meteo nennt keine Uhrzeit;
   UTC ist angenommen, die Reserve bis 10.000 deckt Abweichungen). Ein Batch,
   der die Grenze überschreiten würde, wird nicht gesendet, ebenso der Rest

@@ -425,7 +425,7 @@ export {
   nothingLeftWarnsOnBothSides as "wetter-bw: a join without usable locations yields no entities on both sides",
   malformedLocationIsCountedNotWritten as "wetter-bw: a malformed location is counted and dropped (deliberate difference)",
   aDriftedValueFailsTheComparison as "wetter-bw: a single drifted unit code fails the comparison and names its path",
-  runPacesAndWritesWhatTheOldChainWrote as "wetter-bw: run() paces its calls (15 s, 120 s, no retry) and upserts what the old chain wrote",
+  runPacesAndWritesWhatTheOldChainWrote as "wetter-bw: run() paces its calls (20 s, 120 s, no transport retry) and upserts what the old chain wrote",
   failedBatchesAreSkippedAsBefore as "wetter-bw: an HTTP 500 and a network error cost their batch only, as in the old chain",
   joinTimeoutWritesPartialThenLate as "wetter-bw: a join timeout writes the partial group, the late batches follow as a second group",
   shutdownDropsTheOpenGroup as "wetter-bw: a shutdown drops the open join group, as Node-RED's join did on close",

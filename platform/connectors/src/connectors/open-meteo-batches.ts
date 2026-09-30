@@ -368,15 +368,19 @@ function ledgerOf(limiter: RateLimiter): HostLedger {
   return ledger;
 }
 
+/** IMF-fixdate, the HTTP date format (RFC 9110): `Wed, 30 Sep 2026 12:00:00 GMT`. */
+const HTTP_DATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
 /**
  * `Retry-After` in milliseconds — delta-seconds (`120`) or an HTTP date
- * (`Wed, 30 Sep 2026 12:00:00 GMT`, a past one is 0). `null` if absent or
- * unreadable.
+ * (a past one is 0). `null` if absent or unreadable; the caller then pauses
+ * {@link DEFAULT_429_PAUSE_MS}.
  */
 export function retryAfterMs(value: string | undefined, nowMs: number): number | null {
   if (value === undefined) return null;
   const text = value.trim();
   if (/^\d+$/.test(text)) return Number(text) * 1000;
+  if (!HTTP_DATE.test(text)) return null;
   const at = Date.parse(text);
   return Number.isNaN(at) ? null : Math.max(0, at - nowMs);
 }
@@ -431,7 +435,13 @@ export class OpenMeteoRun {
     this.#ctx = ctx;
     this.#options = options;
     this.#ledger = ledgerOf(ctx.limiter);
-    this.#dailyCap = ctx.env.number(DAILY_CAP_ENV, DEFAULT_DAILY_CAP);
+    const cap = ctx.env.number(DAILY_CAP_ENV, DEFAULT_DAILY_CAP);
+    if (!(cap > 0)) {
+      ctx.log.warn(
+        `${DAILY_CAP_ENV}=${String(cap)} is not a positive number, using ${String(DEFAULT_DAILY_CAP)}`,
+      );
+    }
+    this.#dailyCap = cap > 0 ? cap : DEFAULT_DAILY_CAP;
     this.#nowMs = options.nowMs ?? Date.now;
     this.#signal = AbortSignal.any([this.#abort.signal, ctx.signal]);
   }
@@ -460,6 +470,8 @@ export class OpenMeteoRun {
       try {
         // Again with the token: a 429 or the other connector may have come first.
         if (this.#refused(cost)) return this.#skip(call);
+        // Charged when sent, whatever the answer: a 429 and its retry, or a
+        // timeout, count twice rather than not at all — the safe direction.
         this.#charge(cost);
         // Paced above; the token is held until the answer is in.
         response = await this.#ctx.fetch.text(call.url, {

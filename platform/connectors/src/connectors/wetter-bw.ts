@@ -27,7 +27,7 @@
  *    never, depending on the start time. 4 + 3 = 7 variables, weight 1.
  *  * No change gate: the build node spliced CHUNK_HELPER in but never called
  *    `gateChanged`, so every run writes all values (ungated upsert, chunks of 100).
- *  * `refireOnRestart: false` and wall-clock slots (00, 06, 12, 18 UTC): a
+ *  * `refireOnRestart: false` and wall-clock slots (00:10, 06:10, 12:10, 18:10 UTC): a
  *    restart adds no run when the slot already had one (src/kernel/scheduler.ts);
  *    Open-Meteo's HTTP 429 of 21.07. came from restarts firing at once.
  *

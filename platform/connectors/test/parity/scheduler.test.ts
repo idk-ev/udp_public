@@ -32,6 +32,7 @@ import {
 import { parseRegistry } from "../../src/kernel/registry.js";
 import { recordingLog } from "../harness/kernel.js";
 import { registryEntry } from "../harness/g-transport.js";
+import { VirtualClock } from "../harness/virtual-clock.js";
 import { weatherCtx, weatherFetcher } from "../harness/weather-ctx.js";
 
 const MINUTE = 60_000;
@@ -198,10 +199,18 @@ function noExtraRunWithinTheInterval(): void {
   assert.equal(planStart(weather, slot + 4 * HOUR, slot + 3 * HOUR).startRunInMs, null);
   // The slot's run was missed (service down at 12:10): catch it up, delayed.
   assert.equal(planStart(weather, slot + HOUR, slot - 6 * HOUR + 30_000).startRunInMs, delay);
-  // … unless the next slot comes first.
+  // … unless the next slot comes soon: less than half the interval after the catch-up.
   assert.equal(planStart(weather, slot + 6 * HOUR - 5 * MINUTE, slot - 6 * HOUR).startRunInMs, null);
-  // Unknown last run (first start, database down): delayed start run as before.
+  assert.equal(planStart(weather, slot + 3 * HOUR - 10 * MINUTE, slot - 6 * HOUR).startRunInMs, delay);
+  assert.equal(planStart(weather, slot + 3 * HOUR - 9 * MINUTE, slot - 6 * HOUR).startRunInMs, null);
+  // A slot run recorded a moment before its slot (a timer that fired early) counts for it.
+  assert.equal(planStart(weather, slot + HOUR, slot - 2_000).startRunInMs, null);
+  assert.equal(planStart(weather, slot + HOUR, slot - 6 * MINUTE).startRunInMs, delay);
+  // Unknown last run (first start, database down): delayed start run as before,
+  // unless the next slot comes within the hour after it.
   assert.equal(planStart(weather, slot + HOUR, null).startRunInMs, delay);
+  assert.equal(planStart(weather, slot + 5 * HOUR - 10 * MINUTE, null).startRunInMs, delay);
+  assert.equal(planStart(weather, slot + 5 * HOUR - 9 * MINUTE, null).startRunInMs, null);
   // A last run "in the future" (clock set back) counts as unknown.
   assert.equal(planStart(weather, slot + HOUR, slot + 2 * HOUR).startRunInMs, delay);
 
@@ -221,51 +230,75 @@ function noExtraRunWithinTheInterval(): void {
   assert.equal(planStart(gauges, now, now - MINUTE).startRunInMs, gauges.startupDelaySeconds * 1000);
 }
 
-async function slotsAreWallClockAndRestartsAddNoRun(): Promise<void> {
-  // Scaled down: slots of 1 s at offsets 0 and 0.5 s; job "a" ran just now.
+/** A slot job of wetter-bw's shape on a simulated clock: 6 h slots at `offsetSeconds`. */
+function slotJob(
+  clock: VirtualClock,
+  offsetSeconds: number,
+  lastRun: number | null,
+): { readonly fired: number[]; readonly log: ReturnType<typeof recordingLog>; readonly stop: () => void } {
   const log = recordingLog();
-  const scheduler = createScheduler(log);
-  const fired: Record<string, number[]> = { a: [], b: [] };
-  const job = (id: string, offsetSeconds: number): void => {
-    scheduler.add(
-      id,
-      {
-        kind: "interval",
-        intervalSeconds: 1,
-        cron: null,
-        fireOnStart: true,
-        startupDelaySeconds: 0.1,
-        offsetSeconds,
-        resume: true,
-      },
-      () => {
-        fired[id]?.push(Date.now());
-        return Promise.resolve();
-      },
-    );
+  const scheduler = createScheduler(log, () => clock.time, clock);
+  const fired: number[] = [];
+  scheduler.add(
+    "job",
+    {
+      kind: "interval",
+      intervalSeconds: 6 * 3600,
+      cron: null,
+      fireOnStart: true,
+      startupDelaySeconds: RESTART_DELAY_SECONDS,
+      offsetSeconds,
+      resume: true,
+    },
+    () => {
+      fired.push(clock.time);
+      return Promise.resolve();
+    },
+  );
+  scheduler.start(() => lastRun);
+  return {
+    fired,
+    log,
+    stop: () => {
+      scheduler.stop();
+    },
   };
-  job("a", 0);
-  job("b", 0.5);
-  const started = Date.now();
-  scheduler.start((id) => (id === "a" ? started : null));
-  await new Promise((resolve) => setTimeout(resolve, 2300));
-  scheduler.stop();
-  const a = fired.a ?? [];
-  const b = fired.b ?? [];
-  assert.ok(a.length >= 2 && a.length <= 3, `a fired ${String(a.length)} times`);
-  for (const at of a) {
-    const phase = at % 1000;
-    assert.ok(phase < 150 || phase > 950, `a off its slot: ${String(phase)} ms`);
-  }
-  // b had no last run: a start run (unless its slot came first), then its slots.
-  for (const at of b.slice(-2)) {
-    const phase = at % 1000;
-    assert.ok(phase > 450 && phase < 650, `b off its slot: ${String(phase)} ms`);
-  }
+}
+
+async function slotsAreWallClockAndRestartsAddNoRun(): Promise<void> {
+  const utc = (ms: number): string => new Date(ms).toISOString().slice(11, 19);
+  // Restart at 13:37 UTC; the 12:10 slot already had its run: no start run.
+  const start = Date.parse("2026-09-30T13:37:00Z");
+  const ran = new VirtualClock(start);
+  const weather = slotJob(ran, 600, Date.parse("2026-09-30T12:10:02Z"));
+  await ran.advanceTo(start + 26 * HOUR);
+  weather.stop();
+  assert.deepEqual(weather.fired.map(utc), ["18:10:00", "00:10:00", "06:10:00", "12:10:00"]);
   assert.ok(
-    log.lines.some((line) => line.text.startsWith("a: no start run")),
+    weather.log.lines.some((line) => line.text.startsWith("job: no start run")),
     "the skip is logged",
   );
+
+  // Same restart, last run unknown: one delayed start run, then the slots.
+  const unknown = new VirtualClock(start);
+  const forecast = slotJob(unknown, 11_400, null);
+  await unknown.advanceTo(start + 13 * HOUR);
+  forecast.stop();
+  assert.deepEqual(forecast.fired.map(utc), ["13:47:00", "15:10:00", "21:10:00"]);
+
+  // Timers that fire early against the wall clock: the run still starts in its slot.
+  const early = new VirtualClock(start, 250);
+  const drifting = slotJob(early, 600, Date.parse("2026-09-30T12:10:02Z"));
+  await early.advanceTo(start + 13 * HOUR);
+  drifting.stop();
+  assert.deepEqual(drifting.fired.map(utc), ["18:10:00", "00:10:00"]);
+
+  // stop() cancels the slots.
+  const stopped = new VirtualClock(start);
+  const halted = slotJob(stopped, 600, null);
+  halted.stop();
+  await stopped.advanceTo(start + 13 * HOUR);
+  assert.deepEqual(halted.fired, []);
 }
 
 async function runConnectorRecordsTheLastRun(): Promise<void> {
@@ -275,6 +308,12 @@ async function runConnectorRecordsTheLastRun(): Promise<void> {
   await runConnector(resumed.kernel, resumed.ctx, { id: "wetter-bw", run: () => Promise.resolve() });
   const last = lastRunOf(resumed.ctx.state);
   assert.ok(last !== null && last >= before && last <= Date.now(), "the run's start is recorded");
+
+  // A run cut short by a shutdown is not complete: the restart catches it up.
+  const aborted = weatherCtx("wetter-bw", fetcher);
+  aborted.kernel.shutdown.abort();
+  await runConnector(aborted.kernel, aborted.ctx, { id: "wetter-bw", run: () => Promise.resolve() });
+  assert.equal(lastRunOf(aborted.ctx.state), null);
 
   // A failed run is not recorded.
   const failing = weatherCtx("vorhersage-bw", fetcher);
@@ -314,12 +353,16 @@ function registryChecksTheOffset(): void {
     () => parseRegistry(entry({ intervalSeconds: 600, intervalOffsetSeconds: -1 })),
     /0 <= offset/,
   );
+  assert.throws(
+    () => parseRegistry(entry({ intervalSeconds: 7000, intervalOffsetSeconds: 0 })),
+    /must divide a day/,
+  );
 }
 
 export {
   forecastOffsetSurvivesRestarts as "scheduler: wall-clock slots keep the forecast 3 h after the weather across any restart",
   noExtraRunWithinTheInterval as "scheduler: refireOnRestart false adds no start run within the interval of the persisted last run",
-  slotsAreWallClockAndRestartsAddNoRun as "scheduler: slot jobs fire on their wall-clock phase; a fresh last run skips the start run",
+  slotsAreWallClockAndRestartsAddNoRun as "scheduler: slot jobs fire on their wall-clock slots, also with early timers; a fresh last run skips the start run",
   runConnectorRecordsTheLastRun as "scheduler: runConnector persists the start of a completed run for resuming connectors only",
   registryChecksTheOffset as "scheduler: the registry checks intervalOffsetSeconds",
   nightlyJobsDoNotFireOnStart as "scheduler: fireOnStart false (troe-retention, mastr-bw) skips the start run; the registry refuses it without a schedule",

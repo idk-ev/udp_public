@@ -9,22 +9,25 @@
  * (`refireOnRestart: false`, src/kernel/scheduler.ts).
  *
  * Recorded by `runConnector` (src/kernel/context.ts) once `run` returned
- * without throwing, as the START time of that run. A run that only warned
- * (a source down, a budget used up) counts: it asked the source, and asking
- * again right after a restart is what this prevents. Best effort
- * (src/kernel/state.ts): an unreachable database only costs the start run
- * that would have been left out.
+ * without throwing and without a shutdown, as the START time of that run. A
+ * run that only warned (a source down, a budget used up) counts: it asked the
+ * source, and asking again right after a restart is what this prevents. Best
+ * effort (src/kernel/state.ts): an unreachable database only costs the start
+ * run that would have been left out.
  */
 
 import { stateKey } from "./state.js";
-import type { ConnectorState, StateCodec } from "./types.js";
+import type { StateStore } from "./state.js";
+import type { ConnectorId, ConnectorState, StateCodec } from "./types.js";
 
 const codec: StateCodec<number | null> = {
   encode: (value) => (value !== null && Number.isFinite(value) ? value : null),
   decode: (raw) => (raw === null ? null : typeof raw === "number" && Number.isFinite(raw) ? raw : undefined),
 };
 
-const LAST_RUN = stateKey<number | null>("kernel.lastRunMs", () => null, codec, { bestEffort: true });
+export const LAST_RUN_STATE_KEY = "kernel.lastRunMs";
+
+const LAST_RUN = stateKey<number | null>(LAST_RUN_STATE_KEY, () => null, codec, { bestEffort: true });
 
 export function recordRun(state: ConnectorState, startedMs: number): void {
   state.slot(LAST_RUN).set(startedMs);
@@ -33,4 +36,14 @@ export function recordRun(state: ConnectorState, startedMs: number): void {
 /** Start of the last completed run in ms since the epoch, `null` if none is known. */
 export function lastRunOf(state: ConnectorState): number | null {
   return state.slot(LAST_RUN).get();
+}
+
+/**
+ * The stored last runs of every connector as loaded at startup — for the
+ * scheduler's start plan. Reads the loaded values without creating a state
+ * cell, so a connector that never ran writes no empty row.
+ */
+export function storedLastRuns(store: StateStore): (id: ConnectorId) => number | null {
+  const loaded = store.loadedValues(LAST_RUN_STATE_KEY);
+  return (id) => codec.decode(loaded.get(id)) ?? null;
 }

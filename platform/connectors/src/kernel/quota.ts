@@ -24,9 +24,11 @@
  * its memory.
  *
  * The key is best effort (src/kernel/state.ts): the budget must not stop a
- * connector while the database is down. The price: a restart during such an
- * outage starts the day's counter of that connector from what was stored
- * last.
+ * connector while the database is down. The price: what a connector charges
+ * while its state is not loaded is lost as soon as the stored value turns
+ * out larger (the larger one wins, they are not added), and a restart during
+ * such an outage starts from what was stored last. The soft caps leave room
+ * for that.
  *
  * ## The day
  *

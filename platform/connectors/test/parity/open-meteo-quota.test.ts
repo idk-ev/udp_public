@@ -34,12 +34,13 @@ import * as wetter from "../../src/connectors/wetter-bw.js";
 import { isArray, isRecord } from "../../src/kernel/parse.js";
 import { QUOTA_STATE_KEY, QuotaBook } from "../../src/kernel/quota.js";
 import { createRateLimiter } from "../../src/kernel/rate-limit.js";
-import type { ClockTimer, LimiterClock } from "../../src/kernel/rate-limit.js";
-import { StateStore } from "../../src/kernel/state.js";
+import { storedLastRuns, recordRun, LAST_RUN_STATE_KEY } from "../../src/kernel/run-log.js";
+import { StateStore, StateUnavailableError, persisted, stateKey } from "../../src/kernel/state.js";
 import type { StateHooks } from "../../src/kernel/state.js";
 import type { MunicipalityRow, RateLimiter } from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
 import { recordingLog } from "../harness/kernel.js";
+import { VirtualClock } from "../harness/virtual-clock.js";
 import {
   MUNICIPALITIES_URL,
   OPEN_METEO_PREFIX,
@@ -66,70 +67,6 @@ const HOUR = 3_600_000;
 const MUNICIPALITIES = 1103;
 
 /* ------------------------------------------------------------------ simulated time */
-
-interface Pending {
-  readonly at: number;
-  readonly seq: number;
-  readonly task: () => void;
-  cancelled: boolean;
-}
-
-/** The limiter's clock, advanced from timer to timer once everything else has settled. */
-class VirtualClock implements LimiterClock {
-  time: number;
-  #pending: Pending[] = [];
-  #seq = 0;
-
-  constructor(start: number) {
-    this.time = start;
-  }
-
-  now(): number {
-    return this.time;
-  }
-
-  setTimeout(task: () => void, ms: number): ClockTimer {
-    const pending: Pending = { at: this.time + Math.max(0, ms), seq: this.#seq, task, cancelled: false };
-    this.#seq += 1;
-    this.#pending.push(pending);
-    return {
-      unref: () => undefined,
-      cancel: () => {
-        pending.cancelled = true;
-      },
-    };
-  }
-
-  /** Runs `work` to its end, jumping from one timer to the next. */
-  async run(work: Promise<unknown>): Promise<void> {
-    const outcome: { done: boolean; failed: boolean; error: unknown } = {
-      done: false,
-      failed: false,
-      error: null,
-    };
-    void work.then(
-      () => {
-        outcome.done = true;
-      },
-      (error: unknown) => {
-        outcome.done = true;
-        outcome.failed = true;
-        outcome.error = error;
-      },
-    );
-    for (;;) {
-      for (let i = 0; i < 50; i += 1) await new Promise((resolve) => setImmediate(resolve));
-      if (outcome.done) break;
-      this.#pending = this.#pending.filter((timer) => !timer.cancelled);
-      this.#pending.sort((a, b) => a.at - b.at || a.seq - b.seq);
-      const next = this.#pending.shift();
-      if (next === undefined) throw new Error("simulation stalled: the work waits for nothing");
-      this.time = Math.max(this.time, next.at);
-      next.task();
-    }
-    if (outcome.failed) throw outcome.error;
-  }
-}
 
 /* ------------------------------------------------------------------ network */
 
@@ -306,6 +243,8 @@ function retryAfterIsParsed(): void {
   assert.equal(retryAfterMs("Wed, 30 Sep 2026 12:02:30 GMT", now), 150_000);
   assert.equal(retryAfterMs("Wed, 30 Sep 2026 11:00:00 GMT", now), 0, "a date in the past: no pause");
   assert.equal(retryAfterMs("soon", now), null);
+  assert.equal(retryAfterMs("1.5", now), null, "no lenient date parsing");
+  assert.equal(retryAfterMs("2026-09-30T12:05:00Z", now), null, "only the HTTP date format");
   assert.equal(retryAfterMs(undefined, now), null);
 }
 
@@ -564,7 +503,87 @@ async function pauseHoldsTheSharedBucket(): Promise<void> {
   assert.deepEqual(granted, [0, 90_000, 110_000, 130_000]);
 }
 
+/* ------------------------------------------------------------------ state */
+
+function bestEffortKeysDoNotNeedTheState(): void {
+  // Hooks of a connector whose state is NOT loaded: every regular persisted key refuses.
+  let asserted = 0;
+  let changed = 0;
+  const hooks: StateHooks = {
+    assertUsable: () => {
+      asserted += 1;
+      throw new StateUnavailableError("not loaded");
+    },
+    changed: () => {
+      changed += 1;
+    },
+    invalid: () => undefined,
+  };
+  const store = new StateStore();
+  const snapshotter = store.attach("wetter-bw", hooks);
+  const state = store.scope("wetter-bw");
+  const regular = stateKey("test.regular", () => 0, persisted.number);
+  assert.throws(() => state.slot(regular), StateUnavailableError);
+  assert.equal(asserted, 1);
+
+  // Best effort (the quota and the last run): readable and writable, without
+  // asking whether the state is usable — which is what marks a connector as
+  // needing its state (src/kernel/persistence.ts).
+  const book = new QuotaBook(store, () => Date.parse("2026-09-30T12:00:00Z"));
+  book.charge("wetter-bw", state, OPEN_METEO_HOST, 138);
+  recordRun(state, 1_000);
+  assert.equal(asserted, 1, "no usability check for best-effort keys");
+  assert.equal(changed, 2, "changes are reported; the persistence ignores them while unloaded");
+  assert.equal(book.used(OPEN_METEO_HOST), 138);
+
+  // The load replaces the cells with what the store holds.
+  snapshotter.restore(
+    new Map<string, unknown>([
+      [QUOTA_STATE_KEY, { [OPEN_METEO_HOST]: { day: "2026-09-30", units: 2000 } }],
+      [LAST_RUN_STATE_KEY, 5_000],
+    ]),
+  );
+  assert.deepEqual(snapshotter.snapshot().get(LAST_RUN_STATE_KEY), 5_000);
+  assert.equal(book.used(OPEN_METEO_HOST), 2000, "the larger share wins (documented in quota.ts)");
+  // The scheduler reads the stored value without creating a cell.
+  const fresh = new StateStore();
+  const loaded = fresh.attach("vorhersage-bw", hooks);
+  loaded.restore(new Map<string, unknown>([[LAST_RUN_STATE_KEY, 7_000]]));
+  const lastRuns = storedLastRuns(fresh);
+  assert.equal(lastRuns("vorhersage-bw"), 7_000);
+  assert.equal(lastRuns("wetter-bw"), null);
+  assert.equal(loaded.snapshot().size, 0, "no state row for merely reading");
+}
+
+async function dailyCapFromTheEnvironment(): Promise<void> {
+  const previous = process.env.UDP_OPEN_METEO_DAILY_CAP;
+  try {
+    // 7 × 138 = 966 fit into 1,000, the eighth batch (137) does not.
+    process.env.UDP_OPEN_METEO_DAILY_CAP = "1000";
+    const small = network(Date.now);
+    const capped = weatherCtx("wetter-bw", small.fetcher);
+    await wetter.runWith(capped.ctx, JOIN);
+    assert.equal(small.sent.length, 7);
+    assert.match(capped.log.warnings().at(-1) ?? "", /^BW weather: batch 8 of 8 skipped, 137 municipalities/);
+
+    // Not a positive number: warned, and the default applies.
+    process.env.UDP_OPEN_METEO_DAILY_CAP = "0";
+    const net = network(Date.now);
+    const fallback = weatherCtx("wetter-bw", net.fetcher);
+    await wetter.runWith(fallback.ctx, JOIN);
+    assert.equal(net.sent.length, 8);
+    assert.deepEqual(fallback.log.warnings(), [
+      `UDP_OPEN_METEO_DAILY_CAP=0 is not a positive number, using ${String(DEFAULT_DAILY_CAP)}`,
+    ]);
+  } finally {
+    if (previous === undefined) delete process.env.UDP_OPEN_METEO_DAILY_CAP;
+    else process.env.UDP_OPEN_METEO_DAILY_CAP = previous;
+  }
+}
+
 export {
+  bestEffortKeysDoNotNeedTheState as "state: best-effort keys (quota, last run) work without a loaded state and yield to the load",
+  dailyCapFromTheEnvironment as "open-meteo: UDP_OPEN_METEO_DAILY_CAP sets the cap; a non-positive value falls back with a warning",
   perMinuteBoundHolds as "open-meteo: two cycles of both connectors (and both at once) never exceed 600 coordinates in a closed 60 s window",
   retryAfterIsParsed as "open-meteo: Retry-After as seconds or HTTP date",
   retryAfterSeconds as "open-meteo: HTTP 429 with Retry-After in seconds pauses the shared bucket, then retries the batch once",

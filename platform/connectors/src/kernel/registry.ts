@@ -200,9 +200,10 @@ function fireOnStart(raw: Readonly<Record<string, unknown>>, at: string): boolea
 }
 
 /**
- * `intervalOffsetSeconds`: only with an interval and without a cron, and
- * within the interval — an offset of a whole interval or more is another
- * slot's offset and certainly a typo.
+ * `intervalOffsetSeconds`: only with an interval that divides the day (the
+ * slots count from 00:00 UTC) and without a cron, and within the interval —
+ * an offset of a whole interval or more is another slot's offset and
+ * certainly a typo.
  */
 function intervalOffset(raw: Readonly<Record<string, unknown>>, at: string): number | null {
   const offset = optionalNumber(raw.intervalOffsetSeconds, `${at}.intervalOffsetSeconds`);
@@ -211,6 +212,9 @@ function intervalOffset(raw: Readonly<Record<string, unknown>>, at: string): num
   const cron = optionalString(raw.cron, `${at}.cron`);
   if (interval === null || interval <= 0 || (cron !== null && cron !== "")) {
     throw new Error(`${at}.intervalOffsetSeconds: needs an intervalSeconds and no cron`);
+  }
+  if (86_400 % interval !== 0) {
+    throw new Error(`${at}.intervalOffsetSeconds: intervalSeconds must divide a day (86400)`);
   }
   if (offset < 0 || offset >= interval) {
     throw new Error(`${at}.intervalOffsetSeconds: expected 0 <= offset < intervalSeconds`);

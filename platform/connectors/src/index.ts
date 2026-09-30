@@ -46,7 +46,7 @@ import type { Kernel } from "./kernel/context.js";
 import { DEFAULT_PORT } from "./kernel/http.js";
 import { sanitizeLogText } from "./kernel/log.js";
 import { loadRegistry, resolveRegistryPath, REGISTRY_PATH_ENV } from "./kernel/registry.js";
-import { lastRunOf } from "./kernel/run-log.js";
+import { storedLastRuns } from "./kernel/run-log.js";
 import { scheduleOf } from "./kernel/scheduler.js";
 import type { RegistryEntry } from "./kernel/types.js";
 
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
   // connector nothing is fetched.
   await startGeoBootstrap(kernel, scheduled.length);
   // The persisted last runs are loaded with the state above.
-  kernel.scheduler.start((id) => lastRunOf(kernel.state.scope(id)));
+  kernel.scheduler.start(storedLastRuns(kernel.state));
 
   const stop = (signal: string): void => {
     kernel.log.info(`${signal} received, shutting down`);

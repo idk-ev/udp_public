@@ -504,10 +504,17 @@ async function render() {
   // 7-Tage-Vorhersagestreifen für die Temperatur-Detailkarte (aus der kommunenspezifischen Vorhersage).
   const fcStrip = fcDays.slice(0, 7).map((d, i) =>
     [i === 0 ? "Heute" : new Date(d[0] + "T12:00:00").toLocaleDateString("de-DE", { weekday: "short" }), d[1], d[2], d[3], d[4], d[5]]);
+  // Weather values are "current" only while fresh (observedAt of the values,
+  // dateObserved of the forecast); otherwise "Stand: …" and a neutral dot.
+  // A stale forecast also drops the apparent temperature.
+  const wxStand = wx ? staleStand(wx, STALE.wetter) : "";
+  const fcStand = fcEnt ? staleStand(fcEnt, STALE.wetter) : "";
+  const omTakt = "Open-Meteo, " + OM_TAKT_H + "-stündlich";
+  const feelsV = fcStand ? null : val(fcEnt, "apparentTemperature");
   if (wx) {
     // Temperatur-Detailkarte: Thermometer + 7-Tage-Vorhersage + Verlauf
-    D.temperatur = { kind: "chart", title: "Temperatur", explain: w2 ? "Open-Meteo-Modell und DWD-Stationsmessung im Vergleich." : "Aktuelle Temperatur und Verlauf (Open-Meteo).",
-      head: { type: "thermo", v: val(wx, "temperature"), min: -10, max: 40, unit: "°C", feels: val(fcEnt, "apparentTemperature") },
+    D.temperatur = { kind: "chart", title: "Temperatur", explain: (w2 ? "Open-Meteo-Modell und DWD-Stationsmessung im Vergleich." : "Aktuelle Temperatur und Verlauf (Open-Meteo).") + (wxStand ? " Open-Meteo " + wxStand + "." : ""),
+      head: { type: "thermo", v: val(wx, "temperature"), min: -10, max: 40, unit: "°C", feels: feelsV },
       forecast: fcStrip.length ? fcStrip : null,
       series: [{ id: wx.id, attr: "temperature", name: "Temperatur °C" },
         ...(w2 ? [{ id: w2.id, attr: "temperature", name: "DWD-Station °C" }] : [])] };
@@ -517,18 +524,12 @@ async function render() {
     const wdir = val(wx, "windDirection");
     if (wdir != null) D.wetter.head = { type: "compass", deg: wdir, speed: Math.round(val(wx, "windSpeed") || 0), unit: "km/h" };
   }
-  const feelsV = val(fcEnt, "apparentTemperature");
   if (wx && D.temperatur) D.temperatur.noSpark = true;   // Thermometer statt Sparkline
-  // Weather values are "current" only while fresh (observedAt of the values,
-  // dateObserved of the forecast); otherwise "Stand: …" and a neutral dot.
-  const wxStand = wx ? staleStand(wx, STALE.wetter) : "";
-  const fcStand = fcEnt ? staleStand(fcEnt, STALE.wetter) : "";
-  const omTakt = "Open-Meteo, " + OM_TAKT_H + "-stündlich";
   tiles +=
     tile("Temperatur", val(wx, "temperature"), "°C", { topic: "wetter", detail: wx ? "temperatur" : null,
       status: wxStand ? css("--text-muted") : null,
-      thermo: wx ? { v: val(wx, "temperature"), feels: fcStand ? null : feelsV, min: -10, max: 40 } : null,
-      hint: [feelsV != null && !fcStand ? "gefühlt " + Math.round(feelsV) + " °C" : null, wxStand || null].filter(Boolean).join(" · ") || null,
+      thermo: wx ? { v: val(wx, "temperature"), feels: feelsV, min: -10, max: 40 } : null,
+      hint: [feelsV != null ? "gefühlt " + Math.round(feelsV) + " °C" : null, wxStand || null].filter(Boolean).join(" · ") || null,
       explain: "Aktuelle Lufttemperatur am Gemeinde-Zentroid (" + omTakt + ")" + (feelsV != null ? "; die weiße Markierung zeigt die gefühlte Temperatur" : "") + ". Klick: Thermometer, 7-Tage-Vorhersage und Verlauf." }) +
     tile("Wind", val(wx, "windSpeed"), "km/h", { topic: "wetter", detail: wx ? "wetter" : null,
       status: wxStand ? css("--text-muted") : null, hint: wxStand || null,

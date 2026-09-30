@@ -278,7 +278,8 @@ export interface LimiterClock {
   setTimeout(task: () => void, ms: number): ClockTimer;
 }
 
-const REAL_CLOCK: LimiterClock = {
+/** `Date.now` and unref-able Node timers. */
+export const REAL_CLOCK: LimiterClock = {
   now: () => Date.now(),
   setTimeout: (task, ms) => {
     const timer = setTimeout(task, ms);

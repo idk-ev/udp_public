@@ -21,7 +21,7 @@
  * it, it does not write the rows into the context. No change gate (CHUNK_HELPER
  * is spliced in, `gateChanged` never called): every run writes every entity, in
  * chunks of 100. `refireOnRestart: false` on wall-clock slots three hours
- * after `wetter-bw` (03, 09, 15, 21 UTC), see the scheduler. When the daily
+ * after `wetter-bw` (03:10, 09:10, 15:10, 21:10 UTC), see the scheduler. When the daily
  * Open-Meteo budget runs short, this connector yields to `wetter-bw`
  * (`reserve` below, explained in ./open-meteo-batches.ts).
  *

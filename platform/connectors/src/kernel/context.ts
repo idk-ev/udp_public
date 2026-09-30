@@ -242,8 +242,9 @@ export async function runConnector(kernel: Kernel, ctx: Ctx, runner: ConnectorRu
     const startedMs = kernel.nowMs();
     try {
       await runner.run(ctx);
-      // What a restart consults before it runs this connector again.
-      if (resumesAfterRestart(ctx.entry)) recordRun(ctx.state, startedMs);
+      // What a restart consults before it runs this connector again. A run
+      // cut short by a shutdown is not complete: the restart catches it up.
+      if (resumesAfterRestart(ctx.entry) && !ctx.signal.aborted) recordRun(ctx.state, startedMs);
     } catch (error) {
       if (!(error instanceof StateUnavailableError)) throw error;
       ctx.log.warn(`run skipped, ${error.message} — retried on the next run`);

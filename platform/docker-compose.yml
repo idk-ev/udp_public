@@ -258,6 +258,8 @@ services:
       # (docker exec) sprechen ihn über 127.0.0.1 an, kein anderer Container.
       UDP_CONNECTORS_ADMIN_HOST: "127.0.0.1"
       UDP_TRIGGER_COOLDOWN_SECONDS: "60"
+      # Weiche Tagesgrenze der Open-Meteo-Aufrufe (docs/betrieb.md).
+      UDP_OPEN_METEO_DAILY_CAP: ${UDP_OPEN_METEO_DAILY_CAP:-9000}
     volumes:
       # Registry aus dem Checkout: Takt oder Aktivierung ändern und den
       # Container neu starten genügt — kein Image-Build.

@@ -40,7 +40,7 @@
  *  * cron: no start run while the last run is younger than a day (the
  *    registry's reading of a cron's interval); the cron comes next anyway;
  *  * wall-clock slots (below): no start run if the current slot already had
- *    its run, nor if the next slot comes before the delayed start run would.
+ *    its run, nor if the next slot comes soon after the delayed start run.
  *
  * Unknown (never ran, database down): delayed start run as before. Nothing
  * starves: a connector restarted more often than its interval still runs
@@ -51,9 +51,12 @@
  * `intervalOffsetSeconds` in the registry puts an interval on fixed slots —
  * every multiple of the interval since 00:00 UTC plus the offset — instead of
  * counting from the first run. Two connectors sharing a provider keep their
- * distance that way however often the service restarts (`wetter-bw` at 00, 06,
- * 12, 18 UTC, `vorhersage-bw` three hours later); counted from the start they
- * started in the same second after every restart and stayed in lockstep.
+ * distance that way however often the service restarts (`wetter-bw` at 00:10,
+ * 06:10, 12:10, 18:10 UTC, `vorhersage-bw` three hours later); counted from
+ * the start they started in the same second after every restart and stayed
+ * in lockstep. A missed slot is caught up once, unless the next slot comes
+ * soon ({@link planStart}); a run up to {@link SLOT_TOLERANCE_MS} before a
+ * slot counts for it.
  *
  * ## Startup delay of the remaining connectors
  *
@@ -77,6 +80,8 @@
  * `refireOnRestart: false` as "skip" would.
  */
 
+import { REAL_CLOCK } from "./rate-limit.js";
+import type { ClockTimer, LimiterClock } from "./rate-limit.js";
 import type {
   ConnectorId,
   Log,
@@ -177,6 +182,24 @@ export interface StartPlan {
 }
 
 /**
+ * A run this shortly before a slot counts for the slot: a timer of hours may
+ * fire a little early against the wall clock (clock slew), and a slot run
+ * recorded at 06:09:59.9 must not look like a missed 06:10 slot.
+ */
+export const SLOT_TOLERANCE_MS = 5 * 60_000;
+
+/**
+ * A missed slot is caught up only if the catch-up run leaves this much of
+ * the slot before the next one — otherwise two full runs would follow each
+ * other closely. Half the interval when the last run is known; when it is
+ * not (first start, database down) at most an hour, so a new installation
+ * gets its data soon.
+ */
+function catchUpGapMs(intervalMs: number, lastKnown: boolean): number {
+  return lastKnown ? intervalMs / 2 : Math.min(intervalMs / 2, 3_600_000);
+}
+
+/**
  * When the start run fires, if at all (see the module comment). `lastRunMs`
  * is only consulted with {@link Schedule.resume}; one in the future (a clock
  * set back) counts as unknown.
@@ -191,11 +214,11 @@ export function planStart(schedule: Schedule, nowMs: number, lastRunMs: number |
 
   if (schedule.kind === "interval" && intervalMs !== null && offset !== undefined && offset !== null) {
     const slot = slotBounds(nowMs, intervalMs, offset * 1000);
-    if (last !== null && last >= slot.current) {
+    if (last !== null && last >= slot.current - SLOT_TOLERANCE_MS) {
       return { startRunInMs: null, note: `no start run, ${age} is in the current slot` };
     }
-    if (nowMs + delayMs >= slot.next) {
-      return { startRunInMs: null, note: "no start run, the next slot comes first" };
+    if (slot.next - (nowMs + delayMs) < catchUpGapMs(intervalMs, last !== null)) {
+      return { startRunInMs: null, note: "no start run, the next slot comes soon enough" };
     }
     return { startRunInMs: delayMs, note: null };
   }
@@ -317,13 +340,18 @@ const CRON_TICK_MS = 20_000;
 class TimerScheduler implements Scheduler {
   readonly #log: Log;
   readonly #jobs = new Map<ConnectorId, Job>();
+  /** `setInterval`s: plain intervals and the cron tick. */
   readonly #timers = new Set<NodeJS.Timeout>();
+  /** One-shot timers of {@link #clock}: start runs and wall-clock slots. */
+  readonly #oneShots = new Set<ClockTimer>();
   readonly #nowMs: () => number;
+  readonly #clock: LimiterClock;
   #started = false;
 
-  constructor(log: Log, nowMs: () => number) {
+  constructor(log: Log, nowMs: () => number, clock: LimiterClock) {
     this.#log = log;
     this.#nowMs = nowMs;
+    this.#clock = clock;
   }
 
   add(id: ConnectorId, schedule: Schedule, task: () => Promise<void>): void {
@@ -399,11 +427,10 @@ class TimerScheduler implements Scheduler {
   }
 
   stop(): void {
-    for (const timer of this.#timers) {
-      clearTimeout(timer);
-      clearInterval(timer);
-    }
+    for (const timer of this.#timers) clearInterval(timer);
     this.#timers.clear();
+    for (const timer of this.#oneShots) timer.cancel();
+    this.#oneShots.clear();
     this.#started = false;
   }
 
@@ -434,31 +461,42 @@ class TimerScheduler implements Scheduler {
     this.#timers.add(timer);
   }
 
-  /** A one-shot timer, forgotten once it fired. */
+  /** A one-shot timer, forgotten once it fired; unref'd like the others. */
   #once(task: () => void, ms: number): void {
-    const timer = setTimeout(() => {
-      this.#timers.delete(timer);
+    const timer = this.#clock.setTimeout(() => {
+      this.#oneShots.delete(timer);
       task();
     }, ms);
-    this.#track(timer);
+    timer.unref();
+    this.#oneShots.add(timer);
   }
 
   /**
    * The next wall-clock slot, re-armed from the clock at every slot rather
-   * than a `setInterval`, so timer drift does not accumulate.
+   * than a `setInterval`, so timer drift does not accumulate. After a slot:
+   * the one after it; after a suspended process: the next one ahead, not
+   * every one missed.
    */
   #armSlot(job: Job, intervalMs: number, offsetMs: number, after?: number): void {
     const now = this.#nowMs();
-    // After a slot: the one after it, even if the timer fired a little early;
-    // after a suspended process: the next one ahead, not every one missed.
     const next = Math.max(slotBounds(now, intervalMs, offsetMs).next, (after ?? 0) + intervalMs);
+    this.#armAt(job, intervalMs, offsetMs, next);
+  }
+
+  #armAt(job: Job, intervalMs: number, offsetMs: number, at: number): void {
     this.#once(
       () => {
         if (!this.#started) return;
+        // A timer of hours can fire early against the wall clock: wait for
+        // the slot, so the run is recorded in it and not in the one before.
+        if (this.#nowMs() < at) {
+          this.#armAt(job, intervalMs, offsetMs, at);
+          return;
+        }
         this.#fire(job, "interval");
-        this.#armSlot(job, intervalMs, offsetMs, next);
+        this.#armSlot(job, intervalMs, offsetMs, at);
       },
-      Math.max(0, next - now),
+      Math.max(0, at - this.#nowMs()),
     );
   }
 
@@ -509,7 +547,14 @@ class TimerScheduler implements Scheduler {
   }
 }
 
-/** @param nowMs Clock of the trigger cooldown; injected for tests. */
-export function createScheduler(log: Log, nowMs: () => number = Date.now): Scheduler {
-  return new TimerScheduler(log, nowMs);
+/**
+ * @param nowMs Clock of the trigger cooldown and the start plan; injected for tests.
+ * @param clock Timers of the start runs and slots; a simulated one in tests.
+ */
+export function createScheduler(
+  log: Log,
+  nowMs: () => number = Date.now,
+  clock: LimiterClock = REAL_CLOCK,
+): Scheduler {
+  return new TimerScheduler(log, nowMs, clock);
 }
