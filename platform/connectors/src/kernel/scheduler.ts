@@ -334,6 +334,9 @@ interface Job {
   lastTriggerMs: number | null;
 }
 
+/** Longest delay Node's timers take (2^31 - 1 ms, ~24.8 days); longer ones fire at once. */
+export const MAX_TIMER_MS = 2_147_483_647;
+
 /** How often the cron jobs are checked. A minute is the resolution of cron. */
 const CRON_TICK_MS = 20_000;
 
@@ -461,12 +464,18 @@ class TimerScheduler implements Scheduler {
     this.#timers.add(timer);
   }
 
-  /** A one-shot timer, forgotten once it fired; unref'd like the others. */
+  /**
+   * A one-shot timer, forgotten once it fired; unref'd like the others. A
+   * delay beyond Node's timer range is chained in steps: Node would clamp it
+   * to 1 ms and fire at once.
+   */
   #once(task: () => void, ms: number): void {
+    const step = Math.min(Math.max(0, ms), MAX_TIMER_MS);
     const timer = this.#clock.setTimeout(() => {
       this.#oneShots.delete(timer);
-      task();
-    }, ms);
+      if (ms > MAX_TIMER_MS) this.#once(task, ms - MAX_TIMER_MS);
+      else task();
+    }, step);
     timer.unref();
     this.#oneShots.add(timer);
   }
@@ -487,9 +496,16 @@ class TimerScheduler implements Scheduler {
     this.#once(
       () => {
         if (!this.#started) return;
+        const now = this.#nowMs();
+        // The wall clock was set back: plan from where it is now, not towards
+        // a slot that may be days away.
+        if (now < at - SLOT_TOLERANCE_MS) {
+          this.#armSlot(job, intervalMs, offsetMs);
+          return;
+        }
         // A timer of hours can fire early against the wall clock: wait for
         // the slot, so the run is recorded in it and not in the one before.
-        if (this.#nowMs() < at) {
+        if (now < at) {
           this.#armAt(job, intervalMs, offsetMs, at);
           return;
         }

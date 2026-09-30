@@ -249,6 +249,13 @@ export function callWeight(url: string): number {
   return Math.max(1, variableCount(url) / 10) * Math.max(1, forecastDays(url) / 14);
 }
 
+/** What one run costs: coordinates × weight over its calls. */
+export function runCost(
+  batches: readonly { readonly url: string; readonly agsList: readonly unknown[] }[],
+): number {
+  return batches.reduce((sum, batch) => sum + batch.agsList.length * callWeight(batch.url), 0);
+}
+
 /**
  * `'?latitude=' + lat + '&longitude=' + lon` of the batch nodes. Numbers are
  * joined with JavaScript's default number formatting, as `Array.join` did.
@@ -355,6 +362,15 @@ interface HostLedger {
   pausedUntil: number;
   /** Calls of the last hour: `[sent at, units]`. */
   recent: (readonly [number, number])[];
+  /**
+   * Aborted when a 429 asks for a pause longer than {@link MAX_RETRY_WAIT_MS}:
+   * every batch still waiting for a token — of any run, either connector —
+   * leaves the queue instead of waiting hours and blocking its job's next
+   * slot. Replaced right after, for the runs to come.
+   */
+  longPause: AbortController;
+  /** The cap warning ({@link OpenMeteoRun.checkCap}) was logged. */
+  capChecked: boolean;
 }
 
 const ledgers = new WeakMap<RateLimiter, HostLedger>();
@@ -362,7 +378,7 @@ const ledgers = new WeakMap<RateLimiter, HostLedger>();
 function ledgerOf(limiter: RateLimiter): HostLedger {
   let ledger = ledgers.get(limiter);
   if (ledger === undefined) {
-    ledger = { pausedUntil: 0, recent: [] };
+    ledger = { pausedUntil: 0, recent: [], longPause: new AbortController(), capChecked: false };
     ledgers.set(limiter, ledger);
   }
   return ledger;
@@ -427,7 +443,6 @@ export class OpenMeteoRun {
   #stopped: string | null = null;
   /** Ends the waits for a token once the run stops, and on shutdown. */
   readonly #abort = new AbortController();
-  readonly #signal: AbortSignal;
   readonly #skipped: Unfetched[] = [];
   readonly #failed: Unfetched[] = [];
 
@@ -443,7 +458,22 @@ export class OpenMeteoRun {
     }
     this.#dailyCap = cap > 0 ? cap : DEFAULT_DAILY_CAP;
     this.#nowMs = options.nowMs ?? Date.now;
-    this.#signal = AbortSignal.any([this.#abort.signal, ctx.signal]);
+  }
+
+  /**
+   * Once per host and process: warns when the cap cannot carry a day. At
+   * 03:10 UTC the forecast needs room for the 00:10 weather run, its own and
+   * the three weather runs still due — five runs; below that it is skipped
+   * every day. A full day is eight runs.
+   */
+  checkCap(runCost: number): void {
+    if (this.#ledger.capChecked || !(runCost > 0)) return;
+    this.#ledger.capChecked = true;
+    if (this.#dailyCap >= 5 * runCost) return;
+    this.#ctx.log.warn(
+      `Open-Meteo daily cap ${String(this.#dailyCap)} is below five runs (${String(5 * runCost)} calls): ` +
+        `the forecast will be skipped every day; a full day takes ${String(8 * runCost)}`,
+    );
   }
 
   async fetch(call: BatchCall): Promise<BatchBody> {
@@ -455,12 +485,14 @@ export class OpenMeteoRun {
       try {
         release = await this.#ctx.limiter.acquire(OPEN_METEO_HOST, {
           minIntervalMs: REQUEST_INTERVAL_MS,
-          signal: this.#signal,
+          signal: AbortSignal.any([this.#abort.signal, this.#ctx.signal, this.#ledger.longPause.signal]),
         });
       } catch (error) {
-        // Stopped while waiting (a 429, the budget, shutdown): not sent.
+        // Stopped while waiting (a 429 here or in the other run, the budget,
+        // shutdown): not sent. #refused names a long pause.
         if (error instanceof RateLimitAbortedError) {
           if (this.#ctx.signal.aborted) this.#stop("shutdown");
+          else this.#refused(cost);
           return this.#skip(call);
         }
         this.#ctx.log.error(`${this.#name(call)} not queued — previous values kept`, error);
@@ -616,6 +648,11 @@ export class OpenMeteoRun {
     const pauseMs = Math.min(asked, MAX_PAUSE_MS);
     this.#ledger.pausedUntil = Math.max(this.#ledger.pausedUntil, now + pauseMs);
     this.#ctx.limiter.pause(OPEN_METEO_HOST, pauseMs);
+    if (pauseMs > MAX_RETRY_WAIT_MS) {
+      const waiting = this.#ledger.longPause;
+      this.#ledger.longPause = new AbortController();
+      waiting.abort();
+    }
     return pauseMs;
   }
 }

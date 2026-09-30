@@ -63,6 +63,7 @@ import {
   joinGroups,
   joinTimingFor,
   loadMunicipalities,
+  runCost,
   locationsOf,
   measurement,
   sliceBatches,
@@ -359,6 +360,7 @@ export async function runWith(ctx: Ctx, timing?: JoinTiming, nowMs?: () => numbe
     reserve: weatherReserve((nowMs ?? Date.now)(), ctx.entry, rows.length),
     nowMs,
   });
+  calls.checkCap(runCost(batches));
   // All calls are started at once and queue in the token bucket in batch
   // order, one per 20 s — the delay node's queue.
   const tasks = batches.map(async (batch, index) =>

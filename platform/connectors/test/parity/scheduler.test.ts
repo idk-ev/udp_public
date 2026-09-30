@@ -17,6 +17,7 @@ import { connector as abfahrtenOnDemand } from "../../src/connectors/abfahrten-o
 import { connector as warnungenBw } from "../../src/connectors/warnungen-bw.js";
 import { connector as pegelBw } from "../../src/connectors/pegel-bw.js";
 import { runConnector } from "../../src/kernel/context.js";
+import type { LimiterClock } from "../../src/kernel/rate-limit.js";
 import { lastRunOf } from "../../src/kernel/run-log.js";
 import {
   DEFAULT_STARTUP_DELAY_SECONDS,
@@ -24,6 +25,7 @@ import {
   MAX_STARTUP_DELAY_SECONDS,
   RESTART_DELAY_SECONDS,
   ROUTE_STARTUP_DELAY_SECONDS,
+  MAX_TIMER_MS,
   createScheduler,
   planStart,
   scheduleOf,
@@ -235,9 +237,11 @@ function slotJob(
   clock: VirtualClock,
   offsetSeconds: number,
   lastRun: number | null,
+  wall: () => number = () => clock.time,
+  timers: LimiterClock = clock,
 ): { readonly fired: number[]; readonly log: ReturnType<typeof recordingLog>; readonly stop: () => void } {
   const log = recordingLog();
-  const scheduler = createScheduler(log, () => clock.time, clock);
+  const scheduler = createScheduler(log, wall, timers);
   const fired: number[] = [];
   scheduler.add(
     "job",
@@ -251,7 +255,7 @@ function slotJob(
       resume: true,
     },
     () => {
-      fired.push(clock.time);
+      fired.push(wall());
       return Promise.resolve();
     },
   );
@@ -299,6 +303,86 @@ async function slotsAreWallClockAndRestartsAddNoRun(): Promise<void> {
   halted.stop();
   await stopped.advanceTo(start + 13 * HOUR);
   assert.deepEqual(halted.fired, []);
+}
+
+/** The clock's timers, recording the longest delay asked for. */
+function recordingTimers(clock: VirtualClock): {
+  readonly timers: LimiterClock;
+  readonly longest: () => number;
+} {
+  let longest = 0;
+  return {
+    timers: {
+      now: () => clock.now(),
+      setTimeout: (task, ms) => {
+        longest = Math.max(longest, ms);
+        return clock.setTimeout(task, ms);
+      },
+    },
+    longest: () => longest,
+  };
+}
+
+async function wallClockSetBackReplans(): Promise<void> {
+  const utc = (ms: number): string => new Date(ms).toISOString().slice(11, 19);
+  const start = Date.parse("2026-09-30T13:37:00Z");
+  const clock = new VirtualClock(start);
+  const skew = { ms: 0 };
+  const recorded = recordingTimers(clock);
+  const job = slotJob(
+    clock,
+    600,
+    Date.parse("2026-09-30T12:10:02Z"),
+    () => clock.time + skew.ms,
+    recorded.timers,
+  );
+  await clock.advanceTo(start + 3 * HOUR);
+  // The wall clock jumps back 30 days — longer than a Node timer can wait.
+  skew.ms = -30 * 24 * HOUR;
+  await clock.advanceTo(start + 2 * 24 * HOUR);
+  job.stop();
+  assert.ok(recorded.longest() <= MAX_TIMER_MS, `a timer of ${String(recorded.longest())} ms`);
+  // The slot armed before the jump (18:10) finds the clock 30 days behind and
+  // plans from there: slots of the new wall clock, 6 h apart, no spinning.
+  assert.equal(job.fired.length, 7, job.fired.map(utc).join(", "));
+  for (const at of job.fired) assert.ok(utc(at).endsWith(":10:00"), utc(at));
+  for (let i = 1; i < job.fired.length; i += 1) {
+    assert.equal((job.fired[i] ?? 0) - (job.fired[i - 1] ?? 0), 6 * HOUR);
+  }
+}
+
+async function longDelaysAreChained(): Promise<void> {
+  const start = Date.parse("2026-09-30T00:00:00Z");
+  const clock = new VirtualClock(start);
+  const recorded = recordingTimers(clock);
+  const scheduler = createScheduler(recordingLog(), () => clock.time, recorded.timers);
+  const fired: number[] = [];
+  scheduler.add(
+    "slow",
+    {
+      kind: "manual",
+      intervalSeconds: null,
+      cron: null,
+      fireOnStart: true,
+      startupDelaySeconds: 30 * 24 * 3600,
+    },
+    () => {
+      fired.push(clock.time);
+      return Promise.resolve();
+    },
+  );
+  scheduler.start();
+  await clock.advanceTo(start + 29 * 24 * HOUR);
+  assert.deepEqual(fired, [], "Node would have clamped the delay and fired at once");
+  await clock.advanceTo(start + 31 * 24 * HOUR);
+  scheduler.stop();
+  assert.deepEqual(fired, [start + 30 * 24 * HOUR]);
+  assert.ok(recorded.longest() <= MAX_TIMER_MS);
+  // The registry refuses an interval no timer can wait for.
+  assert.throws(
+    () => parseRegistry({ connectors: [{ id: "x", name: "X", scope: "land", intervalSeconds: 3_000_000 }] }),
+    /at most 2147483/,
+  );
 }
 
 async function runConnectorRecordsTheLastRun(): Promise<void> {
@@ -360,6 +444,8 @@ function registryChecksTheOffset(): void {
 }
 
 export {
+  wallClockSetBackReplans as "scheduler: a wall clock set back by 30 days re-plans the slots instead of waiting or spinning",
+  longDelaysAreChained as "scheduler: delays beyond Node's timer range are chained, not clamped",
   forecastOffsetSurvivesRestarts as "scheduler: wall-clock slots keep the forecast 3 h after the weather across any restart",
   noExtraRunWithinTheInterval as "scheduler: refireOnRestart false adds no start run within the interval of the persisted last run",
   slotsAreWallClockAndRestartsAddNoRun as "scheduler: slot jobs fire on their wall-clock slots, also with early timers; a fresh last run skips the start run",

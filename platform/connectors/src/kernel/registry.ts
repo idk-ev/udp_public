@@ -199,6 +199,17 @@ function fireOnStart(raw: Readonly<Record<string, unknown>>, at: string): boolea
   return false;
 }
 
+/** Longest interval a Node timer can wait (2^31 - 1 ms); a longer one would fire at once, again and again. */
+export const MAX_INTERVAL_SECONDS = 2_147_483;
+
+function intervalSeconds(raw: Readonly<Record<string, unknown>>, at: string): number | null {
+  const value = optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`);
+  if (value !== null && value > MAX_INTERVAL_SECONDS) {
+    throw new Error(`${at}.intervalSeconds: at most ${String(MAX_INTERVAL_SECONDS)} (~24.8 days)`);
+  }
+  return value;
+}
+
 /**
  * `intervalOffsetSeconds`: only with an interval that divides the day (the
  * slots count from 00:00 UTC) and without a cron, and within the interval —
@@ -231,7 +242,7 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
     name: requireString(raw.name, `${at}.name`),
     scope: requireString(raw.scope, `${at}.scope`),
     enabledFor: enabledFor(raw.enabledFor, `${at}.enabledFor`),
-    intervalSeconds: optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`),
+    intervalSeconds: intervalSeconds(raw, at),
     intervalOffsetSeconds: intervalOffset(raw, at),
     cron: optionalString(raw.cron, `${at}.cron`),
     refireOnRestart: optionalBoolean(raw.refireOnRestart, `${at}.refireOnRestart`),

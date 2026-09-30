@@ -59,6 +59,7 @@ import {
   joinGroups,
   joinTimingFor,
   loadMunicipalities,
+  runCost,
   locationsOf,
   measurement,
   sliceBatches,
@@ -294,6 +295,7 @@ export async function runWith(ctx: Ctx, timing?: JoinTiming, nowMs?: () => numbe
   const batches = planBatches(rows);
   // Current weather has priority: it keeps no reserve for anybody.
   const calls = new OpenMeteoRun(ctx, { label: LABEL, batchCount: batches.length, reserve: 0, nowMs });
+  calls.checkCap(runCost(batches));
   // All calls are started at once and queue in the token bucket in batch
   // order, one per 20 s — the delay node's queue.
   const tasks = batches.map(async (batch, index) =>

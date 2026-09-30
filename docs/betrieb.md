@@ -382,11 +382,18 @@ anteilig mehr. Wetter (7 Variablen, 1 Tag) und Vorhersage (10 Variablen,
   noch fälligen Wetterläufe frei — ein aktueller Wert ist nach Stunden
   falsch, eine Vorhersage vom Vorlauf noch weitgehend richtig. Ein
   zusätzlicher manueller Lauf (+1.103) kostet deshalb am selben Tag in der
-  Regel den letzten Vorhersagelauf, nie einen Wetterlauf.
+  Regel den letzten Vorhersagelauf, nie einen Wetterlauf. Ist der
+  Zustandsspeicher nicht erreichbar, zählt der Dienst nur im Speicher: Über
+  Neustarts hinweg wird die Grenze dann nicht durchgesetzt. Sinnvolles
+  Minimum: 8 × 1.103 = 8.824 für einen vollen Tag; unter 5 × 1.103 = 5.515
+  fällt die Vorhersage jeden Tag aus (der Dienst warnt einmal beim ersten
+  Lauf).
 - **HTTP 429:** `Retry-After` (Sekunden oder HTTP-Datum, sonst 60 s) pausiert
   den gemeinsamen Bucket; der Batch wird danach **einmal** wiederholt. Ein
-  zweites 429 im Lauf oder eine Pause über 5 min beendet den Lauf; folgende
-  Läufe überspringen, solange die Pause gilt.
+  zweites 429 im Lauf oder eine Pause über 5 min beendet den Lauf. Bei einer
+  Pause über 5 min verlassen auch die wartenden Batches des anderen
+  Konnektors sofort die Warteschlange, und folgende Läufe überspringen,
+  solange die Pause gilt — kein Lauf wartet stundenlang.
 
 Nicht geholte Batches stehen mit Nummer und Gemeindezahl im Log
 (`batch 3/8 (138 municipalities) failed …`, `batches 5, 6 of 8 skipped …`);

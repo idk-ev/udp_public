@@ -334,6 +334,35 @@ async function second429EndsTheRun(): Promise<void> {
   );
 }
 
+async function longPauseReleasesTheOtherRun(): Promise<void> {
+  // Both connectors at once (a manual trigger): the forecast's batches already
+  // wait in the shared bucket when the weather's first call gets an hour's pause.
+  const { clock, limiter, state } = simulated();
+  const net = network(
+    () => clock.time,
+    (_call, index) =>
+      index === 0
+        ? { response: { status: 429, ok: false, headers: { "Retry-After": "3600" }, body: "" } }
+        : undefined,
+  );
+  const weather = weatherCtx("wetter-bw", net.fetcher, { limiter, state });
+  const forecast = weatherCtx("vorhersage-bw", net.fetcher, { limiter, state });
+  const now = (): number => clock.time;
+  await clock.run(
+    Promise.all([wetter.runWith(weather.ctx, JOIN, now), vorhersage.runWith(forecast.ctx, JOIN, now)]),
+  );
+  assert.equal(net.sent.length, 1, "nothing else is sent during the pause");
+  assert.ok(
+    clock.time - T0 < MINUTE,
+    `the runs ended after ${String(clock.time - T0)} ms, not after the pause`,
+  );
+  assert.match(weather.log.warnings().at(-1) ?? "", /batches 2, 3, 4, 5, 6, 7, 8 of 8 skipped/);
+  assert.match(
+    forecast.log.warnings().at(-1) ?? "",
+    /^BW forecast: batches 1, 2, 3, 4, 5, 6, 7, 8 of 8 skipped, 1103 municipalities keep their previous values — Open-Meteo asked for a pause until /,
+  );
+}
+
 async function longPauseSkipsInsteadOfWaiting(): Promise<void> {
   const { clock, limiter, state } = simulated();
   let calls = 0;
@@ -565,6 +594,14 @@ async function dailyCapFromTheEnvironment(): Promise<void> {
     await wetter.runWith(capped.ctx, JOIN);
     assert.equal(small.sent.length, 7);
     assert.match(capped.log.warnings().at(-1) ?? "", /^BW weather: batch 8 of 8 skipped, 137 municipalities/);
+    // Below five runs the forecast would starve every day: said once per process.
+    assert.equal(
+      capped.log.warnings()[0],
+      "Open-Meteo daily cap 1000 is below five runs (5515 calls): the forecast will be skipped every day; " +
+        "a full day takes 8824",
+    );
+    await wetter.runWith(capped.ctx, JOIN);
+    assert.equal(capped.log.warnings().filter((line) => line.startsWith("Open-Meteo daily cap")).length, 1);
 
     // Not a positive number: warned, and the default applies.
     process.env.UDP_OPEN_METEO_DAILY_CAP = "0";
@@ -582,6 +619,7 @@ async function dailyCapFromTheEnvironment(): Promise<void> {
 }
 
 export {
+  longPauseReleasesTheOtherRun as "open-meteo: an hour's pause releases the other connector's waiting batches at once",
   bestEffortKeysDoNotNeedTheState as "state: best-effort keys (quota, last run) work without a loaded state and yield to the load",
   dailyCapFromTheEnvironment as "open-meteo: UDP_OPEN_METEO_DAILY_CAP sets the cap; a non-positive value falls back with a warning",
   perMinuteBoundHolds as "open-meteo: two cycles of both connectors (and both at once) never exceed 600 coordinates in a closed 60 s window",
