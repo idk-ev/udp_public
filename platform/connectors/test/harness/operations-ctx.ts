@@ -21,6 +21,7 @@ import { createOrion } from "../../src/kernel/orion.js";
 import { createPruner } from "../../src/kernel/prune.js";
 import { createRateLimiter } from "../../src/kernel/rate-limit.js";
 import { intervalMsOf, loadRegistry, resolveRegistryPath, sumRowBudgets } from "../../src/kernel/registry.js";
+import { memoryQuota } from "../../src/kernel/quota.js";
 import { createConnectorState } from "../../src/kernel/state.js";
 import type { Ctx, Db, Env, HttpResponse, IsoTime, RegistryEntry } from "../../src/kernel/types.js";
 import { httpResponse, recordingLog, scriptedFetcher } from "./kernel.js";
@@ -113,6 +114,7 @@ export function testCtx(options: TestCtxOptions): TestCtx {
     params: entry.params,
     enabledFor: entry.enabledFor,
     state: createConnectorState(),
+    quota: memoryQuota(entry.id),
     // What src/kernel/context.ts computes: the budgets of the whole registry.
     rowBudget: sumRowBudgets(loadRegistry(resolveRegistryPath()).entries),
     now: () => now ?? new Date().toISOString(),

@@ -44,9 +44,11 @@ import { createOrion, DEFAULT_ORION_URL } from "./orion.js";
 import { Persistence } from "./persistence.js";
 import { createPgStateBackend } from "./persistence-pg.js";
 import { createPruner, PruneBookkeeping } from "./prune.js";
+import { quotaBookOf } from "./quota.js";
 import { createRateLimiter } from "./rate-limit.js";
 import { intervalMsOf, sumRowBudgets } from "./registry.js";
-import { createScheduler } from "./scheduler.js";
+import { recordRun } from "./run-log.js";
+import { createScheduler, resumesAfterRestart } from "./scheduler.js";
 import { StateStore, StateUnavailableError } from "./state.js";
 import type {
   ConnectorRunner,
@@ -204,6 +206,7 @@ export function createCtx(kernel: Kernel, entry: RegistryEntry): Ctx {
     params: entry.params,
     enabledFor: entry.enabledFor,
     state: kernel.state.scope(entry.id),
+    quota: quotaBookOf(kernel.state, kernel.nowMs).forConnector(entry.id, kernel.state.scope(entry.id)),
     rowBudget: sumRowBudgets(kernel.registry.entries),
     now: nowIso,
     intervalMs: (runs?: number): number => intervalMsOf(entry, runs),
@@ -236,8 +239,12 @@ export async function runConnector(kernel: Kernel, ctx: Ctx, runner: ConnectorRu
         return;
       }
     }
+    const startedMs = kernel.nowMs();
     try {
       await runner.run(ctx);
+      // What a restart consults before it runs this connector again. A run
+      // cut short by a shutdown is not complete: the restart catches it up.
+      if (resumesAfterRestart(ctx.entry) && !ctx.signal.aborted) recordRun(ctx.state, startedMs);
     } catch (error) {
       if (!(error instanceof StateUnavailableError)) throw error;
       ctx.log.warn(`run skipped, ${error.message} — retried on the next run`);

@@ -39,6 +39,20 @@ const dirs = [path.join(__dirname, "static")]
   .concat(live ? [path.join(__dirname, "live")] : []);
 let pass = 0, fail = 0, finished = false;
 
+// Node's fetch goes through one process-wide undici dispatcher, created by the
+// first fetch call. A test dependency with an undici of its own (jsdom) swaps
+// it for its own when loaded; the connector tests then reached their local
+// servers through that one, and reused keep-alive connections stalled for
+// ~2 s (the pacing test in orion.test.js failed). So Node's own is created
+// here, before any test file loads (a data: URL, no network), and put back
+// after every test file and every test.
+const DISPATCHER = Symbol.for("undici.globalDispatcher.1");
+if (typeof fetch === "function") fetch("data:,").catch(() => {});
+const nodeDispatcher = globalThis[DISPATCHER];
+const restoreDispatcher = () => {
+  if (nodeDispatcher !== undefined && globalThis[DISPATCHER] !== nodeDispatcher) globalThis[DISPATCHER] = nodeDispatcher;
+};
+
 // A test that awaits nothing but an unref'd timer lets the event loop run dry:
 // Node then exits with code 0 in the middle of the suite and prints no
 // failure. That is a silent pass, so an exit before the summary is a failure.
@@ -56,6 +70,7 @@ process.on("exit", () => {
       // would not get past its compiled output code.
       const file = path.join(dir, f);
       const mod = dir === PARITY ? await import(pathToFileURL(file).href) : require(file);
+      restoreDispatcher();
       for (const [name, fn] of Object.entries(mod)) {
         try {
           await fn();
@@ -68,6 +83,7 @@ process.on("exit", () => {
           const message = String((e && e.message) || e).split("\n").map(line => `    ${line}`).join("\n");
           console.error(`  ✗ ${f} › ${name}\n${message}`);
         }
+        restoreDispatcher();
       }
     }
   }

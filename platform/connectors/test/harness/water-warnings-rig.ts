@@ -49,6 +49,7 @@ import { messagesOf } from "./vm-runner.js";
 export const passThroughLimiter: RateLimiter = {
   acquire: () => Promise.resolve(() => undefined),
   run: (_host, task) => task(),
+  pause: () => undefined,
 };
 
 export interface Rig {
@@ -69,10 +70,13 @@ export function registryEntry(id: string): RegistryEntry {
   return entry;
 }
 
+/** Where {@link Rig.clock} starts. Times in test data belong on this clock, not on `Date.now()`. */
+export const RIG_START_MS = Date.parse("2026-09-28T06:00:00Z");
+
 export function rig(id: string, respond: (request: SeenRequest) => HttpResponse | Error): Rig {
   const log = recordingLog();
   const { fetcher, seen } = scriptedFetcher(respond);
-  const clock = { now: Date.parse("2026-09-28T06:00:00Z") };
+  const clock = { now: RIG_START_MS };
   const env = createEnv();
   const entry = registryEntry(id);
   const signatures = new SignatureStore();

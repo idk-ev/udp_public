@@ -327,9 +327,24 @@ sofort Daten hat; danach zählt das Intervall ab diesem ersten Lauf. Für
 **seltene Quellen mit Anbieter-Limits** ist ein Lauf bei jedem Neustart
 schädlich — mehrere Neustarts hintereinander laufen in HTTP 429/504 (so
 geschehen 21.07. bei Overpass und Open-Meteo). Solche Konnektoren tragen in
-der Registry `"refireOnRestart": false` und laufen dann erst **10 Minuten**
-nach dem Start — verzögert, nicht ausgelassen: Ein Konnektor, der öfter neu
-gestartet wird, als sein Intervall lang ist, verhungerte sonst.
+der Registry `"refireOnRestart": false` und laufen dann frühestens
+**10 Minuten** nach dem Start — und ohne Zusatzlauf, wenn ihr letzter
+abgeschlossener Lauf (im Zustandsspeicher, `kernel.lastRunMs`) jünger als ihr
+Intervall ist: Der Startlauf wartet dann, bis das Intervall um ist; bei
+Cron-Konnektoren (Intervall = 1 Tag) entfällt er. Ohne bekannten letzten Lauf
+(Erststart, Datenbank nicht erreichbar) bleibt es bei den 10 Minuten.
+Verzögert, nicht ausgelassen: Ein Konnektor, der öfter neu gestartet wird, als
+sein Intervall lang ist, läuft trotzdem, sobald sein Intervall um ist.
+
+`"intervalOffsetSeconds"` legt ein Intervall auf feste Uhrzeiten: Vielfache
+des Intervalls ab 00:00 UTC plus Versatz, statt „Start + Intervall“. So
+behalten `wetter-bw` und `vorhersage-bw` ihren Abstand über jeden Neustart
+(s. [Open-Meteo-Kontingent](#open-meteo-kontingent)). Ein Slot, der seinen
+Lauf schon hatte (bis 5 min Vorlauf zählen mit), bekommt nach einem Neustart
+keinen zweiten; ein verpasster wird einmal nachgeholt, wenn danach noch
+mindestens das halbe Intervall bis zum nächsten Slot bleibt (bei unbekanntem
+letztem Lauf: höchstens eine Stunde). Ein durch Herunterfahren abgebrochener
+Lauf gilt nicht als gelaufen.
 
 Nächtliche Jobs, denen ihr Cron genügt, tragen dagegen `"fireOnStart": false`
 und laufen beim Dienststart **gar nicht**: `troe-retention` (Indizes,
@@ -343,6 +358,63 @@ Erstbefüllung oder Nachziehen nach Änderungen:
 
 Das Skript löst den Konnektor im Konnektordienst aus, ohne Neustart
 (s. unten).
+
+### Open-Meteo-Kontingent
+
+`wetter-bw` und `vorhersage-bw` holen je Lauf alle 1.103 Gemeinden in
+8 Batches (7 × 138, 1 × 137 Koordinaten). Die freie Stufe von Open-Meteo
+erlaubt 600 Aufrufe je Minute, 5.000 je Stunde und 10.000 je Tag und zählt
+**jede Koordinate** als Aufruf; mehr als 10 Variablen oder 14 Tage kosten
+anteilig mehr. Wetter (7 Variablen, 1 Tag) und Vorhersage (10 Variablen,
+4 Tage) bleiben bei Gewicht 1 — ein Test hält das fest.
+
+| | Wetter | Vorhersage |
+|---|---|---|
+| Slots (UTC) | 00:10, 06:10, 12:10, 18:10 | 03:10, 09:10, 15:10, 21:10 |
+| Aufrufe je Lauf | 1.103 | 1.103 |
+
+- **Minute:** Batches starten im Abstand von 20 s aus einem gemeinsamen
+  Token-Bucket beider Konnektoren; in jedes geschlossene 60-s-Fenster passen
+  höchstens 4 Starts, also 4 × 138 = 552 (Batches sind auf 150 Koordinaten
+  begrenzt, 4 × 150 = 600). Auch wenn beide zugleich laufen (manueller
+  Auslöser), bleibt es dabei.
+- **Stunde:** ein Lauf, 1.103 — die Läufe liegen 3 h auseinander. Weiche
+  Grenze 4.500 je gleitender Stunde (nur im Speicher).
+- **Tag:** 8 Läufe × 1.103 = **8.824** je UTC-Tag. Ein Neustart ändert daran
+  nichts (kein Zusatzlauf, s. oben); ein verpasster Slot wird nur ersetzt.
+  Weiche Grenze **9.000** (`UDP_OPEN_METEO_DAILY_CAP`, Helm
+  `connectors.openMeteoDailyCap`), gezählt je Host im
+  Zustandsspeicher, Tageswechsel 00:00 UTC (Open-Meteo nennt keine Uhrzeit;
+  UTC ist angenommen, die Reserve bis 10.000 deckt Abweichungen). Ein Batch,
+  der die Grenze überschreiten würde, wird nicht gesendet, ebenso der Rest
+  des Laufs. **Aktuelles Wetter hat Vorrang:** Die Vorhersage hält die heute
+  noch fälligen Wetterläufe frei — ein aktueller Wert ist nach Stunden
+  falsch, eine Vorhersage vom Vorlauf noch weitgehend richtig. Ein
+  zusätzlicher manueller Lauf (+1.103) kostet deshalb am selben Tag in der
+  Regel den letzten Vorhersagelauf, nie einen Wetterlauf. Ist der
+  Zustandsspeicher nicht erreichbar, zählt der Dienst nur im Speicher: Über
+  Neustarts hinweg wird die Grenze dann nicht durchgesetzt. Sinnvolles
+  Minimum: 8 × 1.103 = 8.824 für einen vollen Tag; unter 5 × 1.103 = 5.515
+  fällt die Vorhersage jeden Tag aus (der Dienst warnt einmal beim ersten
+  Lauf).
+- **HTTP 429:** `Retry-After` (Sekunden oder HTTP-Datum, sonst 60 s) pausiert
+  den gemeinsamen Bucket; der Batch wird danach **einmal** wiederholt. Ein
+  zweites 429 im Lauf oder eine Pause über 5 min beendet den Lauf. Bei einer
+  Pause über 5 min verlassen auch die wartenden Batches des anderen
+  Konnektors sofort die Warteschlange, und folgende Läufe überspringen,
+  solange die Pause gilt — kein Lauf wartet stundenlang. Das gilt für das
+  Minuten- und Stundenlimit (`reason` „Minutely …“/„Hourly …“) und für jede
+  429 ohne lesbaren Grund. Nennt die Antwort das **Tageslimit** (`reason`
+  enthält das Wort „daily“, Groß-/Kleinschreibung egal): keine Wiederholung,
+  Pause bis 00:00 UTC, und der Tag gilt im Zustandsspeicher als verbraucht —
+  alle weiteren Läufe des UTC-Tages überspringen ohne Aufruf, mit einer
+  Warnung je Lauf, auch nach einem Neustart.
+
+Nicht geholte Batches stehen mit Nummer und Gemeindezahl im Log
+(`batch 3/8 (138 municipalities) failed …`, `batches 5, 6 of 8 skipped …`);
+diese Gemeinden behalten ihre bisherigen Werte. Die Stadtseite zeigt Wetter
+und Vorhersage nach 13 h (zwei ausgefallene Läufe plus Reserve) mit
+„Stand: …“ und neutralem Status.
 
 ## Konnektordienst
 

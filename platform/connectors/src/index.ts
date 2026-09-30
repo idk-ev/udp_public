@@ -46,6 +46,7 @@ import type { Kernel } from "./kernel/context.js";
 import { DEFAULT_PORT } from "./kernel/http.js";
 import { sanitizeLogText } from "./kernel/log.js";
 import { loadRegistry, resolveRegistryPath, REGISTRY_PATH_ENV } from "./kernel/registry.js";
+import { storedLastRuns } from "./kernel/run-log.js";
 import { scheduleOf } from "./kernel/scheduler.js";
 import type { RegistryEntry } from "./kernel/types.js";
 
@@ -96,8 +97,12 @@ async function main(): Promise<void> {
       `${entry.id}: ${schedule.kind}` +
         (schedule.cron === null ? "" : ` "${schedule.cron}"`) +
         (schedule.intervalSeconds === null ? "" : ` every ${String(schedule.intervalSeconds)} s`) +
+        (schedule.offsetSeconds === null || schedule.offsetSeconds === undefined
+          ? ""
+          : ` on slots from 00:00 UTC + ${String(schedule.offsetSeconds)} s`) +
         (schedule.fireOnStart
-          ? `, first run in ${String(schedule.startupDelaySeconds)} s`
+          ? `, first run in ${String(schedule.startupDelaySeconds)} s` +
+            (schedule.resume === true ? " unless its last run is recent" : "")
           : ", no run on start"),
     );
   });
@@ -123,7 +128,8 @@ async function main(): Promise<void> {
   // listen, so the probes answer while the cockpit is slow; with no scheduled
   // connector nothing is fetched.
   await startGeoBootstrap(kernel, scheduled.length);
-  kernel.scheduler.start();
+  // The persisted last runs are loaded with the state above.
+  kernel.scheduler.start(storedLastRuns(kernel.state));
 
   const stop = (signal: string): void => {
     kernel.log.info(`${signal} received, shutting down`);

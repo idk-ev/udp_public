@@ -40,6 +40,13 @@
  * particulate cadence from scratch is exactly what persisting it prevents.
  * The kernel turns that into a skipped run.
  *
+ * A key declared `bestEffort` is persisted as well, but the connector does
+ * not depend on it: while the state is not loaded it reads its initial (or
+ * last known) value and a change stays in memory until the state is loaded,
+ * which then replaces it with the stored value. For kernel bookkeeping that
+ * must not stop a connector when the database is down (the last run of a
+ * connector, the daily call counter per host).
+ *
  * The initial value is a factory: a fresh `Map`/`Set` per connector, never
  * one shared by all owners of a module-level key.
  */
@@ -151,18 +158,20 @@ class MemoryStateKey<T> implements StateKey<T> {
   readonly name: string;
   readonly #initial: () => T;
   readonly #codec: StateCodec<T> | undefined;
+  readonly #bestEffort: boolean;
   readonly #cells = new WeakMap<ConnectorState, { value: T }>();
 
-  constructor(name: string, initial: () => T, codec: StateCodec<T> | undefined) {
+  constructor(name: string, initial: () => T, codec: StateCodec<T> | undefined, bestEffort: boolean) {
     this.name = name;
     this.#initial = initial;
     this.#codec = codec;
+    this.#bestEffort = bestEffort;
   }
 
   slotIn(owner: ConnectorState): StateSlot<T> {
     const codec = this.#codec;
     const persistedIn = codec !== undefined && owner instanceof MemoryConnectorState ? owner : null;
-    persistedIn?.assertUsable();
+    if (!this.#bestEffort) persistedIn?.assertUsable();
     let cell = this.#cells.get(owner);
     if (cell === undefined) {
       const created = { value: this.#initial() };
@@ -205,10 +214,16 @@ class MemoryStateKey<T> implements StateKey<T> {
  *
  * `initial` runs once per connector, on first use. With a `codec` the value
  * is persisted and survives a restart; without one it is a process-lifetime
- * cache (see the module header for which to choose).
+ * cache (see the module header for which to choose). `bestEffort` persists
+ * without making the connector depend on its state (module header).
  */
-export function stateKey<T>(name: string, initial: () => T, codec?: StateCodec<T>): StateKey<T> {
-  return new MemoryStateKey(name, initial, codec);
+export function stateKey<T>(
+  name: string,
+  initial: () => T,
+  codec?: StateCodec<T>,
+  options?: { readonly bestEffort?: boolean },
+): StateKey<T> {
+  return new MemoryStateKey(name, initial, codec, options?.bestEffort === true);
 }
 
 function finiteNumber(raw: unknown): number | undefined {
@@ -293,6 +308,21 @@ export class StateStore {
 
   scope(id: ConnectorId): ConnectorState {
     return this.#owner(id);
+  }
+
+  /**
+   * The stored value of the persisted key `name` of every connector, as its
+   * state was last loaded (raw, to be decoded by the caller). For kernel
+   * bookkeeping summed across connectors (src/kernel/quota.ts); reading it does
+   * not make a connector depend on its state.
+   */
+  loadedValues(name: string): ReadonlyMap<ConnectorId, unknown> {
+    const out = new Map<ConnectorId, unknown>();
+    for (const [id, state] of this.#scopes) {
+      const value = state.loadedValue(name);
+      if (value !== undefined) out.set(id, value);
+    }
+    return out;
   }
 
   /** Kernel-internal: connects `id`'s persisted keys to the state store. */

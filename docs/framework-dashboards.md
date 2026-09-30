@@ -24,7 +24,7 @@ Orion-LD/TRoE ◄─────────────────────
 Deklariert jeden Konnektor; der Konnektordienst führt jeden aktiven Eintrag mit
 Modul aus. Felder je Eintrag:
 `id`, `name`, `scope` (land|kreis|kommune|betrieb), `enabledFor` (AGS-Liste oder `"*"`),
-`params` (je AGS, z. B. EFA-Stop-IDs), `intervalSeconds` **oder** `cron`,
+`params` (je AGS, z. B. EFA-Stop-IDs), `intervalSeconds` (optional mit `intervalOffsetSeconds`: feste Uhrzeiten ab 00:00 UTC) **oder** `cron`,
 `sollMinutes` (Monitoring-Ampel), `sampleEntity`, `provides` (steuert Frontend-Kacheln),
 `attribution` (Fußzeile), `requiresSecret` (z. B. `HYSTREET_API_TOKEN` — Healthcheck
 meldet „WARTET" statt Fehler), `active`, optional `refireOnRestart`, `healthUrl`,

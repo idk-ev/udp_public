@@ -468,6 +468,8 @@ export interface RateLimitOptions {
    * what keeps a slow Overpass answer from overlapping the next request.
    */
   readonly maxConcurrent?: number | undefined;
+  /** Ends the wait for a token (`RateLimitAbortedError`); a granted token stays granted. */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -494,6 +496,27 @@ export interface RateLimiter {
   acquire(host: string, options?: RateLimitOptions): Promise<RateLimitRelease>;
   /** Convenience: acquire, run, release — also when `task` throws. */
   run<T>(host: string, task: () => Promise<T>, options?: RateLimitOptions): Promise<T>;
+  /**
+   * No token for `host` for the next `ms` milliseconds — the provider asked
+   * for a break (HTTP 429 with `Retry-After`). Shared like the bucket: every
+   * connector waiting for the host waits. Only ever lengthens a pause.
+   */
+  pause(host: string, ms: number): void;
+}
+
+/**
+ * Daily call budget per host, shared by every connector — `ctx.quota`, see
+ * src/kernel/quota.ts. Counts per UTC day and survives a restart.
+ */
+export interface HostQuota {
+  /** Units charged to `host` today, by every connector. */
+  used(host: string): number;
+  /** Charges `units` to `host` on behalf of this connector. */
+  charge(host: string, units: number): void;
+  /** Whether the provider said today (UTC) that `host`'s daily limit is used up. */
+  exhausted(host: string): boolean;
+  /** Records that the provider said so; persisted, cleared by the next UTC day. */
+  exhaust(host: string): void;
 }
 
 /* ------------------------------------------------------------------ Change gate */
@@ -1007,11 +1030,20 @@ export interface RegistryEntry {
   /** `"*"` = all municipalities, an AGS list, or `null` for stateless connectors. */
   readonly enabledFor: "*" | readonly Ags[] | null;
   readonly intervalSeconds: number | null;
+  /**
+   * `intervalOffsetSeconds`: the interval runs on wall-clock slots — at every
+   * multiple of `intervalSeconds` since 00:00 UTC plus this offset — instead
+   * of counting from the start of the service. Two connectors sharing a
+   * provider keep their distance across restarts that way. `null` = counted
+   * from the first run.
+   */
+  readonly intervalOffsetSeconds: number | null;
   /** Five-field cron in local time (`TZ=Europe/Berlin` in the image). */
   readonly cron: string | null;
   /**
-   * `false` means **fire delayed, not skip**. See {@link Schedule} and
-   * src/kernel/scheduler.ts.
+   * `false` means **fire delayed, not skip** — unless the connector's last
+   * run, persisted, is younger than its interval: then a restart adds no
+   * run. See {@link Schedule} and src/kernel/scheduler.ts.
    */
   readonly refireOnRestart: boolean | null;
   /**
@@ -1076,6 +1108,17 @@ export interface Schedule {
   readonly cron: string | null;
   readonly fireOnStart: boolean;
   readonly startupDelaySeconds: number;
+  /**
+   * Interval on wall-clock slots: offset of the slots from 00:00 UTC in
+   * seconds ({@link RegistryEntry.intervalOffsetSeconds}). Missing/`null` =
+   * the interval counts from the first run.
+   */
+  readonly offsetSeconds?: number | null | undefined;
+  /**
+   * `refireOnRestart: false`: the start run consults the persisted last run
+   * of the connector and adds no run within the interval (src/kernel/scheduler.ts).
+   */
+  readonly resume?: boolean | undefined;
 }
 
 /** Outcome of {@link Scheduler.trigger}. */
@@ -1092,7 +1135,12 @@ export interface ScheduledJob {
 
 export interface Scheduler {
   add(id: ConnectorId, schedule: Schedule, task: () => Promise<void>): void;
-  start(): void;
+  /**
+   * `lastRunMs`: start of the last completed run of a connector, persisted
+   * (src/kernel/run-log.ts); `null` = unknown. Read once, for jobs with
+   * {@link Schedule.resume}.
+   */
+  start(lastRunMs?: (id: ConnectorId) => number | null): void;
   stop(): void;
   /**
    * Manual run, behind `POST /trigger/:id` on the admin port. Refused while a
@@ -1321,6 +1369,8 @@ export interface Ctx {
   readonly enabledFor: "*" | readonly Ags[] | null;
   /** State of this connector, shared by `run` and its `routes`; see {@link ConnectorState}. */
   readonly state: ConnectorState;
+  /** Daily call budget per host, shared by every connector; see {@link HostQuota}. */
+  readonly quota: HostQuota;
   /**
    * `rowBudget24h` of EVERY registry entry summed per entity type —
    * `ROW_BUDGET` of the generator, computed by the kernel from the registry

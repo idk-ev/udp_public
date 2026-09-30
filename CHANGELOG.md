@@ -2,6 +2,27 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Wetter: Open-Meteo-Kontingent
+
+- Wetter und Vorhersage laufen auf festen Slots (Registry
+  `intervalOffsetSeconds`): Wetter 00:10/06:10/12:10/18:10 UTC, Vorhersage
+  3 h später. 8.824 Aufrufe je Tag, auch mit Neustarts.
+- Neustarts: Konnektoren mit `refireOnRestart: false` laufen nicht erneut,
+  wenn ihr letzter Lauf (persistiert) jünger als ihr Intervall ist.
+- Tageszähler je Host im Zustandsspeicher (UTC-Tag), weiche Grenze 9.000
+  (`UDP_OPEN_METEO_DAILY_CAP`); die Vorhersage lässt den heute noch fälligen
+  Wetterläufen Vorrang.
+- Höchstens 600 Koordinaten je Minute: Batches ≤ 150, 20 s Abstand.
+- HTTP 429: `Retry-After` pausiert den gemeinsamen Bucket, danach genau eine
+  Wiederholung; ein zweites 429 beendet den Lauf. Fehlende Batches werden mit
+  Nummer und Gemeindezahl gemeldet, alte Werte bleiben.
+- Tageslimit (429 mit „Daily …“): keine Wiederholung, Pause bis 00:00 UTC,
+  der Rest des Tages wird ohne Aufruf übersprungen.
+- Tageswerte (Max/Min/UV) kommen wieder mit jedem Wetterlauf.
+- Stadtseite: Wetter, Wind und UV zeigen nach 13 h „Stand: …“; Taktangaben
+  korrigiert.
+- `sharing-bw` meldet jeden Lauf mit einer Info-Zeile.
+
 ## Unveröffentlicht — TRoE als Hypertable
 
 > **Upgrade:**
