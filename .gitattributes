@@ -5,3 +5,5 @@
 platform/connectors/** text eol=lf
 # Run by bash, also from Windows checkouts (core.autocrlf): CRLF breaks them.
 *.sh text eol=lf
+# nginx templates: the static tests match their blocks line by line (\n).
+*.template text eol=lf

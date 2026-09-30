@@ -54,6 +54,10 @@
  *
  * ## Deliberate deviations
  *
+ *  * `zeit` is the departure's wall-clock time in Europe/Berlin. EFA answers
+ *    in UTC (`…Z`), and the old node cut `HH:MM` out of that string, so the
+ *    board showed times one or two hours early. `efa-abfahrten` already
+ *    converted ({@link clock}, the same formatting).
  *  * EFA requests go through the shared rate limiter of `www.efa-bw.de` (see
  *    src/connectors/efa.ts), no retry, 30 s timeout. The old request had no
  *    pacing and Node-RED's 120 s timeout, i.e. a hanging EFA ended in the
@@ -111,7 +115,13 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "../kernel/types.js";
-import { EFA_DM_URL, EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor, parseDepartureMonitor } from "./efa.js";
+import {
+  berlinClock,
+  EFA_DM_URL,
+  EFA_MIN_INTERVAL_MS,
+  isEmptyDepartureMonitor,
+  parseDepartureMonitor,
+} from "./efa.js";
 import type { DepartureMonitor } from "./efa.js";
 import { failureText, nodePayload } from "./http-payload.js";
 import type { Scalar } from "./http-payload.js";
@@ -269,6 +279,11 @@ export interface Upstream {
   readonly payload: unknown;
 }
 
+/** `HH:MM` in Europe/Berlin, as `efa-abfahrten` shows it; an unparseable time keeps the old cut. */
+export function clock(iso: string): string {
+  return Number.isFinite(Date.parse(iso)) ? berlinClock(iso) : iso.slice(11, 16);
+}
+
 function departureRow(monitorEvent: DepartureMonitor["stopEvents"][number]): DepartureRow {
   const line = [monitorEvent.lineNumber, monitorEvent.lineName].find((value) => isTruthy(value));
   const planned = monitorEvent.planned ?? "";
@@ -287,7 +302,7 @@ function departureRow(monitorEvent: DepartureMonitor["stopEvents"][number]): Dep
   return {
     linie: line ?? "",
     ziel: isTruthy(monitorEvent.destination) ? (monitorEvent.destination ?? "") : "",
-    zeit: shown.slice(11, 16),
+    zeit: clock(shown),
     verspaetung: delay,
   };
 }

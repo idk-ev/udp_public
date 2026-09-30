@@ -17,6 +17,10 @@
  * fail. The 200 body carries the clock (`stand`), so it is compared with
  * `stand` blanked and each side's ETag checked against its own body.
  *
+ * DELIBERATE DEVIATION (module header): `zeit` is Berlin time, the old node's
+ * was the UTC cut. It is blanked in the comparison too and pinned against the
+ * fixture's times in {@link departureTimesAreLocal}.
+ *
  * Fixtures: test/fixtures/abfahrten-on-demand-08115003.json (real departure
  * monitor answer for Böblingen, limit 12, trimmed as its `note` says); the
  * directory entries are taken from the committed gui/public/oepnv-halte.json.
@@ -25,7 +29,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DIRECTORY_URL, ROUTE_PATH, run, routes } from "../../src/connectors/abfahrten-on-demand.js";
+import { clock, DIRECTORY_URL, ROUTE_PATH, run, routes } from "../../src/connectors/abfahrten-on-demand.js";
 import { EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor } from "../../src/connectors/efa.js";
 import { isArray } from "../../src/kernel/parse.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
@@ -196,10 +200,14 @@ async function ported(
   }
 }
 
-/** Body with the clock blanked; the rest byte-exact as parsed JSON. */
+/** Body with the clock and the departure times blanked; the rest byte-exact as parsed JSON. */
 function comparable(response: WireResponse): unknown {
   const body: unknown = JSON.parse(response.body);
-  return isRecord(body) && "stand" in body ? { ...body, stand: "<timestamp>" } : body;
+  if (!isRecord(body) || !("stand" in body)) return body;
+  const rows = Array.isArray(body.abfahrten)
+    ? body.abfahrten.map((row: unknown) => (isRecord(row) ? { ...row, zeit: "<time>" } : row))
+    : body.abfahrten;
+  return { ...body, stand: "<timestamp>", abfahrten: rows };
 }
 
 function headerNames(response: WireResponse): string[] {
@@ -253,6 +261,27 @@ async function validAnswerHasTheDashboardShape(): Promise<void> {
   assert.deepEqual(Object.keys(isRecord(rows[0]) ? rows[0] : {}), ["linie", "ziel", "zeit", "verspaetung"]);
   // What gui/public/stadt.html reads: medianVerspaetung, halt, echtzeitAbfahrten, abfahrten[].
   assert.equal(typeof body.echtzeitAbfahrten, "number");
+}
+
+async function departureTimesAreLocal(): Promise<void> {
+  const now = await ported(SCENARIOS[0] ?? assert.fail("no scenario"));
+  const body: unknown = JSON.parse(now.response.body);
+  assert.ok(isRecord(body) && Array.isArray(body.abfahrten));
+  const payload = readFixture(FIXTURE).payload;
+  const events = isRecord(payload) && Array.isArray(payload.stopEvents) ? payload.stopEvents : [];
+  const expected = events.map((event: unknown) => {
+    const e = isRecord(event) ? event : {};
+    const shown = [e.departureTimeEstimated, e.departureTimePlanned].find((t) => typeof t === "string");
+    return typeof shown === "string" ? clock(shown) : "";
+  });
+  assert.deepEqual(
+    body.abfahrten.map((row: unknown) => (isRecord(row) ? row.zeit : null)),
+    expected,
+  );
+  // Recorded 2026-09-28, summer time: UTC + 2 h.
+  assert.equal(clock("2026-09-28T03:12:06Z"), "05:12");
+  assert.equal(clock("2026-12-01T23:30:00Z"), "00:30");
+  assert.equal(clock("2026-13-45T25:99:00"), "25:99", "unparseable: the old cut");
 }
 
 async function failedDirectoryLoadKeepsThePreviousOne(): Promise<void> {
@@ -394,6 +423,7 @@ async function realErrorsStay502(): Promise<void> {
 }
 
 export {
+  departureTimesAreLocal as "abfahrten-on-demand: departure times are Berlin wall-clock time, not the UTC cut (deliberate)",
   noDeparturesIsAnEmptyList as "abfahrten-on-demand: a valid EFA answer without departures is 200 with an empty list (deviation)",
   realErrorsStay502 as "abfahrten-on-demand: network, HTTP and malformed EFA answers stay 502",
   everyAnswerMatches as "abfahrten-on-demand: /abfahrten status, headers and body match the old http-in/response path in every scenario",

@@ -472,7 +472,9 @@ exports["GUI: realtime labels only for current values"] = () => {
     "newest entity decides");
   assert.strictEqual(staleStand({ name: { value: "x" } }, 6 * H), "Stand unbekannt");
   const page = fs.readFileSync(path.join(ROOT, "gui/public/stadt.html"), "utf8");
-  assert(/const pkStand = [^\n]*staleStand\(pk, STALE\.parken\)/.test(page), "parking tile without age check");
+  // Age of the realtime sum only (dateObserved, realtimeFree), not of siteCount.
+  assert(/const pkStand = [^;]*staleStand\(\{ dateObserved: pk\.dateObserved, realtimeFree: pk\.realtimeFree \}, STALE\.parken\)/.test(page),
+    "parking tile without age check of the realtime sum");
   assert(/const brStand = staleStand\(bikes, STALE\.parken\)/.test(page), "B+R tile without age check");
   assert(!/hint: "freie Plätze, Echtzeit", explain/.test(page), "B+R still labelled Echtzeit unconditionally");
   assert(/"name,operator,availableVehicles,capacity,ags,location,dateObserved"/.test(page), "carsharing popup without dateObserved");

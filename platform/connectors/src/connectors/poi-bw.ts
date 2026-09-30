@@ -28,9 +28,9 @@
  * named ones first (stable sort — "unnamed" means the name equals the kind,
  * which is what `t.name || art` leaves for an unnamed object); then round-robin
  * over the kinds until 50, so the map shows a mix instead of only playgrounds.
- * `counts` counts every item. `totalCount` is the length of the SELECTED list
- * (at most 50), not the sum of `counts` — that is what the old node wrote, and
- * the port keeps it.
+ * `counts` counts every item, and so does `totalCount` (the sum of `counts`).
+ * The old node wrote the length of the SELECTED list (at most 50) there, which
+ * the municipality page showed as the total — a deliberate fix, see below.
  *
  * Written in full every run, ungated and without a prune, as before.
  *
@@ -41,6 +41,10 @@
  *
  * Deviations:
  *
+ *  * `totalCount` is the number of all amenities of the municipality, not of
+ *    the capped list (old: at most 50).
+ *  * An OSM object is taken once: a way crossing a tile border comes back in
+ *    both answers, and the old node counted and listed it twice.
  *  * The kind labels come from a `Map`, not an object literal (`TYP[t.amenity]`
  *    would find `Object.prototype` members for a tag value like `constructor`).
  *  * The geo context is checked before the twelve requests as well as after
@@ -216,10 +220,15 @@ export function build(
 ): readonly PublicAmenityEntity[] {
   if (geo === null) return [];
   const byAgs = new Map<string, Bucket>();
+  const seen = new Set<string>();
   for (const part of raw) {
     for (const element of part.elements) {
       const kind = kindOf(element.tags);
       if (kind === null) continue;
+      if (element.osmId !== null) {
+        if (seen.has(element.osmId)) continue;
+        seen.add(element.osmId);
+      }
       const { lat, lon } = element;
       if (lat === null || lon === null) continue;
       const ags = geo.agsAt(lat, lon);
@@ -244,7 +253,7 @@ export function build(
       ags: { type: "Property", value: ags },
       amenities: { type: "Property", value: selected, observedAt: now },
       counts: { type: "Property", value: bucket.counts, observedAt: now },
-      totalCount: { type: "Property", value: selected.length, unitCode: "C62", observedAt: now },
+      totalCount: { type: "Property", value: bucket.items.length, unitCode: "C62", observedAt: now },
       dateObserved: dateObserved(now),
       dataProvider: { type: "Property", value: DATA_PROVIDER },
       "@context": NGSI_CONTEXT,

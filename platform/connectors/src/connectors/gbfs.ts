@@ -28,7 +28,7 @@
  */
 
 import { FetchUrlRefusedError } from "../kernel/fetcher.js";
-import { isFiniteNumber, isRecord, isString } from "../kernel/parse.js";
+import { isFiniteNumber, isRecord, isString, isTruthy } from "../kernel/parse.js";
 import type { FetchOptions, Log } from "../kernel/types.js";
 
 /** The `http request` node "GBFS-Systeme" of both flows. */
@@ -59,6 +59,25 @@ export function parseSystems(raw: unknown): readonly GbfsSystem[] | null {
     else if (isFiniteNumber(id)) out.push({ id: String(id), url });
   }
   return out;
+}
+
+/**
+ * The prevailing `form_factor` of a `vehicle_types` list, on the raw strings:
+ * the most frequent one, ties to the first sighting; a missing or non-string
+ * form factor counts as `unbekannt`; `null` without any type. Shared by
+ * `carsharing-bw` (FleetStatus.vehicleType) and `sharing-bw` (which docked
+ * vehicles the station side counts), so the two always agree.
+ */
+export function prevailingFormFactor(types: unknown): string | null {
+  const counts = new Map<string, number>();
+  for (const type of Array.isArray(types) ? types : []) {
+    if (!isRecord(type)) continue;
+    const form = isTruthy(type.form_factor) && isString(type.form_factor) ? type.form_factor : "unbekannt";
+    counts.set(form, (counts.get(form) ?? 0) + 1);
+  }
+  // Stable sort by count, descending: ties keep the order of first sighting.
+  const top = [...counts].sort((a, b) => b[1] - a[1])[0];
+  return top === undefined ? null : top[0];
 }
 
 /** `s.url.replace(/\/gbfs$/, '/<feed>')`. */

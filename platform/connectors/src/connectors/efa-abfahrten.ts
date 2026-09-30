@@ -91,7 +91,14 @@ import type {
   Property,
   SignatureValue,
 } from "../kernel/types.js";
-import { EFA_CONCURRENCY, EFA_DM_URL, EFA_MIN_INTERVAL_MS, mapPool, parseDepartureMonitor } from "./efa.js";
+import {
+  berlinClock,
+  EFA_CONCURRENCY,
+  EFA_DM_URL,
+  EFA_MIN_INTERVAL_MS,
+  mapPool,
+  parseDepartureMonitor,
+} from "./efa.js";
 import type { DepartureMonitor, StopEvent } from "./efa.js";
 import { failureText, nodePayload, scalar } from "./http-payload.js";
 import type { Scalar } from "./http-payload.js";
@@ -270,13 +277,7 @@ export function parse(raw: unknown): EfaRun {
 /* ------------------------------------------------------------------ Build */
 
 /** `fmt` of the original: local time in Berlin, `HH:MM`. */
-function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString("de-DE", {
-    timeZone: "Europe/Berlin",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+const clock = berlinClock;
 
 function firstTruthy(...values: readonly (Scalar | undefined)[]): Scalar | undefined {
   return values.find((value) => isTruthy(value));

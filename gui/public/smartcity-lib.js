@@ -286,6 +286,29 @@
   const grade = (v, warn, serious) =>
     v == null ? null : v >= serious ? css("--status-serious") : v >= warn ? css("--status-warn") : css("--status-good");
 
+  // Free-floating sharing vehicles by form factor (SharingSummary.vehiclesByFormFactor,
+  // sharing-bw). entries: [[availableVehicles, split object or null], …].
+  // parts is null when a summary with vehicles has no split (written before
+  // the split existed): then only the total is shown.
+  const FORM_FACTOR_LABELS = [["scooter_standing", "E-Scooter", "E-Scooter"], ["bicycle", "Rad", "Räder"],
+    ["cargo_bicycle", "Lastenrad", "Lastenräder"], ["moped", "Moped", "Mopeds"], ["car", "Auto", "Autos"],
+    ["other", "sonstiges", "sonstige"]];
+  function sharingSplit(entries) {
+    let total = 0, complete = true;
+    const sum = {};
+    for (const [n, split] of entries) {
+      const v = Number(n) || 0;
+      total += v;
+      if (!split || typeof split !== "object") { if (v > 0) complete = false; continue; }
+      for (const [k] of FORM_FACTOR_LABELS) sum[k] = (sum[k] || 0) + (Number(split[k]) || 0);
+    }
+    const parts = complete
+      ? FORM_FACTOR_LABELS.map(([k, one, many]) => [k, sum[k] === 1 ? one : many, sum[k] || 0])
+          .filter(p => p[2] > 0).sort((a, b) => b[2] - a[2])
+      : null;
+    return { total, parts, text: parts ? parts.map(p => fmtN(p[2]) + " " + p[1]).join(" · ") : "" };
+  }
+
   /* ---------- SVG-Zeitreihe mit Crosshair-Tooltip ---------- */
   function chart(el, seriesList, opts = {}) {
     const host = typeof el === "string" ? $(el) : el;
@@ -1000,7 +1023,7 @@
   w.SC = { GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
            jget, fetchRetry, entities, entity, byAgs, jlist, hist, series, asRows,
            failed, loadMark, loadSince, bannerDue, loadBanner, errorTile, tileMemory, errorTiles, LOAD_ERR_TXT,
-           tile, grade, chart, barSvg, stackBar, popupHtml, groupColor, pos, baseLayer,
+           tile, grade, sharingSplit, chart, barSvg, stackBar, popupHtml, groupColor, pos, baseLayer,
            themeSelector, modalOpen, wireTileDetails, openDetailByKey, markerIcon,
            gaugeSvg, compassSvg, thresholdBar, thermoSvg, miniRadialSvg, miniGaugeSvg, miniCompassSvg, sparklineSvg,
            forecastStrip, stepsHtml, sparkTiles, miniBand, miniSteps, miniThermo };

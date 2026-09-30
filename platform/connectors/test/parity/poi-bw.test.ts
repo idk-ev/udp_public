@@ -16,6 +16,12 @@
  * modified copy pins the kind rules (recycling variants, defibrillator via
  * `emergency`), "named first" and the name cut.
  *
+ * DELIBERATE DEVIATIONS (module header): `totalCount` is the sum of `counts`,
+ * not the length of the capped list — {@link withTrueTotals} applies it to the
+ * old node's entities before the comparison — and an OSM object in two tile
+ * answers is taken once ({@link repeatedObjectsAreTakenOnce}; the recording
+ * has none).
+ *
  * Fixture: test/fixtures/poi-bw.json (see its note), against
  * test/fixtures/grenzen-bw.json.
  */
@@ -92,6 +98,18 @@ async function bothSides(bodies: readonly unknown[]): Promise<{ legacy: Function
   return { legacy, parts };
 }
 
+/** The old node's entities with the deliberate fix applied: `totalCount` = sum of `counts`. */
+function withTrueTotals(entities: readonly unknown[]): unknown[] {
+  return entities.map((entity) => {
+    if (!isRecord(entity) || !isRecord(entity.totalCount) || !isRecord(entity.counts)) return entity;
+    const counts = entity.counts.value;
+    const total = isRecord(counts)
+      ? Object.values(counts).reduce<number>((sum, n) => sum + (typeof n === "number" ? n : 0), 0)
+      : 0;
+    return { ...entity, totalCount: { ...entity.totalCount, value: total } };
+  });
+}
+
 async function requestsAreIdentical(): Promise<void> {
   const run = await runFunctionNode(REQUEST_NODE, { msg: { _msgid: "parity", payload: 0 } });
   const returned: unknown = Array.isArray(run.returned) ? run.returned[0] : undefined;
@@ -111,7 +129,7 @@ async function fixtureEntitiesAreIdentical(): Promise<void> {
   const entities = build(parse(parts), fixtureGeo(), new Date().toISOString());
 
   assert.deepEqual(legacy.warnings, []);
-  assertEntitiesEqual(emittedEntities(legacy), entities);
+  assertEntitiesEqual(withTrueTotals(emittedEntities(legacy)), entities);
   assert.deepEqual(
     emittedChunkSizes(legacy),
     [...chunk(entities, CHUNK_SIZE)].map((part) => part.length),
@@ -125,7 +143,14 @@ async function fixtureEntitiesAreIdentical(): Promise<void> {
   assert.equal(counted, 84);
   assert.equal(Object.keys(weil.counts.value).length, 9);
   assert.equal(weil.amenities.value.length, 50);
-  assert.equal(weil.totalCount.value, 50, "totalCount is the selected length, as in the old node");
+  assert.equal(
+    weil.totalCount.value,
+    84,
+    "totalCount counts every amenity, not the capped list (deliberate)",
+  );
+  const old = emittedEntities(legacy).find((entity) => isRecord(entity) && entity.id === weil.id);
+  assert.ok(isRecord(old) && isRecord(old.totalCount));
+  assert.equal(old.totalCount.value, 50, "the old node wrote the capped length");
 }
 
 async function twoMunicipalitiesKeepTheOldOrder(): Promise<void> {
@@ -152,7 +177,7 @@ async function twoMunicipalitiesKeepTheOldOrder(): Promise<void> {
 
   const { legacy, parts } = await bothSides(tiles(elements, 3));
   const entities = build(parse(parts), geo, new Date().toISOString());
-  assertEntitiesEqual(emittedEntities(legacy), entities);
+  assertEntitiesEqual(withTrueTotals(emittedEntities(legacy)), entities);
   assert.deepEqual(
     entities.map((entity) => entity.ags.value).sort(),
     [loerrach, WEIL].sort(),
@@ -192,7 +217,7 @@ async function kindRulesAreIdentical(): Promise<void> {
 
   const { legacy, parts } = await bothSides(tiles(elements, 2));
   const entities = build(parse(parts), geo, new Date().toISOString());
-  assertEntitiesEqual(emittedEntities(legacy), entities);
+  assertEntitiesEqual(withTrueTotals(emittedEntities(legacy)), entities);
   const weil = entities.find((entity) => entity.ags.value === WEIL);
   assert.ok(weil !== undefined);
   assert.ok(weil.counts.value.Recyclinghof !== undefined && weil.counts.value.Altglas !== undefined);
@@ -225,7 +250,7 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   await run(rig.ctx);
   const portWindow = portClock.close();
 
-  assertEntitiesEqual(emittedEntities(legacy), rig.upserted(), {
+  assertEntitiesEqual(withTrueTotals(emittedEntities(legacy)), rig.upserted(), {
     labels: { left: "old (Node-RED flow)", right: "new (run → Orion)" },
   });
   assert.deepEqual(rig.upsertSizes(), emittedChunkSizes(legacy));
@@ -261,9 +286,38 @@ async function nothingUsableWarns(): Promise<void> {
   assert.equal(rig.upserted().length, 0);
 }
 
+async function repeatedObjectsAreTakenOnce(): Promise<void> {
+  // A modified copy, not fixture data: the second tile repeats the first
+  // twenty elements of the first one, as for a way on a tile border.
+  const elements = fixtureElements();
+  const [first, second] = tiles(elements, 2);
+  assert.ok(first !== undefined && second !== undefined);
+  const plain = await bothSides([first, second]);
+  const doubled = await bothSides([
+    first,
+    { elements: [...second.elements, ...structuredClone(first.elements.slice(0, 20))] },
+  ]);
+  const now = new Date().toISOString();
+  const once = build(parse(plain.parts), fixtureGeo(), now);
+  const ported = build(parse(doubled.parts), fixtureGeo(), now);
+  assertEntitiesEqual(once, ported);
+  const weil = (entities: readonly unknown[]): unknown =>
+    entities.find((entity) => isRecord(entity) && isRecord(entity.ags) && entity.ags.value === WEIL);
+  const old = weil(emittedEntities(doubled.legacy));
+  const current = weil(ported);
+  assert.ok(isRecord(old) && isRecord(old.counts) && isRecord(current) && isRecord(current.counts));
+  const sum = (counts: unknown): number =>
+    isRecord(counts)
+      ? Object.values(counts).reduce<number>((n, c) => n + (typeof c === "number" ? c : 0), 0)
+      : 0;
+  assert.equal(sum(current.counts.value), 84);
+  assert.ok(sum(old.counts.value) > 84, "the old node counted the repeated elements");
+}
+
 export {
+  repeatedObjectsAreTakenOnce as "poi-bw: an OSM object in two tile answers is counted and listed once (deliberate)",
   requestsAreIdentical as "poi-bw: the twelve tile URLs and the User-Agent are those of the old request node",
-  fixtureEntitiesAreIdentical as "poi-bw: old FN_POI_BUILD and ported build() agree, round-robin cap of 50 on real data",
+  fixtureEntitiesAreIdentical as "poi-bw: old FN_POI_BUILD and ported build() agree, round-robin cap of 50 on real data, totalCount uncapped (deliberate)",
   twoMunicipalitiesKeepTheOldOrder as "poi-bw: two municipalities (a modified copy) keep the old order and caps",
   kindRulesAreIdentical as "poi-bw: recycling variants, defibrillators, named-first and the name cut as in the old node",
   kindOfCoversEveryBranch as "poi-bw: kindOf covers every branch of the old artOf",

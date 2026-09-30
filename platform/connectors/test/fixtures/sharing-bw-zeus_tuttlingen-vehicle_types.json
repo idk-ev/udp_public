@@ -1,0 +1,36 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/zeus_tuttlingen/vehicle_types",
+  "recordedAt": "2026-09-30T13:53:11.662Z",
+  "note": "The complete live response, verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip",
+    "last-modified": "Wed, 30 Sep 2026 13:52:20 GMT",
+    "etag": "\"2a6606840592a10d0758b2bc57d9b726\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790776340,
+    "ttl": 0,
+    "version": "2.3",
+    "data": {
+      "vehicle_types": [
+        {
+          "vehicle_type_id": "ZEU:VehicleType:yimi_plus_2",
+          "form_factor": "scooter",
+          "propulsion_type": "electric_assist",
+          "max_range_meters": 35000,
+          "return_constraint": "free_floating"
+        },
+        {
+          "vehicle_type_id": "ZEU:VehicleType:yimi_plus_3",
+          "form_factor": "scooter",
+          "propulsion_type": "electric_assist",
+          "max_range_meters": 35000,
+          "return_constraint": "free_floating"
+        }
+      ]
+    }
+  }
+}

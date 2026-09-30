@@ -2,6 +2,30 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Kachelwerte
+
+- Kachel „E-Scooter“ heißt „Sharing“: alle frei flottierenden Fahrzeuge, im
+  Hinweis nach Art aufgeteilt (neues Attribut `vehiclesByFormFactor` aus GBFS
+  `vehicle_types`, eine TRoE-Zeile mehr je SharingSummary und Lauf).
+  Angedockte Räder und Autos stationsgebundener Anbieter zählen nicht mehr
+  mit (Gemeindeseite: „Leihräder“ bzw. „Carsharing“); die vorherrschende
+  Fahrzeugart bestimmen beide GBFS-Konnektoren gleich.
+- „Familie & Versorgung“ und „Ausflugsziele“ zeigen die Gesamtzahl statt der
+  gekappten Liste; jedes OSM-Objekt zählt einmal.
+- Hitze: nur ab „gering“ (heute oder morgen), Farbe nach heute,
+  Vertreterstadt mit Entfernung im Hinweis (ab 50 km „regional“). `hitze-bw`
+  schreibt den Vorhersagetag (`forecastDay`) und die Ausgabezeit als
+  `dateObserved` und läuft um 07:40/11:40 nach der DWD-Aktualisierung; eine
+  Datei vom Vortag gilt mit ihrem „morgen“ als heute.
+- Pollenflug auch für den Landkreis Konstanz (Teilregion 112); Hauptwert ist
+  die Stufe, die Art steht im Hinweis.
+- Parken zeigt freie Plätze, solange die Echtzeit aktuell ist (Gemeinde und
+  Kreis); ÖPNV die nächste noch anstehende Abfahrt; Warnungen den
+  Kreisnamen; Luftfeuchte und Radverkehr Entfernung bzw. Zähltag.
+- `/abfahrten`: Abfahrtszeiten in deutscher Ortszeit statt UTC.
+- Leere „Noch nicht verfügbar“-Kacheln stehen hinter allen Datenkacheln.
+- `.gitattributes`: `*.template` mit LF (nginx-Test auf Windows-Checkouts).
+
 ## Unveröffentlicht — Fehler sichtbar statt stiller Lücken
 
 - Dashboards: fehlgeschlagene Abfragen (5xx, Netzfehler, 429) werden einmal

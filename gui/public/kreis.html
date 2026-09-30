@@ -61,7 +61,7 @@
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";
-const { $, css, esc, val, asArray, jget, jlist, entity, tile, errorTile, failed, fmtN } = SC;
+const { $, css, esc, val, asArray, jget, jlist, entity, tile, errorTile, failed, sharingSplit, fmtN } = SC;
 
 let KREIS = window.KREIS || null;
 
@@ -119,12 +119,26 @@ async function render(krow, members) {
   if (laden.length)
     tiles += tile("Ladepunkte", fmtN(sum(laden, "evseCount")), "", { hint: fmtN(sum(laden, "locationCount")) + " Standorte",
       explain: "E-Ladepunkte im Kreis laut BNetzA-Register." });
-  if (parken.length)
-    tiles += tile("Parken", fmtN(sum(parken, "totalCapacity")), "", { hint: fmtN(sum(parken, "siteCount")) + " Anlagen",
-      explain: "Stellplätze aller in MobiData BW erfassten Anlagen im Kreis." });
-  if (sharing.length)
-    tiles += tile("Sharing", fmtN(sum(sharing, "availableVehicles")), "", { hint: "verfügbare Leihfahrzeuge",
-      explain: "Aktuell verfügbare Leihfahrzeuge frei flottierender Anbieter (GBFS) im Kreis." });
+  if (parken.length) {
+    // Free spaces where the realtime sum is current (dateObserved at most 6 h
+    // old, as on the municipality page); else the capacity, labelled "Stellplätze".
+    const parkLive = parken.filter(e => e.realtimeFree != null && Date.now() - kvZeit(e) <= 6 * 3600e3);
+    const cap = fmtN(sum(parken, "totalCapacity")), anl = fmtN(sum(parken, "siteCount")) + " Anlagen";
+    tiles += parkLive.length
+      ? tile("Parken", fmtN(sum(parkLive, "realtimeFree")), "frei", { status: css("--status-good"),
+          hint: "in " + fmtN(sum(parkLive, "realtimeSites")) + " Anlagen mit Echtzeit · " + cap + " Stellplätze",
+          explain: "Freie Plätze der Anlagen mit Echtzeit-Belegung im Kreis; insgesamt " + cap + " Stellplätze in " + anl + " (MobiData BW)." })
+      : tile("Parken", cap, "Stellplätze", { hint: anl + " · ohne Echtzeit",
+          explain: "Stellplätze aller in MobiData BW erfassten Anlagen im Kreis." });
+  }
+  if (sharing.length) {
+    // Free floating, split by form factor; older summaries without the split:
+    // the total only.
+    const split = sharingSplit(sharing.map(e => [e.availableVehicles, e.vehiclesByFormFactor]));
+    const withSplit = !!(split.parts && split.parts.length);
+    tiles += tile("Sharing", fmtN(split.total), "", { hint: withSplit ? esc(split.text) : "verfügbare Leihfahrzeuge",
+      explain: "Aktuell verfügbare Leihfahrzeuge frei flottierender Anbieter (GBFS) im Kreis" + (withSplit ? ": " + split.text : "") + ". An Stationen stationsgebundener Anbieter abgestellte Räder und Autos zählen nicht mit." });
+  }
   if (radSums.length)
     tiles += tile("Radverkehr", fmtN(sum(radSums, "dailyTotal")), "", { hint: fmtN(sum(radSums, "siteCount")) + " Zählstellen",
       explain: "Radfahrten am letzten verfügbaren Tag über alle Zählstellen im Kreis (Eco-Counter)." });
