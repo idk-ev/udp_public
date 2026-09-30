@@ -34,16 +34,28 @@
  * ## Staying cheap
  *
  * Runs every 10 minutes, so it must stay CHEAP: `attributes` has tens of
- * millions of rows and no hypertable. Only the last 24 h are scanned (range
- * over `attributes_ts_idx`); totals per type come from `udp_troe_type_stats`,
+ * millions of rows. Only the last 24 h are scanned (range over
+ * `attributes_ts_idx`, on a hypertable only the newest chunks); totals per type come from `udp_troe_type_stats`,
  * which the nightly `troe-retention` run fills with a single full scan.
  * Earlier versions counted the whole table here — each run took minutes, the
  * client timeout did not stop the server query, and the runs piled up until
  * TimescaleDB sat at its CPU limit around the clock. Hence the server-side
  * `statement_timeout` below the client's `query_timeout`, and the check for a
  * previous run that is still busy. The SQL below is byte-identical to the old
- * node's, and so is the application name the busy check looks for: it sees any
- * run still active on the server, including one whose client is gone.
+ * node's but for one deviation, and so is the application name the busy check
+ * looks for: it sees any run still active on the server, including one whose
+ * client is gone.
+ *
+ * ## Deliberate deviation: the row estimate on a hypertable
+ *
+ * The old node read `pg_class.reltuples` of `attributes`. Once `attributes`
+ * is a hypertable (helm/udp/files/postgres/troe-schema.sql,
+ * scripts/migrate-troe-hypertable.sh) its rows live in the chunks and the
+ * parent's estimate stays 0. `approximate_row_count('attributes')` of
+ * TimescaleDB sums the chunks' estimates and returns the table's own on a
+ * plain table — the same figure as before there (verified with TimescaleDB
+ * 2.30, Apache edition). Before the first ANALYZE it is 0 instead of -1;
+ * `troeRows` showed 0 for -1 anyway.
  */
 
 import {
@@ -91,8 +103,9 @@ export const SQL_BUSY =
 
 export const SQL_BASE =
   "SELECT pg_database_size('orion') AS db, " +
-  // Planner estimate (refreshed by autovacuum/ANALYZE) instead of count(*).
-  "(SELECT reltuples::bigint FROM pg_class WHERE oid = 'attributes'::regclass) AS rows, " +
+  // Planner estimate (refreshed by autovacuum/ANALYZE) instead of count(*);
+  // TimescaleDB's sums the chunks of a hypertable (module header).
+  "approximate_row_count('attributes') AS rows, " +
   "(SELECT count(*) FROM attributes WHERE ts > (now() AT TIME ZONE 'utc') - interval '1 hour') AS r1";
 
 /** ONE pass over the 24 h window feeds the hourly chart, the 24 h counts per type and the row budget check. */
@@ -113,7 +126,7 @@ const MAX_TYPES = 14;
 export interface BaseRow {
   /** `pg_database_size('orion')`, bytes. */
   readonly db: number;
-  /** Planner estimate of `attributes`; -1 before the first ANALYZE. */
+  /** Planner estimate of `attributes` (`approximate_row_count`); 0 or -1 before the first ANALYZE. */
   readonly rows: number;
   /** Rows written in the last hour. */
   readonly r1: number;

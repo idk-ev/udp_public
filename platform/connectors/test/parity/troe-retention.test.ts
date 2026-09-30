@@ -34,6 +34,12 @@
  * — the overlap guard and the autovacuum thresholds before, the paced VACUUM
  * (ANALYZE) after — and the expected conversation pins those leading and
  * trailing statements explicitly. The tests at the end pin the new behaviour.
+ *
+ * Mapped the same way (module header, "attributes as a hypertable"): before
+ * the 12-month cut the port asks whether `attributes` is a hypertable and then
+ * sends drop_chunks instead of the DELETE; the old OR-ed 3-month DELETE is one
+ * DELETE per prefix; the old nightly totals statement is the per-entity one.
+ * The old statements are answered like the port's.
  */
 
 import assert from "node:assert/strict";
@@ -75,7 +81,13 @@ import {
   SQL_DELETE_BY_IDS,
   SQL_DELETE_SHORT_TIER,
   SQL_DELETE_SUBATTRIBUTES_12M,
+  SQL_DROP_CHUNKS_12M,
   SQL_FILL_TYPE_STATS,
+  SQL_IS_HYPERTABLE,
+  SHORT_TIER_PREFIXES,
+  droppedChunksInfo,
+  hypertableCheckWarning,
+  shortTierWarning,
   SQL_INDEX_ATTRIBUTES_ENTITYID_TS,
   SQL_INDEX_ATTRIBUTES_TS,
   SQL_INDEX_SUBATTRIBUTES_TS,
@@ -94,6 +106,31 @@ const NODE_ID = "udp-rt-rt-fn";
 
 /** The old node's OffStreetParking step, which the port no longer sends. */
 const SQL_DELETE_ORPHANED = "DELETE FROM attributes WHERE entityid LIKE 'urn:ngsi-ld:OffStreetParking:%'";
+
+/** The old node's 3-month tier: one DELETE with OR-ed prefixes (the port sends one per prefix). */
+const LEGACY_SQL_DELETE_SHORT_TIER =
+  "DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '3 months' " +
+  "AND (entityid LIKE 'urn:ngsi-ld:EVChargingStation:%' " +
+  "  OR entityid LIKE 'urn:ngsi-ld:CarSharingStation:%' " +
+  "  OR entityid LIKE 'urn:ngsi-ld:AirQualityObserved:bw-sensor-%')";
+
+/** The old node's nightly totals, with count(DISTINCT …) (the port counts per entity first). */
+const LEGACY_SQL_FILL_TYPE_STATS =
+  "INSERT INTO udp_troe_type_stats (typ, n, e, computed_at) " +
+  "SELECT split_part(entityid, ':', 3), count(*), count(DISTINCT entityid), now() " +
+  "FROM attributes GROUP BY 1";
+
+/** The key a failure is scripted on: the port's statement for an old one. */
+function portKey(sql: string): string {
+  if (sql === LEGACY_SQL_FILL_TYPE_STATS) return SQL_FILL_TYPE_STATS;
+  return sql;
+}
+
+/** The share of the scripted short-tier rows that the port's DELETE of prefix `index` reports. */
+function shortTierShare(total: number, index: number): number {
+  const third = Math.floor(total / 3);
+  return index === 0 ? total - 2 * third : third;
+}
 
 /* ── node-postgres' own parameter serialisation ─────────────────────────────*/
 
@@ -140,6 +177,12 @@ interface Scenario {
   overlap?: { readonly retention?: number; readonly vacuum?: number };
   /** Notices the server sends during a statement (the VACUUMs). */
   notices?: Readonly<Record<string, readonly DbNotice[]>>;
+  /** `attributes` is a hypertable; default a plain table (the old node's world). */
+  hypertable?: boolean;
+  /** Makes the hypertable check fail. */
+  hypertableCheckFails?: boolean;
+  /** Chunks drop_chunks reports on a hypertable; default none. */
+  droppedChunks?: number;
 }
 
 /** The thresholds as Postgres stores them after the port's ALTER TABLE. */
@@ -183,10 +226,19 @@ function responder(s: Scenario): SqlResponder {
   let batch = 0;
   const counted = (rowCount: number): SqlAnswer => ({ rows: [], rowCount });
   return (sql, params) => {
-    if (sql === s.failOn) return new Error("could not extend file: No space left on device");
+    if (portKey(sql) === s.failOn) return new Error("could not extend file: No space left on device");
     if (s.lockTimeoutOn?.includes(sql) === true) return lockTimeout();
     if (PORT_ONLY.has(sql)) return { rows: [], rowCount: null, notices: s.notices?.[sql] ?? [] };
+    const prefix = SQL_DELETE_SHORT_TIER.indexOf(sql);
+    if (prefix >= 0) return counted(shortTierShare(s.shortTier, prefix));
     switch (sql) {
+      case SQL_IS_HYPERTABLE:
+        if (s.hypertableCheckFails === true) {
+          return new Error('relation "timescaledb_information.hypertables" does not exist');
+        }
+        return { rows: [{ n: s.hypertable === true ? 1 : 0 }], rowCount: 1 };
+      case SQL_DROP_CHUNKS_12M:
+        return { rows: [{ chunks: s.droppedChunks ?? 0 }], rowCount: 1 };
       case SQL_OVERLAP:
         return {
           rows: [{ retention: s.overlap?.retention ?? 0, vacuum: s.overlap?.vacuum ?? 0 }],
@@ -210,7 +262,7 @@ function responder(s: Scenario): SqlResponder {
         return counted(s.attributes12m);
       case SQL_DELETE_SUBATTRIBUTES_12M:
         return counted(s.subattributes12m);
-      case SQL_DELETE_SHORT_TIER:
+      case LEGACY_SQL_DELETE_SHORT_TIER:
         return counted(s.shortTier);
       case SQL_DELETE_ORPHANED:
         return counted(s.orphaned);
@@ -233,6 +285,7 @@ function responder(s: Scenario): SqlResponder {
       case SQL_CLEAR_TYPE_STATS:
         return counted(24);
       case SQL_FILL_TYPE_STATS:
+      case LEGACY_SQL_FILL_TYPE_STATS:
         return counted(25);
       default:
         return new Error(`the scripted database does not know this statement: ${sql}`);
@@ -285,7 +338,9 @@ async function runPorted(s: Scenario, wrap: (db: Db) => Db = (db) => db): Promis
  * CREATE INDEX become one look-up of the existing indexes and a CREATE only
  * for the missing ones (in the old order), no OffStreetParking DELETE, and the
  * port's ownership queries right after the candidate query (checked on their
- * own in {@link assertOwnershipQueries}).
+ * own in {@link assertOwnershipQueries}). The 12-month cut of attributes is
+ * preceded by the hypertable check and becomes drop_chunks on a hypertable;
+ * the 3-month tier is one DELETE per prefix; the totals the per-entity count.
  */
 function expectedCalls(legacy: Legacy, ported: Ported, s: Scenario): SqlCall[] {
   const ownership = ported.db.calls.filter((call) => call.sql === SQL_LEGACY_OWN_IDS);
@@ -299,6 +354,20 @@ function expectedCalls(legacy: Legacy, ported: Ported, s: Scenario): SqlCall[] {
       for (const [name, sql] of TROE_INDEXES) {
         if (!present.includes(name)) out.push({ sql, params: undefined });
       }
+      continue;
+    }
+    if (call.sql === SQL_DELETE_ATTRIBUTES_12M) {
+      out.push({ sql: SQL_IS_HYPERTABLE, params: undefined });
+      const dropChunks = s.hypertable === true && s.hypertableCheckFails !== true;
+      out.push(dropChunks ? { sql: SQL_DROP_CHUNKS_12M, params: undefined } : call);
+      continue;
+    }
+    if (call.sql === LEGACY_SQL_DELETE_SHORT_TIER) {
+      out.push(...SQL_DELETE_SHORT_TIER.map((sql) => ({ sql, params: undefined })));
+      continue;
+    }
+    if (call.sql === LEGACY_SQL_FILL_TYPE_STATS) {
+      out.push({ sql: SQL_FILL_TYPE_STATS, params: call.params });
       continue;
     }
     out.push(call);
@@ -850,7 +919,7 @@ async function lockTimeoutSkipsTheStepAndTheNightGoesOn(): Promise<void> {
   assert.deepEqual(warned, [lockWarning("12-month cut of attributes", lockTimeout())]);
   assert.match(warned[0] ?? "", /within 5 s .* the night goes on$/);
   const sent = cut.db.calls.map((call) => call.sql);
-  for (const later of [SQL_DELETE_SUBATTRIBUTES_12M, SQL_DELETE_SHORT_TIER, SQL_DELETE_BY_IDS, "COMMIT"]) {
+  for (const later of [SQL_DELETE_SUBATTRIBUTES_12M, ...SQL_DELETE_SHORT_TIER, SQL_DELETE_BY_IDS, "COMMIT"]) {
     assert.ok(sent.includes(later), `${later} was not sent after the lock timeout`);
   }
   assert.deepEqual(cut.db.calls.slice(-VACUUM_TAIL), vacuumCalls(), "the night is still vacuumed");
@@ -961,6 +1030,107 @@ async function vacuumWarningsOfTheServerAreReported(): Promise<void> {
   assert.equal(ported.db.calls.slice(-VACUUM_TAIL)[0]?.sql, "SET vacuum_cost_delay = '2ms'");
 }
 
+async function hypertableDropsChunksInsteadOfDeleting(): Promise<void> {
+  // DELIBERATE DEVIATION (module header): on a hypertable the 12-month tier
+  // drops whole chunks; subattributes (a plain table) keeps its DELETE.
+  assert.equal(
+    SQL_IS_HYPERTABLE,
+    "SELECT count(*)::int AS n FROM timescaledb_information.hypertables" +
+      " WHERE hypertable_schema = current_schema() AND hypertable_name = 'attributes'",
+  );
+  assert.equal(
+    SQL_DROP_CHUNKS_12M,
+    "SELECT count(*)::int AS chunks FROM drop_chunks('attributes', " +
+      "older_than => (now() AT TIME ZONE 'utc') - interval '12 months')",
+  );
+  const s: Scenario = { ...NIGHT, hypertable: true, droppedChunks: 2 };
+  const { ported } = await assertParity(s);
+  const sent = ported.db.calls.map((call) => call.sql);
+  assert.equal(sent.includes(SQL_DELETE_ATTRIBUTES_12M), false, "no row DELETE on a hypertable");
+  assert.deepEqual(sent.slice(sent.indexOf(SQL_IS_HYPERTABLE), sent.indexOf(SQL_IS_HYPERTABLE) + 3), [
+    SQL_IS_HYPERTABLE,
+    SQL_DROP_CHUNKS_12M,
+    SQL_DELETE_SUBATTRIBUTES_12M,
+  ]);
+  // Dropped chunks are not counted as rows; their count is an info line.
+  assert.deepEqual(
+    ported.t.log.lines.filter((line) => line.level === "info").map((line) => line.text),
+    [droppedChunksInfo(2), `deleted: ${String(380_000 + 818_000)} attributes / 0 subattributes`],
+  );
+  assert.equal(droppedChunksInfo(0), null);
+
+  // Nothing old enough: no info line about chunks.
+  const idle = await runPorted({ ...NIGHT, hypertable: true });
+  assert.equal(idle.failure, null);
+  assert.equal(
+    idle.t.log.lines.some((line) => line.text.includes("chunks")),
+    false,
+  );
+
+  // drop_chunks waits for a lock (a Mintaka query on an old chunk): one
+  // [warn], the night goes on.
+  const locked = await runPorted({ ...s, lockTimeoutOn: [SQL_DROP_CHUNKS_12M] });
+  assert.equal(locked.failure, null);
+  assert.deepEqual(
+    locked.t.log.warnings().filter((line) => line.includes("lock not granted")),
+    [lockWarning("12-month drop_chunks of attributes", lockTimeout())],
+  );
+  assert.ok(locked.db.calls.some((call) => call.sql === SQL_DELETE_SUBATTRIBUTES_12M));
+}
+
+async function failedHypertableCheckFallsBackToDelete(): Promise<void> {
+  // The DELETE is correct on both kinds of table: a check that cannot be made
+  // is one [warn] and the old statement.
+  const ported = await runPorted({ ...NIGHT, hypertable: true, hypertableCheckFails: true });
+  assert.equal(ported.failure, null);
+  const sent = ported.db.calls.map((call) => call.sql);
+  assert.equal(sent[sent.indexOf(SQL_IS_HYPERTABLE) + 1], SQL_DELETE_ATTRIBUTES_12M);
+  assert.equal(sent.includes(SQL_DROP_CHUNKS_12M), false);
+  assert.deepEqual(
+    ported.t.log.warnings().filter((line) => line.includes("hypertable")),
+    [hypertableCheckWarning(new Error('relation "timescaledb_information.hypertables" does not exist'))],
+  );
+}
+
+async function shortTierIsOneDeletePerPrefix(): Promise<void> {
+  // DELIBERATE DEVIATION (module header): the old OR-ed LIKEs, one statement
+  // per prefix — same prefixes, same order, same cut-off.
+  const oldPrefixes = [...LEGACY_SQL_DELETE_SHORT_TIER.matchAll(/entityid LIKE '([^%']*)%'/g)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(oldPrefixes, [...SHORT_TIER_PREFIXES]);
+  assert.deepEqual(
+    [...SQL_DELETE_SHORT_TIER],
+    SHORT_TIER_PREFIXES.map(
+      (prefix) =>
+        `DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '3 months' AND entityid LIKE '${prefix}%'`,
+    ),
+  );
+  // One statement's lock wait skips only that prefix; the warning carries the rest.
+  const middle = SQL_DELETE_SHORT_TIER[1] ?? "";
+  const ported = await runPorted({ ...NIGHT, lockTimeoutOn: [middle] });
+  assert.equal(ported.failure, null);
+  const sent = ported.db.calls.map((call) => call.sql);
+  for (const sql of SQL_DELETE_SHORT_TIER) assert.ok(sent.includes(sql), `${sql} was not sent`);
+  const kept = shortTierShare(NIGHT.shortTier, 0) + shortTierShare(NIGHT.shortTier, 2);
+  assert.ok(ported.t.log.warnings().includes(shortTierWarning(kept) ?? ""));
+  assert.ok(
+    ported.t.log.warnings().includes(lockWarning(`3-month tier (${SHORT_TIER_PREFIXES[1]})`, lockTimeout())),
+  );
+}
+
+function totalsCountPerEntityFirst(): void {
+  // DELIBERATE DEVIATION (module header): same columns and figures, without
+  // count(DISTINCT …) over the whole table.
+  assert.equal(
+    SQL_FILL_TYPE_STATS,
+    "INSERT INTO udp_troe_type_stats (typ, n, e, computed_at) " +
+      "SELECT split_part(entityid, ':', 3), sum(n), count(*), now() " +
+      "FROM (SELECT entityid, count(*) AS n FROM attributes GROUP BY entityid) s GROUP BY 1",
+  );
+  assert.equal(/count\(DISTINCT/i.test(SQL_FILL_TYPE_STATS), false);
+}
+
 export {
   typicalNight as "troe-retention: a typical night — same statements, batches, warnings and summary as the old node",
   capStopsTheOldSchemeLoop as "troe-retention: the old-scheme loop stops at the 5 M cap after the same batch on both sides",
@@ -978,4 +1148,8 @@ export {
   lockTimeoutSkipsTheStepAndTheNightGoesOn as "troe-retention: a lock timeout is one warning and skips only that step, the night goes on (deliberate)",
   overlappingWorkSkipsTheNight as "troe-retention: another retention session or a non-yielding VACUUM skips the night with one info line (deliberate)",
   vacuumWarningsOfTheServerAreReported as "troe-retention: VACUUM runs paced, and the server's WARNINGs (table not owned) become one warning",
+  hypertableDropsChunksInsteadOfDeleting as "troe-retention: on a hypertable the 12-month tier is drop_chunks, subattributes keeps its DELETE (deliberate)",
+  failedHypertableCheckFallsBackToDelete as "troe-retention: a failing hypertable check is one warning and the old DELETE (deliberate)",
+  shortTierIsOneDeletePerPrefix as "troe-retention: the 3-month tier is one DELETE per prefix, a lock wait skips only its prefix (deliberate)",
+  totalsCountPerEntityFirst as "troe-retention: the nightly totals count per entity first, without count(DISTINCT) (deliberate)",
 };

@@ -23,6 +23,11 @@
  *
  * Fixture: test/fixtures/troe-stats.json — SYNTHETIC query rows (no database
  * offline), shaped as node-postgres delivers them; see its `note`.
+ *
+ * The DELIBERATE deviation (module header): the row estimate comes from
+ * `approximate_row_count('attributes')` instead of `pg_class.reltuples`, so the
+ * port's SQL_BASE differs from the old node's. The old statement is answered
+ * like the port's and mapped onto it in the comparison; the last test pins it.
  */
 
 import assert from "node:assert/strict";
@@ -65,6 +70,17 @@ import type { FunctionNodeRun } from "../harness/vm-runner.js";
 
 const NODE_ID = "udp-rt-db-fn";
 const FIXTURE = "troe-stats";
+
+/** The old node's SQL_BASE, byte for byte: `reltuples` of the (plain) table. */
+const LEGACY_SQL_BASE =
+  "SELECT pg_database_size('orion') AS db, " +
+  "(SELECT reltuples::bigint FROM pg_class WHERE oid = 'attributes'::regclass) AS rows, " +
+  "(SELECT count(*) FROM attributes WHERE ts > (now() AT TIME ZONE 'utc') - interval '1 hour') AS r1";
+
+/** The old statement as the port sends it (the one deliberate deviation). */
+function asPorted(sql: string): string {
+  return sql === LEGACY_SQL_BASE ? SQL_BASE : sql;
+}
 
 /* ── the scripted database ───────────────────────────────────────────────────*/
 
@@ -109,7 +125,7 @@ function responder(s: Scenario): SqlResponder {
   return (sql) => {
     if (sql === s.failOn) return new Error("canceling statement due to statement timeout");
     if (sql === SQL_BUSY) return { rows: [{ n: s.busy }], rowCount: 1 };
-    if (sql === SQL_BASE) return { rows: [s.base], rowCount: 1 };
+    if (sql === SQL_BASE || sql === LEGACY_SQL_BASE) return { rows: [s.base], rowCount: 1 };
     if (sql === SQL_WINDOW) return { rows: s.window, rowCount: s.window.length };
     if (sql === SQL_HAS_TOTALS) return { rows: [{ t: s.hasTotals }], rowCount: 1 };
     if (sql === SQL_TOTALS) return { rows: s.totals, rowCount: s.totals.length };
@@ -160,7 +176,7 @@ async function runPorted(s: Scenario): Promise<Ported> {
 function assertSameConversation(legacy: Legacy, ported: Ported): void {
   assert.deepEqual(
     ported.db.calls.map((call) => call.sql),
-    legacy.pg.calls.map((call) => call.sql),
+    legacy.pg.calls.map((call) => asPorted(call.sql)),
     "the statement sequence differs",
   );
   assert.deepEqual(
@@ -370,6 +386,26 @@ function sessionIsTheOldClient(): void {
   assert.ok(SQL_BUSY.includes(`application_name = '${SESSION.applicationName}'`));
 }
 
+function rowEstimateWorksOnAHypertable(): void {
+  // DELIBERATE DEVIATION (module header): on a hypertable reltuples of the
+  // parent stays 0; approximate_row_count() sums the chunks and equals
+  // reltuples on a plain table. Everything else in SQL_BASE is the old text.
+  assert.ok(
+    loadFunctionNode(NODE_ID).func.includes(
+      "reltuples::bigint FROM pg_class WHERE oid = 'attributes'::regclass",
+    ),
+  );
+  assert.match(SQL_BASE, /approximate_row_count\('attributes'\) AS rows, /);
+  assert.equal(SQL_BASE.includes("reltuples"), false);
+  assert.equal(
+    SQL_BASE.replace("approximate_row_count('attributes') AS rows, ", ""),
+    LEGACY_SQL_BASE.replace(
+      "(SELECT reltuples::bigint FROM pg_class WHERE oid = 'attributes'::regclass) AS rows, ",
+      "",
+    ),
+  );
+}
+
 export {
   fixtureRunIsIdentical as "troe-stats: same statements, same PlatformStatus:udp-troe, same budget [warn] as the old node on the fixture",
   budgetIsTheRegistrySum as "troe-stats: the budget is the kernel's sumRowBudgets() — equal to the object the generator baked into the old node",
@@ -379,4 +415,5 @@ export {
   withoutNightlyTableAndOnEmptyWindow as "troe-stats: no nightly table, empty window, unanalysed table — identical entities",
   failingQueryClosesAndWritesNothing as "troe-stats: a failing query fails the run, closes the connection and writes nothing",
   sessionIsTheOldClient as "troe-stats: session settings are the old client's (udp-troe-stats, 50 s server / 60 s client)",
+  rowEstimateWorksOnAHypertable as "troe-stats: the row estimate is approximate_row_count() — also right on a hypertable (deliberate)",
 };
