@@ -21,7 +21,7 @@
 # Exit status: 0 released (or nothing to release), 1 refused or failed, 2 usage error.
 set -euo pipefail
 
-usage() { sed -n '5,20p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,21p' "$0" | sed 's/^# \{0,1\}//'; }
 case "${1:-}" in
   ""|-h|--help) usage; [ -n "${1:-}" ] && exit 0 || exit 2 ;;
 esac

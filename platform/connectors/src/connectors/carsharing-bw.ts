@@ -56,7 +56,7 @@
  * Every run sees each system's COMPLETE `station_information`. Many stations
  * are ephemeral — free-floating "virtual stations" that get a new id per
  * parking event — so the ids of each system's list are kept
- * ({@link SYSTEM_IDS}; only stations the broker holds, {@link writtenOnly}),
+ * ({@link SYSTEM_IDS}; only stations the broker holds, see {@link diffSystems}),
  * and an id missing from its system's list in two
  * consecutive runs is deleted ({@link diffSystems}): about two hours after it
  * vanished instead of the 24 h of the age-based prune. Never on a failed or
@@ -540,11 +540,19 @@ export interface SystemDiff {
  * holds every system of this run: its complete list of entity ids, or `null`
  * when its feed failed or listed no station in BW — then nothing of that
  * system counts as missing, and its streaks start over.
+ *
+ * Liveness comes from the UNFILTERED lists: a station in its system's list
+ * is live, whatever the tables say (a full write not confirmed yet leaves it
+ * without a signature for a while). `written` (the master data signatures)
+ * only decides which ids are tracked at all: a station of
+ * `station_information` without a status was never written, and deleting
+ * it would fail run after run. Default: every listed id.
  */
 export function diffSystems(
   known: ReadonlyMap<string, readonly string[]>,
   missing: ReadonlyMap<string, number>,
   lists: ReadonlyMap<string, readonly string[] | null>,
+  written?: ReadonlyMap<string, unknown>,
 ): SystemDiff {
   const nextKnown = new Map(known);
   const nextMissing = new Map(missing);
@@ -589,7 +597,11 @@ export function diffSystems(
       nextMissing.set(id, runs);
       if (runs >= 2 && isEntityId(id)) confirmed.push(id);
     }
-    nextKnown.set(system, [...list, ...gone]);
+    // Tracked: what the broker holds of this list (plus what still waits),
+    // and whatever was tracked before and is still listed.
+    const before = new Set(previous);
+    const tracked = list.filter((id) => written === undefined || written.has(id) || before.has(id));
+    nextKnown.set(system, [...tracked, ...gone]);
     if (confirmed.length === 0) continue;
     // Measured against the stations the list had before they went missing:
     // the previous list plus what went missing in the previous run — not the
@@ -676,34 +688,11 @@ async function masterData(
   return ids;
 }
 
-/**
- * The lists reduced to the stations this connector has in the broker — the
- * ones with a master data signature, i.e. a write the broker confirmed (or
- * seeded from it). A station in `station_information` without a status was
- * never written; deleting it would only fail, run after run. A system whose
- * list keeps nothing tells nothing: `null`, as a failed feed.
- */
-export function writtenOnly(
-  lists: ReadonlyMap<string, readonly string[] | null>,
-  written: ReadonlyMap<string, unknown>,
-): Map<string, readonly string[] | null> {
-  const out = new Map<string, readonly string[] | null>();
-  for (const [system, list] of lists) {
-    const kept = list?.filter((id) => written.has(id)) ?? [];
-    out.set(system, kept.length === 0 ? null : kept);
-  }
-  return out;
-}
-
 /** Deletes what {@link diffSystems} found gone, and keeps its lists. */
 async function removeVanished(ctx: Ctx, lists: ReadonlyMap<string, readonly string[] | null>): Promise<void> {
   const knownSlot = ctx.state.slot(SYSTEM_IDS);
   const missingSlot = ctx.state.slot(MISSING_RUNS);
-  const diff = diffSystems(
-    knownSlot.get(),
-    missingSlot.get(),
-    writtenOnly(lists, ctx.gate.table(STATIC_KEY)),
-  );
+  const diff = diffSystems(knownSlot.get(), missingSlot.get(), lists, ctx.gate.table(STATIC_KEY));
   for (const [system, gone, previous] of diff.capped) {
     ctx.log.warn(
       `Carsharing ${system}: ${String(gone)} of ${String(previous)} stations missing from the station ` +

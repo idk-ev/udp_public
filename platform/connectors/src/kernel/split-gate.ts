@@ -34,7 +34,7 @@
  * (deleted by an admin, a restore, a delete that was not confirmed) creates
  * a skeleton — id, type, a measurement, no name, no location, no provider —
  * and a kept static signature would never send the rest. So every entity is
- * written in full once a week anyway ({@link needsRefresh}: a fixed hour of
+ * written in full once a week anyway ({@link needsRefresh}: a fixed run of
  * the week per id, spread evenly), which heals such a skeleton within a
  * week. It costs about one seventh of a full write of the stock per day
  * (docs/betrieb.md, "Zeilenbudget").
@@ -52,12 +52,19 @@ import type { ChangeGate, NgsiEntity, PendingSignature, SignatureValue, UpsertPl
 /** Default of `periodMs`, as the gate's. */
 const HOUR_MS = 3_600_000;
 
-/** Hours between two full writes of an unchanged entity: one week. */
-export const REFRESH_EVERY_HOURS = 168;
+/** Time between two full writes of an unchanged entity: one week. */
+export const REFRESH_MS = 7 * 24 * HOUR_MS;
+/** …in hours, for hourly connectors (all users of the split gate today). */
+export const REFRESH_EVERY_HOURS = REFRESH_MS / HOUR_MS;
 
-/** This hour is `id`'s weekly full write (the same rotation as the freshness stamps). */
-export function needsRefresh(id: string, nowMs: number): boolean {
-  return freshTurn(id, REFRESH_EVERY_HOURS, HOUR_MS, nowMs);
+/**
+ * This run is `id`'s weekly full write — the rotation of the freshness
+ * stamps over the connector's own run period (`periodMs`, default hourly),
+ * so each entity gets exactly one run per week.
+ */
+export function needsRefresh(id: string, nowMs: number, periodMs = HOUR_MS): boolean {
+  const period = periodMs > 0 ? periodMs : HOUR_MS;
+  return freshTurn(id, Math.max(1, Math.round(REFRESH_MS / period)), period, nowMs);
 }
 
 /**
@@ -200,7 +207,7 @@ export function planSplit<T extends NgsiEntity>(
     }
     // The weekly full write: heals an entity that vanished behind a kept
     // signature (see the module header), once per entity and week.
-    if (needsRefresh(id, nowMs)) {
+    if (needsRefresh(id, nowMs, period)) {
       refreshed += 1;
       sendFull();
       continue;

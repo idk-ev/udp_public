@@ -4,7 +4,8 @@
  */
 
 /**
- * The admin port: `GET /healthz` and `POST /trigger/:id`, and nothing else.
+ * The admin port: `GET /healthz`, `POST /trigger/:id` and `POST /release-prunes/:id`,
+ * and nothing else.
  *
  * ## Why a port of its own
  *
@@ -84,8 +85,9 @@ export interface AdminOptions {
  * `GET /healthz` — liveness plus what is actually scheduled, the state
  * store (`stateStore.healthy`: writer lock held, no load or write failing,
  * every connector loaded or queued in the running reload; `reason` when not;
- * `blockedPrunes`: prunes their share cap skipped, with the consecutive
- * skips) and the geo context (`geo`: municipality rows, polygons,
+ * `blockedPrunes`: prunes their share cap skips or that hold a loss back —
+ * `connector`, `prune`, `consecutiveSkips`, `blockedSince`, `heldBack`;
+ * released through `POST /release-prunes/:id`) and the geo context (`geo`: municipality rows, polygons,
  * degraded, and per file the geo bootstrap's last load and error). Neither
  * turns the answer into an error: restarting the process would not fix the
  * database or the cockpit, only repeat the load.
@@ -192,6 +194,15 @@ function releaseRoute(kernel: Kernel): RouteDefinition {
       if (released === null) return Promise.resolve(textResponse(404, `no persisted state for "${id}"\n`));
       if (released === "unusable") {
         return Promise.resolve(textResponse(503, `state of "${id}" not loaded right now, try again\n`));
+      }
+      if (released === "over-cap") {
+        return Promise.resolve(
+          textResponse(
+            409,
+            `a blocked prune of "${id}" is still over its share cap; release after the loss has aged ` +
+              "into backlog (7 days) and the cap passes again\n",
+          ),
+        );
       }
       return Promise.resolve(jsonResponse(200, { id, released }));
     },

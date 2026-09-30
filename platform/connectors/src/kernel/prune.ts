@@ -81,10 +81,15 @@
  * the block ({@link HOLD_MARGIN_MS} before it, minus the grace) is HELD BACK,
  * the prune stays listed and logs an `[error]` in every run. Ordinary churn
  * from before the block (an old backlog such as the one this was built for)
- * drains as usual. The block ends when an operator releases it
- * (`POST /release-prunes/<id>` on the admin port, `scripts/release-prunes.sh`)
- * — then the held candidates are candidates like any other — or by itself
- * when nothing held is missing any more (the source recovered).
+ * drains as usual — in grace mode. In confirmation mode (keep, no grace: the
+ * EV and parking prunes) "gone since" is the first sighting as a candidate,
+ * and every skip starts the confirmations over, so EVERYTHING that goes
+ * missing after the block is held, ordinary churn included, until the
+ * release. The block ends when an operator releases it
+ * (`POST /release-prunes/<id>` on the admin port, `scripts/release-prunes.sh`;
+ * refused with 409 while the prune is still over its cap — it would block
+ * again at once) — then the held candidates are candidates like any other —
+ * or by itself when nothing held is missing any more (the source recovered).
  *
  * A prune without a cap (`maxFraction: 1`, the parking legacy cleanup) has
  * nothing to be blocked by: no backlog, every candidate past the grace goes.
@@ -312,11 +317,15 @@ export class PruneBookkeeping {
    * An operator confirmed the loss behind every block of this connector:
    * what was held back is treated as any other candidate again (the recent
    * ones still under the cap, the backlog in batches). Returns the number of
-   * blocks released.
+   * blocks released — or `"over-cap"` and releases nothing while a blocked
+   * prune is still over its cap: it would block again at once, with a new
+   * start that no longer covers the loss. Release once the loss has aged
+   * into backlog (a week) and the cap passes again.
    */
-  release(): number {
+  release(): number | "over-cap" {
     const released = this.#blockedSince.size;
     if (released === 0) return 0;
+    for (const key of this.#blockedSince.keys()) if (this.capSkips(key) > 0) return "over-cap";
     this.#blockedSince.clear();
     this.#held.clear();
     this.#onChange();
@@ -626,6 +635,8 @@ class KernelPruner implements Pruner {
     listed = { mine, candidates: found.length };
 
     if (o.liveMs !== undefined && o.liveMs > 0 && now - newest > o.liveMs) {
+      // The connector itself is down: "running for a week" starts over too.
+      this.#book.setRunningSince(intervalKey, now);
       return skip(
         `no entity written within the last ${String(Math.round(o.liveMs / 3_600_000))} h — connector down?`,
       );

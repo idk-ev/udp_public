@@ -435,14 +435,17 @@ export class Persistence {
    * An operator confirmed the losses that blocked `id`'s prunes: their held
    * candidates are deleted under the ordinary rules from the next run on.
    * `null` = no such connector (or it keeps no persisted state);
-   * `"unusable"` = its state is not loaded right now (nothing changed).
+   * `"unusable"` = its state is not loaded right now; `"over-cap"` = a blocked
+   * prune is still over its cap (see `PruneBookkeeping.release`). Nothing changes then.
    */
-  releasePrunes(id: ConnectorId): number | "unusable" | null {
+  releasePrunes(id: ConnectorId): number | "unusable" | "over-cap" | null {
     const connector = this.#connectors.get(id);
     if (connector === undefined) return null;
     if (!connector.usable()) return "unusable";
     const released = connector.bookkeeping.release();
-    if (released > 0) this.#log.info(`${id}: ${String(released)} blocked prune(s) released by an operator`);
+    if (released !== "over-cap" && released > 0) {
+      this.#log.info(`${id}: ${String(released)} blocked prune(s) released by an operator`);
+    }
     return released;
   }
 

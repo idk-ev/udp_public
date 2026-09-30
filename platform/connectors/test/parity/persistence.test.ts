@@ -17,6 +17,7 @@
 
 import assert from "node:assert/strict";
 
+import { adminRoutes } from "../../src/kernel/admin.js";
 import { SignatureStore } from "../../src/kernel/change-gate.js";
 import { createCtx, runConnector } from "../../src/kernel/context.js";
 import type { Kernel } from "../../src/kernel/context.js";
@@ -41,6 +42,7 @@ import type {
   MunicipalityRow,
   NgsiEntity,
   RegistryEntry,
+  RouteResponse,
 } from "../../src/kernel/types.js";
 import { httpResponse, recordingLog, scriptedFetcher } from "../harness/kernel.js";
 import type { RecordedLog, SeenRequest } from "../harness/kernel.js";
@@ -1160,13 +1162,41 @@ export async function blockedPruneIsListedInHealth(): Promise<void> {
   // The operator's release (POST /release-prunes/gated): the block goes, the
   // skip count stays until the cap passes.
   const persistence = second.kernel.persistence;
+  const route = adminRoutes(second.kernel, { version: "test", started: T0, cooldownMs: 60_000 }).find(
+    (candidate) => candidate.path === "/release-prunes/:id",
+  );
+  assert.ok(route !== undefined);
+  const release = (id: string, remoteAddress = "127.0.0.1"): Promise<RouteResponse> =>
+    route.handle({
+      method: "POST",
+      path: `/release-prunes/${id}`,
+      query: new URLSearchParams(),
+      params: { id },
+      headers: {},
+      body: "",
+      remoteAddress,
+    });
 
-  assert.equal(persistence.releasePrunes("nobody"), null);
-  assert.equal(persistence.releasePrunes("gated"), 1);
+  assert.equal((await release("gated", "10.1.2.3")).status, 403, "only from loopback");
+  assert.equal((await release("nobody")).status, 404);
+  // Still over its cap: a release now would block again at once.
+  const refused = await release("gated");
+  assert.equal(refused.status, 409);
+  assert.match(refused.body, /still over its share cap/);
+  assert.equal(persistence.health().blockedPrunes[0]?.blockedSince, new Date(T0 + HOUR).toISOString());
+
+  // Once the cap passes again (the loss aged into backlog), the release goes through.
+  const bound = persistence.connector("gated", {
+    log: second.log,
+    signatures: second.kernel.signatures,
+    state: second.kernel.state,
+  });
+  bound.bookkeeping.setCapSkips("Things|Thing|^urn:ngsi-ld:Thing:t-[0-9]+$", 0);
+  const released = await release("gated");
+  assert.equal(released.status, 200);
+  assert.deepEqual(JSON.parse(released.body), { id: "gated", released: 1 });
   await settle();
-  assert.deepEqual(persistence.health().blockedPrunes, [
-    { connector: "gated", prune: "Things (Thing)", consecutiveSkips: 3, blockedSince: null, heldBack: 0 },
-  ]);
+  assert.deepEqual(persistence.health().blockedPrunes, []);
   const stored: unknown = JSON.parse(db.prune.get("gated") ?? "{}");
   assert.ok(isObject(stored) && Array.isArray(stored.blockedSince) && stored.blockedSince.length === 0);
 }

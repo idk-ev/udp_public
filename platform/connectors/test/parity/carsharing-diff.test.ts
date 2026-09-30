@@ -20,7 +20,6 @@ import {
   run,
   STATIC_KEY,
   systemPattern,
-  writtenOnly,
 } from "../../src/connectors/carsharing-bw.js";
 import { readFixture } from "../harness/fixtures.js";
 import { httpResponse } from "../harness/kernel.js";
@@ -165,28 +164,17 @@ function swuStations(world: MobilityWorld): [string, string][] {
 }
 
 /**
- * Only stations the broker holds are diffed: a station of
+ * Only stations the broker holds are tracked: a station of
  * `station_information` without a status was never written, and deleting it
- * would fail run after run. A list that keeps nothing tells nothing.
+ * would fail run after run.
  */
 export function onlyWrittenStationsAreDiffed(): void {
-  const written = new Map([[ID("ulm", "a", "1"), "s"]]);
-  const lists = writtenOnly(
-    new Map([
-      ["a", [ID("ulm", "a", "1"), ID("ulm", "a", "2")]],
-      ["b", [ID("ulm", "b", "1")]],
-      ["c", null],
-    ]),
-    written,
-  );
-  assert.deepEqual(
-    [...lists],
-    [
-      ["a", [ID("ulm", "a", "1")]],
-      ["b", null],
-      ["c", null],
-    ],
-  );
+  const one = ID("ulm", "a", "1");
+  const never = ID("ulm", "a", "2");
+  const first = diffSystems(new Map(), new Map(), new Map([["a", [one, never]]]), new Map([[one, "s"]]));
+  assert.deepEqual(first.known.get("a"), [one], "a never written station is tracked");
+  const gone = diffSystems(first.known, first.missing, new Map([["a", [one]]]), new Map([[one, "s"]]));
+  assert.equal(gone.missing.has(never), false);
   // The cap counts the stations the list had before they went missing, not
   // the ids still waiting for their deletion.
   const ids = ["1", "2", "3", "4"].map((n) => ID("ulm", "a", n));
@@ -207,6 +195,25 @@ export function onlyWrittenStationsAreDiffed(): void {
     new Map([["a", ids.slice(0, 1)]]),
   );
   assert.deepEqual(inflated.capped, [["a", 3, 4]], "the waiting ids do not raise the cap");
+}
+
+/**
+ * A station sent in full (new, changed master data, weekly refresh) has no
+ * signature until the broker confirmed it. Two failed upserts of its system
+ * in a row must not make a station that is still in the feed "missing":
+ * liveness comes from the feed, not from the tables.
+ */
+export function transientlyMissingSignatureIsNoLoss(): void {
+  const ids = ["1", "2", "3", "4"].map((n) => ID("ulm", "a", n));
+  const all = new Map(ids.map((id): [string, string] => [id, "s"]));
+  const first = diffSystems(new Map(), new Map(), new Map([["a", ids]]), all);
+  // Upserts of system a fail twice: two of its signatures are dropped for now.
+  const partly = new Map(ids.slice(2).map((id): [string, string] => [id, "s"]));
+  const once = diffSystems(first.known, first.missing, new Map([["a", ids]]), partly);
+  const twice = diffSystems(once.known, once.missing, new Map([["a", ids]]), partly);
+  assert.deepEqual([...twice.remove], [], "live feed stations deleted");
+  assert.equal(twice.missing.size, 0);
+  assert.deepEqual(twice.known.get("a"), ids, "still tracked");
 }
 
 export async function vanishedStationIsDeletedAfterTwoRuns(): Promise<void> {

@@ -256,6 +256,31 @@ export async function longDowntimeDeletesNoLiveEntity(): Promise<void> {
   }
 }
 
+/**
+ * The connector itself down (nothing written for longer than `liveMs`, while
+ * the prune still runs on schedule): "running for a week" starts over too,
+ * so the backlog waits another week once it writes again.
+ */
+export async function connectorDownRestartsTheRunningWeek(): Promise<void> {
+  const r = rig();
+  world(r);
+  await r.prune();
+  await hours(r, 3 * 24);
+  const key = "Stations|Station|^urn:ngsi-ld:Station:bw-[a-z]+-[0-9]+$";
+  const before = r.book.runningSince(key);
+  assert.equal(before, START);
+  // Four hours without a single write.
+  let skipped: string | null = null;
+  for (let hour = 0; hour < 4; hour += 1) {
+    r.clock.now += HOUR;
+    skipped = (await r.prune()).skipped;
+  }
+  assert.match(skipped ?? "", /connector down/);
+  assert.equal(r.book.runningSince(key), r.clock.now, "the running week did not start over");
+  await hours(r, 5 * 24);
+  assert.equal(r.broker.count("old"), 250, "drained before a week without a gap");
+}
+
 /** A drop of the fresh stock pauses the drain for a few runs, not just one. */
 export async function shrinkingFreshStockPausesTheDrain(): Promise<void> {
   const r = rig(5);
@@ -332,6 +357,7 @@ export async function blockedLossThatComesBackClearsItself(): Promise<void> {
   await hours(r, 10);
   await hours(r, 2 * 24, writtenBelow(40));
   assert.ok((r.book.blocked()[0]?.skips ?? 0) >= BLOCKED_AFTER, "blocked");
+  assert.equal(r.book.release(), "over-cap", "released while still over the cap");
   await hours(r, 3);
   assert.deepEqual(r.book.blocked(), [], "block kept after the loss came back");
   assert.equal(r.broker.count("live"), 100);
