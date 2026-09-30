@@ -26,24 +26,11 @@ const PUB = path.join(ROOT, "gui", "public");
 const SITE = fs.readFileSync(path.join(PUB, "site.js"), "utf8");
 const PAGES = ["stadt.html", "kreis.html", "dashboard.html", "mitmachen.html", "404.html"];
 
-// jsdom brings its own undici, and loading it replaces the process-wide
-// dispatcher of Node's fetch. The connector tests run in this same process
-// (tests/run.js) and talk to local servers through fetch; with jsdom's
-// dispatcher a reused keep-alive connection stalled for about 2 s, which
-// broke the pacing test in orion.test.js. Node's own is put back. It is
-// created lazily by the first fetch call, so one is made first (a data: URL,
-// no network) — otherwise jsdom's would be the only one there is.
-const DISPATCHER = Symbol.for("undici.globalDispatcher.1");
-if (globalThis[DISPATCHER] === undefined && typeof fetch === "function") fetch("data:,").catch(() => {});
-const nodeDispatcher = globalThis[DISPATCHER];
-
 let JSDOM = null;
 try {
   ({ JSDOM } = createRequire(path.join(ROOT, "gui", "package.json"))("jsdom"));
 } catch {
   // not installed – the behaviour tests below skip
-} finally {
-  if (nodeDispatcher !== undefined) globalThis[DISPATCHER] = nodeDispatcher;
 }
 
 const tick = () => new Promise(r => setImmediate(r));
@@ -336,4 +323,14 @@ exports["Cockpit SPA loads site.js as cockpit right after config.js"] = () => {
   const c = html.indexOf('<script src="/config.js"></script>');
   const s = html.indexOf('<script src="/site.js" data-udp-context="cockpit"></script>');
   assert(c >= 0 && s > c, 'gui/index.html: /site.js (data-udp-context="cockpit") missing or before /config.js');
+};
+
+/* Loading jsdom swaps Node's process-wide fetch dispatcher for its own undici;
+   tests/run.js puts Node's back after every test file (the connector tests'
+   local servers stalled behind jsdom's). */
+exports["runner: after jsdom, fetch uses Node's own dispatcher again"] = () => {
+  if (!JSDOM) return;
+  const dispatcher = globalThis[Symbol.for("undici.globalDispatcher.1")];
+  assert(dispatcher && dispatcher.constructor.name === "Agent",
+    `fetch dispatcher is ${dispatcher && dispatcher.constructor.name} — tests/run.js no longer restores it`);
 };
