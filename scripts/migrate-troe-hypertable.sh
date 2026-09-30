@@ -148,9 +148,15 @@ primary() {
 # Plain psql in the primary pod (or in POD): local socket, superuser postgres,
 # statement_timeout from the start. No argument to kubectl exec may begin with
 # a slash: Git Bash on Windows would rewrite it into a Windows path.
-psql_raw() {
+# psql_stdin forwards the local stdin (SQL for session); psql_raw never reads
+# it – with -i, kubectl keeps streaming a piped stdin and hangs.
+psql_stdin() {
     k exec -i "${POD:-$PRIMARY}" -c postgres -- psql -v ON_ERROR_STOP=1 -X -q \
         -d "dbname=$DB application_name=$APP options=-cstatement_timeout=$STATEMENT_TIMEOUT" "$@"
+}
+psql_raw() {
+    k exec "${POD:-$PRIMARY}" -c postgres -- psql -v ON_ERROR_STOP=1 -X -q \
+        -d "dbname=$DB application_name=$APP options=-cstatement_timeout=$STATEMENT_TIMEOUT" "$@" </dev/null
 }
 q() { psql_raw -Atc "$1"; }
 
@@ -170,7 +176,7 @@ SET DateStyle = 'ISO, YMD';
 SET extra_float_digits = 3;
 SET ROLE "$OWNER";
 EOS
-      cat; } | psql_raw "$@" -f -
+      cat; } | psql_stdin "$@" -f -
 }
 
 is_hypertable() {
