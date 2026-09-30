@@ -183,11 +183,24 @@ backup:
   existingSecret: udp-backup-s3
 ```
 
-Nach dem `helm upgrade` fügt der Operator jeder Instanz einen Sidecar hinzu
-(rollierender Neustart per Switchover, wenige Sekunden ohne Schreibzugriff);
-die erste Basissicherung startet sofort. Prüfen:
+Nach dem `helm upgrade` fügt der Operator jeder Instanz einen Sidecar hinzu:
+erst dem Standby, dann startet er den **Primary an Ort und Stelle** neu – ohne
+Switchover, weil der Standby noch keinen WAL-Archivierer hat. Das heißt einige
+Minuten ohne Schreibzugriff (Smart-Shutdown wartet bis zu 180 s auf die
+Clients); das Upgrade entsprechend einplanen. Die sofortige erste
+Basissicherung läuft dabei meist ins Leere („plugin is not available“) – dann,
+sobald der Cluster wieder gesund ist, eine von Hand anstoßen:
 
 ```bash
+kubectl -n udp create -f - <<'EOF'
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata: { generateName: timescale-manual- }
+spec:
+  cluster: { name: timescale }
+  method: plugin
+  pluginConfiguration: { name: barman-cloud.cloudnative-pg.io }
+EOF
 scripts/restore-timescale.sh status
 ```
 
