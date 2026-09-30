@@ -45,6 +45,15 @@ import type { Scalar } from "./http-payload.js";
 /** Departure monitor endpoint of the EFA-BW journey planner (NVBW). */
 export const EFA_DM_URL = "https://www.efa-bw.de/nvbw/XML_DM_REQUEST";
 
+/** An EFA time (ISO, UTC) as the wall-clock time in Berlin, `HH:MM`. */
+export function berlinClock(iso: string): string {
+  return new Date(iso).toLocaleTimeString("de-DE", {
+    timeZone: "Europe/Berlin",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /**
  * Minimum spacing of request starts towards `www.efa-bw.de`, shared by both
  * connectors through the kernel's per-host token bucket. 500 ms rather than the

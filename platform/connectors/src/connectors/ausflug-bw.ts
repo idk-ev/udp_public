@@ -26,11 +26,16 @@
  * The selection is load-bearing and kept exactly: per municipality the hits in
  * the order the quadrants were requested and Overpass listed them, names cut to
  * 60 UTF-16 units AFTER the apostrophe swap, de-duplicated by that cut name
- * (first one wins), then the first 25. `zielCount` counts every hit, duplicates
- * included. Written in full every run, ungated and without a prune, as before.
+ * (first one wins), then the first 25. `zielCount` counts every distinct hit
+ * (see the deviations). Written in full every run, ungated and without a
+ * prune, as before.
  *
  * Deviations:
  *
+ *  * `zielCount` counts an object once: a hit whose OSM id, or whose cut name
+ *    and position (5 decimals, ~1 m), was already counted is a duplicate. A
+ *    way crossing a quadrant border comes back in both answers; the old node
+ *    counted it twice, and the page showed that count as the total.
  *  * The type label comes from a `Map`, not an object literal — `TYP[t.tourism]`
  *    on an object would find `Object.prototype` members for a tag value like
  *    `constructor`. No OSM value the query can return reaches that.
@@ -148,6 +153,8 @@ export function build(
 ): readonly TouristDestinationEntity[] {
   if (geo === null) return [];
   const byAgs = new Map<string, Destination[]>();
+  const distinct = new Map<string, number>();
+  const seen = new Set<string>();
   for (const part of raw) {
     for (const element of part.elements) {
       const name = element.tags.get("name");
@@ -161,14 +168,20 @@ export function build(
       const list = byAgs.get(ags);
       if (list === undefined) byAgs.set(ags, [destination]);
       else list.push(destination);
+      const place = `${destination[0]}@${lat.toFixed(5)},${lon.toFixed(5)}`;
+      const id = element.osmId === null ? null : `osm:${element.osmId}`;
+      if (seen.has(place) || (id !== null && seen.has(id))) continue;
+      seen.add(place);
+      if (id !== null) seen.add(id);
+      distinct.set(ags, (distinct.get(ags) ?? 0) + 1);
     }
   }
   return [...byAgs].map(([ags, all]) => {
-    const seen = new Set<string>();
+    const names = new Set<string>();
     const top = all
       .filter((destination) => {
-        if (seen.has(destination[0])) return false;
-        seen.add(destination[0]);
+        if (names.has(destination[0])) return false;
+        names.add(destination[0]);
         return true;
       })
       .slice(0, MAX_DESTINATIONS);
@@ -176,7 +189,7 @@ export function build(
       id: `urn:ngsi-ld:TouristDestination:bw-${ags}`,
       type: "TouristDestination",
       ags: { type: "Property", value: ags },
-      zielCount: { type: "Property", value: all.length, unitCode: "C62" },
+      zielCount: { type: "Property", value: distinct.get(ags) ?? all.length, unitCode: "C62" },
       ziele: { type: "Property", value: top, observedAt: now },
       dateObserved: dateObserved(now),
       dataProvider: { type: "Property", value: DATA_PROVIDER },

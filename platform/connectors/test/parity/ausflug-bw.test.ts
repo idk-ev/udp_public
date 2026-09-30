@@ -18,6 +18,11 @@
  * exercised by the real data — two fixture municipalities have more than 25
  * hits — and on a modified copy with duplicate, long and apostrophe names.
  *
+ * DELIBERATE DEVIATION (module header): `zielCount` counts an object once
+ * (same OSM id, or same cut name and position). No recorded element repeats,
+ * so the comparisons above are unaffected; {@link duplicatesAreCountedOnce}
+ * pins the difference.
+ *
  * Fixture: test/fixtures/ausflug-bw.json (see its note), against
  * test/fixtures/grenzen-bw.json.
  */
@@ -295,7 +300,59 @@ async function preconditionsSpendNoOverpassSlot(): Promise<void> {
   assert.equal(stopped.upserted().length, 0);
 }
 
+/** Entities without `zielCount`, for comparing the rest with the old node. */
+function withoutCount(entities: readonly unknown[]): unknown[] {
+  return entities.map((entity) => {
+    if (!isRecord(entity)) return entity;
+    return Object.fromEntries(Object.entries(entity).filter(([key]) => key !== "zielCount"));
+  });
+}
+
+function countOf(entities: readonly unknown[], id: string): number {
+  const entity = entities.find((candidate) => isRecord(candidate) && candidate.id === id);
+  assert.ok(isRecord(entity) && isRecord(entity.zielCount) && typeof entity.zielCount.value === "number");
+  return entity.zielCount.value;
+}
+
+async function duplicatesAreCountedOnce(): Promise<void> {
+  // A modified copy, not fixture data: the second answer repeats the first
+  // ten elements of the first one (a way on a quadrant border comes back in
+  // both), and one element is copied as a node with a new id at the same
+  // place (same name and position).
+  const elements = fixtureElements();
+  const half = Math.ceil(elements.length / 2);
+  const first = elements.slice(0, half);
+  const second = elements.slice(half);
+  const twin = first.find((element) => isRecord(element) && typeof element.id === "number");
+  assert.ok(isRecord(twin) && typeof twin.id === "number");
+  const copies = [
+    ...structuredClone(first.slice(0, 10)),
+    { ...structuredClone(twin), id: twin.id + 10_000_000_000 },
+  ];
+  const plain = await bothSides([
+    { statusCode: 200, payload: { elements: first } },
+    { statusCode: 200, payload: { elements: second } },
+  ]);
+  const doubled = await bothSides([
+    { statusCode: 200, payload: { elements: first } },
+    { statusCode: 200, payload: { elements: [...second, ...copies] } },
+  ]);
+  const now = new Date().toISOString();
+  const once = build(parse(plain.parts), fixtureGeo(), now);
+  const ported = build(parse(doubled.parts), fixtureGeo(), now);
+  const legacy = emittedEntities(doubled.legacy);
+  // Everything but the count as in the old node: the list dedups by name anyway.
+  assertEntitiesEqual(withoutCount(legacy), withoutCount(ported));
+  let extra = 0;
+  for (const entity of ported) {
+    assert.equal(entity.zielCount.value, countOf(once, entity.id), `${entity.id}: a duplicate counted`);
+    extra += countOf(legacy, entity.id) - entity.zielCount.value;
+  }
+  assert.ok(extra > 0, "the old node counted the repeated elements as well");
+}
+
 export {
+  duplicatesAreCountedOnce as "ausflug-bw: zielCount counts an object in two answers once (deliberate)",
   requestsAreIdentical as "ausflug-bw: the four quadrant URLs and the User-Agent are those of the old request node",
   wrapIsIdentical as "ausflug-bw: the wrap matches FN_AUSFLUG_WRAP on success, HTTP errors, non-JSON and no response",
   joinedPartsAreIdentical as "ausflug-bw: old FN_AUSFLUG_BUILD and ported build() agree on joined parts with a failed tile",

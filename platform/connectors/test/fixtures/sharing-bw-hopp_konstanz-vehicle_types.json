@@ -1,0 +1,28 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/hopp_konstanz/vehicle_types",
+  "recordedAt": "2026-09-30T13:53:10.471Z",
+  "note": "The complete live response, verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip",
+    "last-modified": "Wed, 30 Sep 2026 13:52:22 GMT",
+    "etag": "\"963c09c2f148718ee37c35cd18a65069\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790776342,
+    "ttl": 0,
+    "version": "2.3",
+    "data": {
+      "vehicle_types": [
+        {
+          "vehicle_type_id": "HOP:VehicleType:vtp_120",
+          "form_factor": "scooter",
+          "propulsion_type": "electric",
+          "max_range_meters": 40000
+        }
+      ]
+    }
+  }
+}

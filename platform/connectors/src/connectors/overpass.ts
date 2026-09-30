@@ -92,6 +92,8 @@ export interface OverpassElement {
   /** `el.lat != null ? el.lat : (el.center && el.center.lat)`; `null` when neither is there. */
   readonly lat: number | null;
   readonly lon: number | null;
+  /** `type/id` (`way/123`), or `null` without both. Two answers can list the same object. */
+  readonly osmId: string | null;
 }
 
 /** A narrowed answer: the usable elements, and how many were malformed. */
@@ -133,6 +135,8 @@ export function parseElement(raw: unknown, index: number): OverpassElement {
     tags: parseTags(raw.tags, at),
     lat: coordinate(raw.lat, raw.center, "lat", at),
     lon: coordinate(raw.lon, raw.center, "lon", at),
+    osmId:
+      typeof raw.type === "string" && typeof raw.id === "number" ? `${raw.type}/${String(raw.id)}` : null,
   };
 }
 

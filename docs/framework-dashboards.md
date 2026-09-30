@@ -123,7 +123,7 @@ Index 0–100 je Gemeinde (`CityPulse:bw-<ags>`, gewichtetes Mittel):
 | ÖPNV (Median-Verspätung, < 2 h) | 0 min | 0,2 |
 | Laden (freie Live-Ladepunkte) | alle frei | 0,15 |
 | Baustellen (SVZ-BW, landesweit) | keine Baustelle | 0,15 |
-| Sharing (Fahrzeuge je 1.000 Einwohner) | ≥ 5 | 0,1 |
+| Sharing (frei flottierende Fahrzeuge aller Arten je 1.000 Einwohner) | ≥ 5 | 0,1 |
 | B+R (freie Plätze aller Konnektoren, < 6 h) | alle frei | 0,05 |
 | Warnlage (Kreis) | keine Warnung | 0,2 |
 
@@ -131,7 +131,9 @@ Ein Puls entsteht nur mit mindestens drei Komponenten **ohne** die Warnlage –
 die gibt es für jeden Kreis und zählt deshalb nicht mit. Baustellen gehen
 überall ein, solange der Feed aktuell ist (keine Baustelle = 100). Sharing ist
 auf die Einwohnerzahl normiert; die rohe Fahrzeugzahl benachteiligte kleine
-Orte. Fällt eine Gemeinde unter drei Komponenten, wird ihr Puls nach 24 h
+Orte. Es zählen alle frei flottierenden Fahrzeuge (E-Scooter, Räder, Mopeds,
+Autos), nicht die an Stationen angedockten Räder und Autos stationsgebundener
+Anbieter. Fällt eine Gemeinde unter drei Komponenten, wird ihr Puls nach 24 h
 gelöscht. Scheitert eine der Abfragen, entfällt der Lauf.
 
 ## Bekannte Schulden / Folgepunkte

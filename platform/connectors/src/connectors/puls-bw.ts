@@ -24,7 +24,10 @@
  *    connector (observed within 6 h);
  *  * sharing: free-floating vehicles per 1,000 inhabitants (5 or more = 100),
  *    so a small town is not scored against the raw count of a city — and no
- *    sharing component without a population figure;
+ *    sharing component without a population figure. It reads the total
+ *    `availableVehicles` on purpose, every form factor: a free-floating car
+ *    or moped is as much a sharing offer as an e-scooter, and the total needs
+ *    no newer summary. Docked station bikes are not in it (sharing-bw);
  *  * baustellen: the SVZ roadworks feed covers the whole state, so a
  *    municipality without roadworks scores 100 — but only if the feed is alive
  *    (a roadwork observed within 24 h); otherwise the component is left out

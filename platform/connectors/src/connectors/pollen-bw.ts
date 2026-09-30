@@ -18,8 +18,16 @@
  * The old node reads it via `Object.keys()`, so this one does as well. A fixed
  * species list would be tidier and would fail the parity test.
  *
- * Two deliberate differences from the old node, both only for input the source
- * does not produce:
+ * Deliberate differences from the old node. The first changes output:
+ *
+ *  * 08335 (Landkreis Konstanz) is mapped to part-region 112. The old mapping
+ *    had 43 of the 44 districts and left it out, so the Konstanz pages showed
+ *    no pollen. Region per the DWD region polygons (GeoServer layer
+ *    `dwd:Pollenfluggebiete`): 23 of the district's 25 municipality centres lie
+ *    in 112 "Hohenlohe/mittlerer Neckar/Oberschwaben", the other two in the
+ *    lake, none in 111 or 113 — as its neighbour 08435 Bodenseekreis.
+ *
+ * The other two only concern input the source does not produce:
  *
  *  * `parse` gets loud on a malformed response. The old node would put
  *    `undefined` into the position array for a species without `today`, and
@@ -82,18 +90,18 @@ export interface PollenForecastEntity extends NgsiEntity {
 /**
  * Curated district mapping of the three Baden-Württemberg part-regions
  * (111 Oberrhein/unteres Neckartal, 112 Hohenlohe/mittlerer Neckar/Oberschwaben,
- * 113 Mittelgebirge). Identical to `POLLEN_REGION` in
- * the former Node-RED flow generator (see git history); a difference here would show up as a
- * parity failure in `kreise`.
+ * 113 Mittelgebirge). `POLLEN_REGION` of the former Node-RED flow generator
+ * (see git history) plus 08335 (see above); every other difference would show
+ * up as a parity failure in `kreise`. All 44 BW districts, each once.
  *
- * As blank-separated strings, not as arrays of literals: 43 district keys one
+ * As blank-separated strings, not as arrays of literals: 44 district keys one
  * per line is what Prettier makes of the latter, and that buries the mapping.
  */
 const REGION_KREISE = new Map<string, readonly string[]>([
   ["111", "08211 08212 08215 08216 08221 08222 08226 08311 08315 08316 08317 08336".split(" ")],
   [
     "112",
-    "08111 08115 08116 08117 08118 08119 08121 08125 08126 08127 08128 08135 08136 08231 08236 08415 08416 08421 08425 08426 08435 08436 08437".split(
+    "08111 08115 08116 08117 08118 08119 08121 08125 08126 08127 08128 08135 08136 08231 08236 08335 08415 08416 08421 08425 08426 08435 08436 08437".split(
       " ",
     ),
   ],
