@@ -16,6 +16,13 @@
  * that. Plus malformed and edge-case events, the error paths, and the request
  * profile towards EFA-BW.
  *
+ * DELIBERATE DEVIATION (module header): a stop without any plausible
+ * real-time departure has no median. The old node sent `avgDelayMinutes`
+ * with `value: null`, which Orion-LD 1.6.0 refuses for the whole entity
+ * (207); the port leaves the attribute out and withdraws it instead
+ * ({@link unknownMedianIsWithdrawnNotNull}). The recorded fixtures all carry
+ * real time, so the cycles above compare identical entities.
+ *
  * Fixtures: test/fixtures/efa-abfahrten-<ags>.json — real departure monitor
  * answers of Reutlingen Hbf (the one stop with a registry entityId), Stuttgart
  * Hbf and Bad Peterstal (mostly without real-time data), trimmed as their
@@ -24,7 +31,14 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { build, parse, run, signatureKey, stopFromParams } from "../../src/connectors/efa-abfahrten.js";
+import {
+  ABSENT,
+  build,
+  parse,
+  run,
+  signatureKey,
+  stopFromParams,
+} from "../../src/connectors/efa-abfahrten.js";
 import type { StopConfig } from "../../src/connectors/efa-abfahrten.js";
 import { EFA_CONCURRENCY, EFA_MIN_INTERVAL_MS } from "../../src/connectors/efa.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
@@ -419,7 +433,149 @@ async function requestProfileIsCapped(): Promise<void> {
   assert.equal(upsertedEntities(upserts).length, agsList.length);
 }
 
+/* ------------------------------------------------ the 207 of the audit */
+
+/**
+ * Orion-LD 1.6.0 on a batch upsert, as reproduced against the real broker:
+ * an entity with a `null` attribute value is refused as a whole (207, the
+ * error recorded verbatim), every other one is written.
+ */
+function orionLd16(body: string): HttpResponse {
+  const parsed: unknown = JSON.parse(body);
+  assert.ok(Array.isArray(parsed));
+  const success: unknown[] = [];
+  const errors: unknown[] = [];
+  for (const entity of parsed) {
+    assert.ok(isRecord(entity));
+    const nulls = Object.entries(entity).filter(
+      ([, attribute]) => isRecord(attribute) && attribute.value === null,
+    );
+    if (nulls.length === 0) {
+      success.push(entity.id);
+      continue;
+    }
+    errors.push({
+      entityId: entity.id,
+      error: {
+        type: "https://uri.etsi.org/ngsi-ld/errors/BadRequestData",
+        title: "The use of NULL value is not recommended for JSON-LD (the whole attribute gets ignored)",
+        detail: `https://uri.etsi.org/ngsi-ld/default-context/${nulls[0]?.[0] ?? ""}`,
+        status: 400,
+      },
+    });
+  }
+  return errors.length === 0 ? httpResponse(204) : jsonHttp(207, { success, errors });
+}
+
+/** The recorded answer with every real-time flag off: no plausible delay, no median. */
+function withoutRealtime(payload: unknown): unknown {
+  const copy = structuredClone(payload);
+  const events = isRecord(copy) ? copy.stopEvents : undefined;
+  assert.ok(Array.isArray(events));
+  for (const event of events) if (isRecord(event)) event.isRealtimeControlled = false;
+  return copy;
+}
+
+async function unknownMedianIsWithdrawnNotNull(): Promise<void> {
+  const ags = "08317008";
+  const stop = stopOf(ags);
+  const key = signatureKey(stop.entityId);
+  const deleteUrl = `${ORION}/ngsi-ld/v1/entities/${encodeURIComponent(stop.entityId)}/attrs/avgDelayMinutes`;
+
+  // The old node: `avgDelayMinutes: null` — and the broker refuses the stop.
+  const p = pair([ags]);
+  p.answers.set(ags, { status: 200, payload: withoutRealtime(fixturePayload(ags)) });
+  const legacy = await legacyStop(p, ags);
+  assert.ok(isRecord(legacy.entity) && isRecord(legacy.entity.avgDelayMinutes));
+  assert.equal(legacy.entity.avgDelayMinutes.value, null);
+  const refused = orionLd16(JSON.stringify([legacy.entity]));
+  assert.equal(refused.status, 207, "Orion-LD refuses the old entity");
+
+  // The port against the same broker, over seven runs.
+  let answer = { status: 200, payload: withoutRealtime(fixturePayload(ags)) };
+  let deleteStatus = 500;
+  let upsertStatus: number | null = null;
+  const network = recordingFetcher((request): HttpResponse => {
+    if (request.url.startsWith(ORION)) {
+      if (request.method === "DELETE") return httpResponse(deleteStatus);
+      if (upsertStatus !== null) return httpResponse(upsertStatus);
+      return orionLd16(request.body ?? "[]");
+    }
+    return jsonHttp(answer.status, answer.payload);
+  });
+  const port = rig(registryEntry("efa-abfahrten", { enabledFor: [ags] }), network.fetcher);
+  const step = async (): Promise<{ deletes: number; upserted: Record<string, unknown> }> => {
+    const before = network.seen.length;
+    await run(port.ctx);
+    const requests = network.seen.slice(before);
+    const [entity] = upsertedEntities(requests);
+    assert.ok(isRecord(entity));
+    return {
+      deletes: requests.filter((r) => r.method === "DELETE" && r.url === deleteUrl).length,
+      upserted: entity,
+    };
+  };
+
+  // 1: the withdrawal fails — the entity is still written in full, but its
+  // absence is not recorded, so the next run tries again.
+  const first = await step();
+  assert.equal(first.deletes, 1);
+  assert.ok(!("avgDelayMinutes" in first.upserted) && "departures" in first.upserted);
+  assert.deepEqual(
+    port.log.warnings().filter((w) => !w.includes("delete avgDelayMinutes")),
+    [],
+  );
+  assert.equal(port.ctx.gate.table(key).get("avgDelayMinutes"), undefined);
+  assert.equal(port.ctx.gate.table(key).has("departures"), true, "the stop itself was confirmed");
+
+  // 2: withdrawn (404 counts: not held); absence committed with the entity.
+  deleteStatus = 404;
+  const second = await step();
+  assert.equal(second.deletes, 1);
+  assert.equal(port.ctx.gate.table(key).get("avgDelayMinutes"), ABSENT);
+
+  // 3: still unknown — no request for it, freshness only.
+  const third = await step();
+  assert.equal(third.deletes, 0);
+  assert.deepEqual(Object.keys(third.upserted).sort(), ["@context", "dateObserved", "id", "type"]);
+
+  // 4: real time is back — the median goes out, its signature replaces ABSENT.
+  answer = { status: 200, payload: fixturePayload(ags) };
+  const fourth = await step();
+  assert.equal(fourth.deletes, 0);
+  assert.ok(isRecord(fourth.upserted.avgDelayMinutes));
+  assert.equal(typeof fourth.upserted.avgDelayMinutes.value, "number");
+  assert.notEqual(port.ctx.gate.table(key).get("avgDelayMinutes"), ABSENT);
+
+  // 5: gone again — withdrawn once more.
+  answer = { status: 200, payload: withoutRealtime(fixturePayload(ags)) };
+  deleteStatus = 204;
+  const fifth = await step();
+  assert.equal(fifth.deletes, 1);
+  assert.equal(port.ctx.gate.table(key).get("avgDelayMinutes"), ABSENT);
+  // Never a refused upsert, never a dropped signature.
+  assert.ok(!port.log.warnings().some(isCommitWarning), port.log.warnings().join("\n"));
+  const warned = port.log.warnings().length;
+
+  // 6: real time back, then gone with the withdrawal done but the upsert
+  // refused: the absence is not committed and the old number is forgotten,
+  // so the next run withdraws again.
+  answer = { status: 200, payload: fixturePayload(ags) };
+  await step();
+  answer = { status: 200, payload: withoutRealtime(fixturePayload(ags)) };
+  upsertStatus = 503;
+  const sixth = await step();
+  assert.equal(sixth.deletes, 1);
+  assert.equal(port.ctx.gate.table(key).has("avgDelayMinutes"), false);
+  assert.ok(port.log.warnings().slice(warned).some(isCommitWarning));
+  upsertStatus = null;
+  const seventh = await step();
+  assert.equal(seventh.deletes, 1);
+  assert.equal(port.ctx.gate.table(key).get("avgDelayMinutes"), ABSENT);
+}
+
 export {
+  unknownMedianIsWithdrawnNotNull as "efa-abfahrten: no median is withdrawn, not sent as null — Orion-LD accepts the batch (deliberate deviation)",
   runsAndSignatureTablesMatch as "efa-abfahrten: URLs, deduped entities and oepnvSig tables match the old pipelines over five runs",
   everyEnabledStopMatchesItsOwnNode as "efa-abfahrten: all 23 enabled stops match their own old pipeline over two runs",
   errorPathsWarnAsBefore as "efa-abfahrten: EFA errors, refused connections and non-JSON warn per stop and write nothing",

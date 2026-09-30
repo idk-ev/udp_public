@@ -58,6 +58,15 @@
  *  * The stop id is URL-encoded in the request (`:` kept), the old node
  *    concatenated it; identical bytes for every configured id.
  *  * Warning texts are English (the code language of this service).
+ *  * No real-time departure, no median: `avgDelayMinutes` is left out and a
+ *    value still in the broker is withdrawn ({@link Orion.deleteAttribute})
+ *    instead of sending `value: null`. Orion-LD refuses a null value — the
+ *    whole ENTITY, with 207 "The use of NULL value is not recommended for
+ *    JSON-LD" — so every stop without real time was never written, its
+ *    signatures were dropped and it went out again every five minutes, in
+ *    the old flow as in the port until this change. The withdrawal is
+ *    remembered as the signature `null` ({@link ABSENT}): once confirmed, it
+ *    is not repeated while the median stays unknown.
  */
 
 import { cleanText, dateObserved } from "../kernel/ngsi.js";
@@ -120,6 +129,12 @@ const MAX_DESTINATION_LENGTH = 40;
 /** Attributes sent in every run: identity, context and the freshness stamp. */
 const ALWAYS_SENT: ReadonlySet<string> = new Set(["id", "type", "@context", "dateObserved"]);
 
+/** Attributes left out when unknown, and then withdrawn from the broker. */
+export const CLEARABLE: readonly string[] = ["avgDelayMinutes"];
+
+/** Signature of a CLEARABLE attribute the broker does not hold: `JSON.stringify(null)`. */
+export const ABSENT: SignatureValue = "null";
+
 /** The five literals the generator substituted per municipality. */
 export interface StopConfig {
   readonly ags: Ags;
@@ -152,7 +167,8 @@ export interface StopEntity extends NgsiEntity {
   readonly dateObserved: Property<NgsiDateTime>;
   readonly departures: Property<readonly Departure[]>;
   readonly departureCount: Property<number>;
-  readonly avgDelayMinutes: Property<number | null>;
+  /** Absent without a plausible real-time departure (never `null`, see the module header). */
+  readonly avgDelayMinutes?: Property<number> | undefined;
   readonly delayDataQuality: Property<string>;
   readonly dataProvider: Property<string>;
   readonly "@context": string;
@@ -338,6 +354,7 @@ export function buildStop(stop: StopConfig, monitor: DepartureMonitor, now: IsoT
     ...departure,
     destination: departure.destination.slice(0, MAX_DESTINATION_LENGTH),
   }));
+  const avgDelay = median(valid);
 
   // Key order as in the original literal; `location` last (Object.assign).
   return {
@@ -349,7 +366,9 @@ export function buildStop(stop: StopConfig, monitor: DepartureMonitor, now: IsoT
     dateObserved: dateObserved(now),
     departures: { type: "Property", value: shortened, observedAt: now },
     departureCount: { type: "Property", value: departures.length, unitCode: "C62", observedAt: now },
-    avgDelayMinutes: { type: "Property", value: median(valid), unitCode: "MIN", observedAt: now },
+    ...(avgDelay === null
+      ? {}
+      : { avgDelayMinutes: { type: "Property", value: avgDelay, unitCode: "MIN", observedAt: now } }),
     delayDataQuality: {
       type: "Property",
       value: `${String(valid.length)}/${String(departures.length)} Abfahrten mit plausibler Echtzeit`,
@@ -385,6 +404,8 @@ export interface Trimmed {
   readonly pending: readonly PendingSignature[];
   /** Attributes whose stored signature still holds — what the table keeps. */
   readonly unchanged: ReadonlySet<string>;
+  /** {@link CLEARABLE} attributes missing from the entity that the broker may still hold. */
+  readonly cleared: readonly string[];
 }
 
 function valueOf(attribute: NgsiAttribute): unknown {
@@ -416,10 +437,18 @@ export function trimUnchanged(entity: StopEntity, previous: ReadonlyMap<string, 
     kept.push([name, attribute]);
     pending.push([key, name, signature, entity.id]);
   }
+  // Left out as unknown: nothing to do once its absence is confirmed.
+  const cleared: string[] = [];
+  for (const name of CLEARABLE) {
+    if (name in entity) continue;
+    if (previous.get(name) === ABSENT) unchanged.add(name);
+    else cleared.push(name);
+  }
   return {
     entity: { ...Object.fromEntries(kept), id: entity.id, type: entity.type, "@context": entity["@context"] },
     pending,
     unchanged,
+    cleared,
   };
 }
 
@@ -484,6 +513,12 @@ export async function run(ctx: Ctx): Promise<void> {
     ctx.gate.retain(key, (field) => trimmed.unchanged.has(field));
     entities.push(trimmed.entity);
     pending.push(...trimmed.pending);
+    // Withdrawn BEFORE the upsert; its absence is committed with the entity.
+    // Only on a change to "unknown" (a night, say): paced like any write.
+    for (const name of trimmed.cleared) {
+      if (ctx.signal.aborted) break;
+      if (await ctx.orion.deleteAttribute(entity.id, name, ID)) pending.push([key, name, ABSENT, entity.id]);
+    }
   }
   if (entities.length === 0) return;
 
