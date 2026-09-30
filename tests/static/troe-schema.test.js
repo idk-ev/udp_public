@@ -98,3 +98,53 @@ exports["TRoE migration: the copy carries every column and compares every value"
     assert(new RegExp(`SET ${limit} = `).test(SCRIPT), `sessions without ${limit}`);
   }
 };
+
+/* The body of a shell function of the migration script. */
+function fn(name) {
+  const m = new RegExp(`\\n${name}\\(\\) \\{\\n([\\s\\S]*?)\\n\\}\\n`).exec(SCRIPT);
+  assert(m, `function ${name} not found in migrate-troe-hypertable.sh`);
+  return m[1];
+}
+
+exports["TRoE migration, low-disk mode: one dedup, one bootstrap, bounded sessions"] = () => {
+  // Backfill and import go through the same copy function – there is one dedup, not two.
+  assert.strictEqual(SCRIPT.split("CREATE FUNCTION pg_temp.udp_copy_day(").length, 2);
+  assert.strictEqual(SCRIPT.split("lag(a.opmode) OVER w").length, 2, "a second dedup query");
+  assert(/udp_copy_day\('attributes', 'attributes_new', :'day', true, true\)/.test(fn("copy_days")));
+  const importDay = fn("import_day");
+  assert(/udp_copy_day\('udp_troe_staging', 'attributes', :'day', false, :'dedup'\)/.test(importDay),
+    "import does not use the copy function (non-exclusive: live rows of the cutover day stay)");
+  assert(/BEGIN ISOLATION LEVEL REPEATABLE READ;\nINSERT INTO udp_troe_migration/.test(importDay),
+    "import: rows and bookkeeping not in one REPEATABLE READ transaction");
+  assert(/NOT \\\$3\s*OR r\.rn = 1/.test(SCRIPT), "dedup cannot be switched off (--no-dedup)");
+  assert(/printf '%s\\n' "\$SQL_COPY_DAY_FN"/.test(importDay));
+  // Export and import carry every column in the same order (COPY text format).
+  assert(/COPY \(SELECT \$COLS\s+FROM attributes WHERE ts >= :'day' AND ts < :'day'::date \+ 1 ORDER BY ts\) TO STDOUT;/.test(fn("export_day")));
+  assert(/COPY \$STAGING \(\$COLS\) FROM STDIN;/.test(importDay));
+  // Every psql of the steps is a bounded session with pinned output formats.
+  for (const f of ["export_day", "import_day", "day_counts"]) {
+    assert(/\bsession -At\b/.test(fn(f)), `${f} does not run in a bounded session`);
+  }
+  for (const setting of ["DateStyle = 'ISO, YMD'", "extra_float_digits = 3", "client_encoding = 'UTF8'"]) {
+    assert(SCRIPT.includes(`SET ${setting};`), `session without SET ${setting}`);
+  }
+  // The swap runs the chart's bootstrap – the file the init container runs –
+  // inside its transaction, without the file's own BEGIN/COMMIT.
+  assert(/helm\/udp\/files\/postgres\/troe-schema\.sql/.test(SCRIPT));
+  assert(/sed -e '\/\^BEGIN;\$\/d' -e '\/\^COMMIT;\$\/d'/.test(fn("bootstrap_sql")));
+  const lines = SCHEMA.split("\n");
+  assert.strictEqual(lines.filter(l => l === "BEGIN;").length, 1, "troe-schema.sql: swap-lowdisk expects one BEGIN; line");
+  assert.strictEqual(lines.filter(l => l === "COMMIT;").length, 1, "troe-schema.sql: swap-lowdisk expects one COMMIT; line");
+  const swap = fn("swap_lowdisk");
+  const order = ["writers_back_on_exit swap-lowdisk", "scale_down_writers", "export_days", "LOCK TABLE attributes IN SHARE MODE",
+    "attributes changed since the export", "rows outside the exported days", "('mode', 'lowdisk')",
+    "DROP TABLE attributes;", '"$bootstrap"', "COMMIT;", "BACK_STEP=", "resume_writers", "entities_index"];
+  let at = -1;
+  for (const step of order) {
+    const i = swap.indexOf(step, at + 1);
+    assert(i > at, `swap-lowdisk: "${step}" missing or out of order`);
+    at = i;
+  }
+  // No way back through the database: rollback refuses in low-disk mode.
+  assert(/lowdisk && die/.test(fn("rollback")));
+};

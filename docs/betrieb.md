@@ -567,7 +567,14 @@ nebeneinander: `preflight` rechnet mit der alten Größe ohne Schlüssel × 1,3
 und bricht ab, wenn das Volume der vollsten Instanz dafür nicht reicht —
 dann zuerst das Volume vergrößern. Die Kopie schreibt WAL in der
 Größenordnung der neuen Tabelle. Erst `finalize` gibt den Platz der alten
-Tabelle frei.
+Tabelle frei. Lässt sich das Volume nicht vergrößern, gibt es die
+Low-Disk-Variante (`export`, `swap-lowdisk`, `import`; DEPLOY.md §10c): Die
+Historie wird tageweise in lokale Dateien exportiert (gzip ≈ 20–30 Byte je
+Zeile), die alte Tabelle in kurzer Auszeit durch die leere Hypertable
+ersetzt und die Historie im laufenden Betrieb mit derselben Dedup
+zurückgeladen, neueste Tage zuerst. Ohne `rollback`; bis zum Ende des Imports
+sind die Dateien die einzige Kopie der Historie, und Mintaka zeigt sie
+unvollständig.
 
 **Rücksicherung eines Dumps der Datenbank `orion`:** Mit Hypertable enthält
 der Dump TimescaleDBs Katalog. In eine leere Datenbank mit

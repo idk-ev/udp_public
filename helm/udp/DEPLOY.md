@@ -896,10 +896,11 @@ Vorher:
   Zeitfenster mitten am Tag, `lastN` und Aggregationen können andere
   Ergebnisse geben (`docs/betrieb.md`, „Speicherlayout“) – vorher klären.
 - Keine laufende Sicherung (`db-backup`) und keine Retention zum Zeitpunkt des
-  `cutover`: Das Skript bricht sonst vor dem Tausch ab.
+  `cutover` (bzw. `swap-lowdisk`): Das Skript bricht sonst vor dem Tausch ab.
 - **Platz:** `preflight` schätzt den Bedarf (alte Tabelle ohne Schlüssel × 1,3)
   und bricht ab, wenn er auf dem Volume der vollsten Instanz nicht frei ist.
-  Dann **zuerst das Volume vergrößern**: `timescale.persistence.size` anheben
+  Dann **zuerst das Volume vergrößern** – oder die Low-Disk-Variante (unten)
+  nehmen: `timescale.persistence.size` anheben
   und `helm upgrade` – CNPG vergrößert die PVCs aller Instanzen im laufenden
   Betrieb, sofern die StorageClass `allowVolumeExpansion` erlaubt (sonst
   gemäß CNPG-Doku Instanz für Instanz neu anlegen). Verkleinern geht nicht;
@@ -940,6 +941,74 @@ der alten Tabelle verhindert Doppelte) tageweise zurück in die alte Tabelle, Na
 `cutover` kopiert die Tage ab dem Umschalten erneut. Scheitert ein Schritt
 unterwegs, bleibt die Tabellenlage unverändert, und die Schreiber kommen
 automatisch wieder hoch.
+
+#### Low-Disk-Variante: alte und neue Tabelle passen nicht nebeneinander
+
+Lässt sich das Volume nicht ausreichend vergrößern, verlässt die Historie die
+Datenbank vorübergehend:
+
+- `export` schreibt jeden abgeschlossenen UTC-Tag als Rohzeilen (alle
+  Spalten, `COPY`-Textformat, gzip) nach `DIR/attributes_<Tag>.copy.gz` und
+  führt `DIR/manifest.tsv` (Tag, Zeilen, Bytes, SHA-256) – im laufenden
+  Betrieb, bevorzugt von einem Replikat, das den Stand des Primary erreicht
+  hat, sonst vom Primary. Ein Tag kommt erst ins Manifest, wenn die Datei
+  vollständig ist und ihre Zeilen der Zeilenzahl in der Datenbank
+  entsprechen. Wiederaufnehmbar: intakte, unveränderte Tage werden
+  übersprungen, geänderte (etwa durch die nächtliche Retention) neu
+  exportiert.
+- `swap-lowdisk` (**Auszeit** der Schreiber) exportiert die restlichen Tage
+  und prüft dann in **einer** Transaktion jeden Tag der alten Tabelle gegen
+  das Manifest (seit dem Export keine Zeile hinzugekommen oder weggefallen,
+  keine außerhalb der exportierten Tage). Erst dann löscht es `attributes`
+  und legt sie mit `troe-schema.sql` – derselben Datei wie der initContainer
+  – leer als Hypertable neu an. Scheitert etwas, bleibt die alte Tabelle
+  unverändert und die Schreiber kommen zurück. Die Auszeit umfasst den Export
+  des laufenden Tages und die Zählung aller Tage; `export` meldet, wie lange
+  dieselbe Zählung dauert. Sie muss in `STATEMENT_TIMEOUT` (Vorgabe 30 min)
+  passen – bei sehr großen Tabellen höher setzen.
+- `import` lädt danach im laufenden Betrieb Tag für Tag, **neueste zuerst**,
+  über eine UNLOGGED-Staging-Tabelle in die Hypertable – mit derselben Dedup
+  wie `backfill`, Zeilen und Buchungszeile in einer Transaktion. Vor jedem Tag
+  prüft es Prüfsumme und Zeilenzahl der Datei (ein beschädigter Tag wird
+  verweigert, die übrigen laufen weiter) sowie den freien Platz (Staging,
+  Insert und Reserve `IMPORT_MARGIN`, Vorgabe `max_wal_size`).
+  Wiederaufnehmbar: Ein Tag mit Buchungszeile ist importiert, Zeilen der
+  Hypertable werden nie gelöscht. Zeilen, die nach dem Umschalten live
+  hinzukommen, bleiben unberührt.
+
+Wichtig:
+
+- **Zwischen `swap-lowdisk` und vollständigem `import` sind die Dateien die
+  einzige Kopie der Historie.** Das Verzeichnis nach `swap-lowdisk`
+  vollständig auf einen zweiten Datenträger kopieren und beide aufheben, bis
+  `status` jeden Tag als importiert zeigt und die Historie geprüft ist.
+- Lokaler Platz: gzip-komprimiert etwa 20–30 Byte je Zeile (`preflight` nennt
+  die Schätzung). Der Export läuft über `kubectl exec` auf den Rechner, der das
+  Skript ausführt.
+- Mintaka zeigt bis zum Ende des `import` eine unvollständige Historie; die
+  jüngsten Tage sind zuerst wieder da.
+- Kein `rollback` – es gibt keine alte Tabelle mehr. Die Dateien sind die
+  vollständige Rohhistorie: `import --no-dedup` lädt die noch nicht
+  importierten Tage ohne Dedup. Soll die Dedup nachträglich zurückgenommen
+  werden: in der Hypertable die Zeilen vor dem Umschaltzeitpunkt
+  (`status`: `cutover_ts`) löschen, `udp_troe_migration` leeren und mit
+  `--no-dedup` neu importieren.
+- `finalize --drop-old` löscht nach vollständigem Import nur noch die
+  Buchführung; danach lässt sich `import` nicht mehr fortsetzen.
+
+```bash
+DIR=/pfad/mit/platz/troe-export                    # lokal, außerhalb des Clusters
+
+$S preflight                                       # nennt den lokalen Platzbedarf
+$S export --dir $DIR                               # Plattform läuft, wiederaufnehmbar
+$S status --dir $DIR
+$S export --dir $DIR                               # direkt vor dem Umschalten nachziehen
+$S swap-lowdisk --dir $DIR                         # kurze Auszeit der Schreiber
+cp -a $DIR /zweiter/datentraeger/                  # zweite Kopie der Historie
+$S import --dir $DIR                               # Plattform läuft, neueste Tage zuerst
+$S status --dir $DIR                               # alle Tage importiert?
+$S finalize --drop-old                             # Buchführung löschen; Dateien danach
+```
 
 Die Retention (`troe-retention`) erkennt die Hypertable selbst und schneidet
 die 12-Monats-Staffel ab dann per `drop_chunks`. Mandanten-Datenbanken

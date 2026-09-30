@@ -9,7 +9,8 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 > - Bestehende Installationen behalten `attributes` als gewöhnliche Tabelle
 >   (WARNING des initContainers `troe-schema` bei jedem Start von `orion-ld`).
 >   Umstellung mit `scripts/migrate-troe-hypertable.sh`, vorher ggf. das
->   Datenbank-Volume vergrößern – DEPLOY.md §10c.
+>   Datenbank-Volume vergrößern oder die Low-Disk-Variante nutzen –
+>   DEPLOY.md §10c.
 > - Die neuen PostgreSQL-Parameter (`shared_buffers` u. a.) und die höhere
 >   Speicheranforderung (2Gi) starten die Datenbank-Instanzen einmal neu
 >   (Switchover); die Knoten brauchen den Speicher tatsächlich.
@@ -25,6 +26,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - **Migration:** `scripts/migrate-troe-hypertable.sh` kopiert die Historie
   tageweise im laufenden Betrieb, verwirft unveränderte Wiederholungen,
   tauscht die Tabellen in kurzer Auszeit; Rückweg bis `finalize`.
+  Low-Disk-Variante (`export`, `swap-lowdisk`, `import`), wenn alte und neue
+  Tabelle nicht nebeneinander passen: Historie über lokale Dateien, kurze
+  Auszeit, Import neueste Tage zuerst.
 - **Retention:** 12-Monats-Staffel per `drop_chunks` auf der Hypertable,
   3-Monats-Staffel je Präfix, Typsummen ohne `count(DISTINCT)`.
   `troe-stats` schätzt die Zeilen mit `approximate_row_count`.

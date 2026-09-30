@@ -13,7 +13,8 @@
 # short downtime. Full runbook: helm/udp/DEPLOY.md §10c.
 #
 #   0. Grow the database volume first if preflight says so
-#      (timescale.persistence.size; the copy needs room next to the old table).
+#      (timescale.persistence.size; the copy needs room next to the old table)
+#      – or use the low-disk mode below.
 #   1. migrate-troe-hypertable.sh preflight   checks, space estimate
 #   2. migrate-troe-hypertable.sh backfill    copy every finished UTC day into
 #                                             attributes_new – platform keeps
@@ -31,6 +32,30 @@
 #      migrate-troe-hypertable.sh rollback    writers to 0, rows written since
 #                                             the cutover copied back into the
 #                                             old table, names swapped back
+#
+# Low-disk mode – when the volume cannot hold the old table and the new one
+# side by side. The history leaves the database for a while: it is exported
+# to local files, the old table is dropped, and the files are imported into
+# the new hypertable with the same dedup. Between swap-lowdisk and a completed
+# import the files are the ONLY copy of the history – keep them (two media).
+#
+#   1. migrate-troe-hypertable.sh export --dir DIR
+#                                 every finished UTC day as DIR/attributes_<day>
+#                                 .copy.gz (raw rows, COPY text format) plus
+#                                 DIR/manifest.tsv – platform keeps running,
+#                                 read from a replica when one is caught up,
+#                                 resumable, repeat it right before the swap
+#   2. migrate-troe-hypertable.sh swap-lowdisk --dir DIR
+#                                 DOWNTIME: writers to 0, export the rest,
+#                                 verify every day of attributes against the
+#                                 manifest, drop attributes, create the empty
+#                                 hypertable (troe-schema.sql), writers back up
+#   3. migrate-troe-hypertable.sh import --dir DIR [--no-dedup]
+#                                 newest day first into the hypertable –
+#                                 platform keeps running, resumable
+#      migrate-troe-hypertable.sh status [--dir DIR]
+#   There is no rollback: the files are the full raw history, import
+#   --no-dedup loads them without dropping repetitions.
 #
 # Dedup rule of the copy: within one series (entityid, id, datasetid) ordered
 # by ts, a row is dropped only if opmode, valuetype, unitcode, observedat,
@@ -51,8 +76,12 @@
 #
 # Environment: KUBECONFIG, KUBE_CONTEXT (pins the kubectl context; default: the
 # current one), NAMESPACE (default udp), RELEASE (Helm release, default udp),
-# DB (default orion), YES=1 skips the confirmations.
-# Limits per session: STATEMENT_TIMEOUT (default 30min), TEMP_FILE_LIMIT
+# DB (default orion), YES=1 skips the confirmations, EXPORT_DIR (instead of
+# --dir), IMPORT_MARGIN (free space import keeps per day, default
+# max_wal_size), TROE_SCHEMA (default: the chart's troe-schema.sql next to
+# this script).
+# Limits per session: STATEMENT_TIMEOUT (default 30min – swap-lowdisk counts
+# every day of attributes in it, see DEPLOY.md §10c), TEMP_FILE_LIMIT
 # (default 4GB), WORK_MEM (default 64MB).
 # =============================================================================
 set -euo pipefail
@@ -72,6 +101,12 @@ ANN_REPLICAS=udp.idk-ev.de/replicas-before-troe-migration
 # Estimated size of the new table relative to the old one without its
 # primary key; the margin covers indexes built while inserting and bloat.
 SPACE_FACTOR=1.3
+# Low-disk mode: bootstrap of the chart, run by swap-lowdisk; staging table of
+# import; local size of the export files per row (gzipped COPY text).
+TROE_SCHEMA="${TROE_SCHEMA:-$(cd "$(dirname "$0")" && pwd)/../helm/udp/files/postgres/troe-schema.sql}"
+STAGING=udp_troe_staging
+EXPORT_BYTES_PER_ROW=30
+DIR="${EXPORT_DIR:-}"
 
 # Orion-LD's attributes columns (database/sql/current.sql of Orion-LD 1.6.0).
 COLS="instanceid, id, opmode, entityid, observedat, subproperties, unitcode, datasetid, valuetype,
@@ -101,12 +136,13 @@ primary() {
     echo "$pod"
 }
 
-# Plain psql in the primary pod: local socket, superuser postgres.
-psql_raw() { k exec -i "$PRIMARY" -c postgres -- psql -v ON_ERROR_STOP=1 -X -q -d "$DB" "$@"; }
+# Plain psql in the primary pod (or in POD): local socket, superuser postgres.
+psql_raw() { k exec -i "${POD:-$PRIMARY}" -c postgres -- psql -v ON_ERROR_STOP=1 -X -q -d "$DB" "$@"; }
 q() { psql_raw -Atc "$1"; }
 
 # A bounded session: the SQL on stdin runs after the limits and SET ROLE.
-# Extra arguments go to psql (e.g. -v day=2026-01-01).
+# Extra arguments go to psql (e.g. -v day=2026-01-01). The output formats are
+# pinned: export files written here are read back by another session.
 session() {
     { cat <<EOS
 SET statement_timeout = '$STATEMENT_TIMEOUT';
@@ -115,6 +151,9 @@ SET work_mem = '$WORK_MEM';
 SET lock_timeout = '5s';
 SET synchronous_commit = local;
 SET client_min_messages = warning;
+SET client_encoding = 'UTF8';
+SET DateStyle = 'ISO, YMD';
+SET extra_float_digits = 3;
 SET ROLE "$OWNER";
 EOS
       cat; } | psql_raw "$@" -f -
@@ -165,12 +204,25 @@ scale_down_writers() {
 }
 
 # From the scale-down on, any exit – a failed step included – brings the
-# writers back; a successful step clears the trap after resuming them itself.
-writers_back_on_exit() {
-    BACK_STEP=$1
-    trap 'status=$?; [ "$status" = 0 ] || echo "Step failed – nothing was swapped, restoring the writers."
-          [ "$BACK_STEP" != cutover ] || forget_provisional; resume_writers' EXIT
+# writers back; a successful step clears BACK_STEP after resuming them itself.
+BACK_STEP=
+DIR_LOCK=
+cleanup() {
+    local status=$?
+    if [ -n "$BACK_STEP" ]; then
+        if [ "$status" != 0 ]; then
+            case "$BACK_STEP" in
+            swap-lowdisk) echo "Step failed – restoring the writers (status shows whether attributes was swapped)." ;;
+            *) echo "Step failed – nothing was swapped, restoring the writers." ;;
+            esac
+        fi
+        [ "$BACK_STEP" != cutover ] || forget_provisional
+        resume_writers
+    fi
+    [ -z "$DIR_LOCK" ] || rmdir "$DIR_LOCK" 2>/dev/null || true
 }
+trap cleanup EXIT
+writers_back_on_exit() { BACK_STEP=$1; }
 
 # The days a failed cutover copied are stale as soon as the writers are back.
 # (A later step would copy them again anyway: they stay provisional.)
@@ -190,6 +242,19 @@ resume_writers() {
         k annotate "$d" "$ANN_REPLICAS-" >/dev/null
         echo "  $d: $n"
     done
+}
+
+# Mintaka's index on entities, built without holding up the broker.
+entities_index() {
+    log "Index entities_id_ts_idx (CONCURRENTLY, the platform is running)"
+    # An invalid index is what an interrupted CREATE INDEX CONCURRENTLY leaves.
+    if [ "$(q "SELECT NOT indisvalid FROM pg_index WHERE indexrelid = to_regclass('entities_id_ts_idx')")" = t ]; then
+        session <<<"DROP INDEX CONCURRENTLY entities_id_ts_idx;" || true
+    fi
+    session <<'EOS' || echo "  WARNING: could not create entities_id_ts_idx – create it later: CREATE INDEX CONCURRENTLY entities_id_ts_idx ON entities (id, ts);"
+SET statement_timeout = 0;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS entities_id_ts_idx ON entities (id, ts);
+EOS
 }
 
 # ---------------------------------------------------------------- SQL
@@ -221,18 +286,27 @@ END
 \$\$;"
 
 # Copies one UTC day from src to dst with the dedup rule (header) and verifies
-# it; returns the rows of the day in src and the rows kept. Idempotent: the
-# day is emptied in dst first. A temporary function – nothing stays behind.
+# it; returns the rows of the day in src and the rows kept. exclusive: dst
+# holds nothing else of the day – it is emptied first, the copy is idempotent
+# (backfill, cutover). Otherwise dst keeps its rows of the day and only the
+# inserted ones are checked (import: live rows of the cutover day); that check
+# needs a REPEATABLE READ transaction. dedup false keeps every row. A
+# temporary function – nothing stays behind.
 SQL_COPY_DAY_FN="
-CREATE FUNCTION pg_temp.udp_copy_day(src regclass, dst regclass, d date,
-                                      OUT source_rows bigint, OUT kept_rows bigint)
+CREATE FUNCTION pg_temp.udp_copy_day(src regclass, dst regclass, d date, exclusive boolean,
+                                      dedup boolean, OUT source_rows bigint, OUT kept_rows bigint)
 LANGUAGE plpgsql AS \$f\$
 DECLARE
   lo timestamp := d;
   hi timestamp := d + 1;
+  before bigint := 0;
   copied bigint;
 BEGIN
-  EXECUTE format('DELETE FROM %s WHERE ts >= \$1 AND ts < \$2', dst) USING lo, hi;
+  IF exclusive THEN
+    EXECUTE format('DELETE FROM %s WHERE ts >= \$1 AND ts < \$2', dst) USING lo, hi;
+  ELSE
+    EXECUTE format('SELECT count(*) FROM %s WHERE ts >= \$1 AND ts < \$2', dst) USING lo, hi INTO before;
+  END IF;
   EXECUTE format('SELECT count(*) FROM %s WHERE ts >= \$1 AND ts < \$2', src) USING lo, hi INTO source_rows;
   EXECUTE format(\$q\$
     WITH one_day AS (
@@ -252,7 +326,8 @@ BEGIN
       WINDOW w AS (PARTITION BY a.entityid, a.id, a.datasetid ORDER BY a.ts, a.instanceid)
     ), marked AS (
       SELECT r.*,
-             (r.rn = 1
+             (NOT \$3
+              OR r.rn = 1
               OR r.opmode IN ('Create', 'Delete')
               OR r.subproperties IS TRUE
               OR NOT (r.p_opmode IS NOT DISTINCT FROM r.opmode
@@ -280,8 +355,9 @@ BEGIN
       RETURNING 1
     )
     SELECT count(*) FROM ins
-  \$q\$, src, dst) USING lo, hi INTO kept_rows;
+  \$q\$, src, dst) USING lo, hi, dedup INTO kept_rows;
   EXECUTE format('SELECT count(*) FROM %s WHERE ts >= \$1 AND ts < \$2', dst) USING lo, hi INTO copied;
+  copied := copied - before;
   IF copied <> kept_rows OR kept_rows > source_rows THEN
     RAISE EXCEPTION 'day %: % rows in %, % inserted of % in %', d, copied, dst, kept_rows, source_rows, src;
   END IF;
@@ -327,7 +403,7 @@ END
 $$;
 INSERT INTO udp_troe_migration (day, source_rows, kept_rows, provisional)
   SELECT :'day', source_rows, kept_rows, :'provisional'
-  FROM pg_temp.udp_copy_day('attributes', 'attributes_new', :'day')
+  FROM pg_temp.udp_copy_day('attributes', 'attributes_new', :'day', true, true)
   ON CONFLICT (day) DO UPDATE SET source_rows = EXCLUDED.source_rows,
     kept_rows = EXCLUDED.kept_rows, provisional = EXCLUDED.provisional, copied_at = now();
 SELECT source_rows || ' ' || kept_rows FROM udp_troe_migration WHERE day = :'day';
@@ -335,10 +411,14 @@ COMMIT;
 EOS
             } | session -At -v day="$day" -v provisional="${PROVISIONAL:-false}") \
             || die "day $day failed (see above) – nothing of it was kept; fix the cause and run the step again."
-        out=$(printf '%s\n' "$out" | tail -n 1)
-        awk -v d="$day" -v s="${out% *}" -v k="${out#* }" 'BEGIN {
-            printf "  %s  %12d rows  %12d kept  %5.1f %% dropped\n", d, s, k, (s > 0 ? 100 * (s - k) / s : 0) }'
+        print_day "$day" "$(printf '%s\n' "$out" | tail -n 1)"
     done
+}
+
+# day, "source_rows kept_rows"
+print_day() {
+    awk -v d="$1" -v s="${2% *}" -v k="${2#* }" 'BEGIN {
+        printf "  %s  %12d rows  %12d kept  %5.1f %% dropped\n", d, s, k, (s > 0 ? 100 * (s - k) / s : 0) }'
 }
 
 report() {
@@ -367,7 +447,9 @@ preflight() {
         || die "TimescaleDB $version is too old (2.13 or newer needed for by_range)."
     echo "  timescaledb $version ($(q "SHOW timescaledb.license") edition)"
     if is_hypertable attributes; then
-        if exists attributes_old; then
+        if lowdisk; then
+            echo "  attributes was swapped in low-disk mode – import --dir DIR loads the history, status shows the progress."
+        elif exists attributes_old; then
             echo "  attributes is already the hypertable – cut over, not finalized (rollback or finalize)."
         else
             echo "  attributes is already a hypertable – nothing to migrate."
@@ -398,19 +480,17 @@ preflight() {
     echo "  still needed (without dedup, x$SPACE_FACTOR, plus max_wal_size): $(q "SELECT pg_size_pretty($need::bigint)")"
 
     # Every instance holds a full copy – the smallest free space counts.
-    local datadir pods
-    datadir=$(q "SHOW data_directory")
-    pods=$(k get pod -l "cnpg.io/cluster=$CLUSTER" -o jsonpath='{.items[*].metadata.name}')
-    for pod in $pods; do
-        free=$(k exec "$pod" -c postgres -- df -Pk "$datadir" | awk 'NR == 2 { print $4 * 1024 }')
+    local rows
+    while read -r pod free; do
         echo "  $pod: $(q "SELECT pg_size_pretty($free::bigint)") free"
         if [ -z "$min_free" ] || [ "$free" -lt "$min_free" ]; then min_free=$free; fi
-    done
+    done < <(free_per_pod)
     [ -n "$min_free" ] || die "Could not read the free space of the instances."
+    rows=$(q "SELECT greatest(reltuples, 0)::bigint FROM pg_class WHERE oid = 'attributes'::regclass")
     if [ "$min_free" -lt "$need" ]; then
-        die "Not enough free space on the database volume: $(q "SELECT pg_size_pretty($need::bigint)") needed, $(q "SELECT pg_size_pretty($min_free::bigint)") free on the fullest instance. Grow the volume first (timescale.persistence.size, helm/udp/DEPLOY.md §10c) – the old table stays until finalize."
+        die "Not enough free space on the database volume for the copy next to the old table: $(q "SELECT pg_size_pretty($need::bigint)") needed, $(q "SELECT pg_size_pretty($min_free::bigint)") free on the fullest instance. Either grow the volume first (timescale.persistence.size) – the old table stays until finalize – or use the low-disk mode (export, swap-lowdisk, import): it needs no room next to the old table, but about $(q "SELECT pg_size_pretty($rows::bigint * $EXPORT_BYTES_PER_ROW)") of local disk for the export files ($rows rows × ~$EXPORT_BYTES_PER_ROW bytes). helm/udp/DEPLOY.md §10c."
     fi
-    echo "  space: ok"
+    echo "  space: ok (low-disk mode instead: about $(q "SELECT pg_size_pretty($rows::bigint * $EXPORT_BYTES_PER_ROW)") of local disk for the export files)"
 
     local tenants
     tenants=$(q "SELECT string_agg(datname, ' ') FROM pg_database WHERE datname LIKE 'orion\_%'")
@@ -510,17 +590,9 @@ INSERT INTO udp_troe_migration_state (key, value)
   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 COMMIT;
 EOS
-    trap - EXIT
+    BACK_STEP=
     resume_writers
-    log "Index entities_id_ts_idx (CONCURRENTLY, the platform is running)"
-    # An invalid index is what an interrupted CREATE INDEX CONCURRENTLY leaves.
-    if [ "$(q "SELECT NOT indisvalid FROM pg_index WHERE indexrelid = to_regclass('entities_id_ts_idx')")" = t ]; then
-        session <<<"DROP INDEX CONCURRENTLY entities_id_ts_idx;" || true
-    fi
-    session <<'EOS' || echo "  WARNING: could not create entities_id_ts_idx – create it later: CREATE INDEX CONCURRENTLY entities_id_ts_idx ON entities (id, ts);"
-SET statement_timeout = 0;
-CREATE INDEX CONCURRENTLY IF NOT EXISTS entities_id_ts_idx ON entities (id, ts);
-EOS
+    entities_index
     log "Statistics of the new table (ANALYZE, the platform is running)"
     session <<'EOS'
 SET statement_timeout = 0;
@@ -537,6 +609,7 @@ EOT
 }
 
 rollback() {
+    lowdisk && die "attributes was swapped in low-disk mode – there is no old table to go back to. The export files are the full raw history: import --dir DIR --no-dedup loads the days not imported yet without dropping repetitions (helm/udp/DEPLOY.md §10c)."
     exists attributes_old || die "attributes_old is missing – nothing to roll back (finalized, or never cut over)."
     is_hypertable attributes || die "attributes is not the hypertable – already rolled back?"
     exists attributes_old_pkey \
@@ -592,14 +665,15 @@ DELETE FROM udp_troe_migration WHERE day >= :'from'::date;
 DELETE FROM udp_troe_migration_state WHERE key = 'cutover_ts';
 COMMIT;
 EOS
-    trap - EXIT
+    BACK_STEP=
     resume_writers
     report
     echo; echo "attributes is the old plain table again; attributes_new keeps the copy for another cutover."
 }
 
 finalize() {
-    [ "${1:-}" = --drop-old ] || die "finalize drops attributes_old for good – confirm with: $0 finalize --drop-old"
+    lowdisk && { finalize_lowdisk; return; }
+    [ "${DROP_OLD:-}" = 1 ] || die "finalize drops attributes_old for good – confirm with: $0 finalize --drop-old"
     is_hypertable attributes || die "attributes is not the hypertable – finalize only after a cutover."
     exists attributes_old || die "attributes_old is already gone."
     local since late
@@ -617,14 +691,498 @@ EOS
     log "attributes_old dropped – its space is free again."
 }
 
+# ---------------------------------------------------------------- low-disk mode
+state() {
+    exists udp_troe_migration_state || return 0
+    q "SELECT value FROM udp_troe_migration_state WHERE key = '$1'"
+}
+lowdisk() { [ "$(state mode)" = lowdisk ]; }
+
+# "pod free_bytes" per instance of the cluster: every one holds a full copy.
+free_per_pod() {
+    local datadir pod
+    datadir=$(q "SHOW data_directory")
+    for pod in $(k get pod -l "cnpg.io/cluster=$CLUSTER" -o jsonpath='{.items[*].metadata.name}'); do
+        echo "$pod $(k exec "$pod" -c postgres -- df -Pk "$datadir" | awk 'NR == 2 { printf "%.0f", $4 * 1024 }')"
+    done
+}
+
+sha256() {
+    if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | awk '{ print $1 }'
+}
+hsize() {
+    awk -v b="${1:-0}" 'BEGIN { split("B KB MB GB TB", u); i = 1
+        while (b >= 1024 && i < 5) { b /= 1024; i++ }
+        printf (i == 1 ? "%d %s" : "%.1f %s"), b, u[i] }'
+}
+
+need_dir() {
+    [ -n "$DIR" ] || die "No export directory – pass --dir DIR (or set EXPORT_DIR)."
+    MANIFEST="$DIR/manifest.tsv"
+}
+# export and swap-lowdisk write into DIR – one run at a time.
+lock_dir() {
+    mkdir -p "$DIR" || die "Cannot create $DIR."
+    mkdir "$DIR/.lock" 2>/dev/null \
+        || die "$DIR is in use by another run (after a crash: remove $DIR/.lock)."
+    DIR_LOCK="$DIR/.lock"
+}
+
+# manifest.tsv, sorted by day: day <TAB> rows <TAB> bytes <TAB> sha256 of the
+# file. A day is in it only with a complete file whose lines matched the rows
+# of the day in the database at export time.
+day_file() { echo "$DIR/attributes_$1.copy.gz"; }
+manifest_line() { [ ! -f "$MANIFEST" ] || awk -F'\t' -v d="$1" '$1 == d' "$MANIFEST"; }
+manifest_days() { [ ! -f "$MANIFEST" ] || cut -f1 "$MANIFEST"; }
+manifest_put() {
+    { [ ! -f "$MANIFEST" ] || awk -F'\t' -v d="$1" '$1 != d' "$MANIFEST"
+      printf '%s\t%s\t%s\t%s\n' "$@"; } | LC_ALL=C sort > "$MANIFEST.tmp"
+    mv -f "$MANIFEST.tmp" "$MANIFEST"
+}
+# A day of the manifest whose file is there and still has its checksum.
+file_ok() {
+    local line f
+    line=$(manifest_line "$1")
+    f=$(day_file "$1")
+    [ -n "$line" ] && [ -f "$f" ] && [ "$(sha256 "$f")" = "$(printf '%s' "$line" | cut -f4)" ]
+}
+
+days_between() {
+    [ -n "$1" ] && [ -n "$2" ] || return 0
+    q "SELECT to_char(d, 'YYYY-MM-DD') FROM generate_series('$1'::date, '$2'::date, interval '1 day') d"
+}
+
+# Reads for the export come from a replica that has replayed everything the
+# primary had written when the export started (it then sees every finished
+# day as the primary does); otherwise from the primary. A pod labelled replica
+# that is the primary after a failover qualifies as well.
+pick_source() {
+    local lsn pod i pos
+    SOURCE=$PRIMARY
+    lsn=$(q "SELECT pg_current_wal_lsn()")
+    for pod in $(k get pod -l "cnpg.io/cluster=$CLUSTER,cnpg.io/instanceRole=replica" \
+                     -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true); do
+        [ "$(k get pod "$pod" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)" = True ] \
+            || continue
+        for i in 1 2 3 4 5 6; do
+            pos=$(POD=$pod q "SELECT CASE WHEN pg_is_in_recovery() THEN pg_last_wal_replay_lsn()
+                                          ELSE pg_current_wal_lsn() END >= '$lsn'::pg_lsn" 2>/dev/null || true)
+            if [ "$pos" = t ]; then SOURCE=$pod; return 0; fi
+            sleep 5
+        done
+        echo "  $pod has not caught up with the primary – not reading from it."
+    done
+}
+
+# Rows per day from $1 to $2 as "day rows" on pod $3 – through attributes_ts_idx,
+# one day at a time.
+day_counts() {
+    POD=$3 session -At -v first="$1" -v last="$2" <<'EOS'
+SELECT to_char(d, 'YYYY-MM-DD') || ' ' || (SELECT count(*) FROM attributes a WHERE a.ts >= d AND a.ts < d + 1)
+FROM generate_series(:'first'::date, :'last'::date, interval '1 day') g, LATERAL (SELECT g::date AS d) x
+ORDER BY d;
+EOS
+}
+
+# Streams one UTC day of attributes from pod $2 into its file and records it.
+# The count and the COPY see one snapshot; the file must have as many lines.
+# Written under a temporary name – a day is either complete or not there.
+export_day() {
+    local day=$1 pod=$2 f part n lines
+    f=$(day_file "$day")
+    part="$f.part"
+    n=$( { cat <<EOS
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SELECT count(*) FROM attributes WHERE ts >= :'day' AND ts < :'day'::date + 1;
+COPY (SELECT $COLS
+      FROM attributes WHERE ts >= :'day' AND ts < :'day'::date + 1 ORDER BY ts) TO STDOUT;
+COMMIT;
+EOS
+         } | POD=$pod session -At -v day="$day" | { IFS= read -r c && gzip -c > "$part" && printf '%s' "$c"; } ) \
+        || { rm -f "$part"; echo "  $day: export from $pod failed"; return 1; }
+    lines=$(gzip -dc "$part" | wc -l | tr -d ' ')
+    if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$lines" != "$n" ]; then
+        rm -f "$part"
+        echo "  $day: $lines lines in the file, '$n' rows in the database – not recorded"
+        return 1
+    fi
+    mv -f "$part" "$f"
+    manifest_put "$day" "$n" "$(wc -c < "$f" | tr -d ' ')" "$(sha256 "$f")"
+    printf '  %s  %12d rows  %10s  (%s)\n' "$day" "$n" "$(hsize "$(wc -c < "$f")")" "$pod"
+}
+
+# A day from the replica that fails (e.g. a recovery conflict) is read again
+# from the primary.
+export_days() {
+    local day
+    for day in "$@"; do
+        export_day "$day" "$SOURCE" && continue
+        [ "$SOURCE" != "$PRIMARY" ] && export_day "$day" "$PRIMARY" && continue
+        die "export of $day failed (see above) – run export again, it resumes."
+    done
+}
+
+manifest_summary() {
+    log "Export in $DIR"
+    if [ ! -f "$MANIFEST" ]; then echo "  no manifest yet"; return 0; fi
+    awk -F'\t' '{ n++; r += $2; b += $3; if (!f) f = $1; l = $1 }
+        END { printf "  %d days (%s to %s), %d rows, %.1f MB gzipped\n", n, f, l, r, b / 1048576 }' "$MANIFEST"
+    if ! is_hypertable attributes; then
+        local first last missing
+        first=$(q "SELECT min(ts)::date FROM attributes")
+        last=$(q "SELECT '$(horizon)'::date - 1")
+        missing=$(comm -23 <(days_between "$first" "$last" | LC_ALL=C sort) <(manifest_days | LC_ALL=C sort) | grep -c . || true)
+        echo "  finished days of attributes not exported yet: $missing (checksums and counts are checked by export and swap-lowdisk)"
+    fi
+}
+
+# The chart's bootstrap (the init container runs the same file) without its
+# own BEGIN/COMMIT: swap-lowdisk runs it inside the swap transaction.
+bootstrap_sql() {
+    [ -f "$TROE_SCHEMA" ] || die "$TROE_SCHEMA not found – run the script from the repository or set TROE_SCHEMA."
+    [ "$(tr -d '\r' < "$TROE_SCHEMA" | grep -cx 'BEGIN;')" = 1 ] \
+        && [ "$(tr -d '\r' < "$TROE_SCHEMA" | grep -cx 'COMMIT;')" = 1 ] \
+        || die "$TROE_SCHEMA: expected exactly one line BEGIN; and one line COMMIT;."
+    tr -d '\r' < "$TROE_SCHEMA" | sed -e '/^BEGIN;$/d' -e '/^COMMIT;$/d'
+}
+
+plain_table_checks() {
+    is_hypertable attributes && die "attributes is already the hypertable."
+    exists attributes_ts_idx \
+        || die "Index attributes_ts_idx is missing – the export reads day ranges through it. troe-retention creates it at night, or: CREATE INDEX CONCURRENTLY attributes_ts_idx ON attributes (ts);"
+    local version
+    version=$(q "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'")
+    [ -n "$version" ] || die "Extension timescaledb is missing in $DB."
+    [ "$(q "SELECT string_to_array(split_part('$version', '-', 1), '.')::int[] >= '{2,13}'")" = t ] \
+        || die "TimescaleDB $version is too old (2.13 or newer needed for by_range)."
+}
+
+export_history() {
+    need_dir
+    plain_table_checks
+    local h last first counts day rows todo=() skipped=0
+    h=$(horizon)
+    last=$(q "SELECT '$h'::date - 1")
+    confirm "Export the finished days of attributes up to $last into $DIR (the platform keeps running)?"
+    lock_dir
+    pick_source
+    log "Export up to $last into $DIR – reading from $SOURCE$([ "$SOURCE" = "$PRIMARY" ] && echo ' (primary)')"
+    # Days of the manifest before the first row (retention since) are
+    # checked as well: they are exported again, empty.
+    first=$(POD=$SOURCE q "SELECT min(ts)::date FROM attributes")
+    first=$( { [ -z "$first" ] || echo "$first"; manifest_days; } | LC_ALL=C sort | head -n 1)
+    if [ -n "$first" ]; then
+        local t0=$SECONDS
+        counts=$(day_counts "$first" "$last" "$SOURCE") \
+            || { [ "$SOURCE" != "$PRIMARY" ] && SOURCE=$PRIMARY && counts=$(day_counts "$first" "$last" "$PRIMARY"); } \
+            || die "Could not count the rows per day."
+        # The same count runs in the swap transaction, during the downtime.
+        echo "  rows of every day counted in $((SECONDS - t0)) s (swap-lowdisk repeats this count during the downtime, within STATEMENT_TIMEOUT=$STATEMENT_TIMEOUT)"
+    fi
+    # A day is exported unless its file is intact and its rows are unchanged.
+    while read -r day rows; do
+        [ -n "$day" ] || continue
+        if [ "$(manifest_line "$day" | cut -f2)" = "$rows" ] && file_ok "$day"; then
+            skipped=$((skipped + 1))
+        else
+            todo+=("$day")
+        fi
+    done <<<"${counts:-}"
+    echo "  $skipped day(s) already exported and unchanged, ${#todo[@]} to export"
+    export_days "${todo[@]}"
+    manifest_summary
+    echo; echo "Repeat export right before swap-lowdisk – the swap then exports only the last day(s)."
+}
+
+swap_lowdisk() {
+    need_dir
+    plain_table_checks
+    exists attributes_new && die "attributes_new exists (in-database backfill) – low-disk mode does not use it. Drop it first (DROP TABLE attributes_new) or continue with cutover."
+    exists attributes_old && die "attributes_old exists – finish the earlier migration first (finalize or rollback)."
+    [ -f "$MANIFEST" ] || die "No manifest in $DIR – run export first."
+    local bootstrap h0 first last missing day sum
+    bootstrap=$(bootstrap_sql)
+    [ "$(q "SELECT relacl IS NULL FROM pg_class WHERE oid = 'attributes'::regclass")" = t ] \
+        || echo "  WARNING: attributes carries grants ($(q "SELECT relacl FROM pg_class WHERE oid = 'attributes'::regclass")) – repeat them on the new table after the swap."
+    h0=$(horizon)
+    first=$(q "SELECT min(ts)::date FROM attributes")
+    log "Checking the export files of the finished days (up to $(q "SELECT '$h0'::date - 1"))"
+    missing=
+    for day in $(days_between "$first" "$(q "SELECT '$h0'::date - 1")"); do
+        file_ok "$day" || missing="$missing $day"
+    done
+    [ -z "$missing" ] || die "Days without an intact export file:$missing – run export first."
+    echo "  every finished day has its file"
+    confirm "The TRoE writers ($WRITERS) go down; attributes is DROPPED and created again, empty, as a hypertable. From then on the files in $DIR are the only copy of the history until import has finished – keep them. Continue?"
+    lock_dir
+    # Before the downtime: the bootstrap then finds the index and does not build it.
+    entities_index
+    writers_back_on_exit swap-lowdisk
+    scale_down_writers
+    # From here on attributes no longer changes. The last day(s) are exported
+    # now, from the primary; the bounds are taken after the writers stopped.
+    last=$(q "SELECT greatest((now() AT TIME ZONE 'utc')::date, (SELECT max(ts)::date FROM attributes))")
+    log "Exporting $h0 to $last (the writers are down)"
+    SOURCE=$PRIMARY
+    # shellcheck disable=SC2046
+    export_days $(days_between "$h0" "$last")
+    sum=$(sha256 "$MANIFEST")
+    log "Verifying every day against the manifest, swapping (one transaction)"
+    # SHARE mode holds off every write but lets Mintaka read until the DROP.
+    # Each day is counted through attributes_ts_idx – within the
+    # statement_timeout of the session (DEPLOY.md §10c).
+    { printf '%s\n' "$SQL_BOOKKEEPING"
+      cat <<'EOS'
+BEGIN;
+SET LOCAL lock_timeout = '30s';
+SELECT pg_advisory_xact_lock(hashtext('udp-troe-migration')) \gset
+LOCK TABLE attributes IN SHARE MODE;
+CREATE TEMP TABLE udp_manifest (day date PRIMARY KEY, rows bigint NOT NULL) ON COMMIT DROP;
+COPY udp_manifest FROM STDIN;
+EOS
+      cut -f1,2 "$MANIFEST"
+      printf '%s\n' '\.'
+      cat <<'EOS'
+DO $$
+DECLARE
+  first_day date;
+  last_day date;
+  n_days int;
+  bad text;
+  outside bigint;
+BEGIN
+  SELECT min(day), max(day), count(*) INTO first_day, last_day, n_days FROM udp_manifest;
+  IF n_days = 0 THEN
+    IF EXISTS (SELECT 1 FROM attributes) THEN
+      RAISE EXCEPTION 'the manifest is empty';
+    END IF;
+  ELSIF n_days <> last_day - first_day + 1 THEN
+    RAISE EXCEPTION 'the manifest has gaps between % and %', first_day, last_day;
+  END IF;
+  SELECT string_agg(format('%s (%s rows, %s exported)', day, n, rows), ', ' ORDER BY day) INTO bad
+    FROM (SELECT m.day, m.rows,
+                 (SELECT count(*) FROM attributes a WHERE a.ts >= m.day AND a.ts < m.day + 1) AS n
+          FROM udp_manifest m) x
+   WHERE n <> rows;
+  IF bad IS NOT NULL THEN
+    RAISE EXCEPTION 'attributes changed since the export: % – run export again', bad;
+  END IF;
+  SELECT count(*) INTO outside FROM attributes WHERE ts < first_day OR ts >= last_day + 1;
+  IF outside > 0 THEN
+    RAISE EXCEPTION '% rows outside the exported days % to %', outside, first_day, last_day;
+  END IF;
+END
+$$;
+-- Days of an abandoned in-database backfill mean nothing any more.
+DELETE FROM udp_troe_migration;
+INSERT INTO udp_troe_migration_state (key, value)
+  SELECT k, v FROM (SELECT min(day) AS f, max(day) AS l, coalesce(sum(rows), 0) AS r FROM udp_manifest) m,
+  LATERAL (VALUES ('mode', 'lowdisk'),
+                  ('cutover_ts', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS.US')),
+                  ('lowdisk_first_day', m.f::text),
+                  ('lowdisk_last_day', m.l::text),
+                  ('lowdisk_rows', m.r::text),
+                  -- heap and TOAST per row: what a day needs in staging
+                  ('lowdisk_row_bytes', (pg_table_size('attributes') / greatest(m.r, 1))::bigint::text),
+                  ('lowdisk_manifest_sha256', :'sha')) s(k, v)
+  WHERE v IS NOT NULL
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+DROP TABLE attributes;
+EOS
+      printf '%s\n' "$bootstrap"
+      cat <<'EOS'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM timescaledb_information.hypertables
+                 WHERE hypertable_schema = current_schema() AND hypertable_name = 'attributes') THEN
+    RAISE EXCEPTION 'the bootstrap did not create the hypertable attributes';
+  END IF;
+END
+$$;
+COMMIT;
+EOS
+    } | session -v sha="$sum" || die "swap refused – rolled back, attributes is unchanged (see above)."
+    BACK_STEP=
+    resume_writers
+    entities_index
+    report_lowdisk
+    cat <<EOT
+
+Done. attributes is the empty hypertable; the writers are back. The history
+is only in $DIR now – keep the files (ideally on two media) until import has
+finished and status shows every day. Next, while the platform runs:
+  $0 import --dir $DIR
+Mintaka shows the history only up to the swap until then.
+EOT
+}
+
+# Loads one day from its file into the staging table, checks it against the
+# manifest, and copies it into attributes in one transaction together with
+# its bookkeeping row – the same function and dedup as backfill.
+import_day() {
+    local day=$1 rows=$2 dedup=$3 out
+    out=$( { printf '%s\n' "$SQL_COPY_DAY_FN"
+             cat <<EOS
+DO \$\$
+BEGIN
+  IF NOT pg_try_advisory_lock(hashtext('udp-troe-migration')) THEN
+    RAISE EXCEPTION 'another step of this migration is running – run one at a time';
+  END IF;
+END
+\$\$;
+CREATE UNLOGGED TABLE IF NOT EXISTS $STAGING (LIKE attributes INCLUDING DEFAULTS);
+TRUNCATE $STAGING;
+COPY $STAGING ($COLS) FROM STDIN;
+EOS
+             gzip -dc "$(day_file "$day")"
+             printf '%s\n' '\.'
+             cat <<'EOS'
+SELECT set_config('udp.day', :'day', false) AS d, set_config('udp.rows', :'rows', false) AS r \gset
+DO $$
+DECLARE
+  n bigint;
+BEGIN
+  SELECT count(*) INTO n FROM udp_troe_staging;
+  IF n <> current_setting('udp.rows')::bigint THEN
+    RAISE EXCEPTION 'day %: % rows loaded, % in the manifest', current_setting('udp.day'), n, current_setting('udp.rows');
+  END IF;
+END
+$$;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO udp_troe_migration (day, source_rows, kept_rows)
+  SELECT :'day', source_rows, kept_rows
+  FROM pg_temp.udp_copy_day('udp_troe_staging', 'attributes', :'day', false, :'dedup');
+DO $$
+BEGIN
+  IF (SELECT source_rows FROM udp_troe_migration WHERE day = current_setting('udp.day')::date)
+     <> current_setting('udp.rows')::bigint THEN
+    RAISE EXCEPTION 'day %: the file holds rows of other days', current_setting('udp.day');
+  END IF;
+END
+$$;
+SELECT source_rows || ' ' || kept_rows FROM udp_troe_migration WHERE day = :'day';
+COMMIT;
+TRUNCATE udp_troe_staging;
+EOS
+           } | session -At -v day="$day" -v rows="$rows" -v dedup="$dedup") || return 1
+    print_day "$day" "$(printf '%s\n' "$out" | tail -n 1)"
+}
+
+import_history() {
+    need_dir
+    lowdisk || die "No low-disk swap recorded – import loads the files into the hypertable that swap-lowdisk created."
+    is_hypertable attributes || die "attributes is not a hypertable."
+    [ -f "$MANIFEST" ] || die "No manifest in $DIR."
+    [ "$(sha256 "$MANIFEST")" = "$(state lowdisk_manifest_sha256)" ] \
+        || die "$MANIFEST is not the manifest swap-lowdisk verified (checksum differs) – wrong directory, or it was changed."
+    local dedup=true day rows need free todo=() refused= row_bytes margin
+    [ "${NO_DEDUP:-}" = 1 ] && dedup=false
+    # A day is imported iff its bookkeeping row exists.
+    for day in $(comm -23 <(manifest_days | LC_ALL=C sort)                           <(q "SELECT to_char(day, 'YYYY-MM-DD') FROM udp_troe_migration" | LC_ALL=C sort)                  | LC_ALL=C sort -r); do
+        todo+=("$day")
+    done
+    row_bytes=$(state lowdisk_row_bytes)
+    margin=$(q "SELECT pg_size_bytes('${IMPORT_MARGIN:-$(q "SHOW max_wal_size")}')")
+    confirm "Import ${#todo[@]} day(s) from $DIR into attributes, newest first, $([ "$dedup" = true ] && echo 'dropping unchanged repetitions' || echo 'every row (no dedup)') – the platform keeps running?"
+    log "Import: ${#todo[@]} day(s) to load"
+    for day in "${todo[@]}"; do
+        if ! file_ok "$day"; then
+            echo "  $day: REFUSED – file missing or its checksum differs from the manifest"
+            refused="$refused $day"
+            continue
+        fi
+        rows=$(manifest_line "$day" | cut -f2)
+        # Staging, the insert with its indexes, and a margin for WAL.
+        need=$(q "SELECT ($rows::numeric * $row_bytes * (1 + $SPACE_FACTOR))::bigint + $margin")
+        free=$(free_per_pod | awk 'NR == 1 || $2 < m { m = $2 } END { printf "%.0f", m }')
+        [ "$free" -ge "$need" ] \
+            || die "Not enough free space for $day: $(hsize "$need") needed (staging, insert, margin $(hsize "$margin")), $(hsize "$free") free on the fullest instance. Free or add space, then run import again – it resumes."
+        import_day "$day" "$rows" "$dedup" \
+            || die "day $day failed (see above) – nothing of it was kept; fix the cause and run import again, it resumes."
+    done
+    if [ -n "$refused" ]; then
+        report_lowdisk
+        die "Days refused:$refused – restore their files (second copy) and run import again."
+    fi
+    session <<EOS
+DROP TABLE IF EXISTS $STAGING;
+SET statement_timeout = 0;
+ANALYZE attributes;
+EOS
+    report_lowdisk
+    echo; echo "Every day is imported. Keep the export files until you have checked the history (Mintaka); finalize --drop-old then drops the bookkeeping."
+}
+
+report_lowdisk() {
+    log "Low-disk mode"
+    psql_raw -c "SELECT key, value FROM udp_troe_migration_state ORDER BY key"
+    psql_raw -c "SELECT count(*) AS days_imported,
+                        (SELECT value::date - (SELECT value::date FROM udp_troe_migration_state WHERE key = 'lowdisk_first_day') + 1
+                         FROM udp_troe_migration_state WHERE key = 'lowdisk_last_day') AS days_total,
+                        min(day) AS oldest_imported, sum(source_rows) AS rows_in_files, sum(kept_rows) AS kept_rows,
+                        round(100 * (1 - sum(kept_rows)::numeric / nullif(sum(source_rows), 0)), 1) AS dropped_pct
+                 FROM udp_troe_migration"
+    psql_raw -c "SELECT 'attributes' AS table, pg_size_pretty(hypertable_size('attributes')) AS size
+                 UNION ALL
+                 SELECT '$STAGING', pg_size_pretty(pg_total_relation_size(to_regclass('$STAGING')))
+                 WHERE to_regclass('$STAGING') IS NOT NULL"
+}
+
+finalize_lowdisk() {
+    local left
+    left=$(q "SELECT (SELECT value::date FROM udp_troe_migration_state WHERE key = 'lowdisk_last_day')
+                   - (SELECT value::date FROM udp_troe_migration_state WHERE key = 'lowdisk_first_day') + 1
+                   - (SELECT count(*) FROM udp_troe_migration)")
+    [ "${left:-1}" = 0 ] \
+        || die "Low-disk mode: there is no attributes_old to drop, and import has ${left:-?} day(s) left – run import --dir DIR first."
+    [ "${DROP_OLD:-}" = 1 ] \
+        || die "Low-disk mode: there is no attributes_old; finalize only drops the bookkeeping (udp_troe_migration*) – afterwards import can no longer resume. Confirm with: $0 finalize --drop-old"
+    report_lowdisk
+    confirm "Drop the migration bookkeeping? Keep the export files as long as you want a way back to the raw history."
+    session <<EOS
+DROP TABLE IF EXISTS $STAGING;
+DROP TABLE IF EXISTS udp_troe_migration, udp_troe_migration_state;
+EOS
+    log "Bookkeeping dropped – the migration is complete."
+}
+
+status() {
+    if lowdisk; then
+        report_lowdisk
+    elif exists udp_troe_migration; then
+        report
+    elif [ -z "$DIR" ]; then
+        die "No backfill, no swap yet (for the export: status --dir DIR)."
+    fi
+    if [ -n "$DIR" ]; then need_dir; manifest_summary; fi
+}
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        --dir) [ $# -ge 2 ] || die "--dir needs a directory"; DIR=$2; shift 2 ;;
+        --dir=*) DIR=${1#--dir=}; shift ;;
+        --no-dedup) NO_DEDUP=1; shift ;;
+        --drop-old) DROP_OLD=1; shift ;;
+        *) die "unknown argument: $1" ;;
+        esac
+    done
+}
+
 # ---------------------------------------------------------------- commands
-case "${1:-}" in
-preflight) init; preflight ;;
-backfill)  init; backfill ;;
-status)    init; exists udp_troe_migration || die "No backfill yet."; report ;;
-cutover)   init; cutover ;;
-rollback)  init; rollback ;;
-finalize)  init; finalize "${2:-}" ;;
+CMD=${1:-}
+[ $# = 0 ] || shift
+parse_args "$@"
+case "$CMD" in
+preflight)    init; preflight ;;
+backfill)     init; backfill ;;
+status)       init; status ;;
+cutover)      init; cutover ;;
+rollback)     init; rollback ;;
+finalize)     init; finalize ;;
+export)       init; export_history ;;
+swap-lowdisk) init; swap_lowdisk ;;
+import)       init; import_history ;;
 *)
     # The header between the two rulers.
     sed -n '/^# =====/,/^# =====/p' "$0" | sed '1d;$d;s/^# \{0,1\}//'
