@@ -40,16 +40,19 @@
  * The lock connection has NO client-side query timeout: in `pg` such a
  * timeout fails the query but leaves the session (and the lock) in place,
  * and taking the lock "again" then ended that very session itself. The
- * earlier check read ANY failure of its `SELECT 1` as a lost lock — the most
- * likely source of the loss logged shortly after every start, when the first
- * staggered runs check the lock while the start is at its busiest (state
- * loads, the first full writes of every connector). Now a probe that does
- * not answer within {@link LOCK_PROBE_MS} is followed by a look at
- * `pg_locks` (retried); if that cannot answer either, the lock is kept
- * ("unknown", the next run checks again) — a lost lock also closes its
- * connection sooner or later, and a write without it fails anyway. And
- * should the lock really go, memory is no longer thrown away with it
- * (src/kernel/persistence.ts, "A lost lock keeps memory").
+ * earlier check read ANY failure of its `SELECT 1` as a lost lock. Now a
+ * probe that does not answer within {@link LOCK_PROBE_MS} is followed by a
+ * look at `pg_locks` (retried); if that cannot answer either, the lock is
+ * kept ("unknown", the next run checks again) — a lost lock also closes its
+ * connection sooner or later, and a write without it fails anyway.
+ *
+ * A REAL loss remains possible and is no longer expensive: a database
+ * switchover ends every session, the lock connection with it. A release that
+ * changes the database image rolls the cluster right after the new service
+ * pod started (standbys first, then the switchover a minute later) — the
+ * loss "shortly after every start" of such releases. The next check takes
+ * the lock on the new primary, and memory is kept (src/kernel/persistence.ts,
+ * "A lost lock keeps memory").
  */
 
 import { randomUUID } from "node:crypto";

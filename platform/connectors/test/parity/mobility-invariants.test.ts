@@ -180,7 +180,7 @@ function gateModes(): void {
   const carsharing = codeOnly(source("carsharing-bw"));
   assert.match(
     carsharing,
-    /check\(GATE_KEY, built\.stations, stationSignature, \{ freshEvery: 3, periodMs: HOUR_MS \}\)/,
+    /staticKey: STATIC_KEY,[^}]*replace: false,\s*freshEvery: 3,\s*periodMs: HOUR_MS,/,
     "carsharing status no longer merges (runs per system, must not replace)",
   );
   const charging = codeOnly(source("ladesaeulen-bw"));

@@ -1054,3 +1054,83 @@ export async function reloadPassesOverARunningConnector(): Promise<void> {
   assert.deepEqual([after.healthy, after.notLoaded], [true, []]);
   assert.deepEqual(after.loaded, ["gated", "plain"]);
 }
+
+/**
+ * A prune its share cap skips run after run is counted (persisted with the
+ * bookkeeping), listed in `/healthz` under `stateStore.blockedPrunes`, and
+ * from the third skip on logged as an [error] — it must not stay quiet.
+ */
+export async function blockedPruneIsListedInHealth(): Promise<void> {
+  const events: string[] = [];
+  const db = new FakeDatabase(events);
+  const broker = new Broker(events);
+  const clock = { now: T0 };
+  const values = new Map(Array.from({ length: 10 }, (_, n): [string, number] => [`t-${String(n)}`, n]));
+  const first = start(db, broker, clock);
+  await first.kernel.persistence?.prepareAll();
+  await runConnector(first.kernel, first.gated, gatedConnector(values, true));
+
+  // Half of them leave the source: 5 candidates against 5 fresh — over the cap.
+  for (let n = 5; n < 10; n += 1) values.delete(`t-${String(n)}`);
+  for (let run = 0; run < 3; run += 1) {
+    clock.now += HOUR;
+    await runConnector(first.kernel, first.gated, gatedConnector(values, true));
+  }
+  assert.equal(broker.deletes.length, 0);
+  const health = first.kernel.persistence?.health();
+  assert.ok(health !== undefined);
+  assert.deepEqual(health.blockedPrunes, [
+    { connector: "gated", prune: "Things (Thing)", consecutiveSkips: 3 },
+  ]);
+  assert.equal(
+    first.log.lines.filter((line) => line.level === "error").length,
+    1,
+    "an [error] from the third",
+  );
+  assert.equal(health.healthy, true, "the store itself works");
+
+  // Survives a restart.
+  first.backend.crash();
+  clock.now += HOUR;
+  const second = start(db, broker, clock);
+  await second.kernel.persistence?.prepareAll();
+  assert.deepEqual(second.kernel.persistence?.health().blockedPrunes, [
+    { connector: "gated", prune: "Things (Thing)", consecutiveSkips: 3 },
+  ]);
+}
+
+/** Seeded signatures are persisted at once, and the write after the seeding is no full rewrite. */
+export async function seededSignaturesArePersisted(): Promise<void> {
+  const events: string[] = [];
+  const db = new FakeDatabase(events);
+  const broker = new Broker(events);
+  const clock = { now: T0 };
+  // The broker holds three Things; this service has never written any.
+  for (const n of [0, 1, 2]) broker.things.add(ID(`t-${String(n)}`));
+  const values = new Map([
+    ["t-0", 7],
+    ["t-1", 7],
+    ["t-2", 7],
+  ]);
+  const seeding: ConnectorRunner = {
+    id: "gated",
+    run: async (ctx) => {
+      await ctx.orion.seedSignatures({
+        label: "Things",
+        queries: [{ type: "Thing", pattern: "^urn:ngsi-ld:Thing:t-[0-9]+$" }],
+        attrs: ["level"],
+        // The broker's Things all hold the value 7 (their listing carries no attributes here).
+        tables: { thingSig: () => 7 },
+      });
+      await gatedConnector(values).run(ctx);
+    },
+  };
+  const service = start(db, broker, clock);
+  await service.kernel.persistence?.prepareAll();
+  await runConnector(service.kernel, service.gated, seeding);
+  assert.deepEqual(broker.lastFull(), [], "the broker holds them: freshness only");
+  assert.equal(db.signature("gated", "thingSig", ID("t-1")), 7, "seeded and persisted");
+  assert.ok(
+    service.log.lines.some((line) => line.text.includes("3 change signatures seeded from 3 entities")),
+  );
+}

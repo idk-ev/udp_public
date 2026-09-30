@@ -108,6 +108,8 @@ import type {
   Orion,
   OrionQuery,
   OrionReadOptions,
+  SeedOptions,
+  SeedResult,
   SignatureValue,
   UpsertOptions,
   UpsertPlan,
@@ -227,6 +229,20 @@ export interface StateStoreHealth {
   readonly loadFailed: readonly ConnectorId[];
   /** Connectors whose last write failed; retried with the next write. */
   readonly failing: readonly ConnectorId[];
+  /**
+   * Prunes their share cap skipped in the last run(s), with the number of
+   * consecutive skips — a prune that never runs lets the stock grow. Does not
+   * make the store unhealthy (the store works); `scripts/healthcheck.sh`
+   * shows them.
+   */
+  readonly blockedPrunes: readonly BlockedPrune[];
+}
+
+export interface BlockedPrune {
+  readonly connector: ConnectorId;
+  /** Label and entity type of the prune. */
+  readonly prune: string;
+  readonly consecutiveSkips: number;
 }
 
 export interface ConnectorBinding {
@@ -437,6 +453,17 @@ export class Persistence {
       notLoaded,
       loadFailed: loadFailed.map((c) => c.id),
       failing: failing.map((c) => c.id),
+      blockedPrunes: all.flatMap((c) =>
+        c.bookkeeping.blocked().map(([key, skips]) => {
+          // The bookkeeping key is `<label>|<type>|<pattern>`.
+          const [label = key, type = ""] = key.split("|");
+          return {
+            connector: c.id,
+            prune: type === "" ? label : `${label} (${type})`,
+            consecutiveSkips: skips,
+          };
+        }),
+      ),
     };
   }
 
@@ -977,6 +1004,16 @@ class GuardedOrion implements Orion {
 
   count(query: OrionQuery): Promise<number | null> {
     return this.#inner.count(query);
+  }
+
+  /** Only on usable state; what was seeded is persisted right away. */
+  async seedSignatures(options: SeedOptions): Promise<SeedResult> {
+    if (!this.#store.usable()) {
+      return { seeded: 0, listed: null, skipped: `state store not usable (${this.#store.reason()})` };
+    }
+    const result = await this.#inner.seedSignatures(options);
+    if (result.seeded > 0) await this.#store.flush();
+    return result;
   }
 
   #refuse(plan: UpsertPlan, options: UpsertOptions | undefined, reason: string): UpsertResult {

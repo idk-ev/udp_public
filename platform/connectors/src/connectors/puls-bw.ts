@@ -452,6 +452,8 @@ export async function run(ctx: Ctx): Promise<void> {
   await ctx.orion.upsertChanged(GATE_KEY, result.entities, signatureOf, {
     replace: true,
     chunkSize: CHUNK_SIZE,
+    // An index over live components: most municipalities move every run.
+    volatile: true,
   });
   ctx.log.status(status);
 

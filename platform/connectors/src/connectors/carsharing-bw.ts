@@ -36,12 +36,33 @@
  *   > Station auf dem Land steht Stunden unverändert da — ihr
  *   > Zeitreihen-Eintrag wäre reine Datenmenge ohne Aussage.
  *
+ * Master data apart from the vehicle count (src/kernel/split-gate.ts): name,
+ * operator, vehicle type, capacity, location and AGS in one signature
+ * (`csStatic`), `availableVehicles` in another (`csLive`). A station whose
+ * count moved — about 29 % of the ~4,400 live stations per hour — sends
+ * `availableVehicles` and `dateObserved`, not all nine attributes; only new
+ * stations and changed master data go out in full.
+ *
  * MERGE mode: this runs once per GBFS system and only sees that system's
- * stations; replacing would shrink the table to one system each time and
+ * stations; replacing would shrink the tables to one system each time and
  * disable the gate. Freshness: an unchanged station refreshes its
- * `dateObserved` every third run (`freshEvery: 3`), about every 3 h: ~4,000
- * stations × 8 ≈ 32,000 rows/day instead of ~96,000 (row budget
- * `CarSharingStation`: 200,000). Fleets are written in full every run.
+ * `dateObserved` every third run (`freshEvery: 3`), about every 3 h. Fleets
+ * are written in full every run. Empty tables (fresh install, lost state,
+ * the switch from the former single table `csSig`) are seeded from the
+ * broker ({@link SEED}). Estimate and budget: docs/betrieb.md.
+ *
+ * ## Vanished stations
+ *
+ * Every run sees each system's COMPLETE `station_information`. Many stations
+ * are ephemeral — free-floating "virtual stations" that get a new id per
+ * parking event — so the ids of each system's list are kept
+ * ({@link SYSTEM_IDS}), and an id missing from its system's list in two
+ * consecutive runs is deleted ({@link diffSystems}): about two hours after it
+ * vanished instead of the 24 h of the age-based prune. Never on a failed or
+ * empty feed (that breaks "consecutive" for the whole system), at most half
+ * of a system's previous stations per run, only ids of that system's own
+ * scheme, and through `ctx.prune.remove` (master data plausible, signatures
+ * out of the store first). The age-based prune stays as the safety net.
  *
  * Station and fleet ids carry the municipality slug (`g[8]` of
  * bw-gemeinden.json, stored in the cache as `slug`). That is the official,
@@ -83,6 +104,7 @@ import { mergePlans } from "../kernel/change-gate.js";
 import { cleanText, dateObserved, observed } from "../kernel/ngsi.js";
 import {
   isArray,
+  isEntityId,
   isFiniteNumber,
   isRecord,
   isString,
@@ -91,18 +113,32 @@ import {
   ParseError,
   requireRecord,
 } from "../kernel/parse.js";
-import { stateKey } from "../kernel/state.js";
+import {
+  addTotals,
+  applySplit,
+  dynamicSignature,
+  emptyTotals,
+  pointOf,
+  propertyValue,
+  reportSplit,
+  staticSignatureOf,
+} from "../kernel/split-gate.js";
+import type { SplitResult, SplitTotals } from "../kernel/split-gate.js";
+import { persisted, stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
+  ChangeGate,
   ConnectorModule,
   Ctx,
+  EntityId,
   GeoIndex,
   GeoJsonPoint,
   IsoTime,
   NgsiDateTime,
   NgsiEntity,
   Property,
+  SeedOptions,
   UpsertPlan,
 } from "../kernel/types.js";
 import {
@@ -118,10 +154,18 @@ import type { GbfsSystem } from "./gbfs.js";
 
 export const ID = "carsharing-bw";
 
-/** Gate table, keyed by entity id so the prune can forget deleted stations. */
-export const GATE_KEY = "csSig";
+/** Gate tables, keyed by entity id so the prunes can forget deleted stations. */
+export const STATIC_KEY = "csStatic";
+export const LIVE_KEY = "csLive";
+/** The single table of the plain gate before the split; dropped by every run. */
+export const LEGACY_GATE = "csSig";
 export const PROVIDER = "MobiData BW GBFS";
 const HOUR_MS = 3_600_000;
+const STATION_PATTERN = "^urn:ngsi-ld:CarSharingStation:[A-Za-z0-9_-]+$";
+/** The measured attribute of a station. */
+export const LIVE_ATTRIBUTES = ["availableVehicles"] as const;
+/** A system may lose at most this share of its previous stations per run to the per-system diff. */
+export const SYSTEM_DIFF_CAP = 0.5;
 
 /* ------------------------------------------------------------------ master data */
 
@@ -383,7 +427,7 @@ export function buildStatus(
     fleet.kap += info.kap;
     fleet.n += 1;
     stations.push({
-      id: `urn:ngsi-ld:CarSharingStation:${info.slug}-${sys}-${station.stationId.replace(/[^A-Za-z0-9_-]+/g, "-")}`,
+      id: stationEntityId(info.slug, sys, station.stationId),
       type: "CarSharingStation",
       ags: { type: "Property", value: info.ags },
       name: { type: "Property", value: info.name },
@@ -413,9 +457,132 @@ export function buildStatus(
   return { stations, fleets };
 }
 
-/** Only the vehicle count changes; everything else is master data. */
-export function stationSignature(entity: CarSharingStationEntity): string {
-  return String(entity.availableVehicles.value);
+/** Entity id of a station: official municipality slug, system key, the provider's station id. */
+export function stationEntityId(
+  slug: string,
+  system: string,
+  stationId: string,
+): `urn:ngsi-ld:CarSharingStation:${string}` {
+  return `urn:ngsi-ld:CarSharingStation:${slug}-${system}-${stationId.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
+}
+
+/** The anchored id scheme of ONE system's stations — what the per-system diff may delete. */
+export function systemPattern(system: string): string {
+  const escaped = system.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `^urn:ngsi-ld:CarSharingStation:[A-Za-z0-9_-]+-${escaped}-[A-Za-z0-9_-]+$`;
+}
+
+/**
+ * Master data of a station — also of one as the broker returns it (seeding),
+ * hence over a plain record; `null` when an attribute is missing there. Only
+ * the vehicle count is measured; everything here is master data.
+ */
+export function stationStatic(entity: Readonly<Record<string, unknown>>): string | null {
+  return staticSignatureOf([
+    propertyValue(entity, "ags"),
+    propertyValue(entity, "name"),
+    propertyValue(entity, "operator"),
+    propertyValue(entity, "vehicleType"),
+    propertyValue(entity, "capacity"),
+    propertyValue(entity, "dataProvider"),
+    pointOf(entity),
+  ]);
+}
+
+/** Seeds both tables from the broker when they are empty — see the module header. */
+export const SEED: SeedOptions = {
+  label: "Carsharing",
+  queries: [{ type: "CarSharingStation", pattern: STATION_PATTERN }],
+  attrs: [
+    "ags",
+    "name",
+    "operator",
+    "vehicleType",
+    "capacity",
+    "dataProvider",
+    "location",
+    ...LIVE_ATTRIBUTES,
+  ],
+  accept: (id, entity) => ownGbfs(id, entity),
+  tables: {
+    [STATIC_KEY]: stationStatic,
+    [LIVE_KEY]: (entity) =>
+      stationStatic(entity) === null ? null : dynamicSignature(entity, LIVE_ATTRIBUTES),
+  },
+};
+
+/** The ids of each system's last complete station list (and those still waiting for their deletion). */
+export const SYSTEM_IDS = stateKey(
+  "csSystemIds",
+  () => new Map<string, readonly string[]>(),
+  persisted.stringListMap,
+);
+
+/** Ids missing from their system's complete list: in how many consecutive runs. */
+export const MISSING_RUNS = stateKey("csMissingRuns", () => new Map<string, number>(), persisted.numberMap);
+
+export interface SystemDiff {
+  /** Per system: ids missing from its complete list in two consecutive runs, within the cap. */
+  readonly remove: ReadonlyMap<string, readonly EntityId[]>;
+  /** Systems over the cap in this run: `[system, would-be deletions, previous stations]`. */
+  readonly capped: readonly (readonly [system: string, gone: number, previous: number])[];
+  /** Next {@link SYSTEM_IDS}; ids in `remove` stay until the broker confirms their deletion. */
+  readonly known: Map<string, readonly string[]>;
+  /** Next {@link MISSING_RUNS}. */
+  readonly missing: Map<string, number>;
+}
+
+/**
+ * The per-system diff (module header, "Vanished stations"). Pure. `lists`
+ * holds every system of this run: its complete list of entity ids, or `null`
+ * when its feed failed or listed no station in BW — then nothing of that
+ * system counts as missing, and its streaks start over.
+ */
+export function diffSystems(
+  known: ReadonlyMap<string, readonly string[]>,
+  missing: ReadonlyMap<string, number>,
+  lists: ReadonlyMap<string, readonly string[] | null>,
+): SystemDiff {
+  const nextKnown = new Map(known);
+  const nextMissing = new Map(missing);
+  const remove = new Map<string, EntityId[]>();
+  const capped: (readonly [string, number, number])[] = [];
+  const restart = (ids: readonly string[]): void => {
+    for (const id of ids) nextMissing.delete(id);
+  };
+  // A system that is not in this run's list was not looked at: no streak goes
+  // on, and its ids are forgotten (should it return, its list is recorded
+  // anew; the age-based prune takes care of what it left behind).
+  for (const [system, ids] of known) {
+    if (lists.has(system)) continue;
+    restart(ids);
+    nextKnown.delete(system);
+  }
+  for (const [system, list] of lists) {
+    const previous = known.get(system) ?? [];
+    if (list === null) {
+      restart(previous);
+      continue;
+    }
+    restart(list);
+    const current = new Set(list);
+    const own = new RegExp(systemPattern(system));
+    const gone = previous.filter((id) => !current.has(id) && own.test(id));
+    const confirmed: EntityId[] = [];
+    for (const id of gone) {
+      const runs = (missing.get(id) ?? 0) + 1;
+      nextMissing.set(id, runs);
+      if (runs >= 2 && isEntityId(id)) confirmed.push(id);
+    }
+    nextKnown.set(system, [...list, ...gone]);
+    if (confirmed.length === 0) continue;
+    if (confirmed.length > previous.length * SYSTEM_DIFF_CAP) {
+      capped.push([system, confirmed.length, previous.length]);
+      continue;
+    }
+    remove.set(system, confirmed);
+  }
+  return { remove, capped, known: nextKnown, missing: nextMissing };
 }
 
 /* ------------------------------------------------------------------ run */
@@ -455,7 +622,16 @@ function quietly<T>(parseFeed: () => T): T | null {
   }
 }
 
-async function masterData(ctx: Ctx, system: GbfsSystem, skipped: SkippedFeeds): Promise<void> {
+/**
+ * Master data of one system. Returns the entity ids of its complete station
+ * list in BW, or `null` when the feed failed or listed no station in BW.
+ */
+async function masterData(
+  ctx: Ctx,
+  system: GbfsSystem,
+  skipped: SkippedFeeds,
+): Promise<readonly string[] | null> {
+  let ids: readonly string[] | null = null;
   const infoBody = await feedBody(ctx, feedUrl(system, "station_information"), skipped);
   const info = quietly(() => parse({ system: system.id, payload: infoBody }));
   if (info !== null) {
@@ -467,6 +643,9 @@ async function masterData(ctx: Ctx, system: GbfsSystem, skipped: SkippedFeeds): 
         const stations = ctx.state.slot(STATIONS);
         stations.set(replaceSystem(stations.get() ?? new Map(), info.system, entries));
         ctx.log.status(`${info.system}: ${String(entries.length)} stations`);
+        ids = entries.map(([key, entry]) =>
+          stationEntityId(entry.slug, info.system, key.slice(info.system.length + 2)),
+        );
       }
     }
   }
@@ -475,6 +654,65 @@ async function masterData(ctx: Ctx, system: GbfsSystem, skipped: SkippedFeeds): 
   if (types !== null && types.formFactor !== null) {
     ctx.state.slot(FORM_FACTORS).get().set(types.system, types.formFactor);
   }
+  return ids;
+}
+
+/** Deletes what {@link diffSystems} found gone, and keeps its lists. */
+async function removeVanished(ctx: Ctx, lists: ReadonlyMap<string, readonly string[] | null>): Promise<void> {
+  const knownSlot = ctx.state.slot(SYSTEM_IDS);
+  const missingSlot = ctx.state.slot(MISSING_RUNS);
+  const diff = diffSystems(knownSlot.get(), missingSlot.get(), lists);
+  for (const [system, gone, previous] of diff.capped) {
+    ctx.log.warn(
+      `Carsharing ${system}: ${String(gone)} of ${String(previous)} stations missing from the station ` +
+        "list in two runs — over the per-system cap, not deleted here (the age-based prune decides)",
+    );
+  }
+  for (const [system, ids] of diff.remove) {
+    const result = await ctx.prune.remove({
+      label: `Carsharing ${system}: vanished stations`,
+      pattern: systemPattern(system),
+      ids,
+      signatureKeys: [STATIC_KEY, LIVE_KEY],
+    });
+    if (result.deleted.size === 0) continue;
+    diff.known.set(
+      system,
+      (diff.known.get(system) ?? []).filter((id) => !(isEntityId(id) && result.deleted.has(id))),
+    );
+    for (const id of result.deleted) diff.missing.delete(id);
+  }
+  knownSlot.set(diff.known);
+  missingSlot.set(diff.missing);
+}
+
+/**
+ * The stations of one system through the split gate — merge mode: this call
+ * sees one system only — plus its fleets, ungated.
+ */
+export function planStatus(
+  gate: ChangeGate,
+  built: StatusBuild,
+  nowMs: number,
+): {
+  readonly plan: UpsertPlan;
+  readonly stations: SplitResult;
+} {
+  const stations = applySplit(
+    gate,
+    built.stations,
+    {
+      staticKey: STATIC_KEY,
+      dynamicKey: LIVE_KEY,
+      staticSignature: (entity) => stationStatic(entity) ?? "",
+      dynamic: LIVE_ATTRIBUTES,
+      replace: false,
+      freshEvery: 3,
+      periodMs: HOUR_MS,
+    },
+    nowMs,
+  );
+  return { plan: mergePlans(stations, gate.ungated(built.fleets)), stations };
 }
 
 async function status(
@@ -482,15 +720,15 @@ async function status(
   cache: StationCache,
   system: GbfsSystem,
   skipped: SkippedFeeds,
+  totals: SplitTotals,
 ): Promise<void> {
   const body = await feedBody(ctx, feedUrl(system, "station_status"), skipped);
   const feed = quietly(() => parseStatus({ system: system.id, payload: body }));
   if (feed === null) return;
-  const built = buildStatus(feed, cache, ctx.state.slot(FORM_FACTORS).get(), ctx.now());
-  const plan: UpsertPlan = mergePlans(
-    ctx.gate.check(GATE_KEY, built.stations, stationSignature, { freshEvery: 3, periodMs: HOUR_MS }),
-    ctx.gate.ungated(built.fleets),
-  );
+  const now = ctx.now();
+  const built = buildStatus(feed, cache, ctx.state.slot(FORM_FACTORS).get(), now);
+  const { plan, stations } = planStatus(ctx.gate, built, Date.parse(now));
+  addTotals(totals, stations);
   if (plan.entities.length === 0) return;
   ctx.log.status(`${feed.system}: ${String(plan.entities.length)} objects`);
   // One request per system, as the single message of the old node.
@@ -518,7 +756,8 @@ export async function run(ctx: Ctx): Promise<void> {
   // Master data: two feeds per system, stations and vehicle types.
   ctx.log.status(`${String(systems.length)} systems, ${String(systems.length * 2)} requests`);
   const skipped = new SkippedFeeds();
-  for (const system of systems) await masterData(ctx, system, skipped);
+  const lists = new Map<string, readonly string[] | null>();
+  for (const system of systems) lists.set(systemKey(system.id), await masterData(ctx, system, skipped));
 
   const cache = ctx.state.slot(STATIONS).get();
   if (cache === null) {
@@ -526,6 +765,9 @@ export async function run(ctx: Ctx): Promise<void> {
     ctx.log.warn("Carsharing: master data not loaded yet — run skipped");
     return;
   }
+
+  // Stations gone from their system's complete list in two runs.
+  await removeVanished(ctx, lists);
 
   // Like the free-floating summaries, the per-system runs never see the
   // complete inventory, so stations and fleets are pruned by age. Every
@@ -541,7 +783,8 @@ export async function run(ctx: Ctx): Promise<void> {
     accept: ownGbfs,
     graceMs: 24 * HOUR_MS,
     liveMs: 3 * HOUR_MS,
-    signatureKey: GATE_KEY,
+    signatureKey: STATIC_KEY,
+    signatureKeys: [LIVE_KEY],
     intervalMs: ctx.intervalMs(),
   });
   await ctx.prune.stale({
@@ -555,7 +798,16 @@ export async function run(ctx: Ctx): Promise<void> {
     intervalMs: ctx.intervalMs(),
   });
 
-  for (const system of systems) await status(ctx, cache, system, skipped);
+  // Empty tables are seeded from the broker first; the former single table goes.
+  await ctx.orion.seedSignatures(SEED);
+  ctx.gate.retain(LEGACY_GATE, () => false);
+  const storedBefore = ctx.gate.table(STATIC_KEY).size;
+  const totals = emptyTotals();
+  for (const system of systems) await status(ctx, cache, system, skipped, totals);
+  // Judged against the tables as the run found them, not as the systems
+  // before in this run filled them.
+  totals.known = storedBefore > 0 && storedBefore * 2 >= totals.total;
+  reportSplit(ctx.log, "Carsharing CarSharingStation", totals);
   skipped.report(ctx.log, "Carsharing");
 }
 

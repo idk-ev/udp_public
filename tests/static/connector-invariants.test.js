@@ -75,7 +75,7 @@ const CARRIED_BY = {
     ["mobility-invariants", "mobility invariants: gate replace for whole-stock runs, merge per system, commit only via the plan"],
     ["carsharing-bw", "carsharing-bw: stations and fleets match across two runs (merge gate, freshEvery 3)"],
     ["puls-bw", "puls-bw: gate in replace mode — commit, freshness-only rerun and a dropped pulse match the old tables"],
-    ["ladesaeulen-bw", "ladesaeulen-bw: complete runs replace ocSumSig/ocSig, a vanished location loses its signature"],
+    ["ladesaeulen-bw", "ladesaeulen-bw: complete runs replace the split tables, a vanished location loses its signatures"],
   ],
   troeBudget: [
     ["troe-stats", "troe-stats: the budget is the kernel's sumRowBudgets() — equal to the object the generator baked into the old node"],
@@ -159,7 +159,7 @@ const CARRIED_BY = {
   ocpdbPages: [
     ["ladesaeulen-bw", "ladesaeulen-bw: all pages from total_count, the cap of 60 and the skips match the old fan-out"],
     ["ladesaeulen-bw", "ladesaeulen-bw: an incomplete run writes the old chunks, merges the tables, resets the confirmations"],
-    ["ladesaeulen-bw", "ladesaeulen-bw: a complete run prunes the same stations and sums and forgets their ocSig"],
+    ["ladesaeulen-bw", "ladesaeulen-bw: a complete run prunes the same stations and sums and forgets the station signatures"],
     ["ladesaeulen-bw", "ladesaeulen-bw: register entries without live status carry no live values and no dateObserved"],
   ],
   cityPulse: [
@@ -174,12 +174,12 @@ const CARRIED_BY = {
     ["carsharing-bw", "carsharing-bw: a station list without a station in BW leaves the cache alone"],
   ],
   carsharingOwnership: [
-    ["carsharing-bw", "carsharing-bw: run() requests, upserts and prunes (ownGbfs, csSig) as the two old flows"],
+    ["carsharing-bw", "carsharing-bw: run() requests, upserts and prunes (ownGbfs, signatures forgotten) as the two old flows"],
     ["mobility-invariants", "mobility invariants: every prune is anchored, bounded and guarded; legacy prune intact"],
   ],
   ocpdbRate: [
     ["orion", "orion: upsert chunks and deletes queue in the broker's token bucket, one per second"],
-    ["ladesaeulen-bw", "ladesaeulen-bw: complete runs replace ocSumSig/ocSig, a vanished location loses its signature"],
+    ["ladesaeulen-bw", "ladesaeulen-bw: complete runs replace the split tables, a vanished location loses its signatures"],
     ["ladesaeulen-bw", "ladesaeulen-bw: an incomplete run writes the old chunks, merges the tables, resets the confirmations"],
   ],
   pulseShare: [
@@ -327,10 +327,10 @@ exports["The connector service reaches the cockpit on its container port"] = () 
    node's (test/harness/prune-settings.ts) in the named test. */
 const PRUNE_SETTINGS = {
   "baustellen-bw": ["baustellen-bw", "baustellen-bw: old and new prune delete the same stale own ids, foreign ids stay"],
-  "carsharing-bw": ["carsharing-bw", "carsharing-bw: run() requests, upserts and prunes (ownGbfs, csSig) as the two old flows"],
+  "carsharing-bw": ["carsharing-bw", "carsharing-bw: run() requests, upserts and prunes (ownGbfs, signatures forgotten) as the two old flows"],
   "eco-bw": ["eco-bw", "eco-bw: the daily prune arms and deletes as the old node did, foreign ids untouched"],
   "feinstaub-bw": ["feinstaub-bw", "feinstaub-bw: prune in the detail runs only, armed then deleting, as the old node on full master data"],
-  "ladesaeulen-bw": ["ladesaeulen-bw", "ladesaeulen-bw: a complete run prunes the same stations and sums and forgets their ocSig"],
+  "ladesaeulen-bw": ["ladesaeulen-bw", "ladesaeulen-bw: a complete run prunes the same stations and sums and forgets the station signatures"],
   "parken-bw": ["parken-bw", "parken-bw: a complete run prunes the same ids (sites, sums, legacy), never a municipal entity"],
   "puls-bw": ["puls-bw", "puls-bw: dropped pulses are pruned on the second run exactly as by the old node"],
   "sharing-bw": ["sharing-bw", "sharing-bw: run() requests, drops vanished tables, prunes and upserts as the old flow"],
@@ -486,7 +486,7 @@ exports["OCPDB: rate-limited upsert, municipal sums gated"] = () => {
   carriedBy("ocpdbRate");
   const oc = portedCode("ladesaeulen-bw");
   assert(/await ctx\.orion\.upsert\(plan, \{ chunkSize: CHUNK_SIZE \}\)/.test(oc), "OCPDB no longer writes through ctx.orion");
-  assert(/ctx\.gate\.check\(SUMMARY_GATE, built\.summaries, summarySignature, \{ replace: built\.complete \}\)/.test(oc),
+  assert(/staticKey: SUMMARY_STATIC,[^}]*replace: built\.complete,\s*freshEvery: 3,/.test(oc),
     "municipal sums are no longer gated");
   assert(/label: "OCPDB ChargingSummary",[\s\S]*?confirmKey: summaryKey,\s*confirmMs: 24 \* HOUR_MS/.test(oc),
     "sums are no longer refreshed every run, their prune needs the confirmation mode");

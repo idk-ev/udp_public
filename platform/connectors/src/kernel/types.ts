@@ -551,6 +551,12 @@ export interface ChangeGateOptions {
   readonly freshEvery?: number | undefined;
   /** Run period for {@link freshEvery}. Default 3,600,000 ms (hourly). */
   readonly periodMs?: number | undefined;
+  /**
+   * The values change in most runs by nature (averaged measurements): no
+   * `[warn]` when more than half of the entities changed. Entities WITHOUT a
+   * stored signature still warn — that is lost state, not a volatile source.
+   */
+  readonly volatile?: boolean | undefined;
 }
 
 /**
@@ -710,6 +716,42 @@ export type ListResult =
       readonly reason: string;
     };
 
+/**
+ * {@link Orion.seedSignatures}: which broker entities, and how each empty
+ * table's signature is derived from one of them.
+ */
+export interface SeedOptions {
+  /** Log prefix. */
+  readonly label: string;
+  /**
+   * The listings — one per entity type, each with an anchored id pattern
+   * (`^…$`) that only this connector writes. ALL must list completely, or
+   * nothing is seeded.
+   */
+  readonly queries: readonly { readonly type: string; readonly pattern: string }[];
+  /** Attributes to list: exactly what the signatures read (plus what `accept` reads). */
+  readonly attrs: readonly string[];
+  /** Extra ownership check on the listed record, e.g. by `dataProvider`. */
+  readonly accept?: ((id: string, entity: Readonly<Record<string, unknown>>) => boolean) | undefined;
+  /**
+   * Per gate table: the signature this connector would have stored for the
+   * entity the broker holds, or `null` when it cannot be derived exactly
+   * (the entity is then left out, and written in full as before).
+   */
+  readonly tables: Readonly<
+    Record<string, (entity: Readonly<Record<string, unknown>>) => SignatureValue | null>
+  >;
+}
+
+export interface SeedResult {
+  /** Signatures put into the tables. */
+  readonly seeded: number;
+  /** Own entities the listings returned; `null` if none was completed. */
+  readonly listed: number | null;
+  /** Why nothing was seeded, or `null`. */
+  readonly skipped: string | null;
+}
+
 export interface Orion {
   /**
    * Batch upsert with `options=update`, chunked, THEN commit of the plan's
@@ -752,6 +794,16 @@ export interface Orion {
    * Orion did not answer with a readable count.
    */
   count(query: OrionQuery): Promise<number | null>;
+  /**
+   * Fills EMPTY gate tables from what the broker holds (fresh install,
+   * cutover, lost state), so that the next write is not a full rewrite of
+   * every entity. A signature says "this value is in the broker" — derived
+   * from the broker itself, it is true by construction. Tables that hold
+   * anything are left alone; a listing that fails or is incomplete seeds
+   * nothing (the entities are written in full, as without it). One complete
+   * attempt per table and process. Never throws for a broker fault.
+   */
+  seedSignatures(options: SeedOptions): Promise<SeedResult>;
 }
 
 /* ------------------------------------------------------------------ Prune */
@@ -809,8 +861,10 @@ export interface PruneOptions {
    */
   readonly liveMs?: number | undefined;
   /**
-   * Never delete more than this share of the own entities (at least 3).
-   * Default 0.3; clamped to (0, 1] — anything else falls back to the default.
+   * Never delete more RECENT candidates than this share of the fresh stock
+   * (the own entities that are no candidate; at least 3). Default 0.3;
+   * clamped to (0, 1] — anything else falls back to the default. 1 means no
+   * cap at all (and so no backlog: every candidate counts as recent).
    */
   readonly maxFraction?: number | undefined;
   /**
@@ -824,6 +878,17 @@ export interface PruneOptions {
   readonly intervalMs?: number | undefined;
   /** This connector's change gate table whose entries of deleted ids are forgotten (`sigKey`). */
   readonly signatureKey?: string | undefined;
+  /** Further tables of the same kind (a split gate keeps two per entity). */
+  readonly signatureKeys?: readonly string[] | undefined;
+  /**
+   * Age from which a candidate counts as BACKLOG rather than recent (default
+   * 7 days). The {@link maxFraction} cap applies to recent candidates only;
+   * the backlog is drained oldest first, {@link backlogBatch} per run, and
+   * only while the fresh stock holds (see src/kernel/prune.ts).
+   */
+  readonly backlogMs?: number | undefined;
+  /** Backlog deletions per run. Default 1,000. */
+  readonly backlogBatch?: number | undefined;
   /** Prefix of the status line, usually the run's own status text. */
   readonly status?: string | undefined;
 }
@@ -835,6 +900,8 @@ export interface PruneResult {
   readonly listed: { readonly mine: number; readonly candidates: number } | null;
   /** Why nothing was attempted, or `null`. Already logged. */
   readonly skipped: string | null;
+  /** Of {@link deleted}: how many came from the backlog. Absent when none was attempted. */
+  readonly backlogDeleted?: number | undefined;
 }
 
 /**
@@ -877,6 +944,30 @@ export interface Pruner {
   stale(options: PruneOptions): Promise<PruneResult>;
   /** Clears a confirmation table — an incomplete run breaks "consecutive". */
   resetConfirmations(confirmKey: string): void;
+  /**
+   * Deletes ids the CONNECTOR knows are gone (e.g. missing from a complete
+   * per-system list in consecutive runs) — with the prune's discipline, not
+   * its listing: state usable, master data plausible, every id matching the
+   * anchored `pattern` (else nothing is deleted), their signatures out of the
+   * store first, only confirmed deletions count. Never throws.
+   */
+  remove(options: RemoveOptions): Promise<RemoveResult>;
+}
+
+export interface RemoveOptions {
+  readonly label: string;
+  /** Anchored id pattern every id must match. */
+  readonly pattern: string;
+  readonly ids: readonly EntityId[];
+  /** Gate tables whose entries of deleted ids are forgotten. */
+  readonly signatureKeys?: readonly string[] | undefined;
+}
+
+export interface RemoveResult {
+  /** Ids the broker confirmed as deleted. */
+  readonly deleted: ReadonlySet<EntityId>;
+  /** Why nothing was attempted, or `null`. Already logged. */
+  readonly skipped: string | null;
 }
 
 /* ------------------------------------------------------------------ Registry */

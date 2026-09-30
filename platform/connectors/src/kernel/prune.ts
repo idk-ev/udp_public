@@ -38,10 +38,39 @@
  *    clears the candidates;
  *  * `liveMs`: age-only mode must see at least one recent write, otherwise the
  *    connector itself is down and "old" means nothing;
- *  * `maxFraction`: never more than 30 % of the own stock (at least 3) —
- *    beyond that something upstream is wrong and a human should look;
+ *  * `maxFraction`: never more RECENT candidates than 30 % of the fresh stock
+ *    (at least 3) — beyond that something upstream is wrong and a human
+ *    should look;
  *  * only ids the broker CONFIRMS as deleted (204, or the success part of a
  *    207) count and lose their change signature. TRoE history is untouched.
+ *
+ * ## Recent candidates and backlog
+ *
+ * The share cap used to count every candidate. A backlog that piled up
+ * before a prune existed (tens of thousands of entities gone for months)
+ * then blocked the prune for good: over the cap in every run, skipped in
+ * every run, and growing. So the candidates are split by the age of their
+ * newest timestamp:
+ *
+ *  * RECENT (younger than `backlogMs`, default 7 days): what went missing
+ *    lately — this is where an upstream fault shows. The cap applies to
+ *    these alone, measured against the FRESH stock (own entities that are no
+ *    candidate). Over the cap: nothing at all is deleted, as before.
+ *  * BACKLOG (older): untouched for a week while this connector kept running
+ *    and writing (`liveMs`, the interval check) — gone for good. Deleted
+ *    oldest first, at most `backlogBatch` (1,000) per run, and only when
+ *    every guard above passed AND the fresh stock is at least 95 % of the
+ *    previous run's (persisted per prune). An upstream outage shrinks the
+ *    fresh stock first and stops the drain; its entities could reach the
+ *    backlog only after a week without a single write while the connector
+ *    runs, which is what "gone" means.
+ *
+ * A prune without a cap (`maxFraction: 1`, the parking legacy cleanup) has
+ * nothing to be blocked by: no backlog, every candidate past the grace goes.
+ *
+ * A prune skipped by the cap counts its consecutive skips (persisted); from
+ * the third on the skip is an `[error]`, and `/healthz` lists the prune under
+ * `stateStore.blockedPrunes` — a prune that never runs must not stay quiet.
  *
  * ## State is persisted
  *
@@ -69,13 +98,31 @@ import type { SignatureScope } from "./change-gate.js";
 import { MasterDataCheck } from "./geo.js";
 import type { SharedGeo } from "./geo.js";
 import { isArray, isEntityId, isRecord, isString, isTruthy } from "./parse.js";
-import type { EntityId, JsonValue, Log, Orion, PruneOptions, PruneResult, Pruner } from "./types.js";
+import type {
+  EntityId,
+  JsonValue,
+  Log,
+  Orion,
+  PruneOptions,
+  PruneResult,
+  Pruner,
+  RemoveOptions,
+  RemoveResult,
+} from "./types.js";
 
 /** PRUNE_HELPER lists and deletes in pages of these sizes. */
 const LIST_MAX_PAGES = 100;
 const DELETE_CHUNK_SIZE = 100;
 
 const DEFAULT_MAX_FRACTION = 0.3;
+/** Candidates older than this are backlog, not recent. */
+export const DEFAULT_BACKLOG_MS = 7 * 24 * 3_600_000;
+/** Backlog deletions per run. */
+export const DEFAULT_BACKLOG_BATCH = 1000;
+/** The backlog is drained only while the fresh stock holds at least this share of the previous run's. */
+export const BACKLOG_FRESH_RATIO = 0.95;
+/** From this many consecutive cap skips on, the skip is an `[error]`. */
+export const BLOCKED_AFTER = 3;
 
 /**
  * The entities `stammdaten-bw` writes — their number seeds the reference of
@@ -132,6 +179,10 @@ export class PruneBookkeeping {
   /** Keyed by label, type and pattern. */
   readonly #lastRun = new Map<string, number>();
   readonly #confirmations = new Map<string, Map<string, Confirmation>>();
+  /** Fresh stock (own entities that were no candidate) of the last run that passed the cap, per prune. */
+  readonly #fresh = new Map<string, number>();
+  /** Consecutive runs skipped by the share cap, per prune (only non-zero entries). */
+  readonly #capSkips = new Map<string, number>();
   #onChange: () => void = () => undefined;
 
   constructor(masterData: MasterDataCheck = new MasterDataCheck()) {
@@ -171,6 +222,32 @@ export class PruneBookkeeping {
     this.#onChange();
   }
 
+  fresh(key: string): number | undefined {
+    return this.#fresh.get(key);
+  }
+
+  setFresh(key: string, count: number): void {
+    if (this.#fresh.get(key) === count) return;
+    this.#fresh.set(key, count);
+    this.#onChange();
+  }
+
+  capSkips(key: string): number {
+    return this.#capSkips.get(key) ?? 0;
+  }
+
+  setCapSkips(key: string, runs: number): void {
+    if (this.capSkips(key) === runs) return;
+    if (runs > 0) this.#capSkips.set(key, runs);
+    else this.#capSkips.delete(key);
+    this.#onChange();
+  }
+
+  /** Prunes the share cap skipped in their last runs: `[key, consecutive skips]`. */
+  blocked(): readonly (readonly [key: string, skips: number])[] {
+    return [...this.#capSkips];
+  }
+
   snapshot(): JsonValue {
     return {
       lastRun: [...this.#lastRun].map(([key, ms]) => [key, ms]),
@@ -179,6 +256,8 @@ export class PruneBookkeeping {
         [...table].map(([id, [first, runs]]) => [id, first, runs]),
       ]),
       masterDataCount: this.masterData.snapshot(),
+      fresh: [...this.#fresh].map(([key, count]) => [key, count]),
+      capSkips: [...this.#capSkips].map(([key, runs]) => [key, runs]),
     };
   }
 
@@ -191,17 +270,16 @@ export class PruneBookkeeping {
   restore(raw: unknown): boolean {
     this.#lastRun.clear();
     this.#confirmations.clear();
+    this.#fresh.clear();
+    this.#capSkips.clear();
     this.masterData.restore(null);
     if (raw === null) return true;
     if (!isRecord(raw) || !isArray(raw.lastRun) || !isArray(raw.confirmations)) return false;
-    const lastRun = new Map<string, number>();
-    for (const row of raw.lastRun) {
-      if (!isArray(row) || row.length !== 2) return false;
-      const [key, ms] = row;
-      const at = finite(ms);
-      if (typeof key !== "string" || at === null) return false;
-      lastRun.set(key, at);
-    }
+    const lastRun = numberPairs(raw.lastRun);
+    // Absent in documents written before the backlog drain: empty, not unreadable.
+    const fresh = raw.fresh === undefined ? new Map<string, number>() : numberPairs(raw.fresh);
+    const capSkips = raw.capSkips === undefined ? new Map<string, number>() : numberPairs(raw.capSkips);
+    if (lastRun === null || fresh === null || capSkips === null) return false;
     const confirmations = new Map<string, Map<string, Confirmation>>();
     for (const row of raw.confirmations) {
       if (!isArray(row) || row.length !== 2) return false;
@@ -215,9 +293,25 @@ export class PruneBookkeeping {
     if (count !== null && reference === null) return false;
     for (const [key, ms] of lastRun) this.#lastRun.set(key, ms);
     for (const [key, table] of confirmations) this.#confirmations.set(key, table);
+    for (const [key, stock] of fresh) this.#fresh.set(key, stock);
+    for (const [key, runs] of capSkips) if (runs > 0) this.#capSkips.set(key, runs);
     this.masterData.restore(reference);
     return true;
   }
+}
+
+/** `[[key, number], …]` as persisted; `null` if anything is off. */
+function numberPairs(raw: unknown): Map<string, number> | null {
+  if (!isArray(raw)) return null;
+  const out = new Map<string, number>();
+  for (const row of raw) {
+    if (!isArray(row) || row.length !== 2) return null;
+    const [key, value] = row;
+    const number = finite(value);
+    if (typeof key !== "string" || number === null) return null;
+    out.set(key, number);
+  }
+  return out;
 }
 
 /**
@@ -391,7 +485,7 @@ class KernelPruner implements Pruner {
     // 2. Candidates: own ids, not confirmed by this run, old enough
     let mine = 0;
     let newest = 0;
-    let candidates: EntityId[] = [];
+    const found: { readonly id: EntityId; readonly timestamp: number }[] = [];
     for (const entity of listing.entities) {
       if (!isRecord(entity)) continue;
       const id = entity.id;
@@ -406,23 +500,49 @@ class KernelPruner implements Pruner {
       if (o.keep?.has(id) === true) continue;
       if (o.graceMs !== undefined && o.graceMs > 0 && (timestamp === 0 || now - timestamp < o.graceMs))
         continue;
-      candidates.push(id);
+      found.push({ id, timestamp });
     }
-    listed = { mine, candidates: candidates.length };
+    listed = { mine, candidates: found.length };
 
     if (o.liveMs !== undefined && o.liveMs > 0 && now - newest > o.liveMs) {
       return skip(
         `no entity written within the last ${String(Math.round(o.liveMs / 3_600_000))} h — connector down?`,
       );
     }
-    const limit = Math.max(3, Math.floor(mine * fraction));
-    if (candidates.length > limit) {
-      return skip(
-        `${String(candidates.length)} of ${String(mine)} entities would be deleted ` +
-          `(limit ${String(limit)}) — please check manually`,
-      );
-    }
 
+    // Recent vs. backlog (module header). No timestamp: recent, never backlog.
+    // A prune without a cap (maxFraction 1, the parking legacy cleanup) has
+    // nothing to be blocked by and so no backlog: all of it counts as recent.
+    const capped = fraction < 1;
+    const backlogMs = o.backlogMs !== undefined && o.backlogMs > 0 ? o.backlogMs : DEFAULT_BACKLOG_MS;
+    const isBacklog = (candidate: { readonly timestamp: number }): boolean =>
+      capped && candidate.timestamp > 0 && now - candidate.timestamp >= backlogMs;
+    const recent = found.filter((candidate) => !isBacklog(candidate));
+    const backlog = found.filter(isBacklog);
+    const fresh = mine - found.length;
+    const limit = capped ? Math.max(3, Math.floor(fresh * fraction)) : Number.POSITIVE_INFINITY;
+    if (recent.length > limit) {
+      const skips = this.#book.capSkips(intervalKey) + 1;
+      this.#book.setCapSkips(intervalKey, skips);
+      const why =
+        `${String(recent.length)} of ${String(mine)} entities would be deleted ` +
+        `(limit ${String(limit)}) — please check manually` +
+        (backlog.length > 0
+          ? ` (${String(fresh)} fresh; a backlog of ${String(backlog.length)} older ones waits as well)`
+          : "");
+      if (skips >= BLOCKED_AFTER) {
+        log.error(
+          `${o.label}: prune blocked by its share cap for ${String(skips)} consecutive runs (${why}) — ` +
+            "the stock is not cleaned up until someone looks",
+        );
+      }
+      return skip(why);
+    }
+    this.#book.setCapSkips(intervalKey, 0);
+    const previousFresh = this.#book.fresh(intervalKey);
+    this.#book.setFresh(intervalKey, fresh);
+
+    let candidates = found.map((candidate) => candidate.id);
     if (o.confirmKey !== undefined) {
       const previous = this.#book.confirmations(o.confirmKey) ?? new Map<string, Confirmation>();
       const table = new Map<string, Confirmation>();
@@ -437,22 +557,46 @@ class KernelPruner implements Pruner {
       });
       this.#book.setConfirmations(o.confirmKey, table);
     }
-    if (candidates.length === 0) return { deleted: 0, listed, skipped: null };
+    const confirmed = new Set(candidates);
+
+    // Recent candidates in full; the backlog oldest first, bounded, and only
+    // while the fresh stock holds against the previous run's.
+    const drain = previousFresh !== undefined && fresh >= BACKLOG_FRESH_RATIO * previousFresh;
+    const batch = o.backlogBatch !== undefined && o.backlogBatch > 0 ? o.backlogBatch : DEFAULT_BACKLOG_BATCH;
+    const backlogIds = drain
+      ? backlog
+          .filter((candidate) => confirmed.has(candidate.id))
+          .sort((a, b) => a.timestamp - b.timestamp)
+          .slice(0, batch)
+          .map((candidate) => candidate.id)
+      : [];
+    if (!drain && backlog.length > 0) {
+      log.info(
+        `${o.label}: backlog of ${String(backlog.length)} not drained in this run (fresh stock ` +
+          `${String(fresh)}, previous ${previousFresh === undefined ? "unknown" : String(previousFresh)})`,
+      );
+    }
+    const toDelete = [
+      ...recent.filter((candidate) => confirmed.has(candidate.id)).map((candidate) => candidate.id),
+      ...backlogIds,
+    ];
+    if (toDelete.length === 0) return { deleted: 0, listed, skipped: null };
 
     // The persisted signatures of the candidates go first: once an entity is
     // deleted, a signature left in the database would make its return a
     // freshness-only write after a restart.
     const store = this.#deps.store;
-    if (
-      o.signatureKey !== undefined &&
-      store !== undefined &&
-      !(await store.forgetAhead(o.signatureKey, candidates))
-    ) {
-      return skip(`state store not writable (${store.reason()}), delete deferred`);
+    const keys = signatureKeysOf(o.signatureKey, o.signatureKeys);
+    if (store !== undefined) {
+      for (const key of keys) {
+        if (!(await store.forgetAhead(key, toDelete))) {
+          return skip(`state store not writable (${store.reason()}), delete deferred`);
+        }
+      }
     }
 
     // 3. Delete in batches; count only what the broker confirms
-    const result = await orion.delete(candidates, {
+    const result = await orion.delete(toDelete, {
       chunkSize: DELETE_CHUNK_SIZE,
       label: `${o.label}: prune`,
     });
@@ -460,14 +604,53 @@ class KernelPruner implements Pruner {
     if (o.confirmKey !== undefined) this.#book.forgetConfirmed(o.confirmKey, deleted);
     // Forget the change signatures of deleted entities, so a returning object
     // is written in full again instead of as a freshness-only update.
-    if (o.signatureKey !== undefined && deleted.length > 0) signatures.forget(o.signatureKey, deleted);
+    if (deleted.length > 0) for (const key of keys) signatures.forget(key, deleted);
+    const fromBacklog = backlogIds.filter((id) => result.deleted.has(id)).length;
 
-    log.info(`${o.label}: pruned ${String(deleted.length)} of ${String(mine)} entities`);
+    log.info(
+      `${o.label}: pruned ${String(deleted.length)} of ${String(mine)} entities` +
+        (backlogIds.length > 0
+          ? ` (${String(fromBacklog)} from a backlog of ${String(backlog.length)})`
+          : ""),
+    );
     log.status(
       `${o.status === undefined ? "" : `${o.status} · `}pruned ${String(deleted.length)}/${String(mine)}`,
     );
-    return { deleted: deleted.length, listed, skipped: null };
+    return { deleted: deleted.length, listed, skipped: null, backlogDeleted: fromBacklog };
   }
+
+  async remove(o: RemoveOptions): Promise<RemoveResult> {
+    const { log, orion, signatures, store } = this.#deps;
+    const none = (why: string, quiet = false): RemoveResult => {
+      if (quiet) log.debug(`${o.label}: not deleted, ${why}`);
+      else log.warn(`${o.label}: not deleted, ${why}`);
+      return { deleted: new Set(), skipped: why };
+    };
+    if (o.ids.length === 0) return { deleted: new Set(), skipped: null };
+    if (store !== undefined && !store.usable()) return none(`state store not loaded (${store.reason()})`);
+    if (!isAnchored(o.pattern)) return none(`pattern ${o.pattern} is not anchored (^…$)`);
+    const pattern = new RegExp(o.pattern);
+    const foreign = o.ids.find((id) => !pattern.test(id));
+    if (foreign !== undefined) return none(`${foreign} does not match ${o.pattern}`);
+    if (!(await this.masterDataPlausible())) return none("master data not plausible", true);
+    const keys = o.signatureKeys ?? [];
+    if (store !== undefined) {
+      for (const key of keys) {
+        if (!(await store.forgetAhead(key, o.ids))) {
+          return none(`state store not writable (${store.reason()}), delete deferred`);
+        }
+      }
+    }
+    const result = await orion.delete(o.ids, { chunkSize: DELETE_CHUNK_SIZE, label: o.label });
+    const deleted = [...result.deleted];
+    if (deleted.length > 0) for (const key of keys) signatures.forget(key, deleted);
+    log.info(`${o.label}: deleted ${String(deleted.length)} of ${String(o.ids.length)}`);
+    return { deleted: result.deleted, skipped: null };
+  }
+}
+
+function signatureKeysOf(key: string | undefined, more: readonly string[] | undefined): string[] {
+  return [...(key === undefined ? [] : [key]), ...(more ?? [])];
 }
 
 export function createPruner(deps: PrunerDeps): Pruner {

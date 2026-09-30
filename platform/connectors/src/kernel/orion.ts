@@ -84,6 +84,8 @@ import type {
   OrionQuery,
   OrionReadOptions,
   PendingSignature,
+  SeedOptions,
+  SeedResult,
   SignatureValue,
   UpsertOptions,
   UpsertPlan,
@@ -110,6 +112,9 @@ export const WRITE_TIMEOUT_MS = 120_000;
 
 /** Page size of both old pagers. */
 export const LIST_PAGE_SIZE = 1000;
+
+/** Page cap of a seeding listing: 100,000 entities of one type. */
+const SEED_MAX_PAGES = 100;
 
 const NONE: ReadonlySet<EntityId> = new Set();
 
@@ -186,10 +191,13 @@ function deleteErrorId(item: unknown): unknown {
 
 /**
  * Which ids of a delete chunk the broker confirmed — the decision of
- * PRUNE_HELPER, which differs from the upsert's in two details and is kept
- * that way: only 204 and 200 confirm the whole chunk, and a 207 whose body
- * carries neither list confirms EVERY id (nothing reported as failed), while
- * an unparseable body or one whose `errors` is not a list confirms none.
+ * PRUNE_HELPER, which differs from the upsert's in one detail and is kept
+ * that way: only 204 and 200 confirm the whole chunk. A 207 confirms its
+ * `success` list, else every id not in `errors`; a 207 that carries NEITHER
+ * list is unknown and confirms none (the old helper counted every id as
+ * deleted and dropped their signatures — an entity that was in fact kept
+ * would then be refreshed with its stamp only, never rewritten). An
+ * unparseable body or an `errors` that is not a list confirms none as well.
  */
 export function confirmedByDelete(
   status: number,
@@ -213,7 +221,19 @@ export function confirmedByDelete(
   const bad = new Set(errorList.map(deleteErrorId));
   const success = isRecord(parsed) ? parsed.success : undefined;
   if (isArray(success)) return sent.filter((id) => success.includes(id));
+  // Neither list: nothing is known about any id.
+  if (!isArray(errors)) return [];
   return sent.filter((id) => !bad.has(id));
+}
+
+/** A 207 delete body that says something per id: a `success` or an `errors` list. */
+function deleteAnswerKnown(body: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(body === "" ? "{}" : body);
+    return isRecord(parsed) && (isArray(parsed.success) || isArray(parsed.errors));
+  } catch {
+    return false;
+  }
 }
 
 function describeFailure(error: unknown): string {
@@ -226,6 +246,8 @@ class OrionClient implements Orion {
   readonly #gate: ChangeGate;
   readonly #signatures: SignatureScope;
   readonly #base: string;
+  /** Tables whose seeding listing completed in this process: not listed again. */
+  readonly #seedAttempted = new Set<string>();
 
   constructor(log: Log, fetcher: Fetcher, gate: ChangeGate, signatures: SignatureScope, baseUrl: string) {
     this.#log = log;
@@ -349,7 +371,12 @@ class OrionClient implements Orion {
       const ok = confirmedByDelete(response.status, response.body, part);
       for (const id of ok) deleted.add(id);
       if (response.status === 207) {
-        if (ok.length < part.length) {
+        if (ok.length === 0 && !deleteAnswerKnown(response.body)) {
+          this.#log.warn(
+            `${label} delete: 207 without success or errors list — ${String(part.length)} ids not ` +
+              "counted as deleted, their signatures kept",
+          );
+        } else if (ok.length < part.length) {
           this.#log.warn(`${label} delete, ${String(part.length - ok.length)} ids failed`);
         }
       } else if (ok.length === 0) {
@@ -401,6 +428,56 @@ class OrionClient implements Orion {
       ...(options?.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
       ...(options?.retries === undefined ? {} : { retries: options.retries }),
     });
+  }
+
+  async seedSignatures(options: SeedOptions): Promise<SeedResult> {
+    this.#signatures.assertLoaded();
+    const empty = Object.keys(options.tables).filter(
+      (key) => !this.#seedAttempted.has(key) && this.#signatures.size(key) === 0,
+    );
+    if (empty.length === 0) return { seeded: 0, listed: null, skipped: "no empty table" };
+    const skip = (why: string): SeedResult => {
+      this.#log.warn(
+        `${options.label}: change signatures not seeded from the broker (${why}) — the entities are ` +
+          "written in full once",
+      );
+      return { seeded: 0, listed: null, skipped: why };
+    };
+    const found = new Map(empty.map((key) => [key, new Map<string, SignatureValue>()]));
+    let listed = 0;
+    for (const query of options.queries) {
+      // Anchored as the prune's: only ids this connector writes.
+      if (!/^\^.*\$$/.test(query.pattern) || query.pattern.endsWith("\\$")) {
+        return skip(`pattern ${query.pattern} is not anchored`);
+      }
+      const listing = await this.list(
+        { type: query.type, idPattern: query.pattern, attrs: options.attrs },
+        { maxPages: SEED_MAX_PAGES, dedupe: true },
+      );
+      if (!listing.ok) return skip(`listing ${query.type} ${listing.reason}`);
+      const pattern = new RegExp(query.pattern);
+      for (const record of listing.entities) {
+        if (!isRecord(record)) continue;
+        const id = record.id;
+        if (!isString(id) || !pattern.test(id) || record.type !== query.type) continue;
+        if (options.accept !== undefined && !options.accept(id, record)) continue;
+        listed += 1;
+        for (const key of empty) {
+          const signature = options.tables[key]?.(record) ?? null;
+          if (signature !== null) found.get(key)?.set(id, signature);
+        }
+      }
+    }
+    let seeded = 0;
+    for (const [key, table] of found) {
+      this.#seedAttempted.add(key);
+      seeded += this.#signatures.seed(key, table);
+    }
+    this.#log.info(
+      `${options.label}: ${String(seeded)} change signatures seeded from ${String(listed)} entities ` +
+        `in the broker (${empty.join(", ")})`,
+    );
+    return { seeded, listed, skipped: null };
   }
 
   /**

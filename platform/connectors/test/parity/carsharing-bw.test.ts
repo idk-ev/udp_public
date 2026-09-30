@@ -13,7 +13,13 @@
  * rule that a list without a station in BW leaves the cache alone, the status
  * entities with the change gate in MERGE mode and `freshEvery: 3` across two
  * runs, and a whole run: requests, upserts, and the age prunes with the
- * `ownGbfs` ownership check and the `csSig` signatures they forget.
+ * `ownGbfs` ownership check and the signatures they forget.
+ *
+ * Deliberate deviation: the old single table `csSig` (vehicle count per
+ * station) is now two — `csStatic` (master data) and `csLive` (the count) —
+ * so that a moved count is written as a partial update
+ * (test/parity/split-writes.test.ts). The first write of a station and the
+ * freshness stamps are unchanged, which is what is compared here.
  *
  * Fixtures: test/fixtures/gbfs-systems.json and carsharing-bw-<system>-
  * {station_information,vehicle_types,station_status}.json for swu2go,
@@ -21,18 +27,19 @@
  */
 
 import assert from "node:assert/strict";
-import { createChangeGate, mergePlans, SignatureStore } from "../../src/kernel/change-gate.js";
+import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
 import type { SignatureScope } from "../../src/kernel/change-gate.js";
 import {
   build,
   buildStatus,
   formFactorOf,
-  GATE_KEY,
+  LIVE_KEY,
   parse,
   parseStatus,
+  planStatus,
   replaceSystem,
   run,
-  stationSignature,
+  STATIC_KEY,
 } from "../../src/connectors/carsharing-bw.js";
 import type { StationCache } from "../../src/connectors/carsharing-bw.js";
 import type { EntityId, UpsertPlan } from "../../src/kernel/types.js";
@@ -45,6 +52,7 @@ import {
   HOUR,
   jsonAnswer,
   legacyGlobal,
+  liveValues,
   mobilityCtx,
   staleOptions,
 } from "../harness/mobility.js";
@@ -230,10 +238,7 @@ function portedStatus(
       formFactors,
       new Date().toISOString(),
     );
-    const plan = mergePlans(
-      gate.check(GATE_KEY, built.stations, stationSignature, { freshEvery: 3, periodMs: HOUR }),
-      gate.ungated(built.fleets),
-    );
+    const { plan } = planStatus(gate, built, Date.now());
     if (plan.entities.length === 0) continue;
     plans.push(plan);
     store.commit(plan.pending, new Set<EntityId>(plan.entities.map((entity) => entity.id)));
@@ -264,10 +269,15 @@ async function statusMatchesAcrossTwoRuns(): Promise<void> {
       first.payloads.flat(),
       firstPlans.flatMap((plan) => plan.entities),
     );
+    // The old csSig held the count per station; csLive holds it as `[count]`.
+    const live = Object.fromEntries(
+      [...store.copy(LIVE_KEY)].map(([id, value]) => [id, String(liveValues(value)[0])]),
+    );
+    assert.deepEqual(normalize(live), normalize(first.flow.csSig), "csLive against csSig");
     assert.deepEqual(
-      normalize(Object.fromEntries(store.copy(GATE_KEY))),
-      normalize(first.flow.csSig),
-      "csSig",
+      [...store.copy(STATIC_KEY).keys()].sort(),
+      Object.keys(isRecord(first.flow.csSig) ? first.flow.csSig : {}).sort(),
+      "csStatic keys",
     );
 
     // Second run, nothing changed: stations only as freshness, one in three.
@@ -285,8 +295,8 @@ async function statusMatchesAcrossTwoRuns(): Promise<void> {
       "unchanged station written in full",
     );
     // MERGE: the table holds all three systems, not only the last one.
-    const systems = new Set([...store.copy(GATE_KEY).keys()].map((id) => id.split("-")[1]));
-    assert.ok(systems.size > 1, "csSig was replaced per system");
+    const systems = new Set([...store.copy(LIVE_KEY).keys()].map((id) => id.split("-")[1]));
+    assert.ok(systems.size > 1, "csLive was replaced per system");
   });
 }
 
@@ -378,10 +388,17 @@ async function runMatchesTheOldFlows(): Promise<void> {
   seed(world.broker, now);
   serveAll(world.broker);
   world.store.replace(
-    GATE_KEY,
+    STATIC_KEY,
     new Map([
-      [STALE, "1"],
-      [FRESH, "2"],
+      [STALE, "s1"],
+      [FRESH, "s2"],
+    ]),
+  );
+  world.store.replace(
+    LIVE_KEY,
+    new Map([
+      [STALE, "[1]"],
+      [FRESH, "[2]"],
     ]),
   );
   await withinOneHour(async () => {
@@ -420,7 +437,10 @@ async function runMatchesTheOldFlows(): Promise<void> {
   assert.deepEqual(world.broker.listings(), oldBroker.listings(), "prune listings differ");
   const oldSig = statusList.flow.get("csSig");
   assert.ok(isRecord(oldSig) && !(STALE in oldSig) && FRESH in oldSig);
-  assert.ok(!world.store.copy(GATE_KEY).has(STALE), "the pruned station keeps its signature");
+  for (const key of [STATIC_KEY, LIVE_KEY]) {
+    assert.ok(!world.store.copy(key).has(STALE), `the pruned station keeps its ${key} signature`);
+    assert.ok(world.store.copy(key).has(FRESH), `${key}: the fresh station lost its signature`);
+  }
 }
 
 async function statusWaitsForMasterData(): Promise<void> {
@@ -447,6 +467,6 @@ export {
   listWithoutBwStationKeepsTheCache as "carsharing-bw: a station list without a station in BW leaves the cache alone",
   masterDataReplacesTheSystemsStations as "carsharing-bw: a new station list replaces that system's stations, other systems stay",
   statusMatchesAcrossTwoRuns as "carsharing-bw: stations and fleets match across two runs (merge gate, freshEvery 3)",
-  runMatchesTheOldFlows as "carsharing-bw: run() requests, upserts and prunes (ownGbfs, csSig) as the two old flows",
+  runMatchesTheOldFlows as "carsharing-bw: run() requests, upserts and prunes (ownGbfs, signatures forgotten) as the two old flows",
   statusWaitsForMasterData as "carsharing-bw: without master data the status run is skipped with a warning",
 };
