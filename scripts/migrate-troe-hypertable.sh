@@ -1287,7 +1287,7 @@ import_load() {
     local day=$1
     k exec -i "$PRIMARY" -c postgres -- sh -c 'gzip -dc | psql -v ON_ERROR_STOP=1 -X -q -d "$1" -c "$2" -c "$3" -c "$4"' sh \
         "dbname=$DB application_name=$APP options=-cstatement_timeout=$STATEMENT_TIMEOUT" \
-        "SET client_encoding = 'UTF8'; SET DateStyle = 'ISO, YMD'; SET lock_timeout = '5s'; SET ROLE \"$OWNER\";
+        "SET client_min_messages = warning; SET client_encoding = 'UTF8'; SET DateStyle = 'ISO, YMD'; SET lock_timeout = '5s'; SET ROLE \"$OWNER\";
 DO \$\$ BEGIN IF NOT pg_try_advisory_lock(hashtext('udp-troe-migration')) THEN
   RAISE EXCEPTION 'another step of this migration is running – run one at a time'; END IF; END \$\$;" \
         "CREATE UNLOGGED TABLE IF NOT EXISTS $STAGING (LIKE attributes INCLUDING DEFAULTS); TRUNCATE $STAGING;" \
