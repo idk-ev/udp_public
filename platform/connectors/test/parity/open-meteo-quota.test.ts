@@ -23,6 +23,7 @@ import {
   REQUEST_INTERVAL_MS,
   callWeight,
   forecastDays,
+  limitOf429,
   retryAfterMs,
   sliceBatches,
   variableCount,
@@ -46,6 +47,7 @@ import {
   OPEN_METEO_PREFIX,
   jsonAnswer,
   recordingLimiter,
+  type RecordingLimiter,
   upsertedBatches,
   weatherCtx,
   weatherFetcher,
@@ -309,6 +311,156 @@ async function missingRetryAfterPausesAMinute(): Promise<void> {
   await wetter.runWith(ctx, JOIN);
   assert.deepEqual(limiter.paused, [{ host: OPEN_METEO_HOST, ms: 60_000 }]);
   assert.equal(net.sent.length, 9);
+}
+
+const DAILY_BODY = JSON.stringify({
+  error: true,
+  reason: "Daily API request limit exceeded. Please try again tomorrow.",
+});
+
+function limitsAreReadFromTheReason(): void {
+  assert.equal(limitOf429(DAILY_BODY), "daily");
+  assert.equal(
+    limitOf429(JSON.stringify({ error: true, reason: "DAILY API REQUEST LIMIT exceeded" })),
+    "daily",
+  );
+  for (const body of [
+    JSON.stringify({
+      error: true,
+      reason: "Minutely API request limit exceeded. Please try again in one minute.",
+    }),
+    JSON.stringify({
+      error: true,
+      reason: "Hourly API request limit exceeded. Please try again in the next hour.",
+    }),
+    JSON.stringify({ error: true, reason: "Too many dailyish things" }),
+    JSON.stringify({ error: true, reason: 5 }),
+    JSON.stringify({ error: true }),
+    JSON.stringify(["Daily"]),
+    "Daily API request limit exceeded",
+    "<html>Too Many Requests</html>",
+    "",
+  ]) {
+    assert.equal(limitOf429(body), "short", body);
+  }
+}
+
+/** A weather run whose first call gets a 429 with `body` and `headers`; the rest answer. */
+async function first429(
+  body: string,
+  headers: Readonly<Record<string, string>> = {},
+): Promise<{
+  readonly sent: readonly Sent[];
+  readonly paused: RecordingLimiter["paused"];
+  readonly log: ReturnType<typeof weatherCtx>["log"];
+}> {
+  const limiter = recordingLimiter();
+  const net = network(Date.now, (_call, index) =>
+    index === 0 ? { response: { status: 429, ok: false, headers, body } } : undefined,
+  );
+  const { ctx, log } = weatherCtx("wetter-bw", net.fetcher, { limiter });
+  await wetter.runWith(ctx, JOIN);
+  return { sent: net.sent, paused: limiter.paused, log };
+}
+
+async function shortLimitsPauseAndRetryOnce(): Promise<void> {
+  const minutely = await first429(
+    JSON.stringify({
+      error: true,
+      reason: "Minutely API request limit exceeded. Please try again in one minute.",
+    }),
+  );
+  assert.deepEqual(minutely.paused, [{ host: OPEN_METEO_HOST, ms: 60_000 }], "no Retry-After: 60 s");
+  assert.equal(minutely.sent.length, 9, "eight batches and one retry");
+  const hourly = await first429(
+    JSON.stringify({
+      error: true,
+      reason: "Hourly API request limit exceeded. Please try again in the next hour.",
+    }),
+    { "Retry-After": "120" },
+  );
+  assert.deepEqual(hourly.paused, [{ host: OPEN_METEO_HOST, ms: 120_000 }], "Retry-After honoured");
+  assert.equal(hourly.sent.length, 9);
+  // No body, no JSON, no reason: a short limit, never a lost day.
+  for (const body of ["", "<html>Too Many Requests</html>", JSON.stringify({ error: true })]) {
+    const unknown = await first429(body);
+    assert.deepEqual(unknown.paused, [{ host: OPEN_METEO_HOST, ms: 60_000 }], body);
+    assert.equal(unknown.sent.length, 9, body);
+  }
+}
+
+async function dailyLimitEndsTheDay(): Promise<void> {
+  // The real bucket on the simulated clock: the other batches of the run
+  // wait for their token when the answer comes.
+  const { clock, limiter, state } = simulated(Date.parse("2026-09-30T12:10:00Z"));
+  const net = network(
+    () => clock.time,
+    (_call, index) =>
+      index === 0 ? { response: { status: 429, ok: false, headers: {}, body: DAILY_BODY } } : undefined,
+  );
+  const weather = weatherCtx("wetter-bw", net.fetcher, { limiter, state });
+  const forecast = weatherCtx("vorhersage-bw", net.fetcher, { limiter, state });
+  const now = (): number => clock.time;
+
+  await clock.run(wetter.runWith(weather.ctx, JOIN, now));
+  assert.equal(net.sent.length, 1, "no retry: nothing changes before 00:00 UTC");
+  assert.ok(clock.time - Date.parse("2026-09-30T12:10:00Z") < MINUTE, "the waiting batches leave at once");
+  assert.equal(weather.ctx.quota.exhausted(OPEN_METEO_HOST), true);
+  assert.deepEqual(weather.log.warnings().slice(0, 1), [
+    "BW weather: batch 1/8 (138 municipalities): HTTP 429, Open-Meteo's daily limit is used up, " +
+      "no calls until 2026-10-01T00:00:00.000Z — the rest of the run is not sent",
+  ]);
+
+  // The forecast and the next weather slot skip without a single call.
+  clock.time = Date.parse("2026-09-30T15:10:00Z");
+  await clock.run(vorhersage.runWith(forecast.ctx, JOIN, now));
+  clock.time = Date.parse("2026-09-30T18:10:00Z");
+  await clock.run(wetter.runWith(weather.ctx, JOIN, now));
+  assert.equal(net.sent.length, 1);
+  for (const log of [forecast.log, weather.log]) {
+    assert.match(
+      log.warnings().at(-1) ?? "",
+      /batches 1, 2, 3, 4, 5, 6, 7, 8 of 8 skipped, 1103 municipalities keep their previous values — Open-Meteo reported its daily limit used up today \(HTTP 429\), no calls until 00:00 UTC$/,
+    );
+  }
+
+  // The pause of the shared bucket ends at 00:00 UTC, not later.
+  const pausedLimiter = recordingLimiter();
+  const once = network(Date.now, (_call, index) =>
+    index === 0 ? { response: { status: 429, ok: false, headers: {}, body: DAILY_BODY } } : undefined,
+  );
+  const probe = weatherCtx("wetter-bw", once.fetcher, { limiter: pausedLimiter });
+  await wetter.runWith(probe.ctx, JOIN, () => Date.parse("2026-09-30T12:10:00Z"));
+  assert.deepEqual(pausedLimiter.paused[0], { host: OPEN_METEO_HOST, ms: 11 * HOUR + 50 * MINUTE });
+}
+
+function exhaustedSurvivesARestartUntilMidnight(): void {
+  const host = OPEN_METEO_HOST;
+  let now = Date.parse("2026-09-30T12:10:00Z");
+  const store = new StateStore();
+  const book = new QuotaBook(store, () => now);
+  book.charge("wetter-bw", store.scope("wetter-bw"), host, 138);
+  book.exhaust("wetter-bw", store.scope("wetter-bw"), host);
+  book.charge("wetter-bw", store.scope("wetter-bw"), host, 10);
+  assert.equal(book.exhausted(host), true);
+  assert.equal(book.used(host), 148, "exhausting charges nothing, charging keeps the mark");
+
+  const written = store.attach("wetter-bw", HOOKS).snapshot();
+  assert.deepEqual(written.get(QUOTA_STATE_KEY), {
+    [host]: { day: "2026-09-30", units: 148, exhausted: true },
+  });
+  const restarted = new StateStore();
+  restarted.attach("wetter-bw", HOOKS).restore(written);
+  const after = new QuotaBook(restarted, () => now);
+  assert.equal(after.exhausted(host), true, "a restart keeps the mark");
+  now = Date.parse("2026-10-01T00:00:00Z");
+  assert.equal(after.exhausted(host), false, "the next UTC day starts clean");
+  // A malformed mark counts as nothing rather than failing.
+  const broken = new StateStore();
+  broken
+    .attach("wetter-bw", HOOKS)
+    .restore(new Map([[QUOTA_STATE_KEY, { [host]: { day: "2026-10-01", units: 1, exhausted: "yes" } }]]));
+  assert.equal(new QuotaBook(broken, () => now).exhausted(host), false);
 }
 
 async function second429EndsTheRun(): Promise<void> {
@@ -619,6 +771,10 @@ async function dailyCapFromTheEnvironment(): Promise<void> {
 }
 
 export {
+  limitsAreReadFromTheReason as "open-meteo: a 429 names the daily limit by its reason; anything else is a short limit",
+  shortLimitsPauseAndRetryOnce as "open-meteo: minutely and hourly 429s (and ones without a usable body) pause and retry once",
+  dailyLimitEndsTheDay as "open-meteo: a daily-limit 429 is not retried; the rest of the UTC day skips without calls",
+  exhaustedSurvivesARestartUntilMidnight as "quota: the used-up mark survives a restart and ends at 00:00 UTC",
   longPauseReleasesTheOtherRun as "open-meteo: an hour's pause releases the other connector's waiting batches at once",
   bestEffortKeysDoNotNeedTheState as "state: best-effort keys (quota, last run) work without a loaded state and yield to the load",
   dailyCapFromTheEnvironment as "open-meteo: UDP_OPEN_METEO_DAILY_CAP sets the cap; a non-positive value falls back with a warning",

@@ -47,6 +47,8 @@ interface DayUnits {
   /** `YYYY-MM-DD`, UTC. */
   readonly day: string;
   readonly units: number;
+  /** The provider said the day's limit is used up ({@link QuotaBook.exhaust}). */
+  readonly exhausted?: true | undefined;
 }
 
 export const QUOTA_STATE_KEY = "kernel.hostQuota";
@@ -56,19 +58,28 @@ export function utcDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** Stored as `{ "<host>": { "day": "YYYY-MM-DD", "units": n } }`. */
+/** Stored as `{ "<host>": { "day": "YYYY-MM-DD", "units": n, "exhausted": true? } }`. */
 const codec: StateCodec<ReadonlyMap<string, DayUnits>> = {
-  encode: (value) => Object.fromEntries([...value].map(([host, entry]) => [host, { ...entry }])),
+  encode: (value) =>
+    Object.fromEntries(
+      [...value].map(([host, entry]) => [
+        host,
+        entry.exhausted === true
+          ? { day: entry.day, units: entry.units, exhausted: true }
+          : { day: entry.day, units: entry.units },
+      ]),
+    ),
   decode: (raw) => {
     if (!isRecord(raw)) return undefined;
     const out = new Map<string, DayUnits>();
     for (const [host, entry] of Object.entries(raw)) {
       if (!isRecord(entry) || isArray(entry)) return undefined;
-      const { day, units } = entry;
+      const { day, units, exhausted } = entry;
       if (typeof day !== "string" || typeof units !== "number" || !Number.isFinite(units) || units < 0) {
         return undefined;
       }
-      out.set(host, { day, units });
+      if (exhausted !== undefined && exhausted !== true) return undefined;
+      out.set(host, exhausted === true ? { day, units, exhausted } : { day, units });
     }
     return out;
   },
@@ -78,8 +89,9 @@ const QUOTA = stateKey<ReadonlyMap<string, DayUnits>>(QUOTA_STATE_KEY, () => new
   bestEffort: true,
 });
 
-function unitsOn(entry: DayUnits | undefined, day: string): number {
-  return entry?.day === day ? entry.units : 0;
+/** `entry` if it is of `day`. */
+function onDay(entry: DayUnits | undefined, day: string): DayUnits | undefined {
+  return entry?.day === day ? entry : undefined;
 }
 
 /** One per kernel: the counters of every connector and host. */
@@ -101,15 +113,39 @@ export class QuotaBook {
     const stored = this.#stored();
     const ids = new Set([...this.#memory.keys(), ...stored.keys()]);
     let sum = 0;
-    for (const id of ids) sum += this.#share(id, host, day, stored);
+    for (const id of ids) sum += this.#share(id, host, day, stored).units;
     return sum;
+  }
+
+  /** Whether any connector learned today (UTC) that `host`'s daily limit is used up. */
+  exhausted(host: string): boolean {
+    const day = utcDay(this.#nowMs());
+    const stored = this.#stored();
+    const ids = new Set([...this.#memory.keys(), ...stored.keys()]);
+    for (const id of ids) if (this.#share(id, host, day, stored).exhausted === true) return true;
+    return false;
   }
 
   /** Charges `units` to `host` for connector `id` and persists its share in `state`. */
   charge(id: ConnectorId, state: ConnectorState, host: string, units: number): void {
     if (!Number.isFinite(units) || units <= 0) return;
     const day = utcDay(this.#nowMs());
-    const next: DayUnits = { day, units: this.#share(id, host, day, this.#stored()) + units };
+    const share = this.#share(id, host, day, this.#stored());
+    this.#put(id, state, host, { ...share, units: share.units + units });
+  }
+
+  /**
+   * Marks `host`'s limit as used up for the rest of the UTC day — the
+   * provider said so. Persisted with the connector's share, so a restart
+   * keeps it; the next day starts clean.
+   */
+  exhaust(id: ConnectorId, state: ConnectorState, host: string): void {
+    const day = utcDay(this.#nowMs());
+    this.#put(id, state, host, { ...this.#share(id, host, day, this.#stored()), exhausted: true });
+  }
+
+  #put(id: ConnectorId, state: ConnectorState, host: string, next: DayUnits): void {
+    const day = next.day;
     let hosts = this.#memory.get(id);
     if (hosts === undefined) {
       hosts = new Map();
@@ -130,6 +166,10 @@ export class QuotaBook {
       charge: (host, units) => {
         this.charge(id, state, host, units);
       },
+      exhausted: (host) => this.exhausted(host),
+      exhaust: (host) => {
+        this.exhaust(id, state, host);
+      },
     };
   }
 
@@ -148,8 +188,12 @@ export class QuotaBook {
     host: string,
     day: string,
     stored: ReadonlyMap<ConnectorId, ReadonlyMap<string, DayUnits>>,
-  ): number {
-    return Math.max(unitsOn(this.#memory.get(id)?.get(host), day), unitsOn(stored.get(id)?.get(host), day));
+  ): DayUnits {
+    const memory = onDay(this.#memory.get(id)?.get(host), day);
+    const loaded = onDay(stored.get(id)?.get(host), day);
+    const units = Math.max(memory?.units ?? 0, loaded?.units ?? 0);
+    const exhausted = memory?.exhausted === true || loaded?.exhausted === true;
+    return exhausted ? { day, units, exhausted } : { day, units };
   }
 }
 

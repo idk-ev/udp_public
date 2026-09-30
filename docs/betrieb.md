@@ -402,7 +402,13 @@ anteilig mehr. Wetter (7 Variablen, 1 Tag) und Vorhersage (10 Variablen,
   zweites 429 im Lauf oder eine Pause über 5 min beendet den Lauf. Bei einer
   Pause über 5 min verlassen auch die wartenden Batches des anderen
   Konnektors sofort die Warteschlange, und folgende Läufe überspringen,
-  solange die Pause gilt — kein Lauf wartet stundenlang.
+  solange die Pause gilt — kein Lauf wartet stundenlang. Das gilt für das
+  Minuten- und Stundenlimit (`reason` „Minutely …“/„Hourly …“) und für jede
+  429 ohne lesbaren Grund. Nennt die Antwort das **Tageslimit** (`reason`
+  enthält das Wort „daily“, Groß-/Kleinschreibung egal): keine Wiederholung,
+  Pause bis 00:00 UTC, und der Tag gilt im Zustandsspeicher als verbraucht —
+  alle weiteren Läufe des UTC-Tages überspringen ohne Aufruf, mit einer
+  Warnung je Lauf, auch nach einem Neustart.
 
 Nicht geholte Batches stehen mit Nummer und Gemeindezahl im Log
 (`batch 3/8 (138 municipalities) failed …`, `batches 5, 6 of 8 skipped …`);

@@ -71,12 +71,15 @@
  *    A second 429 in the run, or a pause longer than
  *    {@link MAX_RETRY_WAIT_MS}, ends the run: the remaining batches are not
  *    sent, and later runs skip while the pause lasts instead of queueing.
+ *    A 429 naming the DAILY limit ({@link limitOf429}) is not retried: the
+ *    bucket pauses until 00:00 UTC and `ctx.quota` marks the day used up, so
+ *    every later run of the day — after a restart too — skips without a call.
  *
  * A batch that is not fetched keeps its municipalities' previous values in
  * the broker (no entity is written for them) and is reported with its index.
  */
 
-import { field, isArray, isTruthy, requireNumber } from "../kernel/parse.js";
+import { field, isArray, isRecord, isTruthy, requireNumber } from "../kernel/parse.js";
 import { RateLimitAbortedError } from "../kernel/rate-limit.js";
 import { slotBounds } from "../kernel/scheduler.js";
 import type {
@@ -122,6 +125,9 @@ export const MAX_RETRY_WAIT_MS = 300_000;
 
 /** Upper bound for a pause asked for by `Retry-After` — one run interval. */
 export const MAX_PAUSE_MS = 6 * 3_600_000;
+
+/** Upper bound for the pause after the daily limit: until 00:00 UTC, at most a day. */
+export const MAX_DAILY_PAUSE_MS = 24 * 3_600_000;
 
 /** Node-RED's default `httpRequestTimeout`; the flows did not override it. */
 export const REQUEST_TIMEOUT_MS = 120_000;
@@ -401,6 +407,34 @@ export function retryAfterMs(value: string | undefined, nowMs: number): number |
   return Number.isNaN(at) ? null : Math.max(0, at - nowMs);
 }
 
+/** Which limit a 429 names — see {@link limitOf429}. */
+export type Limit429 = "daily" | "short";
+
+/**
+ * Which limit an HTTP 429 of Open-Meteo names. The body is
+ * `{"error": true, "reason": "Daily API request limit exceeded. Please try
+ * again tomorrow."}`; the minute and hour limits say "Minutely …" and
+ * "Hourly …". Matched on the word "daily" in `reason`, case-insensitive, so a
+ * rewording of the rest keeps working. Anything else — another reason, no
+ * body, no JSON, no string `reason` — counts as a short limit: a pause and
+ * one retry cost two calls, a day lost by mistake costs the day.
+ */
+export function limitOf429(body: string): Limit429 {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return "short";
+  }
+  const reason = isRecord(parsed) ? parsed.reason : undefined;
+  return typeof reason === "string" && /\bdaily\b/i.test(reason) ? "daily" : "short";
+}
+
+/** The next 00:00 UTC after `nowMs`. */
+export function nextUtcMidnight(nowMs: number): number {
+  return (Math.floor(nowMs / 86_400_000) + 1) * 86_400_000;
+}
+
 function headerOf(headers: Readonly<Record<string, string>>, name: string): string | undefined {
   for (const [key, value] of Object.entries(headers)) if (key.toLowerCase() === name) return value;
   return undefined;
@@ -522,6 +556,18 @@ export class OpenMeteoRun {
         release();
       }
 
+      if (response.status === 429 && limitOf429(response.body) === "daily") {
+        // No retry: nothing changes before 00:00 UTC. The day is marked used
+        // up in the quota, so every later run skips without calling.
+        const now = this.#nowMs();
+        const until = nextUtcMidnight(now);
+        this.#pause(response, Math.min(until - now, MAX_DAILY_PAUSE_MS));
+        this.#ctx.quota.exhaust(OPEN_METEO_HOST);
+        const reason = `Open-Meteo's daily limit is used up, no calls until ${new Date(until).toISOString()}`;
+        this.#stop(reason);
+        this.#ctx.log.warn(`${this.#name(call)}: HTTP 429, ${reason} — the rest of the run is not sent`);
+        return this.#fail(call);
+      }
       if (response.status === 429) {
         const pauseMs = this.#pause(response);
         const seconds = String(Math.round(pauseMs / 1000));
@@ -608,6 +654,10 @@ export class OpenMeteoRun {
       this.#stop("shutdown");
       return true;
     }
+    if (this.#ctx.quota.exhausted(OPEN_METEO_HOST)) {
+      this.#stop("Open-Meteo reported its daily limit used up today (HTTP 429), no calls until 00:00 UTC");
+      return true;
+    }
     if (this.#ledger.pausedUntil - now > MAX_RETRY_WAIT_MS) {
       this.#stop(`Open-Meteo asked for a pause until ${new Date(this.#ledger.pausedUntil).toISOString()}`);
       return true;
@@ -641,11 +691,14 @@ export class OpenMeteoRun {
     this.#ledger.recent.push([this.#nowMs(), cost]);
   }
 
-  /** Pauses the shared bucket as the 429 asks (60 s without a usable header); returns the pause. */
-  #pause(response: HttpResponse): number {
+  /**
+   * Pauses the shared bucket as the 429 asks (60 s without a usable header),
+   * or for `fixedMs` (the daily limit); returns the pause.
+   */
+  #pause(response: HttpResponse, fixedMs?: number): number {
     const now = this.#nowMs();
     const asked = retryAfterMs(headerOf(response.headers, "retry-after"), now) ?? DEFAULT_429_PAUSE_MS;
-    const pauseMs = Math.min(asked, MAX_PAUSE_MS);
+    const pauseMs = fixedMs ?? Math.min(asked, MAX_PAUSE_MS);
     this.#ledger.pausedUntil = Math.max(this.#ledger.pausedUntil, now + pauseMs);
     this.#ctx.limiter.pause(OPEN_METEO_HOST, pauseMs);
     if (pauseMs > MAX_RETRY_WAIT_MS) {

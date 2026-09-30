@@ -513,6 +513,10 @@ export interface HostQuota {
   used(host: string): number;
   /** Charges `units` to `host` on behalf of this connector. */
   charge(host: string, units: number): void;
+  /** Whether the provider said today (UTC) that `host`'s daily limit is used up. */
+  exhausted(host: string): boolean;
+  /** Records that the provider said so; persisted, cleared by the next UTC day. */
+  exhaust(host: string): void;
 }
 
 /* ------------------------------------------------------------------ Change gate */
