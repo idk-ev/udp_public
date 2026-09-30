@@ -121,6 +121,16 @@ DevTools → Application → Service Workers → Unregister.
 - Secrets ausschließlich über Kubernetes-Secrets/External-Secrets, nie im
   Repository (Beispielwerte sind als solche markiert und zu ersetzen).
 
+### Cockpit-Micro-Cache und Zugriffslog
+
+Die Kontext-API (`/gateway/ngsi-ld/`) läuft im Cockpit über einen
+Loopback-Hop (`127.0.0.1:8081`), der leere Antworten (`[]`) auf 10 s Cache
+begrenzt; nicht leere bleiben 60 s. Im Zugriffslog des Cockpits steht als
+Upstream deshalb dieser Hop, nicht APISIX. Antwortet das Gateway mit 5xx,
+schreibt der Hop eine eigene Zeile (`hop "…" 502 upstream=<APISIX-Adresse>
+upstream_status=… upstream_time=…`); weiter geht es im Log von APISIX.
+Ob eine Antwort aus dem Cache kam, zeigt der Header `X-Cache`.
+
 ## Webanalyse, Impressum und Datenschutz
 
 Betreiber binden eine Webanalyse ihrer Wahl (z. B. Rybbit, Plausible, Umami,
