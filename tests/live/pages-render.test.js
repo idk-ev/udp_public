@@ -167,11 +167,16 @@ exports["Jede Gemeinde hat die vier Bürgerservice-Kacheln + saubere Themen-Grup
   assert(d.querySelectorAll('#tiles a.tile.tile-empty').length >= 1, "keine Potenzial-Kachel bei datenarmer Gemeinde");
 
   // Tile order follows REL_ORDER in stadt.html (relevance, not topic);
-  // unknown labels come last in code order.
+  // unknown labels come after it in code order, empty "Noch nicht verfügbar"
+  // tiles after every data tile (relRank).
   const src = await (await fetch(BASE + "/stadt.html")).text();
   // Evaluated, not JSON-parsed: the array literal may use JS syntax.
   const rel = new Function(`return ${src.match(/const REL_ORDER = (\[[\s\S]*?\]);/)[1]}`)();
-  const rank = t => { const i = rel.indexOf(t.querySelector(".label").textContent.trim()); return i === -1 ? rel.length : i; };
+  const rank = t => {
+    if (t.classList.contains("tile-empty")) return rel.length + 1;
+    const i = rel.indexOf(t.querySelector(".label").textContent.trim());
+    return i === -1 ? rel.length : i;
+  };
   const seq = [...d.querySelectorAll("#tiles .tile")].map(rank);
   for (let i = 1; i < seq.length; i++) {
     assert(seq[i] >= seq[i - 1], `Kacheln nicht nach REL_ORDER sortiert an Position ${i} (${seq.join(",")})`);
