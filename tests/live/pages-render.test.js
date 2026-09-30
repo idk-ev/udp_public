@@ -33,11 +33,14 @@ async function renderCity(slug, stadt) {
   return w.document;
 }
 
-exports["Reutlingen: volle Detailtiefe (≥20 Kacheln, ≥7 Charts, Fehlerbox leer)"] = async () => {
+exports["Reutlingen: volle Detailtiefe (≥20 Kacheln, ≥15 mit Detailansicht, Fehlerbox leer)"] = async () => {
   const d = await renderCity("reutlingen", { ags: "08415061", slug: "reutlingen", name: "Reutlingen" });
   assert.strictEqual(d.querySelector("#err").textContent, "", "Fehlerbox belegt");
   assert(d.querySelectorAll("#tiles .tile").length >= 20, "zu wenige Kacheln");
-  assert(d.querySelectorAll("#charts .card").length >= 7, "zu wenige Chart-Karten");
+  // Detail depth sits behind the tiles (charts/maps in the modal): the inline
+  // chart row only knows br/carsharing/passanten/parken (CHART_ORDER) and
+  // shows none of them for Reutlingen, so "≥ 7 chart cards" could never hold.
+  assert(d.querySelectorAll("#tiles .tile[data-detail]").length >= 15, "zu wenige Kacheln mit Detailansicht");
 };
 
 exports["Datenarme Gemeinde rendert fehlerfrei (Böllen)"] = async () => {
