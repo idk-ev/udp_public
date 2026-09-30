@@ -49,6 +49,7 @@ import { messagesOf } from "./vm-runner.js";
 export const passThroughLimiter: RateLimiter = {
   acquire: () => Promise.resolve(() => undefined),
   run: (_host, task) => task(),
+  pause: () => undefined,
 };
 
 export interface Rig {

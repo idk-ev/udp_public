@@ -8,8 +8,8 @@
  * join 8 / 240 s, build node) against the ported module.
  *
  * Compared: the eight Open-Meteo URLs and `agsList`s of the batch node (both
- * daily variants), the master data it puts into the geo context, the `withDaily`
- * hour switch across both DST changes, and the upserted entities and their
+ * daily variants), the master data it puts into the geo context, and the
+ * upserted entities and their
  * chunking — on the recorded answer, on hand-made joined arrays for the build
  * node's skip branches, with failed batches (HTTP 500 and a network error), and
  * with a join that times out: a PARTIAL group first, the late batches as a
@@ -22,9 +22,12 @@
 
 import assert from "node:assert/strict";
 import {
+  OPEN_METEO_HOST,
   REQUEST_INTERVAL_MS,
   REQUEST_TIMEOUT_MS,
   UPSERT_CHUNK_SIZE,
+  callWeight,
+  variableCount,
 } from "../../src/connectors/open-meteo-batches.js";
 import { parse as parseMunicipalities } from "../../src/connectors/stammdaten-bw.js";
 import {
@@ -33,7 +36,6 @@ import {
   partOf,
   planBatches,
   runWith,
-  withDailyAt,
   type WeatherObservedEntity,
 } from "../../src/connectors/wetter-bw.js";
 import { chunk } from "../../src/kernel/orion.js";
@@ -47,7 +49,6 @@ import {
   normalize,
   openClock,
 } from "../harness/normalize.js";
-import { evaluateSnippet, extractSnippet } from "../harness/vm-runner.js";
 import {
   jsonAnswer,
   legacyBatches,
@@ -55,6 +56,7 @@ import {
   legacyChain,
   openMeteoCalls,
   openMeteoNetwork,
+  recordingLimiter,
   splitAnswer,
   upsertedBatches,
   weatherCtx,
@@ -137,24 +139,27 @@ async function batchesAndGeoContextMatch(): Promise<void> {
   assert.equal(variants.size, 2, "both daily variants were compared");
 }
 
-async function dailySwitchFollowsBerlinHours(): Promise<void> {
-  // The expression itself, cut out of the node, against a frozen clock.
-  const expression = extractSnippet(NODES.batch, "new Date().getHours()", "< 3");
-  await withTimeZone("Europe/Berlin", () => {
-    // Both DST changes of 2026 (29 March, 25 October), quarter-hour by quarter-hour.
-    for (const day of ["2026-03-28T22:00:00Z", "2026-10-24T22:00:00Z"]) {
-      for (let quarter = 0; quarter < 4 * 26; quarter += 1) {
-        const instant = new Date(Date.parse(day) + quarter * 15 * 60_000).toISOString();
-        class FixedDate extends Date {
-          constructor() {
-            super(instant);
-          }
-        }
-        const legacy = evaluateSnippet("", { Date: FixedDate }, expression);
-        assert.equal(withDailyAt(instant), legacy, `withDaily differs at ${instant}`);
-      }
+async function dailyValuesAlwaysRequested(): Promise<void> {
+  // The flow asked for them only when `getHours() % 6 < 3`; with a 6-hour
+  // cadence that was always or never. Whatever the time zone and hour now:
+  for (const zone of ["UTC", "Etc/GMT-3", "Europe/Berlin"]) {
+    const bodies = batchBodies();
+    const network = openMeteoNetwork(municipalitiesPayload(), (index) => jsonAnswer(200, bodies[index]));
+    const { ctx } = weatherCtx("wetter-bw", network.fetcher);
+    await withTimeZone(zone, () => runWith(ctx, { count: 8, timeoutMs: 5_000 }));
+    const calls = openMeteoCalls(network.seen);
+    assert.equal(calls.length, 8);
+    for (const call of calls) {
+      assert.match(call.url, /&daily=temperature_2m_max,temperature_2m_min,uv_index_max&forecast_days=1/);
+      assert.equal(variableCount(call.url), 7, "4 current + 3 daily variables");
+      assert.equal(callWeight(call.url), 1, "at most 10 variables: one call per coordinate");
     }
-  });
+    const entities = upsertedBatches(network.seen).flat();
+    assert.equal(entities.length, ROWS);
+    for (const entity of entities) {
+      assert.ok(isRecord(entity) && "tempMax" in entity && "tempMin" in entity && "uvIndexMax" in entity);
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ build node */
@@ -269,13 +274,14 @@ async function aDriftedValueFailsTheComparison(): Promise<void> {
 async function runPacesAndWritesWhatTheOldChainWrote(): Promise<void> {
   const bodies = batchBodies();
   const network = openMeteoNetwork(municipalitiesPayload(), (index) => jsonAnswer(200, bodies[index]));
-  const { ctx, kernel, log } = weatherCtx("wetter-bw", network.fetcher);
+  const limiter = recordingLimiter();
+  const { ctx, kernel, log } = weatherCtx("wetter-bw", network.fetcher, { limiter });
   const portClock = openClock();
   await runWith(ctx, { count: 8, timeoutMs: 5_000 });
   const portWindow = portClock.close();
 
   const calls = openMeteoCalls(network.seen);
-  const withDaily = calls[0]?.url.includes("&daily=") === true;
+  const withDaily = true;
   assert.deepEqual(
     calls.map((call) => call.url),
     planBatches(rows(), withDaily).map((batch) => batch.url),
@@ -284,10 +290,15 @@ async function runPacesAndWritesWhatTheOldChainWrote(): Promise<void> {
   for (const call of calls) {
     const options = call.options;
     assert.ok(options !== undefined);
-    assert.equal(options.minIntervalMs, REQUEST_INTERVAL_MS, "one Open-Meteo call per 15 s");
+    assert.equal(options.bucket, null, "paced by the run itself, not a second time by the fetcher");
     assert.equal(options.timeoutMs, REQUEST_TIMEOUT_MS, "the 120 s of the http request node");
-    assert.equal(options.retries, 0, "no retry against a provider that sent 429");
+    assert.equal(options.retries, 0, "no transport retry");
   }
+  const paced = limiter.acquired.filter((entry) => entry.host === OPEN_METEO_HOST);
+  assert.equal(paced.length, calls.length, "every call takes a token of the shared host bucket");
+  for (const entry of paced)
+    assert.equal(entry.options?.minIntervalMs, REQUEST_INTERVAL_MS, "one call per 20 s");
+  assert.equal(ctx.quota.used(OPEN_METEO_HOST), ROWS, "every coordinate is charged once");
 
   const legacyClock = openClock();
   const old = await legacyChain(NODES, await oldBatchesWith(withDaily), bodies.map(ok), ALL);
@@ -316,7 +327,7 @@ async function failedBatchesAreSkippedAsBefore(): Promise<void> {
   );
   const { ctx, log } = weatherCtx("wetter-bw", network.fetcher);
   await runWith(ctx, { count: 8, timeoutMs: 5_000 });
-  const withDaily = openMeteoCalls(network.seen)[0]?.url.includes("&daily=") === true;
+  const withDaily = true;
 
   // The old side: a 500 reached the wrap node as status and body; a network
   // error as `err.code` and `err.toString() + " : " + url` (21-httprequest.js).
@@ -333,11 +344,15 @@ async function failedBatchesAreSkippedAsBefore(): Promise<void> {
   const upserts = upsertedBatches(network.seen);
   assert.equal(upserts.flat().length, ROWS - 6, "two batches of three municipalities are missing");
   assertEntitiesEqual(old.chunks.flat(), upserts.flat());
-  assert.deepEqual(log.warnings(), ["Open-Meteo batch failed (HTTP 500)"]);
-  assert.equal(
-    log.lines.filter((line) => line.level === "error").length,
-    1,
-    "the network error is an error line",
+  // Index and size of the failed batches; their municipalities keep their values.
+  assert.deepEqual(log.warnings(), [
+    "BW weather: batch 3/8 (3 municipalities) failed (HTTP 500) — previous values kept",
+  ]);
+  const errors = log.lines.filter((line) => line.level === "error");
+  assert.equal(errors.length, 1, "the network error is an error line");
+  assert.match(
+    errors[0]?.text ?? "",
+    /^BW weather: batch 6\/8 \(3 municipalities\) failed — previous values kept/,
   );
 }
 
@@ -350,7 +365,7 @@ async function joinTimeoutWritesPartialThenLate(): Promise<void> {
   );
   const { ctx, log } = weatherCtx("wetter-bw", network.fetcher);
   await runWith(ctx, { count: 8, timeoutMs: 100 });
-  const withDaily = openMeteoCalls(network.seen)[0]?.url.includes("&daily=") === true;
+  const withDaily = true;
 
   const batches = await oldBatchesWith(withDaily);
   const partial = await legacyChain(NODES, batches, bodies.map(ok), [0, 1, 2, 3, 4]);
@@ -404,7 +419,7 @@ async function unreadableMunicipalitiesStopTheRun(): Promise<void> {
 
 export {
   batchesAndGeoContextMatch as "wetter-bw: old batch node and planBatches() build identical URLs and fill the geo context identically",
-  dailySwitchFollowsBerlinHours as "wetter-bw: withDailyAt() matches `getHours() % 6 < 3` under TZ=Europe/Berlin across both DST changes",
+  dailyValuesAlwaysRequested as "wetter-bw: daily max/min/UV are requested and written in every run, at weight 1",
   fixtureChainIsIdentical as "wetter-bw: old batch/wrap/build chain and the port produce identical entities and chunks on the recorded answer",
   skipBranchesOfTheBuildNode as "wetter-bw: failed batches, error text and locations without values are skipped as in the old build node",
   nothingLeftWarnsOnBothSides as "wetter-bw: a join without usable locations yields no entities on both sides",

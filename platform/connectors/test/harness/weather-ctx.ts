@@ -23,10 +23,17 @@ import { createDb } from "../../src/kernel/db.js";
 import { createEnv } from "../../src/kernel/env.js";
 import { createSharedGeo } from "../../src/kernel/geo.js";
 import { createHttpServer } from "../../src/kernel/http.js";
-import { createRateLimiter } from "../../src/kernel/rate-limit.js";
 import { createRegistry, loadRegistry, resolveRegistryPath } from "../../src/kernel/registry.js";
 import { createScheduler } from "../../src/kernel/scheduler.js";
-import type { Ctx, Fetcher, FetchOptions, HttpResponse, JsonResponse } from "../../src/kernel/types.js";
+import type {
+  Ctx,
+  Fetcher,
+  FetchOptions,
+  HttpResponse,
+  JsonResponse,
+  RateLimiter,
+  RateLimitOptions,
+} from "../../src/kernel/types.js";
 import { isArray } from "../../src/kernel/parse.js";
 import { recordingLog } from "./kernel.js";
 import type { RecordedLog } from "./kernel.js";
@@ -126,6 +133,34 @@ export function openMeteoCalls(seen: readonly SeenCall[]): SeenCall[] {
   return seen.filter((call) => call.url.startsWith(OPEN_METEO_PREFIX));
 }
 
+/* ------------------------------------------------------------------ limiter */
+
+/** A limiter that grants at once and records what it was asked for. */
+export interface RecordingLimiter extends RateLimiter {
+  readonly acquired: { readonly host: string; readonly options: RateLimitOptions | undefined }[];
+  readonly paused: { readonly host: string; readonly ms: number }[];
+}
+
+export function recordingLimiter(): RecordingLimiter {
+  const acquired: RecordingLimiter["acquired"] = [];
+  const paused: RecordingLimiter["paused"] = [];
+  return {
+    acquired,
+    paused,
+    acquire: (host, options) => {
+      acquired.push({ host, options });
+      return Promise.resolve(() => undefined);
+    },
+    run: (host, task, options) => {
+      acquired.push({ host, options });
+      return task();
+    },
+    pause: (host, ms) => {
+      paused.push({ host, ms });
+    },
+  };
+}
+
 /* ------------------------------------------------------------------ ctx */
 
 export interface TestCtx {
@@ -137,9 +172,15 @@ export interface TestCtx {
 /**
  * A `Ctx` for the registry entry `id` of platform/config/connectors.json, over
  * the given fetcher. Nothing listens and nothing is scheduled: the HTTP servers
- * and the scheduler are only constructed, never started.
+ * and the scheduler are only constructed, never started. The limiter grants at
+ * once ({@link recordingLimiter}) unless one is given — the Open-Meteo pace is
+ * 20 s per call.
  */
-export function weatherCtx(id: string, fetcher: Fetcher): TestCtx {
+export function weatherCtx(
+  id: string,
+  fetcher: Fetcher,
+  options?: { readonly limiter?: RateLimiter; readonly state?: StateStore },
+): TestCtx {
   const registry = loadRegistry(resolveRegistryPath());
   const entry = registry.byId(id);
   if (entry === undefined) throw new Error(`registry has no connector "${id}"`);
@@ -148,11 +189,11 @@ export function weatherCtx(id: string, fetcher: Fetcher): TestCtx {
   const kernel: Kernel = {
     log,
     env,
-    limiter: createRateLimiter(log),
+    limiter: options?.limiter ?? recordingLimiter(),
     fetch: fetcher,
     orionUrl: "http://orion-ld:1026",
     signatures: new SignatureStore(),
-    state: new StateStore(),
+    state: options?.state ?? new StateStore(),
     geo: createSharedGeo(log),
     registry: createRegistry([entry]),
     publicHttp: createHttpServer(log),

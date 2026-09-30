@@ -418,7 +418,10 @@ async function render() {
   // "Echtzeit" only while the value is current: twice the refresh period of the
   // connector (parken-bw every 3 h; carsharing and charge point stations as
   // well as the charging sums refresh unchanged values every 3 h).
-  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 6 * 3600e3 };
+  // Open-Meteo weather and forecast (wetter-bw, vorhersage-bw) refresh every
+  // OM_TAKT_H hours; current until two runs are missing, plus an hour of margin.
+  const OM_TAKT_H = 6;
+  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 6 * 3600e3, wetter: (2 * OM_TAKT_H + 1) * 3600e3 };
   const scAlle = luft.find(e => e.id.includes("bw-sc-"));
   const scZeit = Date.parse(dObs(scAlle) || "");
   const sc = (scAlle && scZeit && Date.now() - scZeit < 2 * 3600e3) ? scAlle : null;
@@ -516,16 +519,23 @@ async function render() {
   }
   const feelsV = val(fcEnt, "apparentTemperature");
   if (wx && D.temperatur) D.temperatur.noSpark = true;   // Thermometer statt Sparkline
+  // Weather values are "current" only while fresh (observedAt of the values,
+  // dateObserved of the forecast); otherwise "Stand: …" and a neutral dot.
+  const wxStand = wx ? staleStand(wx, STALE.wetter) : "";
+  const fcStand = fcEnt ? staleStand(fcEnt, STALE.wetter) : "";
+  const omTakt = "Open-Meteo, " + OM_TAKT_H + "-stündlich";
   tiles +=
     tile("Temperatur", val(wx, "temperature"), "°C", { topic: "wetter", detail: wx ? "temperatur" : null,
-      thermo: wx ? { v: val(wx, "temperature"), feels: feelsV, min: -10, max: 40 } : null,
-      hint: feelsV != null ? "gefühlt " + Math.round(feelsV) + " °C" : null,
-      explain: "Aktuelle Lufttemperatur am Gemeinde-Zentroid (Open-Meteo, 3-stündlich)" + (feelsV != null ? "; die weiße Markierung zeigt die gefühlte Temperatur" : "") + ". Klick: Thermometer, 7-Tage-Vorhersage und Verlauf." }) +
+      status: wxStand ? css("--text-muted") : null,
+      thermo: wx ? { v: val(wx, "temperature"), feels: fcStand ? null : feelsV, min: -10, max: 40 } : null,
+      hint: [feelsV != null && !fcStand ? "gefühlt " + Math.round(feelsV) + " °C" : null, wxStand || null].filter(Boolean).join(" · ") || null,
+      explain: "Aktuelle Lufttemperatur am Gemeinde-Zentroid (" + omTakt + ")" + (feelsV != null ? "; die weiße Markierung zeigt die gefühlte Temperatur" : "") + ". Klick: Thermometer, 7-Tage-Vorhersage und Verlauf." }) +
     tile("Wind", val(wx, "windSpeed"), "km/h", { topic: "wetter", detail: wx ? "wetter" : null,
+      status: wxStand ? css("--text-muted") : null, hint: wxStand || null,
       compass: (wx && val(wx, "windDirection") != null) ? { deg: val(wx, "windDirection"), speed: Math.round(val(wx, "windSpeed") || 0) } : null,
-      explain: "Aktuelle Windgeschwindigkeit und -richtung (Open-Meteo); die Windrose zeigt, aus welcher Richtung der Wind weht. Klick: Windkompass und Verlauf." });
-  // UV/Sonnenzeiten liefert seit dem landesweiten Ausbau die Vorhersage
-  // (Open-Meteo, 2-h-Takt). Die gefühlte Temperatur steht in der Temperatur-Kachel.
+      explain: "Aktuelle Windgeschwindigkeit und -richtung (" + omTakt + "); die Windrose zeigt, aus welcher Richtung der Wind weht. Klick: Windkompass und Verlauf." });
+  // UV and sun times come from the forecast (Open-Meteo, every OM_TAKT_H
+  // hours). The apparent temperature is shown in the temperature tile.
   if (val(w2, "relativeHumidity") != null) {
     // DWD liefert den Anteil (0-1), andere Quellen Prozent — beides normalisieren
     const rh = val(w2, "relativeHumidity"), rhPct = Math.round(rh <= 1 ? rh * 100 : rh);
@@ -546,7 +556,7 @@ async function render() {
         stops: UV_STOPS },
       series: [{ id: fcEnt.id, attr: "uvIndex", name: "UV-Index" }] };
     tiles += tile("UV-Index", uvV, "", { topic: "wetter", detail: "uv",
-      status: grade(uvV, 6, 8), mini: { v: uvV, min: 0, max: 11, stops: UV_STOPS }, hint: "aktuell (Open-Meteo)",
+      status: fcStand ? css("--text-muted") : grade(uvV, 6, 8), mini: { v: uvV, min: 0, max: 11, stops: UV_STOPS }, hint: fcStand || "aktuell (Open-Meteo)",
       explain: "Aktueller UV-Index; ab 6 Schutz empfohlen, ab 8 erforderlich. Klick: UV-Gauge und Verlauf." });
   }
   // Tagesspanne/Morgen sind in der 7-Tage-Vorhersage der Temperatur-Detailkarte enthalten.

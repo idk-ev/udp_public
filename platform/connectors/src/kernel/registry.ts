@@ -199,6 +199,25 @@ function fireOnStart(raw: Readonly<Record<string, unknown>>, at: string): boolea
   return false;
 }
 
+/**
+ * `intervalOffsetSeconds`: only with an interval and without a cron, and
+ * within the interval — an offset of a whole interval or more is another
+ * slot's offset and certainly a typo.
+ */
+function intervalOffset(raw: Readonly<Record<string, unknown>>, at: string): number | null {
+  const offset = optionalNumber(raw.intervalOffsetSeconds, `${at}.intervalOffsetSeconds`);
+  if (offset === null) return null;
+  const interval = optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`);
+  const cron = optionalString(raw.cron, `${at}.cron`);
+  if (interval === null || interval <= 0 || (cron !== null && cron !== "")) {
+    throw new Error(`${at}.intervalOffsetSeconds: needs an intervalSeconds and no cron`);
+  }
+  if (offset < 0 || offset >= interval) {
+    throw new Error(`${at}.intervalOffsetSeconds: expected 0 <= offset < intervalSeconds`);
+  }
+  return offset;
+}
+
 function parseEntry(raw: unknown, index: number): RegistryEntry {
   const at = `connectors[${String(index)}]`;
   if (!isRecord(raw)) throw new Error(`${at}: expected an object`);
@@ -209,6 +228,7 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
     scope: requireString(raw.scope, `${at}.scope`),
     enabledFor: enabledFor(raw.enabledFor, `${at}.enabledFor`),
     intervalSeconds: optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`),
+    intervalOffsetSeconds: intervalOffset(raw, at),
     cron: optionalString(raw.cron, `${at}.cron`),
     refireOnRestart: optionalBoolean(raw.refireOnRestart, `${at}.refireOnRestart`),
     fireOnStart: fireOnStart(raw, at),
