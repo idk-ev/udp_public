@@ -120,7 +120,13 @@ exports["TRoE migration, low-disk mode: one dedup, one bootstrap, bounded sessio
   assert(/printf '%s\\n' "\$SQL_COPY_DAY_FN"/.test(importDay));
   // Export and import carry every column in the same order (COPY text format).
   assert(/COPY \(SELECT \$COLS\s+FROM attributes WHERE ts >= :'day' AND ts < :'day'::date \+ 1 ORDER BY ts\) TO STDOUT;/.test(fn("export_day")));
-  assert(/COPY \$STAGING \(\$COLS\) FROM STDIN;/.test(importDay));
+  // Import unpacks the file in the pod and loads it with the same COPY
+  // column list and input settings.
+  const importLoad = fn("import_load");
+  assert(/"COPY \$STAGING \(\$COLS\) FROM STDIN"/.test(importLoad));
+  assert(/sh -c 'gzip -dc \| psql /.test(importLoad), "import does not unpack in the pod");
+  assert(importLoad.includes("SET client_encoding = 'UTF8'; SET DateStyle = 'ISO, YMD';"));
+  assert(/import_load "\$day" \|\| return 1/.test(importDay));
   // Every psql of the steps is a bounded session with pinned output formats.
   for (const f of ["export_day", "import_day", "day_counts"]) {
     assert(/\bsession -At\b/.test(fn(f)), `${f} does not run in a bounded session`);

@@ -1280,26 +1280,36 @@ Mintaka shows the history only up to the swap until then.
 EOT
 }
 
-# Loads one day from its file into the staging table, checks it against the
-# manifest, and copies it into attributes in one transaction together with
-# its bookkeeping row – the same function and dedup as backfill.
+# Loads one day from its file into the staging table: the gzip file itself
+# goes to the pod and is unpacked there (a tenth of the bytes through
+# kubectl exec). Same session settings as session() for the COPY input.
+import_load() {
+    local day=$1
+    k exec -i "$PRIMARY" -c postgres -- sh -c 'gzip -dc | psql -v ON_ERROR_STOP=1 -X -q -d "$1" -c "$2" -c "$3" -c "$4"' sh \
+        "dbname=$DB application_name=$APP options=-cstatement_timeout=$STATEMENT_TIMEOUT" \
+        "SET client_encoding = 'UTF8'; SET DateStyle = 'ISO, YMD'; SET lock_timeout = '5s'; SET ROLE \"$OWNER\";
+DO \$\$ BEGIN IF NOT pg_try_advisory_lock(hashtext('udp-troe-migration')) THEN
+  RAISE EXCEPTION 'another step of this migration is running – run one at a time'; END IF; END \$\$;" \
+        "CREATE UNLOGGED TABLE IF NOT EXISTS $STAGING (LIKE attributes INCLUDING DEFAULTS); TRUNCATE $STAGING;" \
+        "COPY $STAGING ($COLS) FROM STDIN" < "$(day_file "$day")"
+}
+
+# Loads one day (import_load), checks it against the manifest, and copies it
+# into attributes in one transaction together with its bookkeeping row – the
+# same function and dedup as backfill.
 import_day() {
     local day=$1 rows=$2 dedup=$3 out
+    import_load "$day" || return 1
     out=$( { printf '%s\n' "$SQL_COPY_DAY_FN"
-             cat <<EOS
-DO \$\$
+             cat <<'EOS'
+DO $$
 BEGIN
   IF NOT pg_try_advisory_lock(hashtext('udp-troe-migration')) THEN
     RAISE EXCEPTION 'another step of this migration is running – run one at a time';
   END IF;
 END
-\$\$;
-CREATE UNLOGGED TABLE IF NOT EXISTS $STAGING (LIKE attributes INCLUDING DEFAULTS);
-TRUNCATE $STAGING;
-COPY $STAGING ($COLS) FROM STDIN;
+$$;
 EOS
-             gzip -dc "$(day_file "$day")"
-             printf '%s\n' '\.'
              cat <<'EOS'
 SELECT set_config('udp.day', :'day', false) AS d, set_config('udp.rows', :'rows', false) AS r \gset
 DO $$
