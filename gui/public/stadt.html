@@ -318,8 +318,12 @@ function startKiosk() {
   setInterval(() => { i = (i + 1) % filters.length; applyFilter(filters[i]); }, 15000);
 }
 
-const kommuneConn = ags => CONN.filter(c => c.active !== false && Array.isArray(c.enabledFor) && c.enabledFor.includes(ags));
-const landProvides = () => new Set(CONN.filter(c => c.active !== false && c.enabledFor === "*").flatMap(c => c.provides || []));
+// Connectors that deliver data: active and not waiting for activation ("pending",
+// e.g. still without its API token) – a pending source writes no entities, so
+// asking for them only costs a 404 per page view.
+const delivers = c => c.active !== false && !c.pending;
+const kommuneConn = ags => CONN.filter(c => delivers(c) && Array.isArray(c.enabledFor) && c.enabledFor.includes(ags));
+const landProvides = () => new Set(CONN.filter(c => delivers(c) && c.enabledFor === "*").flatMap(c => c.provides || []));
 
 async function render() {
   const [, name, lat, lon, krs, typ, ew, dashUrl, slug] = STADT.row;
@@ -349,7 +353,7 @@ async function render() {
   // damit ALLE Abrufe in EINEM Promise.all parallel laufen (früher zwei
   // sequentielle Blöcke → unnötige Latenz).
   const findC = p => komm.find(c => (c.provides || []).includes(p))
-    || CONN.find(c => c.active !== false && c.enabledFor === "*" && (c.provides || []).includes(p));
+    || CONN.find(c => delivers(c) && c.enabledFor === "*" && (c.provides || []).includes(p));
   const amtlC = findC("amtliche-station"), carsharingC = findC("carsharing-detail"),
         passantenC = findC("passanten"), ladenDetailC = findC("laden-detail");
   // Geo-Abfrage statt landesweitem limit=1000: nur Entitäten im Umkreis holen und
@@ -1282,7 +1286,7 @@ async function render() {
   // Footer: Attribution aus der Registry
   // Attributionen an » · « zerlegen, damit zusammengesetzte Angaben
   // (»A · B«) keine Doppelnennungen mit ihren Einzelteilen erzeugen
-  const attrib = [...new Set(CONN.filter(c => c.active !== false && c.attribution)
+  const attrib = [...new Set(CONN.filter(c => delivers(c) && c.attribution)
     .flatMap(c => String(c.attribution).split(" · ").map(x => x.trim())))];
   $("#footer").innerHTML = "Datenquellen: " + esc(attrib.join(" · ")) +
     " · Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0) · <a href='/dashboard.html'>Kommunen-Suche & UDP-Hauptdashboard</a>" +
