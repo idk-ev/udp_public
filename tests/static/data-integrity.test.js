@@ -69,7 +69,7 @@ exports["Node-RED: nur der Beispielfluss, gleiche Dateien in Compose und Helm"] 
       eol(fs.readFileSync(path.join(ROOT, "platform/config/nodered", f), "utf8")),
       `helm/udp/files/nodered/${f} weicht von platform/config/nodered/${f} ab — kopieren`);
   }
-  const apps = fs.readFileSync(path.join(ROOT, "helm/udp/templates/apps.yaml"), "utf8");
+  const apps = eol(fs.readFileSync(path.join(ROOT, "helm/udp/templates/apps.yaml"), "utf8"));
   const nodeRed = apps.slice(apps.indexOf("  name: node-red\n"), apps.indexOf("kind: Service"));
   assert(/image: \{\{ include "udp\.image" \(dict "ctx" \. "image" \.Values\.nodeRed\.image\) \}\}/.test(nodeRed),
     "Node-RED läuft nicht auf dem Upstream-Image");
