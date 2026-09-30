@@ -293,12 +293,45 @@ cockpit.extraModuleUrls lassen sie sich nachtragen, sobald sie veröffentlicht s
 {{- if and .Values.geoserver.enabled .Values.ingress.exposeComponentPaths }}{{- $_ := set $modules "geoserver" (printf "%s/geoserver" $public) }}{{- end }}
 {{- if and .Values.masterportal.enabled .Values.ingress.exposeComponentPaths }}{{- $_ := set $modules "masterportal" (printf "%s/portal" $public) }}{{- end }}
 {{- $modules = mergeOverwrite $modules (.Values.cockpit.extraModuleUrls | default dict) -}}
+{{- /* Legal links (cockpit.legal): empty, http(s) with a host, or a path
+     starting with exactly one "/" ("//host" and "/\host" are
+     protocol-relative in browsers); no whitespace, control or invisible
+     format characters (U+200B, U+202E, U+FEFF, ...).
+     gui/public/site.js and gui/src/config.ts apply the same rule again in
+     the browser, so a Compose config.js cannot slip through either. */ -}}
+{{- $legalIn := .Values.cockpit.legal | default dict -}}
+{{- $legal := dict -}}
+{{- range $key := list "impressumUrl" "datenschutzUrl" -}}
+{{- $url := toString (get $legalIn $key | default "") -}}
+{{- if and $url (not (regexMatch `(?i)^(?:https?://[^/\\\s\p{Cc}\p{Cf}\p{Z}][^\s\p{Cc}\p{Cf}\p{Z}]*|/(?:[^/\\\s\p{Cc}\p{Cf}\p{Z}][^\s\p{Cc}\p{Cf}\p{Z}]*)?)$` $url)) -}}
+{{- fail (printf "cockpit.legal.%s: %q is not allowed – use https://…, http://… or a path on this site starting with a single \"/\" (e.g. /impressum); leave it empty for no link" $key $url) -}}
+{{- end -}}
+{{- $_ := set $legal $key $url -}}
+{{- end -}}
+{{- /* Analytics snippet (cockpit.analytics.headHtml): trusted operator input,
+     inserted verbatim into <head> of every public page by
+     gui/public/site.js, into the cockpit SPA only with includeCockpit.
+     It only ever travels as a JSON string: toPrettyJson (encoding/json)
+     escapes quotes and line breaks, and additionally the characters <, >
+     and & as JSON unicode escapes – so even a "</script>" in the snippet
+     could not end a script element early if config.js were ever inlined. */ -}}
+{{- $analyticsIn := .Values.cockpit.analytics | default dict -}}
+{{- $headHtml := $analyticsIn.headHtml | default "" -}}
+{{- if not (kindIs "string" $headHtml) -}}
+{{- fail "cockpit.analytics.headHtml must be a string (the vendor snippet as block scalar: headHtml: |)" -}}
+{{- end -}}
+{{- $includeCockpit := $analyticsIn.includeCockpit | default false -}}
+{{- if not (kindIs "bool" $includeCockpit) -}}
+{{- fail (printf "cockpit.analytics.includeCockpit must be true or false (got %q)" (toString $includeCockpit)) -}}
+{{- end -}}
 {{- $cfg := dict
       "gatewayUrl"  "/gateway"
       "authEnabled" .Values.cockpit.authEnabled
       "keycloak"    (dict "url" (include "udp.keycloakUrl" .) "realm" "udp" "clientId" "udp-cockpit")
       "module"      $modules
       "tenants"     .Values.cockpit.tenants
+      "legal"       $legal
+      "analytics"   (dict "headHtml" (trim $headHtml) "includeCockpit" $includeCockpit)
 -}}
 // Von Helm erzeugt (ConfigMap cockpit-config) – NICHT im Container bearbeiten.
 window.UDP_CONFIG = {{ toPrettyJson $cfg | trim }};

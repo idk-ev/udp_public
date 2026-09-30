@@ -116,6 +116,71 @@ DevTools → Application → Service Workers → Unregister.
 - Secrets ausschließlich über Kubernetes-Secrets/External-Secrets, nie im
   Repository (Beispielwerte sind als solche markiert und zu ersetzen).
 
+## Webanalyse, Impressum und Datenschutz
+
+Betreiber binden eine Webanalyse ihrer Wahl (z. B. Rybbit, Plausible, Umami,
+Matomo) und ihr eigenes Impressum samt Datenschutzerklärung ein, ohne das Image
+neu zu bauen. Kubernetes (Helm-Werte):
+
+```yaml
+cockpit:
+  legal:
+    impressumUrl: "https://www.example.org/impressum"
+    datenschutzUrl: "https://www.example.org/datenschutz"
+  analytics:
+    headHtml: |
+      <script src="https://analytics.example.org/script.js" data-site-id="…" defer></script>
+    includeCockpit: false   # Standard; true = auch im Cockpit
+```
+
+Docker Compose: dieselben Schlüssel (`legal`, `analytics`) in
+`gui/public/config.js` eintragen.
+
+**Impressum/Datenschutz:** Die Links erscheinen unter der Fußzeile aller
+öffentlichen Seiten (Kommunen-Suche, Gemeinde- und Kreisseiten, Mitmachen,
+404) und in der Seitenleiste des Cockpits; im Einbettungsmodus (`?embed=1`)
+sind sie ausgeblendet. Erlaubt sind `https://…`, `http://…` oder ein Pfad auf
+dieser Domain mit genau einem führenden `/` (`/impressum`). Andere Werte
+(`javascript:`, `//host`, …) lässt das Chart nicht rendern; im Browser werden
+sie zusätzlich verworfen. Leer = kein Link.
+
+**Webanalyse:** Der Einbettungscode wird **unverändert** in den `<head>` jeder
+öffentlichen Seite eingefügt – Kommunen-Suche, alle Gemeinde- und Kreisseiten
+(auch eingebettet per `?embed=1`), Mitmachen und 404. Im Cockpit nur mit
+`analytics.includeCockpit: true`. Das übernimmt `gui/public/site.js`: Die
+Elemente werden nacheinander eingefügt, `<script>`-Elemente mit allen
+Attributen neu erzeugt, `<link>`/`<meta>` übernommen, `<noscript>` entfällt.
+Nach einem externen Skript **ohne** `async` wartet das nächste Element, bis es
+geladen ist (höchstens 10 s) – ein Inline-Skript, das die Bibliothek davor
+aufruft, funktioniert also wie in statischem HTML. Skripte mit `async` halten
+die Reihenfolge nicht auf.
+
+- Der Code ist **vertrauenswürdige Eingabe des Betreibers**: Er läuft mit
+  vollem Skriptzugriff auf allen Seiten, auf denen er eingebunden ist – mit
+  `includeCockpit: true` auch auf angemeldete Cockpit-Sitzungen samt
+  Keycloak-Tokens. Deshalb ist das Cockpit standardmäßig ausgenommen. Nur
+  Anbieter einsetzen, denen du vertraust; wo der Anbieter es unterstützt,
+  ein `integrity`-Attribut (SRI) mit angeben.
+- Cookielose Werkzeuge kommen in der Regel ohne Einwilligungsbanner aus.
+  Speichert ein Werkzeug Cookies oder nutzt localStorage o. Ä., ist nach
+  § 25 TDDDG eine Einwilligung nötig – ein Einwilligungsbanner bringt die
+  Plattform **nicht** mit.
+- Die Datenschutzerklärung muss das Werkzeug nennen. Das Chart warnt in den
+  Installationshinweisen, wenn `analytics.headHtml` gesetzt, aber
+  `legal.datenschutzUrl` leer ist. Die rechtliche Bewertung liegt beim
+  Betreiber; dieser Abschnitt ist keine Rechtsberatung.
+- Der Service Worker liefert `config.js` aus seinem Cache und frischt sie im
+  Hintergrund auf: Eine geänderte Konfiguration wirkt bei wiederkehrenden
+  Besuchern erst ab dem **zweiten** Seitenaufruf.
+- Der Service Worker legt außerdem jede GET-Anfrage an den **eigenen** Origin
+  im Cache Storage ab. Einen Analyse-Anbieter, der über denselben Origin
+  geproxyt wird und per GET mit wechselnden Query-Strings zählt, daher über
+  seinen eigenen Origin anbinden – sonst füllt jeder Zählaufruf den Cache des
+  Browsers. Alternativ den Pfad in `gui/public/sw.js` ausnehmen.
+- Eine künftige Content-Security-Policy muss den Origin des Analyse-Anbieters
+  (`script-src`, `connect-src`) und ggf. Inline-Skripte des Einbettungscodes
+  zulassen. Derzeit setzt die Plattform keine CSP.
+
 ## Bekannte Einschränkungen Orion-LD TRoE (1.6.0)
 
 Zwei Bugs lassen den TRoE-Insert einer Entität **stillschweigend**

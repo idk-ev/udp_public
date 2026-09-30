@@ -80,6 +80,13 @@
    ignoriert sie (kein Schutz, aber auch keine Blockade).
 {{- end }}
 
+{{- if and ((.Values.cockpit.analytics | default dict).headHtml | default "" | toString | trim) (not (.Values.cockpit.legal | default dict).datenschutzUrl) }}
+
+WARNUNG: Webanalyse ist aktiv (cockpit.analytics.headHtml), aber es ist keine
+   Datenschutzerklärung verlinkt (cockpit.legal.datenschutzUrl ist leer).
+   Die Datenschutzerklärung muss das Analysewerkzeug nennen – s. docs/betrieb.md.
+{{- end }}
+
 5) Sicherheits-Checkliste vor Produktivbetrieb:
    [x] Interne Zugangsdaten sind starke Zufallspasswörter (automatisch, stabil)
    [ ] Eigene values-prod.yaml mit echtem Host, StorageClass, Registry

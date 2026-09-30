@@ -104,6 +104,9 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.publicUrl` | `""` | öffentliche Basis-URL für SPA-Konfiguration und Redirect-URIs (leer → aus `ingress.host`) |
 | `cockpit.extraModuleUrls` | `{}` | zusätzliche Ziele der Modul-Kacheln (z. B. Node-RED, Uptime Kuma aus `monitoring/`) |
 | `cockpit.tenants` | Standard/lkrt/lktue | Mandanten-Auswahl im Cockpit |
+| `cockpit.legal.impressumUrl` / `datenschutzUrl` | `""` | Impressum/Datenschutzerklärung des Betreibers in der Fußzeile aller Seiten (`https://…`, `http://…` oder `/pfad`; leer = kein Link), s. `docs/betrieb.md` |
+| `cockpit.analytics.headHtml` | `""` | Einbettungscode einer beliebigen Webanalyse, unverändert in den `<head>` aller öffentlichen Seiten eingefügt (leer = keine), s. `docs/betrieb.md` |
+| `cockpit.analytics.includeCockpit` | `false` | Einbettungscode auch im Cockpit ausführen (dort laufen Admin-Sitzungen) |
 | `cockpit.gatewayUpstream` | `""` | FQDN von APISIX für den nginx-Proxy im Cockpit (leer → `apisix.<ns>.svc.cluster.local:9080`) |
 | `cockpit.connectorsUpstream` | `""` | wer `/abfahrten` und `/warnungen.ics` beantwortet (leer → `connectors.<ns>.svc.cluster.local:1880`); `cockpit.endpoints` gibt es nicht mehr |
 | `connectors.enabled` | `true` | Konnektordienst: die Ingestion (eine Replik, `Recreate`); `false` nur zusammen mit `connectors.disableIngestion: true` |

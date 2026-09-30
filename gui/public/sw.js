@@ -15,7 +15,7 @@
 const V = "udp-1.3.0";
 const SHELL = [
   "/stadt.html", "/kreis.html", "/dashboard.html", "/mitmachen.html",
-  "/smartcity-lib.js", "/smartcity-theme.css",
+  "/smartcity-lib.js", "/smartcity-theme.css", "/site.js",
   "/vendor/leaflet.js", "/vendor/leaflet.css",
   "/manifest.webmanifest", "/icon.svg",
 ];

@@ -2,6 +2,14 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Webanalyse, Impressum und Datenschutz
+
+- Helm: `cockpit.analytics.headHtml` bindet den Einbettungscode einer beliebigen
+  Webanalyse auf allen öffentlichen Seiten ein (Cockpit nur mit
+  `includeCockpit`), `cockpit.legal.impressumUrl` / `datenschutzUrl` verlinken
+  Impressum und Datenschutzerklärung in der Fußzeile. Standard leer; s.
+  `docs/betrieb.md`.
+
 ## 1.3.0 — Ingestion im Konnektordienst
 
 Alle 29 Konnektoren laufen im Konnektordienst (`platform/connectors`,

@@ -1157,6 +1157,30 @@ cockpit:
     - { id: "",      name: "Standard (kreisübergreifend)" }
     - { id: "lkrt",  name: "Landkreis Reutlingen" }
     - { id: "lktue", name: "Landkreis Tübingen" }
+  # Impressum und Datenschutzerklärung des Betreibers: Links in der Fußzeile
+  # aller öffentlichen Seiten (Dashboards, Gemeinde-/Kreisseiten, Mitmachen,
+  # 404) und in der Seitenleiste des Cockpits. Erlaubt sind https://…, http://…
+  # oder ein Pfad auf dieser Domain (/impressum); alles andere bricht das
+  # Rendern ab. Leer = kein Link. s. docs/betrieb.md
+  legal:
+    impressumUrl: ""      # z. B. "https://www.example.org/impressum"
+    datenschutzUrl: ""    # z. B. "https://www.example.org/datenschutz"
+  # Webanalyse beliebiger Anbieter (Rybbit, Plausible, Umami, Matomo, …): den
+  # Einbettungscode des Anbieters unverändert als headHtml einfügen, er landet
+  # im <head> JEDER öffentlichen Seite (Dashboards, Gemeinde-/Kreisseiten,
+  # Mitmachen, 404). Vertrauenswürdige Eingabe mit vollem Skriptzugriff auf
+  # die Seiten – nur Anbieter nutzen, denen du vertraust.
+  # Setzt das Werkzeug Cookies/localStorage, ist eine Einwilligung nötig, die
+  # die Plattform NICHT einholt; die Datenschutzerklärung (legal.datenschutzUrl)
+  # muss das Werkzeug nennen. Leer = keine Webanalyse. s. docs/betrieb.md
+  analytics:
+    headHtml: ""
+    # Auch im Cockpit einbinden? Standard false: dort laufen Admin-Sitzungen
+    # mit Keycloak-Tokens, auf die der Einbettungscode vollen Zugriff hätte.
+    includeCockpit: false
+    # Beispiel (Platzhalter):
+    # headHtml: |
+    #   <script src="https://analytics.example.org/script.js" data-site-id="…" defer></script>
   resources:
     requests: { cpu: 50m,  memory: 64Mi }
     limits:   { cpu: 250m, memory: 128Mi }

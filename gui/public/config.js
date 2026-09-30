@@ -34,4 +34,17 @@ window.UDP_CONFIG = {
     { id: "lkrt", name: "Landkreis Reutlingen" },
     { id: "lktue", name: "Landkreis Tübingen" },
   ],
+  // Footer links on every page (docs/betrieb.md). Accepted: https://…,
+  // http://… or a site-relative path like /impressum; empty = no link.
+  legal: {
+    impressumUrl: "",
+    datenschutzUrl: "",
+  },
+  // Web-analytics snippet of any vendor, inserted verbatim into <head> of
+  // every public page by /site.js. Trusted operator input; empty = no
+  // analytics. includeCockpit: also in the cockpit SPA (admin sessions).
+  analytics: {
+    headHtml: "",
+    includeCockpit: false,
+  },
 };

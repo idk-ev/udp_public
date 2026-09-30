@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { config } from "./config";
+import { config, isSafeUrl } from "./config";
 import { setTenant } from "./api";
 import { useAuth } from "./auth";
 import {
@@ -31,6 +31,12 @@ const titles: Record<string, string> = {
   "/module": "Module & Dienste",
   "/verwaltung": "Benutzer & Mandanten",
 };
+
+// Operator's legal pages (Helm: cockpit.legal); unset or invalid URLs are left out.
+const legalLinks = [
+  { label: "Impressum", href: config.legal.impressumUrl },
+  { label: "Datenschutz", href: config.legal.datenschutzUrl },
+].filter((link) => isSafeUrl(link.href));
 
 export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(() =>
@@ -78,6 +84,15 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <IconShield /> EUPL-1.2 · FIWARE · DIN SPEC 91357
           </div>
+          {legalLinks.length > 0 && (
+            <nav className="sidebar-legal" aria-label="Rechtliches">
+              {legalLinks.map((link) => (
+                <a key={link.label} href={link.href}>
+                  {link.label}
+                </a>
+              ))}
+            </nav>
+          )}
         </div>
       </aside>
 
