@@ -137,14 +137,25 @@ exports["TRoE migration, low-disk mode: one dedup, one bootstrap, bounded sessio
   assert.strictEqual(lines.filter(l => l === "COMMIT;").length, 1, "troe-schema.sql: swap-lowdisk expects one COMMIT; line");
   const swap = fn("swap_lowdisk");
   const order = ["writers_back_on_exit swap-lowdisk", "scale_down_writers", "export_days", "LOCK TABLE attributes IN SHARE MODE",
-    "attributes changed since the export", "rows outside the exported days", "('mode', 'lowdisk')",
-    "DROP TABLE attributes;", '"$bootstrap"', "COMMIT;", "BACK_STEP=", "resume_writers", "entities_index"];
+    "are not the ones the export wrote", "attributes changed since the export", "rows outside the exported days",
+    "('mode', 'lowdisk')",
+    "DROP TABLE attributes;", '"$bootstrap"', "differs from the old one", "COMMIT;", "SWAPPED=1", "resume_writers || die",
+    "BACK_STEP=", "entities_index"];
   let at = -1;
   for (const step of order) {
     const i = swap.indexOf(step, at + 1);
     assert(i > at, `swap-lowdisk: "${step}" missing or out of order`);
     at = i;
   }
+  // Before the downtime: every day counted once and the largest file dry-run.
+  assert(swap.indexOf("dry_run_day") > 0 && swap.indexOf("dry_run_day") < swap.indexOf("scale_down_writers"));
+  assert(swap.indexOf("Days changed since their export") < swap.indexOf("scale_down_writers"));
+  // An export never reads a swapped table: lock first, then the check, in its own transaction.
+  assert(/BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\n\$SQL_EXPORT_GUARD\n/.test(fn("export_day")));
+  assert(/^LOCK TABLE attributes IN ACCESS SHARE MODE;\nDO/m.test(SCRIPT));
+  // No argument to kubectl exec starts with a slash (Git Bash would rewrite it).
+  assert(/sh -c 'df -Pk "\/\$1"' sh "\$\{datadir#\/\}"/.test(SCRIPT));
+  assert(/application_name=\$APP options=-cstatement_timeout=/.test(SCRIPT));
   // No way back through the database: rollback refuses in low-disk mode.
   assert(/lowdisk && die/.test(fn("rollback")));
 };

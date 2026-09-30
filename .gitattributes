@@ -3,3 +3,5 @@
 # Prettier in platform/connectors enforces LF; a CRLF checkout (core.autocrlf)
 # would fail format:check on every file without a single real change.
 platform/connectors/** text eol=lf
+# Run by bash, also from Windows checkouts (core.autocrlf): CRLF breaks them.
+*.sh text eol=lf
