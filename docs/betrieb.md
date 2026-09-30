@@ -244,7 +244,9 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   `udp_connectors` (Zugang über `TROE_DB_*`, dieselben Zugangsdaten wie
   Orion-LD). Das Schema legt der Dienst beim Start selbst an; der
   Datenbanknutzer braucht dafür `CREATE` auf der Datenbank, sonst das Schema
-  vorab anlegen. Ein Volume braucht der Dienst nicht (Root-Dateisystem
+  vorab anlegen und `CREATE` auf dem Schema gewähren (auch für später
+  hinzukommende Tabellen wie `writer`; fehlt es, meldet der Dienst ein
+  `[error]` und übernimmt den Lock nicht). Ein Volume braucht der Dienst nicht (Root-Dateisystem
   read-only).
 - **Genau eine Instanz:** Ein Advisory-Lock macht die laufende Instanz zum
   einzigen Schreiber. Helm fest mit `replicas: 1` und `strategy: Recreate`;
@@ -253,18 +255,36 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   `udp_connectors.writer`); daran erkennt der Dienst, ob zwischen zwei
   eigenen Lock-Phasen jemand anderes geschrieben hat. Jeder Schreibvorgang
   prüft sie: Hat eine andere Instanz übernommen, schreibt die alte nichts
-  mehr, auch wenn ihre Lock-Verbindung noch lebendig aussieht.
+  mehr, auch wenn ihre Lock-Verbindung noch lebendig aussieht; vor jedem
+  gegateten Upsert prüft sie das ebenfalls.
 - **Prune:** Löscht eigene Entitäten, die die Quelle nicht mehr liefert. Der
   30-%-Deckel gilt nur für kürzlich (unter 7 Tagen) Verschwundenes, gemessen
   am frischen Bestand; Älteres („Altbestand“) baut der Dienst in Portionen
-  von höchstens 1.000 je Lauf ab, ältestes zuerst, und nur solange der
-  frische Bestand nicht unter 95 % seines Referenzwerts fällt (der folgt
-  Wachstum sofort, Schrumpfen nur um 2 % je Lauf). „Verschwunden seit“ misst
-  bei Prunes mit Karenzzeit der letzte Schreibzeitpunkt, bei Prunes über die
-  vollständige Liste (Laden, Parken) die Dauer als Kandidat in Folge — ein
-  Massenverlust bleibt dort über dem Deckel und damit blockiert.
-  Überspringt der Deckel einen Prune dreimal in Folge, wird das ein
-  `[error]` und `scripts/healthcheck.sh` zeigt ihn als blockiert.
+  von höchstens 1.000 je Lauf ab, ältestes zuerst — erst nachdem der Prune
+  eine Woche ohne Lücke gelaufen ist (nach einem Ausfall beginnt die Woche
+  neu; sonst sähe nach langer Pause alles eine Woche alt aus) und nur
+  solange der frische Bestand nicht unter 95 % seines Referenzwerts fällt
+  (der folgt Wachstum sofort, Schrumpfen nur um 2 % je Lauf). „Verschwunden
+  seit“ misst bei Prunes mit Karenzzeit der letzte Schreibzeitpunkt, bei
+  Prunes über die vollständige Liste (Laden, Parken) die Dauer als Kandidat
+  in Folge.
+
+  **Blockierter Prune:** Überspringt der Deckel einen Prune, merkt sich der
+  Dienst den Beginn der Sperre. Ab dem dritten Überspringen in Folge ist das
+  ein `[error]`, `/healthz` nennt ihn unter `stateStore.blockedPrunes`. Was
+  mit diesem Massenverlust verschwand (ab einem Tag vor der Sperre), löscht
+  der Dienst nie von selbst — auch nicht, wenn es später zum Altbestand
+  wird: Er hält es zurück (`heldBack`), meldet in jedem Lauf ein `[error]`
+  und `scripts/healthcheck.sh` zeigt „PRUNE BLOCKED“. Kommen die Entitäten
+  zurück (Quelle wieder vollständig), hebt sich die Sperre selbst auf. Ist
+  der Verlust echt (etwa ein Anbieter hat den Feed verlassen), nach Prüfung
+  der Quelle freigeben:
+
+      bash scripts/release-prunes.sh <konnektor-id>
+
+  (Kubernetes: mit `CONNECTORS_EXEC` wie beim Auslösen.) Ab dem nächsten
+  Lauf gelten die zurückgehaltenen Entitäten als normale Kandidaten. Älterer
+  Bestand aus der Zeit vor der Sperre wird davon unabhängig abgebaut.
   Carsharing löscht zusätzlich Stationen, die zwei Läufe in Folge in der
   vollständigen Stationsliste ihres Systems fehlen (freischwebende
   „virtuelle Stationen“ erhalten je Parkvorgang eine neue Id).
@@ -402,6 +422,9 @@ zielten nur auf den kleineren Teil des Volumens:
    ändert sich nur ein Messwert, schreibt der Dienst die geänderten Attribute
    plus `dateObserved` (`options=update` ersetzt nur die gesendeten Attribute).
    Vorher schrieb jede Statusänderung eines Ladepunkts alle 12 Attribute.
+   Einmal je Woche geht jede dieser Entitäten trotzdem voll heraus: Fehlt
+   sie im Broker (gelöscht, Wiederherstellung), entstünde sonst aus den
+   Teilschreibvorgängen ein Gerippe ohne Name und Lage.
 2. **Takt an den Nutzen angepasst.** Der OCPDB-Abzug läuft stündlich statt
    halbstündlich, die Feinstaub-Einzelsensoren stündlich statt alle 15 min
    (die Gemeindemediane bleiben im 15-Minuten-Takt).
@@ -430,16 +453,21 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
 
    | Typ | Bestand mit Livewerten | Änderung/h | Zeilen/Tag | Budget |
    |---|---|---|---|---|
-   | `EVChargingStation` | ~6.100 (+ ~6.400 nur Register) | 46 % | ~228.000 | 460.000 |
-   | `ChargingSummary` | ~900 | 50 % | ~47.000 | 95.000 |
-   | `CarSharingStation` | ~4.400 | 29 % | ~86.000 (+ neue Stationen) | 180.000 |
+   | `EVChargingStation` | ~6.100 (+ ~6.400 nur Register) | 46 % | ~245.000 | 460.000 |
+   | `ChargingSummary` | ~900 | 50 % | ~48.000 | 95.000 |
+   | `CarSharingStation` | ~4.400 | 29 % | ~92.000 (+ neue Stationen) | 180.000 |
 
    Rechnung je Stunde: geänderte Standorte × (geänderte Messwerte +
    `dateObserved`) plus unveränderte × ⅓ Frische. Ladepunkt: 2.806 × 3 +
    3.294 ⁄ 3 ≈ 9.500 (bei einem Statuswechsel ändern sich meist zwei Zähler);
    Ladesumme: 450 × 4 + 450 ⁄ 3 ≈ 1.950 (drei Zähler, eine Summe fasst
-   mehrere Standorte); Carsharing: 1.276 × 2 + 3.124 ⁄ 3 ≈ 3.600. Mit dem
-   früheren Vollschrieb waren es ~834.000, ~97.000 und ~300.000 Zeilen/Tag.
+   mehrere Standorte); Carsharing: 1.276 × 2 + 3.124 ⁄ 3 ≈ 3.600. Dazu
+   kommt der wöchentliche Vollschrieb jeder Entität (heilt Entitäten, die
+   hinter einer gespeicherten Signatur aus dem Broker verschwunden sind):
+   Ladepunkte 6.100 × 12 + 6.400 × 7 ≈ 118.000 je Woche ≈ 17.000/Tag,
+   Ladesummen 900 × 8 + 200 × 3 ≈ 1.100/Tag, Carsharing 4.400 × 9 ≈
+   5.700/Tag. Mit dem früheren Vollschrieb waren es ~834.000, ~97.000 und
+   ~300.000 Zeilen/Tag.
    `CityPulse` 100.000 (bis 1.103 Gemeinden × 24 Läufe × Frische plus
    Änderungen).
 

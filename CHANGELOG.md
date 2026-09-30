@@ -20,19 +20,33 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   Ladesummen frischen `dateObserved` wie die Ladepunkte alle 3 h auf; die
   Stadtseite zeigt sie bis 6 h als aktuell.
 - Prune: Altbestand (älter als 7 Tage) wird in Portionen von 1.000 je Lauf
-  abgebaut, der 30-%-Deckel gilt nur noch für frisch Verschwundenes.
-  Blockierte Prunes stehen in `/healthz` (`stateStore.blockedPrunes`).
+  abgebaut, erst nach einer Woche lückenlosen Laufs; der 30-%-Deckel gilt
+  nur noch für frisch Verschwundenes. Ein Massenverlust, der den Deckel
+  auslöst, wird nie automatisch gelöscht: Er bleibt in `/healthz`
+  (`stateStore.blockedPrunes`) und im Log, bis er zurückkommt oder per
+  `scripts/release-prunes.sh <id>` freigegeben wird. Versuchte Löschungen
+  verwerfen ihre Signaturen, auch unbestätigte.
 - Carsharing löscht Stationen, die zwei Läufe in Folge in der vollständigen
-  Stationsliste ihres Systems fehlen (je System höchstens 50 %).
+  Stationsliste ihres Systems fehlen (nur geschriebene, je System höchstens
+  50 %).
+- Laden und Carsharing schreiben jede Entität einmal je Woche voll, damit
+  aus dem Broker verschwundene Entitäten nicht als Gerippe stehen bleiben
+  (~17.000, ~1.100 und ~5.700 Zeilen/Tag zusätzlich).
 - Ein 207 auf ein Delete ohne `success`/`errors` zählt nicht mehr als
   gelöscht.
 - Log: je Gate-Schreibvorgang „geändert/gesamt“; Warnung, wenn mehr als die
   Hälfte trotz gespeicherter Signaturen als geändert gilt.
 
-> **Upgrade:** Der erste Lauf füllt die neuen Signaturtabellen von Laden und
-> Carsharing aus dem Broker (einige Listenabrufe, keine Schreiblast). Der
-> Carsharing-Altbestand wird ab dem zweiten Lauf mit höchstens 1.000
-> Löschungen je Stunde abgebaut.
+> **Upgrade:**
+>
+> - Neue Tabelle `udp_connectors.writer`. Wurde das Schema vorab angelegt,
+>   braucht der Datenbanknutzer `CREATE` auf dem Schema; sonst übernimmt
+>   der Dienst den Schreib-Lock nicht und meldet ein `[error]`.
+> - Der erste Lauf füllt die neuen Signaturtabellen von Laden und Carsharing
+>   aus dem Broker (einige Listenabrufe, keine Schreiblast).
+> - Der Abbau von Altbestand beginnt frühestens eine Woche nach dem Upgrade,
+>   danach höchstens 1.000 Löschungen je Prune und Lauf (Carsharing: ~9.000
+>   Stationen in etwa 10 h).
 
 ## 1.3.0 — Ingestion im Konnektordienst
 
