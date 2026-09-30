@@ -96,7 +96,9 @@ async function main(): Promise<void> {
       `${entry.id}: ${schedule.kind}` +
         (schedule.cron === null ? "" : ` "${schedule.cron}"`) +
         (schedule.intervalSeconds === null ? "" : ` every ${String(schedule.intervalSeconds)} s`) +
-        `, first run in ${String(schedule.startupDelaySeconds)} s`,
+        (schedule.fireOnStart
+          ? `, first run in ${String(schedule.startupDelaySeconds)} s`
+          : ", no run on start"),
     );
   });
 
