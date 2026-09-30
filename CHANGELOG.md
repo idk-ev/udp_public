@@ -49,6 +49,33 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 >   danach höchstens 1.000 Löschungen je Prune und Lauf; ein großer
 >   Altbestand ist so bei stündlichen Läufen nach wenigen Stunden abgebaut.
 
+## Unveröffentlicht — Cockpit-Durchsatz
+
+- Cockpit-nginx liefert vorkomprimierte statische Dateien aus (`gzip_static`),
+  puffert das Access-Log und hält Dateien offen – ein Mehrfaches an
+  Seitenaufrufen je CPU. CPU-Limit des Cockpits 250m → 1.
+- Kontext-API: 404 wird 10 s gecacht.
+- Gecachte Gateway-Routen reichen `Fiware-Service` nicht mehr durch – der
+  Mandant stand nicht im Cache-Schlüssel (Mandant nur per `NGSILD-Tenant`).
+
+## Unveröffentlicht — Datenbank-Backup nach S3
+
+Das pg_dump-Backup lag auf einem PVC im selben Cluster – bei dessen Verlust
+wären auch die Sicherungen weg.
+
+- **Backup in S3-kompatiblen Objektspeicher** über das Barman-Cloud-Plugin
+  von CloudNativePG: WAL-Archiv plus tägliche Basissicherung,
+  Wiederherstellung auf jeden Zeitpunkt der letzten 30 Tage
+  (`backup.*`, DEPLOY.md §2). Standard aus.
+- **Wiederherstellung**: ganzer Cluster über `timescale.recovery`, einzelne
+  Datenbanken über einen Zweitcluster; `scripts/restore-timescale.sh`
+  führt durch beides (DEPLOY.md §10c).
+- **Entfernt**: Deployment `db-backup` (pg_dump). Das Upgrade bricht ab, bis
+  S3 konfiguriert oder `backup.acknowledgeNoBackup` gesetzt ist; das PVC
+  `db-backup-data` bleibt und kann danach gelöscht werden. Compose behält
+  seine lokalen Dumps.
+- Datenbank-Metriken (`:9187`) für den Monitoring-Namespace freigegeben.
+
 ## 1.3.0 — Ingestion im Konnektordienst
 
 Alle 29 Konnektoren laufen im Konnektordienst (`platform/connectors`,

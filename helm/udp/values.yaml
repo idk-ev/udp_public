@@ -173,7 +173,8 @@ networkPolicies:
   # the namespace except the ingress controller. Set e.g.
   #   kubernetes.io/metadata.name: udp-monitoring
   # to let it reach the HTTP ports of all platform services and APISIX metrics
-  # (:9091) – databases stay closed.
+  # (:9091) and the metrics of the database instances (:9187) – the database
+  # ports stay closed.
   monitoringNamespaceLabel: {}
   # Additional callers per component (templates/networkpolicy.yaml holds the
   # full matrix). Map of app label -> list of NetworkPolicy "from" peers, e.g.
@@ -218,6 +219,14 @@ networkPolicies:
   apiServerEgress:
     to: []
     ports: [443, 6443]
+  # Only with strictEgress and backup/restore configured: where the database
+  # instances reach the object storage (backup.destinationPath). Empty = the
+  # internet on these ports (outside internetEgress.exceptCidrs). An endpoint
+  # inside the cluster or a private network needs explicit peers, e.g.
+  #   to: [{ ipBlock: { cidr: 10.20.0.5/32 } }]
+  backupEgress:
+    to: []
+    ports: [443]
 
 # -----------------------------------------------------------------------------
 # Ingress
@@ -483,6 +492,22 @@ timescale:
   # queries (TimescaleDB chunk scans) then fail with "could not resize shared
   # memory segment". Counts towards the memory limit.
   shmSize: 256Mi
+
+  # --- Restore from the backup archive (backup.*) ------------------------------
+  # Only takes effect when the Cluster is CREATED: CNPG then fills it from the
+  # base backup and the WAL archive instead of running initdb. For an existing
+  # cluster this means deleting it first – scripts/restore-timescale.sh full
+  # and DEPLOY.md §10c walk through it. The archive is read from the object
+  # store configured under backup.* (bucket, endpoint, credentials).
+  recovery:
+    enabled: false
+    # Archive folder to restore FROM – the backup.serverName that was active
+    # when the backup was written. backup.serverName must then name a NEW,
+    # empty folder: CNPG refuses to archive into one that already has WAL.
+    serverName: timescale
+    # Point in time to recover to (RFC 3339, e.g. "2026-09-28T10:15:00Z").
+    # Empty = replay the archive up to its end (latest state).
+    targetTime: ""
 
   # --- Migration from the single-instance StatefulSet (chart <= 1.0.x) -------
   # Existing installations keep their data in the PVC data-timescale-0 of the
@@ -1159,7 +1184,11 @@ cockpit:
     - { id: "lktue", name: "Landkreis Tübingen" }
   resources:
     requests: { cpu: 50m,  memory: 64Mi }
-    limits:   { cpu: 250m, memory: 128Mi }
+    # One core: every page view of a public dashboard (HTML, assets and the
+    # ~25 API calls answered from the micro-cache) is served by this nginx.
+    # With 250m it was the first thing to saturate under load, long before
+    # Orion-LD or MongoDB – while it sat idle the rest of the time.
+    limits:   { cpu: "1",  memory: 128Mi }
   pdb: { minAvailable: 1 }
   # Basis ist nginx-unprivileged (s. gui/Dockerfile): der Master laeuft selbst
   # als 101, laesst den "user"-Wechsel und damit das chown der Cache-Pfade
@@ -1181,28 +1210,54 @@ cockpit:
       failureThreshold: 3
 
 # ---------- Betrieb ----------
-# Logische Dumps aller Plattform-Datenbanken (pg_dump, komprimiert).
-# Ergänzt Volume-Snapshots, ersetzt sie nicht.
+# Continuous backup of the database cluster "timescale" to S3-compatible object
+# storage: a daily base backup plus the WAL archive, i.e. point-in-time
+# recovery anywhere within the retention window (templates/backup.yaml).
+#
+# Done by the CloudNativePG Barman Cloud plugin – a cluster-wide prerequisite
+# next to the operator (needs cert-manager), see DEPLOY.md §2. Restore:
+# timescale.recovery and scripts/restore-timescale.sh (DEPLOY.md §10c).
+#
+# Covers every PostgreSQL database (orion, frost, ckan, ckan_datastore,
+# keycloak, tenant databases). MongoDB and the ckan-data volume are NOT part
+# of it.
 backup:
-  enabled: true
-  image: { repository: prodrigestivill/postgres-backup-local, tag: "16-alpine" }
-  databases: "orion,frost,ckan,ckan_datastore,keycloak"
-  schedule: "@daily"
-  keepDays: 14
-  keepWeeks: 8
-  keepMonths: 12
-  resources:
-    requests: { cpu: 50m,  memory: 64Mi }
-    limits:   { cpu: 500m, memory: 512Mi }
-  persistence:
-    size: 50Gi
-    storageClass: ""
-  podSecurityContext:
-    runAsNonRoot: false   # Image startet als Root (/init.sh, go-cron)
-  # go-cron serves its health check on HEALTHCHECK_PORT (8080, verified in the
-  # image's /init.sh).
-  probes:
-    liveness:
-      tcpSocket: { port: 8080 }
-      periodSeconds: 60
-      failureThreshold: 3
+  enabled: false
+  # Bucket and prefix, e.g. "s3://my-bucket/udp". The archive of the cluster
+  # lands in <destinationPath>/<serverName>/.
+  destinationPath: ""
+  # Endpoint of S3-compatible providers other than AWS, e.g.
+  # "https://s3.example.org". Empty = AWS S3.
+  endpointURL: ""
+  # Private CA of the endpoint (Secret reference), e.g. { name: s3-ca, key: ca.crt }.
+  endpointCA: {}
+  # Secret with the access key, keys ACCESS_KEY_ID and ACCESS_SECRET_KEY.
+  # Created by hand, never through values (the Helm release would carry it):
+  #   kubectl -n udp create secret generic udp-backup-s3 \
+  #     --from-literal=ACCESS_KEY_ID=... --from-literal=ACCESS_SECRET_KEY=...
+  existingSecret: ""
+  # Upgrades from chart 1.3.0 and older (pg_dump Deployment "db-backup") stop
+  # while backup.enabled is false – true confirms running without a backup.
+  acknowledgeNoBackup: false
+  # Folder of this cluster inside destinationPath. Change it only for a
+  # restore (timescale.recovery), to a name never used before.
+  serverName: timescale
+  # Recovery window: base backups and WAL no longer needed to restore a point
+  # within this period are deleted ("30d", "8w", "6m").
+  retentionPolicy: 30d
+  # Base backup schedule – CNPG cron format WITH seconds:
+  # "sec min hour day month weekday". Default: daily at 03:00.
+  schedule: "0 0 3 * * *"
+  # Compression of WAL files and base backups (gzip, bzip2, snappy; "" = none).
+  compression: gzip
+  # Server-side encryption in the bucket ("AES256", "aws:kms"; "" = none –
+  # many S3-compatible providers do not support it).
+  encryption: ""
+  # Sidecar the plugin adds to every database instance (uploads WAL, takes the
+  # base backups). env: extra variables – some S3-compatible providers reject
+  # the checksums of recent boto3 releases; then set
+  #   - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
+  #   - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
+  sidecar:
+    env: []
+    resources: {}

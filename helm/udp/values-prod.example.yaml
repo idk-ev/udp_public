@@ -80,6 +80,14 @@ connectors:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
 
+# Datenbank-Backup in S3-kompatiblen Objektspeicher (DEPLOY.md §2: vorher
+# Barman-Cloud-Plugin installieren und das Secret anlegen).
+backup:
+  enabled: true
+  destinationPath: "s3://mein-bucket/udp"
+  endpointURL: "https://s3.example.org"   # leer bei AWS S3
+  existingSecret: "udp-backup-s3"         # ACCESS_KEY_ID / ACCESS_SECRET_KEY
+
 # FROST-Root-URL an den echten Host anpassen.
 frost:
   serviceRootUrl: "https://udp.meine-stadt.de/FROST-Server"

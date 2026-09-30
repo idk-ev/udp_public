@@ -66,19 +66,23 @@ docker run --rm -e VUS=10 -e BASE=https://<host> \
 
 ## Datensicherung & Disaster Recovery
 
-- **Täglich** automatisierte Dumps aller PostgreSQL-Datenbanken
-  (Compose-Referenz: Dienst `backup`; Kubernetes: CronJob) mit Aufbewahrung
-  14 Tage / 8 Wochen / 3 Monate (die TRoE-Historie ist append-only und steckt
-  in jedem Voll-Dump erneut — längere Monats-Staffeln wären fast nur
-  redundantes Volumen).
-- **Kontinuierlich**: WAL-Archivierung (PITR) für PostgreSQL; Volume-
-  Snapshots für MongoDB; Kopie in zweite Brandzone/Region
-  (3-2-1-Regel). Das Monitoring sichert sein `/app/data` (SQLite mit der
-  Verfügbarkeitshistorie) im eigenen Deployment mit – s. `monitoring/`.
+- **Kubernetes – kontinuierlich**: WAL-Archivierung und tägliche
+  Basissicherung aller PostgreSQL-Datenbanken in S3-kompatiblen
+  Objektspeicher (CloudNativePG, Barman-Cloud-Plugin); Wiederherstellung auf
+  jeden Zeitpunkt der letzten 30 Tage, einzeln je Datenbank oder als ganzer
+  Cluster (`scripts/restore-timescale.sh`, `helm/udp/DEPLOY.md` §10c).
+  Bucket bei einem anderen Anbieter/Standort als der Cluster (3-2-1-Regel).
+- **Compose**: täglich Dumps aller PostgreSQL-Datenbanken (Dienst `backup`)
+  mit Aufbewahrung 14 Tage / 8 Wochen / 3 Monate.
+- **Volume-Snapshots** für MongoDB und das CKAN-Dateiverzeichnis
+  (`ckan-data`) – nicht Teil des S3-Backups. Das Monitoring sichert sein
+  `/app/data` (SQLite mit der Verfügbarkeitshistorie) im eigenen Deployment
+  mit – s. `monitoring/`.
 - **Konfiguration**: vollständig im Git (GitOps) – Wiederaufbau des Clusters
   aus Repository + Backups.
 - **DR-Übung**: halbjährliche Wiederherstellungsprobe mit Protokoll;
-  Ziele RTO ≤ 4 h, RPO ≤ 24 h (Dumps) bzw. ≤ 15 min (PITR).
+  Ziele RTO ≤ 4 h, RPO ≤ 5 min (WAL-Archiv, Kubernetes) bzw. ≤ 24 h
+  (Dumps, Compose).
 
 ## Updates & Wartung
 
