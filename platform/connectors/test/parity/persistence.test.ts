@@ -66,6 +66,8 @@ class FakeDatabase {
   readonly loads: string[] = [];
   readonly #waiting: (() => void)[] = [];
   lockHolder: FakeBackend | null = null;
+  /** The writer generation: bumped by every tenure, as `udp_connectors.writer`. */
+  generation = 0;
   readonly signatures = new Map<string, string>();
   readonly prune = new Map<string, string>();
   readonly state = new Map<string, string>();
@@ -112,6 +114,7 @@ class FakeBackend implements StateBackend {
   readonly description = "fake database";
   readonly #db: FakeDatabase;
   #locked = false;
+  #generation: number | null = null;
 
   constructor(db: FakeDatabase) {
     this.#db = db;
@@ -121,9 +124,17 @@ class FakeBackend implements StateBackend {
     return this.#locked && this.#db.lockHolder === this;
   }
 
+  get generation(): number | null {
+    return this.#generation;
+  }
+
   acquire(): Promise<boolean> {
     if (!this.#db.reachable) return Promise.reject(refused());
     if (this.#db.lockHolder !== null && this.#db.lockHolder !== this) return Promise.resolve(false);
+    if (!this.locked) {
+      this.#db.generation += 1;
+      this.#generation = this.#db.generation;
+    }
     this.#db.lockHolder = this;
     this.#locked = true;
     return Promise.resolve(true);
@@ -200,6 +211,12 @@ class FakeBackend implements StateBackend {
    */
   switchover(): void {
     this.crash();
+  }
+
+  /** The lock drops and ANOTHER instance holds it for a while (a generation of its own) before this one gets it back. */
+  lostToAnotherInstance(): void {
+    this.crash();
+    this.#db.generation += 1;
   }
 }
 
@@ -763,11 +780,11 @@ async function afterOneGatedRun(): Promise<{
 
 /**
  * A database switchover takes the writer lock; the next run of ANY connector
- * takes it back, and every connector is reloaded at once — not each before
- * its own next run, which for some is twelve hours away (`healthy: false`
- * for hours after every release).
+ * takes it back. Nobody else held it in between (the generation is the next
+ * one), so memory is the truth: nothing is reloaded over it, and the store
+ * is healthy again at once — not only after each connector's next run.
  */
-export async function lockRegainedReloadsEveryConnector(): Promise<void> {
+export async function lockRegainedAloneKeepsMemory(): Promise<void> {
   const { db, broker, service, values } = await afterOneGatedRun();
   const persistence = service.kernel.persistence;
   assert.ok(persistence !== undefined);
@@ -781,8 +798,9 @@ export async function lockRegainedReloadsEveryConnector(): Promise<void> {
   // Only the ungated connector runs; it notices the loss and takes the lock back.
   await runConnector(service.kernel, service.plain, plainConnector);
   await settle();
-  assert.equal(warned(service.log, "writer lock lost — every connector's state is reloaded"), 1);
-  assert.deepEqual([...db.loads].sort(), ["gated", "plain"], "both loaded, the gated one without a run");
+  assert.equal(warned(service.log, "writer lock lost — nothing is written until it is back"), 1);
+  assert.ok(service.log.lines.some((line) => line.text.includes("nobody held it in between")));
+  assert.deepEqual(db.loads, [], "memory kept: nothing loaded over it");
   assert.equal(broker.upserts.length, 2, "the gated connector did not run");
   const health = persistence.health();
   assert.deepEqual(
@@ -795,7 +813,125 @@ export async function lockRegainedReloadsEveryConnector(): Promise<void> {
   await runConnector(service.kernel, service.gated, gatedConnector(values));
   assert.deepEqual(broker.lastFull(), []);
   assert.equal(service.gated.state.slot(RUNS).get(), 2);
-  assert.equal(db.loads.filter((id) => id === "gated").length, 1, "loaded once, not again before the run");
+  assert.equal(db.stateValue("gated", "runs"), 2);
+}
+
+/**
+ * Writes `count` Things one per chunk; `during(chunk)` runs as the broker
+ * answers each upsert request — the moment to pull the lock away.
+ */
+function chunkedConnector(values: Map<string, number>): ConnectorRunner {
+  return {
+    id: "gated",
+    run: async (ctx) => {
+      const now = ctx.now();
+      const entities = [...values.keys()].map((id) => thing(id, now));
+      const signatureOf = (entity: NgsiEntity): number =>
+        values.get(entity.id.slice("urn:ngsi-ld:Thing:".length)) ?? -1;
+      await ctx.orion.upsertChanged("thingSig", entities, signatureOf, { chunkSize: 1 });
+    },
+  };
+}
+
+/**
+ * The regression: the writer lock goes in the MIDDLE of a run. The chunks
+ * already under way are still confirmed by the broker; their signatures used
+ * to be discarded (marks cleared, commits ignored while "unloaded", and the
+ * older store loaded over memory when the run ended), so the next run sent
+ * everything again. Now they are kept, written once the lock is back, and
+ * the next run writes only what changed.
+ */
+export async function lockLostDuringARunKeepsItsSignatures(): Promise<void> {
+  const events: string[] = [];
+  const db = new FakeDatabase(events);
+  const broker = new Broker(events);
+  const clock = { now: T0 };
+  const values = new Map([
+    ["t-0", 1],
+    ["t-1", 2],
+    ["t-2", 3],
+    ["t-3", 4],
+  ]);
+  const service = start(db, broker, clock);
+  await service.kernel.persistence?.prepareAll();
+
+  // The lock drops while the second chunk is on its way.
+  let requests = 0;
+  const answer = broker.respond;
+  const fetcher = scriptedFetcher((request) => {
+    if (request.url.pathname.endsWith("/entityOperations/upsert")) {
+      requests += 1;
+      if (requests === 2) service.backend.switchover();
+    }
+    return answer(request);
+  }).fetcher;
+  const kernel: Kernel = { ...service.kernel, fetch: fetcher };
+  const gated = createCtx(kernel, entry("gated"));
+  await runConnector(kernel, gated, chunkedConnector(values));
+  assert.equal(broker.upserts.length, 4, "the plan built before the loss went out completely");
+  assert.equal(db.signature("gated", "thingSig", ID("t-3")), undefined, "not written without the lock");
+  assert.equal(service.kernel.persistence?.health().loaded.includes("gated"), true, "memory not discarded");
+
+  // Any run takes the lock back; nobody was in between: memory is written.
+  await runConnector(kernel, service.plain, plainConnector);
+  await settle();
+  for (const [id, value] of values) {
+    assert.equal(db.signature("gated", "thingSig", ID(id)), value, `${id}: committed signature lost`);
+  }
+
+  // The next run sends only what changed.
+  values.set("t-2", 30);
+  clock.now += HOUR;
+  await runConnector(kernel, gated, chunkedConnector(values));
+  const full = broker.upserts
+    .slice(5)
+    .flat()
+    .filter((entity) => fullOrFresh(entity) === "full");
+  assert.deepEqual(full.map(idOf), [ID("t-2")], "only the changed entity in full");
+  assert.equal(db.signature("gated", "thingSig", ID("t-2")), 30);
+}
+
+/**
+ * Another instance held the lock in between and wrote the store: only the
+ * signatures memory and store agree on survive; every other one is dropped on
+ * both sides and its entity written in full once more. Counters come from the
+ * store, since the other instance ran last.
+ */
+export async function lockRegainedAfterAnotherInstanceReconciles(): Promise<void> {
+  const { db, broker, service, values } = await afterOneGatedRun();
+  const persistence = service.kernel.persistence;
+  assert.ok(persistence !== undefined);
+  values.set("t-2", 3);
+  await runConnector(service.kernel, service.gated, gatedConnector(values));
+  assert.deepEqual(broker.lastFull(), [ID("t-2")]);
+
+  service.backend.lostToAnotherInstance();
+  // What the other instance left: t-1 with another value, t-2 gone, a new t-5,
+  // and its own run counted.
+  db.signatures.set(["gated", "thingSig", ID("t-1")].join(SEP), "22");
+  db.signatures.delete(["gated", "thingSig", ID("t-2")].join(SEP));
+  db.signatures.set(["gated", "thingSig", ID("t-5")].join(SEP), "5");
+  db.state.set(["gated", "runs"].join(SEP), "7");
+  db.loads.length = 0;
+
+  await runConnector(service.kernel, service.plain, plainConnector);
+  await settle();
+  assert.equal(warned(service.log, "another instance may have held it in between"), 1);
+  assert.deepEqual([...db.loads].sort(), ["gated", "plain"], "both reconciled, the gated one without a run");
+  assert.ok(service.log.lines.some((line) => line.text.includes("3 signatures differed and were dropped")));
+  assert.equal(db.signature("gated", "thingSig", ID("t-0")), 1, "agreed: kept");
+  for (const id of ["t-1", "t-2", "t-5"]) {
+    assert.equal(
+      db.signature("gated", "thingSig", ID(id)),
+      undefined,
+      `${id}: disputed, dropped in the store`,
+    );
+  }
+
+  await runConnector(service.kernel, service.gated, gatedConnector(values));
+  assert.deepEqual(broker.lastFull(), [ID("t-1"), ID("t-2")], "the disputed ones in full, once");
+  assert.equal(service.gated.state.slot(RUNS).get(), 8, "the counter continued from the store");
+  assert.equal(db.signature("gated", "thingSig", ID("t-1")), 2);
 }
 
 /** A load failing in the eager reload is unhealthy with a reason, warned once, and retried until it works. */
@@ -804,7 +940,7 @@ export async function reloadFailureIsUnhealthyAndRetried(): Promise<void> {
   const persistence = service.kernel.persistence;
   assert.ok(persistence !== undefined);
 
-  service.backend.switchover();
+  service.backend.lostToAnotherInstance();
   db.failLoad = (connector) => connector === "gated";
   await runConnector(service.kernel, service.plain, plainConnector);
   await settle();
@@ -847,7 +983,7 @@ export async function runRacingTheReloadWaitsForItsState(): Promise<void> {
   db.loads.length = 0;
   const sent = broker.upserts.length;
 
-  service.backend.switchover();
+  service.backend.lostToAnotherInstance();
   db.held.add("gated");
   await runConnector(service.kernel, service.plain, plainConnector);
   await settle();
@@ -899,7 +1035,7 @@ export async function reloadPassesOverARunningConnector(): Promise<void> {
   assert.equal(runsAtStart, 1, "the run started on its loaded state");
 
   db.loads.length = 0;
-  service.backend.switchover();
+  service.backend.lostToAnotherInstance();
   await runConnector(service.kernel, service.plain, plainConnector);
   await settle();
   assert.deepEqual(db.loads, ["plain"], "the running connector was not reloaded underneath its run");

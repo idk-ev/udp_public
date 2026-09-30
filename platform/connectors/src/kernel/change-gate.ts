@@ -240,6 +240,39 @@ export class SignatureScope {
   }
 
   /**
+   * After another writer may have held the lock: keeps only the signatures
+   * on which memory and `stored` agree and removes every other one from
+   * memory. Returns, per table, every field that differed (in memory, in the
+   * store, or both) — the store must lose them too. Not reported as a change;
+   * the persistence marks what it returns.
+   */
+  reconcile(stored: ReadonlyMap<string, ReadonlyMap<string, SignatureValue>>): Map<string, Set<string>> {
+    const differing = new Map<string, Set<string>>();
+    const mark = (key: string, field: string): void => {
+      let fields = differing.get(key);
+      if (fields === undefined) {
+        fields = new Set();
+        differing.set(key, fields);
+      }
+      fields.add(field);
+    };
+    for (const key of new Set([...this.keys(), ...stored.keys()])) {
+      const table = this.#tables.get(this.#prefix + key);
+      const other = stored.get(key);
+      for (const [field, value] of table ?? []) {
+        if (other?.get(field) !== value) mark(key, field);
+      }
+      for (const [field, value] of other ?? []) {
+        if (table?.get(field) !== value) mark(key, field);
+      }
+      if (table === undefined) continue;
+      for (const field of differing.get(key) ?? []) table.delete(field);
+      if (table.size === 0) this.#tables.delete(this.#prefix + key);
+    }
+    return differing;
+  }
+
+  /**
    * SIG_COMMIT: stores the pending signatures whose entity is in `confirmed`,
    * drops the others. `value === null` removes the field.
    */
