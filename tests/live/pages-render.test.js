@@ -166,7 +166,8 @@ exports["Jede Gemeinde hat die vier Bürgerservice-Kacheln + saubere Themen-Grup
   // Tile order follows REL_ORDER in stadt.html (relevance, not topic);
   // unknown labels come last in code order.
   const src = await (await fetch(BASE + "/stadt.html")).text();
-  const rel = JSON.parse(src.match(/const REL_ORDER = (\[[\s\S]*?\]);/)[1]);
+  // Evaluated, not JSON-parsed: the array literal may use JS syntax.
+  const rel = new Function(`return ${src.match(/const REL_ORDER = (\[[\s\S]*?\]);/)[1]}`)();
   const rank = t => { const i = rel.indexOf(t.querySelector(".label").textContent.trim()); return i === -1 ? rel.length : i; };
   const seq = [...d.querySelectorAll("#tiles .tile")].map(rank);
   for (let i = 1; i < seq.length; i++) {

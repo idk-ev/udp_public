@@ -188,7 +188,9 @@ Modul. Aufbau und verbindliche Typdisziplin: `platform/connectors/README.md`.
    `departures`, `br`, `amtliche-station`, `laden-live`, `laden-detail`,
    `carsharing-detail`, `passanten`, `vorhersage`, `fuellstand` (Container-Füllstände
    aus `WasteContainer`; ohne einen Konnektor mit `fuellstand` fragt die Seite den
-   Typ gar nicht erst ab).
+   Typ gar nicht erst ab – kommt der Feed nicht über einen Konnektor, z. B. über
+   den IoT-Agenten, in `gui/public/dashboards.json` bei der Kommune
+   `"fuellstand": true` setzen).
 
    Schlägt eine Abfrage fehl (5xx, Zeitüberschreitung, 429), zeigt die Seite statt
    der Kachel »Daten derzeit nicht abrufbar« – aber nur für Kacheln, die die

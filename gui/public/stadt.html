@@ -382,7 +382,8 @@ async function render() {
     // Abfahrten auf Anfrage: liefert für JEDE Gemeinde eine sekundenaktuelle Liste.
     // 404 = no stop for this municipality (no card); any other failure (502
     // upstream error, 503 busy, 429) is marked { gestoert } instead of dropped.
-    // Retried on 429 only: the service keeps an EFA failure for 30 s anyway.
+    // Retried on 429 and network errors only: the service keeps an EFA
+    // failure for 30 s anyway.
     SC.fetchRetry("/abfahrten?ags=" + ags, undefined, s => s === 429)
       .then(r => r.status === 404 ? null : r.ok ? r.json()
         : r.json().then(j => ({ gestoert: true, halt: j && typeof j.halt === "string" ? j.halt : "" })))
@@ -413,10 +414,11 @@ async function render() {
     jlist(`${SC.GW}/ngsi-ld/v1/entities?type=HeatHealthWarning&limit=10&options=keyValues`),
     // Familie & Versorgung (OSM): Apotheke, Arzt, Kita, Spielplatz, AED, Trinkwasser.
     entity(ID.versorgung),
-    // Container-/Behälter-Füllstände (FIWARE WasteContainer). Es gibt dafür keine
-    // offenen Landesdaten; abgefragt wird nur, wo ein Konnektor der Registry
-    // »fuellstand« liefert (kommunenspezifischer Baustein, s. docs/staedte-hinzufuegen.md).
-    provides.has("fuellstand") ? byAgs("WasteContainer", ags) : [],
+    // Container fill levels (FIWARE WasteContainer). There is no open state-wide
+    // source: asked only where a registry connector provides "fuellstand" or
+    // dashboards.json enables it for the municipality (own sensor feed), see
+    // docs/staedte-hinzufuegen.md.
+    provides.has("fuellstand") || cfg.fuellstand === true ? byAgs("WasteContainer", ags) : [],
     // Parkanlagen je Standort mit Koordinaten (MobiData BW ParkAPI, kommunenspezifischer Baustein)
     // für die Parken-Detailkarte und die Parken-Kartenebene. Die ParkingSummary oben
     // bleibt der aggregierte Kachelwert.
@@ -1207,12 +1209,15 @@ async function render() {
       const cls = dm == null ? "delay-0" : dm >= 5 ? "delay-s" : dm >= 1 ? "delay-w" : "delay-0";
       return `<tr><td><span class="line-badge">${esc(d.linie)}</span></td><td>${esc(d.ziel)}</td><td>${esc(d.zeit)}</td><td class="num ${cls}" ${dm == null ? 'title="Echtzeitmeldung unplausibel — als unbekannt geführt"' : ""}>${dm == null ? "?" : Number(dm) > 0 ? "+" + Number(dm) : "±0"}</td></tr>`;
     }).join("");
-  } else if (abfGestoert || abfLeer) {
+  } else if (abfLeer || (abfGestoert && (abfahrten.halt || tileMem.has("oepnv")))) {
+    // "Disturbed" only where a stop is known: the answer names it (502 of the
+    // service), or the municipality normally has the ÖPNV tile. A 503 before
+    // the stop directory is loaded, or a 429, says nothing about a stop.
     // The stop exists, but there is nothing to list: say why instead of hiding the board.
     $("#dep-card").style.display = "block";
     $("#dep-title").textContent = "Abfahrten" + (haltName ? " " + haltName : "");
     $("#dep-desc").textContent = "Echtzeit (EFA-BW)";
-    $("#deps tbody").innerHTML = `<tr><td colspan="4" class="dep-state" style="color:var(--text-muted)">${abfGestoert ? "Fahrplanauskunft derzeit gestört" : "Derzeit keine Abfahrten"}</td></tr>`;
+    $("#deps tbody").innerHTML = `<tr><td colspan="4" class="dep-state" style="color:var(--text-secondary)">${abfGestoert ? "Fahrplanauskunft derzeit gestört" : "Derzeit keine Abfahrten"}</td></tr>`;
   } else {
     $("#dep-card").style.display = "none";
   }

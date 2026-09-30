@@ -199,7 +199,7 @@ async function renderStadt(opts = {}) {
     calls.push(u);
     if (opts.fail && opts.fail(u)) return json({ title: "Service Unavailable" }, 503, { "Retry-After": "0" });
     if (u === "/connectors-status.json") return json(opts.conn || CONN);
-    if (u === "/dashboards.json") return json({ kommunen: {} });
+    if (u === "/dashboards.json") return json({ kommunen: opts.kommunen || {} });
     if (u.startsWith("/abfahrten")) return opts.abfahrten ? opts.abfahrten() : json({ fehler: "kein Halt" }, 404);
     if (u.startsWith("/gateway/temporal/")) return json({});
     const byId = u.match(/\/ngsi-ld\/v1\/entities\/([^?]+)/);
@@ -260,6 +260,10 @@ exports["stadt.html: WasteContainer is only asked where a connector provides it"
   const withConn = await renderStadt({ conn, entities: { [WX.id]: WX } });
   assert(withConn.calls.some(u => u.includes("type=WasteContainer")), "WasteContainer not asked although provided");
   withConn.w.close();
+  // A feed without a connector (IoT agent): opt-in per municipality in dashboards.json.
+  const optIn = await renderStadt({ kommunen: { reutlingen: { fuellstand: true } }, entities: { [WX.id]: WX } });
+  assert(optIn.calls.some(u => u.includes("type=WasteContainer")), "dashboards.json fuellstand: true ignored");
+  optIn.w.close();
 };
 
 exports["stadt.html: failed queries show error tiles and the banner"] = async () => {
@@ -300,4 +304,73 @@ exports["stadt.html: departure board – no departures vs. disturbed"] = async (
   const ohne = await renderStadt({ entities: { [WX.id]: WX } });
   assert.strictEqual(ohne.d.getElementById("dep-card").style.display, "none");
   ohne.w.close();
+};
+
+exports["stadt.html: busy or unloaded /abfahrten is 'disturbed' only where a stop is known"] = async () => {
+  if (!JSDOM) return;
+  // 503 before the stop directory is loaded names no stop: no board for a
+  // municipality that never had one ...
+  const busy = () => json({ fehler: "Haltestellenverzeichnis noch nicht geladen" }, 503);
+  const fremd = await renderStadt({ entities: { [WX.id]: WX }, abfahrten: busy });
+  assert.strictEqual(fremd.d.getElementById("dep-card").style.display, "none");
+  fremd.w.close();
+  // ... but "disturbed" where the ÖPNV tile is normally shown.
+  const bekannt = await renderStadt({ entities: { [WX.id]: WX }, abfahrten: busy,
+    storage: { "sc-tiles:stadt:08415061": '["oepnv"]' } });
+  assert.match(bekannt.d.querySelector("#deps tbody").textContent, /Fahrplanauskunft derzeit gestört/);
+  assert(errorLabels(bekannt.d).includes("ÖPNV-Verspätung"), "no error tile for the remembered ÖPNV tile");
+  bekannt.w.close();
+};
+
+/* ---------- kreis.html and dashboard.html ---------- */
+
+// Renders a page whose gateway answers 503 for URLs matching `failRe`.
+async function renderPage(file, url, failRe, globals = {}) {
+  const html = fs.readFileSync(path.join(PUB, file), "utf8").replace(/<script src="[^"]*"><\/script>/g, "");
+  const dom = new JSDOM(html, { url, runScripts: "outside-only", pretendToBeVisual: true });
+  const w = dom.window;
+  Object.assign(w, globals);
+  w.fetch = async u => {
+    const s = decodeURIComponent(String(u));
+    if (failRe && failRe.test(s)) return json({}, 503, { "Retry-After": "0" });
+    if (!s.startsWith("/gateway")) {
+      const f = path.join(PUB, s.split("?")[0]);
+      return fs.existsSync(f) ? new Response(fs.readFileSync(f)) : json({}, 404);
+    }
+    if (s.includes("/entities/")) return json({ title: "Not Found" }, 404);
+    return json(s.includes("/temporal/") ? {} : []);
+  };
+  leafletStub(w);
+  w.open = () => {};
+  w.eval(LIB);
+  for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) w.eval(m[1]);
+  const t0 = Date.now();
+  while (!/^Stand:/.test(w.document.getElementById("stand").textContent)) {
+    if (w.document.getElementById("err").textContent) throw new Error(w.document.getElementById("err").textContent);
+    if (Date.now() - t0 > 10000) throw new Error(`${file} did not finish rendering`);
+    await new Promise(r => setTimeout(r, 20));
+  }
+  return w;
+}
+
+exports["kreis.html: failed queries show the error state and the banner, empty ones don't"] = async () => {
+  if (!JSDOM) return;
+  const KREIS = { KREIS: { slug: "kreis-reutlingen", krs: "08415" } };
+  const ok = await renderPage("kreis.html", "https://udp.example/kreis-reutlingen", null, KREIS);
+  assert.deepStrictEqual(errorLabels(ok.document), []);
+  assert.strictEqual(ok.document.getElementById("loadwarn").textContent, "");
+  ok.close();
+  const bad = await renderPage("kreis.html", "https://udp.example/kreis-reutlingen", /Alert|type=CityPulse|type=EnergyMonitor/, KREIS);
+  assert.deepStrictEqual(errorLabels(bad.document), ["Warnungen"]);
+  assert.match(bad.document.getElementById("loadwarn").textContent, /Einige Daten konnten nicht geladen werden/);
+  bad.close();
+};
+
+exports["dashboard.html: failed PlatformStatus shows the error state instead of '–'"] = async () => {
+  if (!JSDOM) return;
+  const w = await renderPage("dashboard.html", "https://udp.example/dashboard.html", /PlatformStatus:udp-troe/);
+  const errs = errorLabels(w.document);
+  assert.deepStrictEqual(errs, ["Zeitreihen-DB", "TRoE-Zeilen", "Entitäten", "Datenfluss"]);
+  assert(!errs.includes("Serverlast"), "the healthy host status became an error tile");
+  w.close();
 };

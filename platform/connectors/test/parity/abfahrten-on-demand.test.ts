@@ -323,12 +323,13 @@ async function noDeparturesIsAnEmptyList(): Promise<void> {
 
 /** Only a resolved stop without stopEvents is "no departures"; the rest stays 502. */
 async function realErrorsStay502(): Promise<void> {
-  const ok = { version: "11.0.6.72", locations: [{ id: "de:08115:71" }] };
+  const ok = { version: "11.0.6.72", locations: [{ id: "de:08115:71", type: "stop" }] };
   assert.equal(isEmptyDepartureMonitor(ok), true);
   for (const [what, payload] of [
     ["no version", { locations: [{ id: "x" }] }],
     ["no locations", { version: "11" }],
     ["empty locations", { version: "11", locations: [] }],
+    ["location is no stop", { version: "11", locations: [{ id: "x", type: "unknown" }] }],
     ["stopEvents not an array", { ...ok, stopEvents: null }],
     ["stop not found", { systemMessages: [{ text: "stop not found" }] }],
     ["not an object", "<html>maintenance</html>"],

@@ -34,11 +34,17 @@ exports["cockpit nginx: empty NGSI-LD answers get a 10 s TTL through the loopbac
   assert.match(hop, /proxy_set_header X-Real-IP \$http_x_real_ip;/);
   assert.match(hop, /set \$gateway http:\/\/\$\{UDP_GATEWAY_UPSTREAM\};/);
   assert(!/listen\s+(0\.0\.0\.0:)?8081|listen\s+\[::\]:8081/.test(NGINX), "the hop must not listen beyond loopback");
+  const up = block(/upstream udp_gateway_hop \{([\s\S]*?)\n\}/, "upstream udp_gateway_hop");
+  assert.match(up, /server 127\.0\.0\.1:8081;/);
+  assert.match(up, /keepalive \d+;/);
   for (const [loc, ttl] of [["/gateway/ngsi-ld/", "60s"], ["/gateway/temporal/", "300s"]]) {
     const at = NGINX.indexOf(`location ^~ ${loc} {`);
     assert(at >= 0, `${loc} missing in cockpit.conf.template`);
     const body = NGINX.slice(at, NGINX.indexOf("\n    }", at));
-    assert.match(body, /proxy_pass http:\/\/127\.0\.0\.1:8081;/, `${loc}: not through the hop`);
+    assert.match(body, /proxy_pass http:\/\/udp_gateway_hop;/, `${loc}: not through the hop`);
+    // Keepalive towards the hop needs HTTP/1.1 without "Connection: close".
+    assert.match(body, /proxy_http_version 1\.1;/);
+    assert.match(body, /proxy_set_header Connection "";/);
     assert(body.includes(`proxy_cache_valid 200 ${ttl};`), `${loc}: TTL for non-empty answers changed`);
     assert.match(body, /proxy_set_header X-Real-IP \$remote_addr;/, `${loc}: client address for the rate limit`);
     // X-Accel-Expires must be honoured, and proxy_no_cache would leave the old

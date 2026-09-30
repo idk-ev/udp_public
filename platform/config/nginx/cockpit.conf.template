@@ -65,7 +65,12 @@ map "$upstream_status:$upstream_http_content_length" $udp_empty_ttl {
 }
 
 # Loopback hop in front of the gateway (see the map above). Not reachable from
-# outside the container; only the two caching /gateway locations use it.
+# outside the container; only the two caching /gateway locations use it, over
+# kept-alive connections. Their access log names this hop as upstream.
+upstream udp_gateway_hop {
+    server 127.0.0.1:8081;
+    keepalive 16;
+}
 server {
     listen 127.0.0.1:8081;
     server_name _;
@@ -260,7 +265,9 @@ server {
         rewrite ^/gateway/(.*)$ /$1 break;
         # Through the loopback hop: empty answers come back with
         # X-Accel-Expires: 10 (see the map at the top).
-        proxy_pass http://127.0.0.1:8081;
+        proxy_pass http://udp_gateway_hop;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         # Client address for the per-client rate limit in APISIX. Always SET,
         # never passed through – a client cannot choose its own bucket.
@@ -338,7 +345,9 @@ server {
         limit_except GET HEAD OPTIONS { deny all; }
         rewrite ^/gateway/(.*)$ /$1 break;
         # Through the loopback hop, as /gateway/ngsi-ld/.
-        proxy_pass http://127.0.0.1:8081;
+        proxy_pass http://udp_gateway_hop;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         # Client address for the per-client rate limit in APISIX. Always SET,
         # never passed through – a client cannot choose its own bucket.

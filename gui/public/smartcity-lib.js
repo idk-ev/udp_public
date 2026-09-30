@@ -159,7 +159,9 @@
     if (!el) return false;
     const s = loadSince(mark);
     const due = bannerDue(s.failed, s.total);
-    el.textContent = due ? LOAD_BANNER_TXT : "";
+    const text = due ? LOAD_BANNER_TXT : "";
+    // Unchanged text is not rewritten: a live region would announce it again.
+    if (el.textContent !== text) el.textContent = text;
     return due;
   }
   // Neutral tile for data that normally exists but could not be fetched now.
@@ -616,7 +618,9 @@
     const wrap = $("#sc-modal-body").querySelector(".m-chartwrap");
     wrap.innerHTML = `<div class="desc">lädt…</div>`;
     const slot = SLOT();
-    const ts = await Promise.all(def.series.map(s => hist(s.id, s.attr, hours)));
+    // quiet: a detail view opened later does not count for the page banner
+    const ts = await Promise.all(def.series.map(s => soft(histUrl(s.id, s.attr, hours), () => ({}), null, true)));
+    if (ts.some(failed)) { wrap.innerHTML = `<div class="desc">${LOAD_ERR_TXT}</div>`; _lastSeries = null; return; }
     const seriesList = def.series.map((s, i) => {
       let data = series(ts[i], s.attr);
       if (s.factor) data = data.map(([x, v]) => [x, v * s.factor]);

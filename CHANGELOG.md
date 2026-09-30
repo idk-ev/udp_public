@@ -13,7 +13,8 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   „Fahrplanauskunft derzeit gestört“.
 - Cockpit-nginx: leere Kontext-/Zeitreihen-Antworten nur noch 10 s im Cache.
 - Stadtseite fragt `WasteContainer` nur ab, wo ein Konnektor `fuellstand`
-  liefert.
+  liefert oder `dashboards.json` es für die Kommune freischaltet
+  (`"fuellstand": true`).
 
 ## Unveröffentlicht — Webanalyse, Impressum, Datenschutz und Logo
 
