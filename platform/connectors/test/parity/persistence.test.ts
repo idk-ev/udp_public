@@ -171,6 +171,7 @@ class FakeBackend implements StateBackend {
   write(connector: string, batch: StateWrite): Promise<void> {
     if (!this.#db.reachable) return Promise.reject(refused());
     if (!this.locked) return Promise.reject(new Error("writer lock not held"));
+    if (this.#takenOver()) return Promise.reject(new Error("writer lock taken over by another instance"));
     if (this.#db.failWrite(batch)) return Promise.reject(new Error("write failed (injected)"));
     for (const { table, field, value } of batch.signatures) {
       const key = [connector, table, field].join(SEP);
@@ -187,6 +188,7 @@ class FakeBackend implements StateBackend {
   deleteSignatures(connector: string, table: string, fields: readonly string[]): Promise<void> {
     if (!this.#db.reachable) return Promise.reject(refused());
     if (!this.locked) return Promise.reject(new Error("writer lock not held"));
+    if (this.#takenOver()) return Promise.reject(new Error("writer lock taken over by another instance"));
     for (const field of fields) {
       this.#db.signatures.delete([connector, table, field].join(SEP));
       this.#db.events.push(`db delete ${field}`);
@@ -211,6 +213,17 @@ class FakeBackend implements StateBackend {
    */
   switchover(): void {
     this.crash();
+  }
+
+  /**
+   * The fence of every write (as the PostgreSQL backend's): another instance
+   * bumped the generation — this one lost the lock, whatever its own
+   * connection still looks like.
+   */
+  #takenOver(): boolean {
+    if (this.#generation === null || this.#db.generation === this.#generation) return false;
+    this.#locked = false;
+    return true;
   }
 
   /** The lock drops and ANOTHER instance holds it for a while (a generation of its own) before this one gets it back. */
@@ -889,6 +902,29 @@ export async function lockLostDuringARunKeepsItsSignatures(): Promise<void> {
     .filter((entity) => fullOrFresh(entity) === "full");
   assert.deepEqual(full.map(idOf), [ID("t-2")], "only the changed entity in full");
   assert.equal(db.signature("gated", "thingSig", ID("t-2")), 30);
+}
+
+/**
+ * The fence: another instance took the lock (its generation) while this one's
+ * lock connection still looks alive (half-open after a switchover). Nothing
+ * of this instance reaches the store any more, and no gated upsert goes out.
+ */
+export async function writesAreFencedAfterATakeover(): Promise<void> {
+  const { db, broker, service, values } = await afterOneGatedRun();
+  db.generation += 1;
+  db.signatures.set(["gated", "thingSig", ID("t-0")].join(SEP), "5");
+  values.set("t-0", 10);
+  const sent = broker.upserts.length;
+  await runConnector(service.kernel, service.gated, gatedConnector(values));
+  assert.equal(broker.upserts.length, sent, "a gated upsert went out after the takeover");
+  assert.ok(warned(service.log, "Upsert not sent") + warned(service.log, "run skipped") >= 1);
+  assert.equal(
+    db.signature("gated", "thingSig", ID("t-0")),
+    5,
+    "the other instance's signature was overwritten",
+  );
+  assert.equal(db.stateValue("gated", "runs"), 1, "state of the old writer reached the store");
+  assert.ok(service.log.warnings().some((line) => line.includes("taken over by another instance")));
 }
 
 /**

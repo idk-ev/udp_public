@@ -949,7 +949,8 @@ export interface Pruner {
    * per-system list in consecutive runs) — with the prune's discipline, not
    * its listing: state usable, master data plausible, every id matching the
    * anchored `pattern` (else nothing is deleted), their signatures out of the
-   * store first, only confirmed deletions count. Never throws.
+   * store first, only confirmed deletions count (but every attempted id
+   * loses its signatures). Never throws.
    */
   remove(options: RemoveOptions): Promise<RemoveResult>;
 }

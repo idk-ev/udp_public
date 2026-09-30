@@ -251,12 +251,18 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   eine zweite Instanz führte nur die ungegateten Konnektoren aus — doppelt.
   Jede Übernahme des Locks zählt eine Generation hoch (Tabelle
   `udp_connectors.writer`); daran erkennt der Dienst, ob zwischen zwei
-  eigenen Lock-Phasen jemand anderes geschrieben hat.
+  eigenen Lock-Phasen jemand anderes geschrieben hat. Jeder Schreibvorgang
+  prüft sie: Hat eine andere Instanz übernommen, schreibt die alte nichts
+  mehr, auch wenn ihre Lock-Verbindung noch lebendig aussieht.
 - **Prune:** Löscht eigene Entitäten, die die Quelle nicht mehr liefert. Der
   30-%-Deckel gilt nur für kürzlich (unter 7 Tagen) Verschwundenes, gemessen
   am frischen Bestand; Älteres („Altbestand“) baut der Dienst in Portionen
   von höchstens 1.000 je Lauf ab, ältestes zuerst, und nur solange der
-  frische Bestand gegenüber dem Vorlauf nicht um mehr als 5 % schrumpft.
+  frische Bestand nicht unter 95 % seines Referenzwerts fällt (der folgt
+  Wachstum sofort, Schrumpfen nur um 2 % je Lauf). „Verschwunden seit“ misst
+  bei Prunes mit Karenzzeit der letzte Schreibzeitpunkt, bei Prunes über die
+  vollständige Liste (Laden, Parken) die Dauer als Kandidat in Folge — ein
+  Massenverlust bleibt dort über dem Deckel und damit blockiert.
   Überspringt der Deckel einen Prune dreimal in Folge, wird das ein
   `[error]` und `scripts/healthcheck.sh` zeigt ihn als blockiert.
   Carsharing löscht zusätzlich Stationen, die zwei Läufe in Folge in der

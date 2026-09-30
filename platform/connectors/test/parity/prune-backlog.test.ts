@@ -285,13 +285,56 @@ export async function shrinkingFreshStockPausesTheDrain(): Promise<void> {
     `drained while shrinking: ${shrinking.join(",")}`,
   );
   assert.ok(
-    r.log.lines.some((line) => /backlog of \d+ not drained .*fresh stock 90, previous 100/.test(line.text)),
+    r.log.lines.some((line) => /backlog of \d+ not drained .*fresh stock 90, reference 100/.test(line.text)),
   );
-  // The next run sees a steady stock again and goes on.
+  // The reference sinks by 2 % per run: the drain pauses for a few runs, not
+  // just one, and then goes on at the new, steady stock.
   const oldBefore = r.broker.deletedIds().filter((id) => id.includes("-old-")).length;
-  nextRun(r, writes);
-  await r.prune();
-  assert.ok(r.broker.deletedIds().filter((id) => id.includes("-old-")).length > oldBefore);
+  let paused = 0;
+  for (let hour = 0; hour < 10; hour += 1) {
+    nextRun(r, writes);
+    await r.prune();
+    if (r.broker.deletedIds().filter((id) => id.includes("-old-")).length > oldBefore) break;
+    paused += 1;
+  }
+  assert.ok(paused >= 2 && paused < 10, `paused for ${String(paused)} runs`);
+}
+
+/**
+ * Without a grace period (keep + confirmation: register entries are written
+ * once and never again) the age of a candidate is how long it has been one —
+ * not the age of its last write. A mass loss from a "complete" source is
+ * therefore RECENT, over the cap, and blocked for good; the confirmations
+ * start over with every skip, so it never ages into backlog.
+ */
+export async function keepBasedMassLossStaysBlocked(): Promise<void> {
+  const r = rig();
+  for (let n = 0; n < 1000; n += 1) r.broker.written.set(ID("reg", n), r.clock.now - 90 * DAY);
+  const options = (keep: number): Partial<PruneOptions> => ({
+    graceMs: undefined,
+    liveMs: undefined,
+    confirmKey: "regGone",
+    confirmMs: DAY,
+    keep: new Set(Array.from({ length: keep }, (_, n) => ID("reg", n))),
+  });
+  await r.prune(options(1000));
+  // 600 of the 1,000 register entries drop out upstream, for eight days.
+  for (let hour = 0; hour < 8 * 24; hour += 1) {
+    r.clock.now += HOUR;
+    await r.prune(options(400));
+  }
+  assert.deepEqual(r.broker.deletedIds(), [], "a mass loss drained as backlog");
+  assert.ok((r.book.blocked()[0]?.[1] ?? 0) >= 8 * 24 - 1);
+
+  // A few gone for good: deleted after the 24 h confirmation, as before.
+  const few = rig();
+  for (let n = 0; n < 1000; n += 1) few.broker.written.set(ID("reg", n), few.clock.now - 90 * DAY);
+  await few.prune(options(1000));
+  for (let hour = 0; hour < 26; hour += 1) {
+    few.clock.now += HOUR;
+    await few.prune(options(950));
+  }
+  assert.equal(few.broker.deletedIds().length, 50);
 }
 
 /** No cap (maxFraction 1, the parking legacy cleanup): no backlog, everything past the grace at once. */

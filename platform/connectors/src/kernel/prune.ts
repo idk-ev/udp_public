@@ -49,18 +49,23 @@
  * The share cap used to count every candidate. A backlog that piled up
  * before a prune existed (tens of thousands of entities gone for months)
  * then blocked the prune for good: over the cap in every run, skipped in
- * every run, and growing. So the candidates are split by the age of their
- * newest timestamp:
+ * every run, and growing. So the candidates are split by how long they have
+ * been gone — with a grace period by their newest timestamp (the connector
+ * rewrites what it still produces), without one (keep + confirmation: master
+ * data written once) by how long the id has been a candidate in consecutive
+ * runs:
  *
- *  * RECENT (younger than `backlogMs`, default 7 days): what went missing
- *    lately — this is where an upstream fault shows. The cap applies to
- *    these alone, measured against the FRESH stock (own entities that are no
- *    candidate). Over the cap: nothing at all is deleted, as before.
- *  * BACKLOG (older): untouched for a week while this connector kept running
- *    and writing (`liveMs`, the interval check) — gone for good. Deleted
- *    oldest first, at most `backlogBatch` (1,000) per run, and only when
- *    every guard above passed AND the fresh stock is at least 95 % of the
- *    previous run's (persisted per prune). An upstream outage shrinks the
+ *  * RECENT (gone for less than `backlogMs`, default 7 days): what went
+ *    missing lately — this is where an upstream fault shows. The cap applies
+ *    to these alone, measured against the FRESH stock (own entities that are
+ *    no candidate). Over the cap: nothing at all is deleted, as before, and
+ *    the confirmations start over, so a mass loss never ages into backlog.
+ *  * BACKLOG (longer): gone for a week while this connector kept running and
+ *    writing (`liveMs`, the interval check) — gone for good. Deleted oldest
+ *    first, at most `backlogBatch` (1,000) per run, and only when every guard
+ *    above passed AND the fresh stock is at least 95 % of its reference
+ *    (persisted per prune; it follows a growing stock at once and a
+ *    shrinking one by at most 2 % per run). An upstream outage shrinks the
  *    fresh stock first and stops the drain; its entities could reach the
  *    backlog only after a week without a single write while the connector
  *    runs, which is what "gone" means.
@@ -119,8 +124,10 @@ const DEFAULT_MAX_FRACTION = 0.3;
 export const DEFAULT_BACKLOG_MS = 7 * 24 * 3_600_000;
 /** Backlog deletions per run. */
 export const DEFAULT_BACKLOG_BATCH = 1000;
-/** The backlog is drained only while the fresh stock holds at least this share of the previous run's. */
+/** The backlog is drained only while the fresh stock holds at least this share of its reference. */
 export const BACKLOG_FRESH_RATIO = 0.95;
+/** Per run the fresh-stock reference sinks at most to this share of itself (it rises at once). */
+export const FRESH_REFERENCE_DECAY = 0.98;
 /** From this many consecutive cap skips on, the skip is an `[error]`. */
 export const BLOCKED_AFTER = 3;
 
@@ -510,13 +517,27 @@ class KernelPruner implements Pruner {
       );
     }
 
-    // Recent vs. backlog (module header). No timestamp: recent, never backlog.
-    // A prune without a cap (maxFraction 1, the parking legacy cleanup) has
-    // nothing to be blocked by and so no backlog: all of it counts as recent.
+    // Recent vs. backlog (module header). A prune without a cap (maxFraction
+    // 1, the parking legacy cleanup) has nothing to be blocked by and so no
+    // backlog: all of it counts as recent.
     const capped = fraction < 1;
     const backlogMs = o.backlogMs !== undefined && o.backlogMs > 0 ? o.backlogMs : DEFAULT_BACKLOG_MS;
-    const isBacklog = (candidate: { readonly timestamp: number }): boolean =>
-      capped && candidate.timestamp > 0 && now - candidate.timestamp >= backlogMs;
+    const previousConfirmations =
+      o.confirmKey === undefined ? undefined : this.#book.confirmations(o.confirmKey);
+    const graceMode = o.graceMs !== undefined && o.graceMs > 0;
+    // How long a candidate has been gone. With a grace period the entity's
+    // own timestamp says it: the connector rewrites what it still produces.
+    // Without one (keep + confirmation) it does not — register entries are
+    // written once and then never again — so the age is how long the id has
+    // been a candidate in consecutive runs. Neither: never backlog.
+    const goneSince = (candidate: { readonly id: string; readonly timestamp: number }): number | null => {
+      if (graceMode) return candidate.timestamp > 0 ? candidate.timestamp : null;
+      return previousConfirmations?.get(candidate.id)?.[0] ?? null;
+    };
+    const isBacklog = (candidate: { readonly id: string; readonly timestamp: number }): boolean => {
+      const since = goneSince(candidate);
+      return capped && since !== null && now - since >= backlogMs;
+    };
     const recent = found.filter((candidate) => !isBacklog(candidate));
     const backlog = found.filter(isBacklog);
     const fresh = mine - found.length;
@@ -539,8 +560,15 @@ class KernelPruner implements Pruner {
       return skip(why);
     }
     this.#book.setCapSkips(intervalKey, 0);
-    const previousFresh = this.#book.fresh(intervalKey);
-    this.#book.setFresh(intervalKey, fresh);
+    // The reference follows a growing stock at once and a shrinking one only
+    // slowly, so that a drop pauses the drain for a while and not just for
+    // one run (at 2 % per run: ~3 runs after a 10 % drop, ~2 days of hourly
+    // runs after a 60 % one).
+    const reference = this.#book.fresh(intervalKey);
+    this.#book.setFresh(
+      intervalKey,
+      reference === undefined ? fresh : Math.max(fresh, Math.floor(reference * FRESH_REFERENCE_DECAY)),
+    );
 
     let candidates = found.map((candidate) => candidate.id);
     if (o.confirmKey !== undefined) {
@@ -560,20 +588,20 @@ class KernelPruner implements Pruner {
     const confirmed = new Set(candidates);
 
     // Recent candidates in full; the backlog oldest first, bounded, and only
-    // while the fresh stock holds against the previous run's.
-    const drain = previousFresh !== undefined && fresh >= BACKLOG_FRESH_RATIO * previousFresh;
+    // while the fresh stock holds against its reference.
+    const drain = reference !== undefined && fresh >= BACKLOG_FRESH_RATIO * reference;
     const batch = o.backlogBatch !== undefined && o.backlogBatch > 0 ? o.backlogBatch : DEFAULT_BACKLOG_BATCH;
     const backlogIds = drain
       ? backlog
           .filter((candidate) => confirmed.has(candidate.id))
-          .sort((a, b) => a.timestamp - b.timestamp)
+          .sort((a, b) => (goneSince(a) ?? 0) - (goneSince(b) ?? 0))
           .slice(0, batch)
           .map((candidate) => candidate.id)
       : [];
     if (!drain && backlog.length > 0) {
       log.info(
         `${o.label}: backlog of ${String(backlog.length)} not drained in this run (fresh stock ` +
-          `${String(fresh)}, previous ${previousFresh === undefined ? "unknown" : String(previousFresh)})`,
+          `${String(fresh)}, reference ${reference === undefined ? "unknown" : String(reference)})`,
       );
     }
     const toDelete = [
@@ -643,7 +671,11 @@ class KernelPruner implements Pruner {
     }
     const result = await orion.delete(o.ids, { chunkSize: DELETE_CHUNK_SIZE, label: o.label });
     const deleted = [...result.deleted];
-    if (deleted.length > 0) for (const key of keys) signatures.forget(key, deleted);
+    // Every attempted id loses its signatures, confirmed or not: the store
+    // lost them already, and an unconfirmed delete may still have happened —
+    // a kept signature would turn a returning id into a partial write onto
+    // nothing. A dropped one costs one full write.
+    for (const key of keys) signatures.forget(key, o.ids);
     log.info(`${o.label}: deleted ${String(deleted.length)} of ${String(o.ids.length)}`);
     return { deleted: result.deleted, skipped: null };
   }

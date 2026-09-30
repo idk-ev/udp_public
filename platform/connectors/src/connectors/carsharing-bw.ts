@@ -166,6 +166,8 @@ const STATION_PATTERN = "^urn:ngsi-ld:CarSharingStation:[A-Za-z0-9_-]+$";
 export const LIVE_ATTRIBUTES = ["availableVehicles"] as const;
 /** A system may lose at most this share of its previous stations per run to the per-system diff. */
 export const SYSTEM_DIFF_CAP = 0.5;
+/** Runs an id may stay missing without being deleted before the diff lets go of it (two days of hourly runs). */
+export const MAX_MISSING_RUNS = 48;
 
 /* ------------------------------------------------------------------ master data */
 
@@ -558,6 +560,11 @@ export function diffSystems(
     restart(ids);
     nextKnown.delete(system);
   }
+  // An id in ANY system's current list is live, whichever system recorded it
+  // (the id scheme cannot tell system "a" with station "b-1" from system
+  // "a-b" with station "1").
+  const live = new Set<string>();
+  for (const list of lists.values()) for (const id of list ?? []) live.add(id);
   for (const [system, list] of lists) {
     const previous = known.get(system) ?? [];
     if (list === null) {
@@ -565,12 +572,19 @@ export function diffSystems(
       continue;
     }
     restart(list);
-    const current = new Set(list);
     const own = new RegExp(systemPattern(system));
-    const gone = previous.filter((id) => !current.has(id) && own.test(id));
+    const gone: string[] = [];
     const confirmed: EntityId[] = [];
-    for (const id of gone) {
+    for (const id of previous) {
+      if (live.has(id) || !own.test(id)) continue;
       const runs = (missing.get(id) ?? 0) + 1;
+      // Missing for two days and still not deleted (over the cap, or the
+      // broker had it already): left to the age-based prune.
+      if (runs > MAX_MISSING_RUNS) {
+        nextMissing.delete(id);
+        continue;
+      }
+      gone.push(id);
       nextMissing.set(id, runs);
       if (runs >= 2 && isEntityId(id)) confirmed.push(id);
     }

@@ -78,6 +78,8 @@ export const LOCK_PROBE_MS = 10_000;
 /** Attempts of the `pg_locks` check, this far apart. */
 export const VERIFY_ATTEMPTS = 3;
 export const VERIFY_PAUSE_MS = 2_000;
+/** Bound of the queries of one acquire (lock, schema, generation). */
+const ACQUIRE_TIMEOUT_MS = QUERY_TIMEOUT_MS;
 /** Rows per INSERT; one write of a first run can carry tens of thousands. */
 const ROWS_PER_STATEMENT = 5_000;
 
@@ -113,6 +115,9 @@ CREATE TABLE IF NOT EXISTS ${STATE_SCHEMA}.writer (
 const SQL_NEXT_GENERATION =
   `INSERT INTO ${STATE_SCHEMA}.writer AS w (id, generation) VALUES (1, 1) ` +
   "ON CONFLICT (id) DO UPDATE SET generation = w.generation + 1, acquired_at = now() RETURNING generation";
+
+/** The fence of every write: the generation, row-locked against a concurrent takeover. */
+const SQL_FENCE = `SELECT generation FROM ${STATE_SCHEMA}.writer WHERE id = 1 FOR SHARE`;
 
 /** Who holds the writer lock (session level, two int4 keys: objsubid 2). */
 const SQL_LOCK_HOLDERS =
@@ -261,8 +266,16 @@ class PgStateBackend implements StateBackend {
     });
     let generation: number;
     let pid: number;
+    // Without a query timeout the acquire itself needs a bound: a connection
+    // that dies in the middle would otherwise hold every prepare() until TCP
+    // gives up. No lock is ours yet, so ending the connection is safe.
+    let guard: ReturnType<typeof setTimeout> | undefined;
     try {
       await client.connect();
+      guard = setTimeout(() => {
+        void client.end().catch(() => undefined);
+      }, ACQUIRE_TIMEOUT_MS);
+      guard.unref();
       const result = await client.query<Record<string, unknown>>(
         "SELECT pg_try_advisory_lock($1, $2) AS locked, pg_backend_pid() AS pid",
         [...LOCK_KEYS],
@@ -279,6 +292,8 @@ class PgStateBackend implements StateBackend {
     } catch (error) {
       await client.end().catch(() => undefined);
       throw error;
+    } finally {
+      clearTimeout(guard);
     }
     this.#lock = client;
     this.#locked = true;
@@ -312,15 +327,19 @@ class PgStateBackend implements StateBackend {
   }
 
   #probe(lock: pg.Client): Promise<boolean> {
-    this.#probing ??= lock
-      .query("SELECT 1")
-      .then(
-        () => true,
-        () => false,
-      )
-      .finally(() => {
-        this.#probing = null;
-      });
+    if (this.#probing === null) {
+      const probing: Promise<boolean> = lock
+        .query("SELECT 1")
+        .then(
+          () => true,
+          () => false,
+        )
+        .finally(() => {
+          // A probe of an earlier lock connection must not clear a newer one.
+          if (this.#probing === probing) this.#probing = null;
+        });
+      this.#probing = probing;
+    }
     return within(this.#probing, LOCK_PROBE_MS, false);
   }
 
@@ -359,11 +378,7 @@ class PgStateBackend implements StateBackend {
   }
 
   async write(connector: ConnectorId, batch: StateWrite): Promise<void> {
-    if (!this.#locked) throw new Error("writer lock not held");
-    const client = await this.#poolOf().connect();
-    let broken: Error | undefined;
-    try {
-      await client.query("BEGIN");
+    await this.#transaction(async (client) => {
       const deletes = batch.signatures.filter((row) => row.value === null);
       for (const part of slices(deletes)) {
         await client.query(SQL_DELETE_SIGNATURES, [
@@ -390,6 +405,44 @@ class PgStateBackend implements StateBackend {
           batch.state.map(([, value]) => JSON.stringify(value)),
         ]);
       }
+    });
+  }
+
+  async deleteSignatures(connector: ConnectorId, table: string, fields: readonly string[]): Promise<void> {
+    await this.#transaction(async (client) => {
+      for (const part of slices(fields)) {
+        await client.query(SQL_DELETE_SIGNATURES, [connector, part.map(() => table), [...part]]);
+      }
+    });
+  }
+
+  /**
+   * One transaction on a pool connection, FENCED: it commits only while the
+   * writer generation is still ours. The lock connection can look alive
+   * (half-open after a switchover) while another instance already took the
+   * lock on the new primary; its acquire bumps the generation, and from then
+   * on nothing of this instance reaches the store — the failed write keeps
+   * the marks in memory and refuses gated upserts, as any failed write does.
+   * `FOR SHARE` makes a concurrent takeover wait for this transaction.
+   */
+  async #transaction(work: (client: pg.PoolClient) => Promise<void>): Promise<void> {
+    if (!this.#locked) throw new Error("writer lock not held");
+    const client = await this.#poolOf().connect();
+    let broken: Error | undefined;
+    try {
+      await client.query("BEGIN");
+      if (this.#generation !== null) {
+        const fence = await client.query<Record<string, unknown>>(SQL_FENCE);
+        const current = Number(fence.rows[0]?.generation);
+        if (current !== this.#generation) {
+          this.#locked = false;
+          throw new Error(
+            `writer lock taken over by another instance (generation ${String(current)}, ours ` +
+              `${String(this.#generation)})`,
+          );
+        }
+      }
+      await work(client);
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK").catch((rollback: unknown) => {
@@ -399,13 +452,6 @@ class PgStateBackend implements StateBackend {
     } finally {
       // A connection that could not even roll back is not given back to the pool.
       client.release(broken);
-    }
-  }
-
-  async deleteSignatures(connector: ConnectorId, table: string, fields: readonly string[]): Promise<void> {
-    if (!this.#locked) throw new Error("writer lock not held");
-    for (const part of slices(fields)) {
-      await this.#poolOf().query(SQL_DELETE_SIGNATURES, [connector, part.map(() => table), [...part]]);
     }
   }
 

@@ -13,7 +13,14 @@
 
 import assert from "node:assert/strict";
 
-import { diffSystems, LIVE_KEY, run, STATIC_KEY, systemPattern } from "../../src/connectors/carsharing-bw.js";
+import {
+  diffSystems,
+  LIVE_KEY,
+  MAX_MISSING_RUNS,
+  run,
+  STATIC_KEY,
+  systemPattern,
+} from "../../src/connectors/carsharing-bw.js";
 import { readFixture } from "../harness/fixtures.js";
 import { httpResponse } from "../harness/kernel.js";
 import { HOUR, jsonAnswer, mobilityCtx } from "../harness/mobility.js";
@@ -79,6 +86,33 @@ export function capAndOwnSchemeHold(): void {
   assert.ok(![...diff.remove.values()].flat().includes(foreign));
   assert.ok(!new RegExp(systemPattern("swu2go")).test(foreign));
   assert.ok(new RegExp(systemPattern("swu2go")).test(ids[0] ?? ""));
+}
+
+/**
+ * An id that is live in ANY system's list is never deleted (system "a" with
+ * station "b-1" and system "a-b" with station "1" share an id), and an id
+ * that stays missing without being deleted is let go after two days.
+ */
+export function liveElsewhereAndLongMissing(): void {
+  const shared = ID("ulm", "a-b", "1");
+  const other = ID("ulm", "a", "2");
+  const first = diffSystems(new Map(), new Map(), new Map([["a", [shared, other, ID("ulm", "a", "3")]]]));
+  const lists = new Map([
+    ["a", [other, ID("ulm", "a", "3")]],
+    ["a-b", [shared]],
+  ]);
+  const once = diffSystems(first.known, first.missing, lists);
+  const twice = diffSystems(once.known, once.missing, lists);
+  assert.deepEqual([...twice.remove], [], "deleted an id another system still lists");
+
+  const gone = ID("ulm", "a", "9");
+  const stuck = diffSystems(
+    new Map([["a", [other, gone]]]),
+    new Map([[gone, MAX_MISSING_RUNS]]),
+    new Map([["a", [other]]]),
+  );
+  assert.equal(stuck.missing.has(gone), false);
+  assert.deepEqual(stuck.known.get("a"), [other], "let go after two days");
 }
 
 /* ── through run(), on the recorded feeds ────────────────────────────────── */

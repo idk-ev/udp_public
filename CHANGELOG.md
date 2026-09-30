@@ -9,12 +9,16 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   einem echten Verlust bleiben die Signaturen im Speicher und werden
   nachgeschrieben, statt ältere Stände darüberzuladen; hielt zwischenzeitlich
   eine andere Instanz den Lock, überleben nur übereinstimmende Signaturen.
+  Schreibvorgänge prüfen die Writer-Generation (neue Tabelle
+  `udp_connectors.writer`).
 - Leere Signaturtabellen (Neuinstallation, Zustandsverlust) werden bei
   Parken, Laden und Carsharing aus dem Broker befüllt – kein Vollschrieb.
 - Ladepunkte, Ladesummen und Carsharing-Stationen trennen Stammdaten von
   Messwerten: Statusänderungen schreiben nur die geänderten Werte plus
   `dateObserved`. Zeilenbudgets neu: `EVChargingStation` 460.000,
   `ChargingSummary` 95.000, `CarSharingStation` 180.000 (docs/betrieb.md).
+  Ladesummen frischen `dateObserved` wie die Ladepunkte alle 3 h auf; die
+  Stadtseite zeigt sie bis 6 h als aktuell.
 - Prune: Altbestand (älter als 7 Tage) wird in Portionen von 1.000 je Lauf
   abgebaut, der 30-%-Deckel gilt nur noch für frisch Verschwundenes.
   Blockierte Prunes stehen in `/healthz` (`stateStore.blockedPrunes`).
