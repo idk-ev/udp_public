@@ -235,10 +235,15 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
 - **Ports:** 1880 trägt nur die Endpunkte `/abfahrten` und `/warnungen.ics`,
   die die Cockpit-nginx weiterreicht (`UDP_CONNECTORS_UPSTREAM`, Helm
   `cockpit.connectorsUpstream`, Vorgabe der Dienst `connectors`). Der
-  Admin-Port 1881 (`/healthz`, `/trigger/<id>`) wird nie veröffentlicht und
-  von keinem Proxy weitergereicht: Ein Trigger lässt den Dienst eine Quelle
-  abrufen und nach Orion schreiben. `/trigger` antwortet zusätzlich nur auf
-  Loopback, wird also im Container ausgelöst.
+  Admin-Port 1881 (`/healthz`, `/trigger/<id>`, `/release-prunes/<id>`)
+  wird nie veröffentlicht und von keinem Proxy weitergereicht: Ein Trigger
+  lässt den Dienst eine Quelle abrufen und nach Orion schreiben, eine
+  Freigabe gibt blockierte Löschungen frei. `/trigger` und
+  `/release-prunes` antworten zusätzlich nur auf Loopback, werden also im
+  Container ausgelöst. Kein Sidecar (Service-Mesh-Proxy o. Ä.) darf den
+  Port abfangen — aus dessen Sicht käme jede Anfrage von Loopback. Prüfen
+  die Probes per `exec` statt per HTTP, den Port mit
+  `UDP_CONNECTORS_ADMIN_HOST=127.0.0.1` nur an Loopback binden.
 - **Zustand:** Änderungssignaturen, Prune-Buchführung und persistierter
   Konnektorzustand liegen in der TimescaleDB, Datenbank `orion`, Schema
   `udp_connectors` (Zugang über `TROE_DB_*`, dieselben Zugangsdaten wie
@@ -246,8 +251,8 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   Datenbanknutzer braucht dafür `CREATE` auf der Datenbank, sonst das Schema
   vorab anlegen und `CREATE` auf dem Schema gewähren (auch für später
   hinzukommende Tabellen wie `writer`; fehlt es, meldet der Dienst ein
-  `[error]` und übernimmt den Lock nicht). Ein Volume braucht der Dienst nicht (Root-Dateisystem
-  read-only).
+  `[error]` und übernimmt den Lock nicht). Ein Volume braucht der Dienst
+  nicht (Root-Dateisystem read-only).
 - **Genau eine Instanz:** Ein Advisory-Lock macht die laufende Instanz zum
   einzigen Schreiber. Helm fest mit `replicas: 1` und `strategy: Recreate`;
   eine zweite Instanz führte nur die ungegateten Konnektoren aus — doppelt.
@@ -275,16 +280,22 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   mit diesem Massenverlust verschwand (ab einem Tag vor der Sperre), löscht
   der Dienst nie von selbst — auch nicht, wenn es später zum Altbestand
   wird: Er hält es zurück (`heldBack`), meldet in jedem Lauf ein `[error]`
-  und `scripts/healthcheck.sh` zeigt „PRUNE BLOCKED“. Kommen die Entitäten
-  zurück (Quelle wieder vollständig), hebt sich die Sperre selbst auf. Ist
-  der Verlust echt (etwa ein Anbieter hat den Feed verlassen), nach Prüfung
-  der Quelle freigeben:
+  und `scripts/healthcheck.sh` zeigt „PRUNE BLOCKED“. Bei Prunes über die
+  vollständige Liste (Laden, Parken) betrifft das alles, was nach der Sperre
+  verschwindet, auch gewöhnliche Abgänge. Kommen die Entitäten zurück
+  (Quelle wieder vollständig), hebt sich die Sperre selbst auf. Ist der
+  Verlust echt (etwa ein Anbieter hat den Feed verlassen), nach Prüfung der
+  Quelle freigeben:
 
       bash scripts/release-prunes.sh <konnektor-id>
 
-  (Kubernetes: mit `CONNECTORS_EXEC` wie beim Auslösen.) Ab dem nächsten
-  Lauf gelten die zurückgehaltenen Entitäten als normale Kandidaten. Älterer
-  Bestand aus der Zeit vor der Sperre wird davon unabhängig abgebaut.
+  (Kubernetes: mit `CONNECTORS_EXEC` wie beim Auslösen.) Solange der Prune
+  noch über dem Deckel liegt, lehnt der Dienst ab (HTTP 409) — er würde
+  sofort wieder sperren; freigeben, sobald der Verlust zum Altbestand
+  geworden ist (7 Tage) und der Deckel wieder passt. Ab dem nächsten Lauf
+  gelten die zurückgehaltenen Entitäten dann als normale Kandidaten.
+  Älterer Bestand aus der Zeit vor der Sperre wird davon unabhängig
+  abgebaut (bei Prunes mit Karenzzeit).
   Carsharing löscht zusätzlich Stationen, die zwei Läufe in Folge in der
   vollständigen Stationsliste ihres Systems fehlen (freischwebende
   „virtuelle Stationen“ erhalten je Parkvorgang eine neue Id).
@@ -306,7 +317,9 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   zurück ist. Hielt ihn zwischendurch eine andere Instanz, gleicht der
   Dienst jeden Konnektor mit der Datenbank ab — die Sekunden, in denen das
   läuft (`reloading`), zählen als gesund. `blockedPrunes` nennt Prunes, die
-  ihr Anteilsdeckel wiederholt überspringt. Die Antwort bleibt 200, auch wenn die
+  ihr Anteilsdeckel überspringt oder die einen Verlust zurückhalten
+  (`connector`, `prune`, `consecutiveSkips`, `blockedSince`, `heldBack`;
+  Freigabe siehe Prune). Die Antwort bleibt 200, auch wenn die
   Datenbank klemmt — Liveness-Probe und Compose-Healthcheck prüfen nur, ob der
   Prozess lebt; ein Neustart repariert keine Datenbank.
   `scripts/healthcheck.sh` zeigt den Zustandsspeicher an und schlägt fehl,
@@ -453,9 +466,9 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
 
    | Typ | Bestand mit Livewerten | Änderung/h | Zeilen/Tag | Budget |
    |---|---|---|---|---|
-   | `EVChargingStation` | ~6.100 (+ ~6.400 nur Register) | 46 % | ~245.000 | 460.000 |
+   | `EVChargingStation` | ~6.100 (+ ~6.400 nur Register) | 46 % | ~244.000 | 460.000 |
    | `ChargingSummary` | ~900 | 50 % | ~48.000 | 95.000 |
-   | `CarSharingStation` | ~4.400 | 29 % | ~92.000 (+ neue Stationen) | 180.000 |
+   | `CarSharingStation` | ~4.400 | 29 % | ~91.000 (+ neue Stationen) | 180.000 |
 
    Rechnung je Stunde: geänderte Standorte × (geänderte Messwerte +
    `dateObserved`) plus unveränderte × ⅓ Frische. Ladepunkt: 2.806 × 3 +
@@ -464,9 +477,11 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
    mehrere Standorte); Carsharing: 1.276 × 2 + 3.124 ⁄ 3 ≈ 3.600. Dazu
    kommt der wöchentliche Vollschrieb jeder Entität (heilt Entitäten, die
    hinter einer gespeicherten Signatur aus dem Broker verschwunden sind):
-   Ladepunkte 6.100 × 12 + 6.400 × 7 ≈ 118.000 je Woche ≈ 17.000/Tag,
-   Ladesummen 900 × 8 + 200 × 3 ≈ 1.100/Tag, Carsharing 4.400 × 9 ≈
-   5.700/Tag. Mit dem früheren Vollschrieb waren es ~834.000, ~97.000 und
+   je Entität einmal die Woche alle Attribute statt der sonst in diesem Lauf
+   erwarteten Zeilen (Teilschrieb oder Frische, Ladepunkt mit Livewerten
+   ≈ 1,6, Ladesumme ≈ 2,2, Carsharing ≈ 0,8). Ladepunkte 6.100 × 10,4 +
+   6.400 × 7 ≈ 108.000 je Woche ≈ 15.500/Tag, Ladesummen 900 × 5,8 +
+   200 × 3 ≈ 800/Tag, Carsharing 4.400 × 8,2 ≈ 5.200/Tag. Mit dem früheren Vollschrieb waren es ~834.000, ~97.000 und
    ~300.000 Zeilen/Tag.
    `CityPulse` 100.000 (bis 1.103 Gemeinden × 24 Läufe × Frische plus
    Änderungen).

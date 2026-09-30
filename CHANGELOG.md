@@ -24,14 +24,15 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   nur noch für frisch Verschwundenes. Ein Massenverlust, der den Deckel
   auslöst, wird nie automatisch gelöscht: Er bleibt in `/healthz`
   (`stateStore.blockedPrunes`) und im Log, bis er zurückkommt oder per
-  `scripts/release-prunes.sh <id>` freigegeben wird. Versuchte Löschungen
+  `scripts/release-prunes.sh <id>` freigegeben wird (erst, wenn der Deckel
+  wieder passt, sonst HTTP 409). Versuchte Löschungen
   verwerfen ihre Signaturen, auch unbestätigte.
 - Carsharing löscht Stationen, die zwei Läufe in Folge in der vollständigen
   Stationsliste ihres Systems fehlen (nur geschriebene, je System höchstens
   50 %).
 - Laden und Carsharing schreiben jede Entität einmal je Woche voll, damit
   aus dem Broker verschwundene Entitäten nicht als Gerippe stehen bleiben
-  (~17.000, ~1.100 und ~5.700 Zeilen/Tag zusätzlich).
+  (~15.500, ~800 und ~5.200 Zeilen/Tag zusätzlich).
 - Ein 207 auf ein Delete ohne `success`/`errors` zählt nicht mehr als
   gelöscht.
 - Log: je Gate-Schreibvorgang „geändert/gesamt“; Warnung, wenn mehr als die
@@ -45,8 +46,8 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 > - Der erste Lauf füllt die neuen Signaturtabellen von Laden und Carsharing
 >   aus dem Broker (einige Listenabrufe, keine Schreiblast).
 > - Der Abbau von Altbestand beginnt frühestens eine Woche nach dem Upgrade,
->   danach höchstens 1.000 Löschungen je Prune und Lauf (Carsharing: ~9.000
->   Stationen in etwa 10 h).
+>   danach höchstens 1.000 Löschungen je Prune und Lauf; ein großer
+>   Altbestand ist so bei stündlichen Läufen nach wenigen Stunden abgebaut.
 
 ## 1.3.0 — Ingestion im Konnektordienst
 
