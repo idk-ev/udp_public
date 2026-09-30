@@ -122,6 +122,19 @@ export function parseDepartureMonitor(payload: unknown): DepartureMonitor {
 }
 
 /**
+ * Whether `payload` is a valid departure monitor answer that found the stop
+ * but lists no departure (late at night, a stop served only on weekdays):
+ * EFA-BW then leaves `stopEvents` out, but the answer still carries its
+ * `version` and the resolved stop under `locations`. An answer without them
+ * (an error object, "stop not found", anything else) is not "no departures".
+ */
+export function isEmptyDepartureMonitor(payload: unknown): boolean {
+  if (!isRecord(payload) || !isString(payload.version) || payload.stopEvents !== undefined) return false;
+  const locations = payload.locations;
+  return isArray(locations) && locations.some((location) => isRecord(location));
+}
+
+/**
  * Runs `task` over `items` with at most `limit` tasks in flight; results in
  * the order of `items`. Once `signal` is aborted no further task starts, and
  * the items not started yield `null`.

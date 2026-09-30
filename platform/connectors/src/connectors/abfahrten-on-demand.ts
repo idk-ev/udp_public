@@ -30,7 +30,8 @@
  * ## The answer, byte for byte
  *
  * `gui/public/stadt.html` consumes this, and the cockpit nginx caches it
- * (`location = /abfahrten`, 60 s for 200, 30 s for 404/502/503). Status codes,
+ * (`location = /abfahrten`, 60 s for 200, 30 s for 404; on 5xx the last good
+ * answer is served stale, a 5xx itself is not cached). Status codes,
  * JSON shape and error bodies are those of the old nodes. Headers are those
  * Node-RED's `http response` node produced through Express 4: `Content-Type:
  * application/json; charset=utf-8` (`res.jsonp` on an object payload; the 200
@@ -57,6 +58,12 @@
  *    src/connectors/efa.ts), no retry, 30 s timeout. The old request had no
  *    pacing and Node-RED's 120 s timeout, i.e. a hanging EFA ended in the
  *    nginx 504 after 60 s; now it is the node's own 502 after 30 s.
+ *  * No departures is not an outage: a valid EFA answer that resolved the stop
+ *    but carries no `stopEvents` (night, weekday-only stops) is a 200 with
+ *    `abfahrten: []` ({@link isEmptyDepartureMonitor}). The old node answered
+ *    502 "Auskunft nicht erreichbar", so the dashboard dropped the board as if
+ *    EFA were down, and the nginx kept serving the last evening's departures
+ *    stale. Anything else without `stopEvents` stays a 502.
  *  * No JSONP: Express's `res.jsonp` wrapped the body into a script when the
  *    query carried `callback=…`. Nothing uses that, and a JSONP endpoint on a
  *    cached public URL is an injection surface, not a feature.
@@ -103,7 +110,7 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "../kernel/types.js";
-import { EFA_DM_URL, EFA_MIN_INTERVAL_MS, parseDepartureMonitor } from "./efa.js";
+import { EFA_DM_URL, EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor, parseDepartureMonitor } from "./efa.js";
 import type { DepartureMonitor } from "./efa.js";
 import { failureText, nodePayload } from "./http-payload.js";
 import type { Scalar } from "./http-payload.js";
@@ -284,7 +291,10 @@ function departureRow(monitorEvent: DepartureMonitor["stopEvents"][number]): Dep
   };
 }
 
-/** FN_ABF_BAUEN: the slim departure list, or 502 when EFA did not deliver. */
+/**
+ * FN_ABF_BAUEN: the slim departure list, or 502 when EFA did not deliver. A
+ * valid answer without departures is an empty list (see the deviations).
+ */
 export function departuresResponse(halt: Halt, upstream: Upstream, now: IsoTime): RouteResponse {
   const name = halt.stopName ?? "";
   let monitor: DepartureMonitor | null = null;
@@ -293,6 +303,7 @@ export function departuresResponse(halt: Halt, upstream: Upstream, now: IsoTime)
       monitor = parseDepartureMonitor(upstream.payload);
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
+      if (isEmptyDepartureMonitor(upstream.payload)) monitor = { stopEvents: [] };
     }
   }
   if (monitor === null) return nodeRedJson(502, { fehler: "Auskunft nicht erreichbar", halt: name });

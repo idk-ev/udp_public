@@ -26,7 +26,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIRECTORY_URL, ROUTE_PATH, run, routes } from "../../src/connectors/abfahrten-on-demand.js";
-import { EFA_MIN_INTERVAL_MS } from "../../src/connectors/efa.js";
+import { EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor } from "../../src/connectors/efa.js";
 import { isArray } from "../../src/kernel/parse.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
 import { readFixture, repositoryRoot } from "../harness/fixtures.js";
@@ -281,7 +281,75 @@ async function failedDirectoryLoadKeepsThePreviousOne(): Promise<void> {
   assert.equal(response.status, 404, "the directory of the first run still answers");
 }
 
+/** A valid EFA answer for a stop without departures right now (night): no stopEvents. */
+const efaNoDepartures = (): Efa =>
+  jsonHttp(200, {
+    version: "11.0.6.72",
+    systemMessages: [{ type: "message", module: "BROKER", code: -4050, text: "" }],
+    locations: [{ id: "de:08115:71", name: "Böblingen, ZOB", type: "stop" }],
+  });
+
+/**
+ * Deliberate deviation: the old node answered 502 "Auskunft nicht erreichbar"
+ * for a stop without departures; the port answers 200 with an empty list.
+ */
+async function noDeparturesIsAnEmptyList(): Promise<void> {
+  const scenario: Scenario = {
+    name: "EFA 200 valid, no departures",
+    query: "ags=08115003",
+    expressQuery: { ags: "08115003" },
+    efa: efaNoDepartures(),
+  };
+  const old = await legacy(scenario);
+  assert.equal(old.response.status, 502, "the old node's answer changed – revisit the deviation");
+  const now = await ported(scenario);
+  assert.equal(now.response.status, 200);
+  const body: unknown = JSON.parse(now.response.body);
+  assert.ok(isRecord(body));
+  assert.deepEqual(
+    { ...body, stand: "<timestamp>" },
+    {
+      halt: "Bahnhof",
+      stopId: "de:08115:7100",
+      stand: "<timestamp>",
+      medianVerspaetung: null,
+      echtzeitAbfahrten: 0,
+      quelle: "EFA-BW (naldo/bwegt)",
+      abfahrten: [],
+    },
+  );
+  assert.equal(now.warnings, 0);
+}
+
+/** Only a resolved stop without stopEvents is "no departures"; the rest stays 502. */
+async function realErrorsStay502(): Promise<void> {
+  const ok = { version: "11.0.6.72", locations: [{ id: "de:08115:71" }] };
+  assert.equal(isEmptyDepartureMonitor(ok), true);
+  for (const [what, payload] of [
+    ["no version", { locations: [{ id: "x" }] }],
+    ["no locations", { version: "11" }],
+    ["empty locations", { version: "11", locations: [] }],
+    ["stopEvents not an array", { ...ok, stopEvents: null }],
+    ["stop not found", { systemMessages: [{ text: "stop not found" }] }],
+    ["not an object", "<html>maintenance</html>"],
+    ["nothing", null],
+  ] as const) {
+    assert.equal(isEmptyDepartureMonitor(payload), false, what);
+  }
+  for (const efa of [
+    jsonHttp(200, { version: "11", systemMessages: [{ type: "error", code: -2000 }] }),
+    jsonHttp(503, ok),
+    new Error("socket hang up"),
+  ]) {
+    const now = await ported({ name: "error", query: "ags=08115003", expressQuery: {}, efa });
+    assert.equal(now.response.status, 502);
+    assert.deepEqual(JSON.parse(now.response.body), { fehler: "Auskunft nicht erreichbar", halt: "Bahnhof" });
+  }
+}
+
 export {
+  noDeparturesIsAnEmptyList as "abfahrten-on-demand: a valid EFA answer without departures is 200 with an empty list (deviation)",
+  realErrorsStay502 as "abfahrten-on-demand: network, HTTP and malformed EFA answers stay 502",
   everyAnswerMatches as "abfahrten-on-demand: /abfahrten status, headers and body match the old http-in/response path in every scenario",
   validAnswerHasTheDashboardShape as "abfahrten-on-demand: the 200 answer keeps the shape stadt.html reads",
   failedDirectoryLoadKeepsThePreviousOne as "abfahrten-on-demand: a failed directory load warns and keeps the previous directory",
