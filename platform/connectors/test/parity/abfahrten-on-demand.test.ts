@@ -47,7 +47,10 @@ import { runFunctionNode } from "../harness/vm-runner.js";
 
 const FIXTURE = "abfahrten-on-demand-08115003";
 
-/** Real entries of the committed directory, plus one without a stop id (test input). */
+/** Directory entry for the recorded no-departures stop (test input, not in oepnv-halte.json). */
+const GSCHWEND = { ags: "08136025", stopId: "de:08136:2700", stopName: "Gschwend, L1150" };
+
+/** Real entries of the committed directory, plus one without a stop id and Gschwend (test input). */
 function directory(): Record<string, unknown> {
   const file: unknown = JSON.parse(
     readFileSync(join(repositoryRoot(), "gui", "public", "oepnv-halte.json"), "utf8"),
@@ -59,6 +62,7 @@ function directory(): Record<string, unknown> {
     "08111000": halte["08111000"],
     "08415061": halte["08415061"],
     "08999999": { stopName: "ohne Halt", qualitaet: 0, art: "ort" },
+    [GSCHWEND.ags]: { stopId: GSCHWEND.stopId, stopName: GSCHWEND.stopName, qualitaet: 1000, art: "ort" },
   };
 }
 
@@ -281,24 +285,29 @@ async function failedDirectoryLoadKeepsThePreviousOne(): Promise<void> {
   assert.equal(response.status, 404, "the directory of the first run still answers");
 }
 
-/** A valid EFA answer for a stop without departures right now (night): no stopEvents. */
-const efaNoDepartures = (): Efa =>
-  jsonHttp(200, {
-    version: "11.0.6.72",
-    systemMessages: [{ type: "message", module: "BROKER", code: -4050, text: "" }],
-    locations: [{ id: "de:08115:71", name: "Böblingen, ZOB", type: "stop" }],
-  });
+/** A recorded EFA-BW answer as the fetcher returns it. */
+function recorded(name: string): Efa {
+  const fixture = readFixture(name);
+  return jsonHttp(fixture.statusCode, fixture.payload);
+}
+
+/** The recorded payload of a fixture, for the unit checks. */
+function recordedPayload(name: string): unknown {
+  return readFixture(name).payload;
+}
 
 /**
  * Deliberate deviation: the old node answered 502 "Auskunft nicht erreichbar"
  * for a stop without departures; the port answers 200 with an empty list.
+ * Real answer: Gschwend, Saturday 01:00 – no stopEvents, error -4050
+ * "no serving lines found", the stop itself with isBest.
  */
 async function noDeparturesIsAnEmptyList(): Promise<void> {
   const scenario: Scenario = {
     name: "EFA 200 valid, no departures",
-    query: "ags=08115003",
-    expressQuery: { ags: "08115003" },
-    efa: efaNoDepartures(),
+    query: `ags=${GSCHWEND.ags}`,
+    expressQuery: { ags: GSCHWEND.ags },
+    efa: recorded("abfahrten-on-demand-keine-abfahrten"),
   };
   const old = await legacy(scenario);
   assert.equal(old.response.status, 502, "the old node's answer changed – revisit the deviation");
@@ -309,8 +318,8 @@ async function noDeparturesIsAnEmptyList(): Promise<void> {
   assert.deepEqual(
     { ...body, stand: "<timestamp>" },
     {
-      halt: "Bahnhof",
-      stopId: "de:08115:7100",
+      halt: GSCHWEND.stopName,
+      stopId: GSCHWEND.stopId,
       stand: "<timestamp>",
       medianVerspaetung: null,
       echtzeitAbfahrten: 0,
@@ -321,30 +330,66 @@ async function noDeparturesIsAnEmptyList(): Promise<void> {
   assert.equal(now.warnings, 0);
 }
 
-/** Only a resolved stop without stopEvents is "no departures"; the rest stays 502. */
+/** Only the requested stop, resolved, without other errors is "no departures"; the rest stays 502. */
 async function realErrorsStay502(): Promise<void> {
-  const ok = { version: "11.0.6.72", locations: [{ id: "de:08115:71", type: "stop" }] };
-  assert.equal(isEmptyDepartureMonitor(ok), true);
+  const night = recordedPayload("abfahrten-on-demand-keine-abfahrten");
+  assert.equal(isEmptyDepartureMonitor(night, GSCHWEND.stopId), true);
+  assert.ok(isRecord(night));
+  const stop = { id: GSCHWEND.stopId, name: GSCHWEND.stopName, type: "stop", isBest: true };
+  assert.equal(
+    isEmptyDepartureMonitor(
+      { ...night, locations: [{ ...stop, id: `${GSCHWEND.stopId}:1:1` }] },
+      GSCHWEND.stopId,
+    ),
+    true,
+    "a platform of the requested stop",
+  );
   for (const [what, payload] of [
-    ["no version", { locations: [{ id: "x" }] }],
+    // Recorded: an unknown stop id gets fuzzy candidates – another stop, isBest false.
+    ["unknown stop (recorded)", recordedPayload("abfahrten-on-demand-unbekannter-halt")],
+    // Recorded: "invalid date" (code -1) with the stop resolved.
+    ["invalid date (recorded)", recordedPayload("abfahrten-on-demand-ungueltiges-datum")],
+    [
+      "error -4001",
+      { ...night, systemMessages: [{ type: "error", module: "BROKER", code: -4001, text: "invalid date" }] },
+    ],
+    [
+      "-4050 plus another error",
+      {
+        ...night,
+        systemMessages: [
+          { type: "error", code: -4050 },
+          { type: "error", code: -2000 },
+        ],
+      },
+    ],
+    ["systemMessages not an array", { ...night, systemMessages: "error" }],
+    ["stop not best match", { ...night, locations: [{ ...stop, isBest: false }] }],
+    ["another stop", { ...night, locations: [{ ...stop, id: "de:08136:27001" }] }],
+    ["location is no stop", { ...night, locations: [{ ...stop, type: "poi" }] }],
+    ["no version", { locations: [stop] }],
     ["no locations", { version: "11" }],
     ["empty locations", { version: "11", locations: [] }],
-    ["location is no stop", { version: "11", locations: [{ id: "x", type: "unknown" }] }],
-    ["stopEvents not an array", { ...ok, stopEvents: null }],
+    ["stopEvents not an array", { ...night, stopEvents: null }],
     ["stop not found", { systemMessages: [{ text: "stop not found" }] }],
     ["not an object", "<html>maintenance</html>"],
     ["nothing", null],
   ] as const) {
-    assert.equal(isEmptyDepartureMonitor(payload), false, what);
+    assert.equal(isEmptyDepartureMonitor(payload, GSCHWEND.stopId), false, what);
   }
   for (const efa of [
+    recorded("abfahrten-on-demand-unbekannter-halt"),
+    recorded("abfahrten-on-demand-ungueltiges-datum"),
     jsonHttp(200, { version: "11", systemMessages: [{ type: "error", code: -2000 }] }),
-    jsonHttp(503, ok),
+    jsonHttp(503, night),
     new Error("socket hang up"),
   ]) {
-    const now = await ported({ name: "error", query: "ags=08115003", expressQuery: {}, efa });
+    const now = await ported({ name: "error", query: `ags=${GSCHWEND.ags}`, expressQuery: {}, efa });
     assert.equal(now.response.status, 502);
-    assert.deepEqual(JSON.parse(now.response.body), { fehler: "Auskunft nicht erreichbar", halt: "Bahnhof" });
+    assert.deepEqual(JSON.parse(now.response.body), {
+      fehler: "Auskunft nicht erreichbar",
+      halt: GSCHWEND.stopName,
+    });
   }
 }
 

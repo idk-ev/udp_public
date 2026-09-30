@@ -121,18 +121,40 @@ export function parseDepartureMonitor(payload: unknown): DepartureMonitor {
   return { stopEvents };
 }
 
+/** EFA-BW's system message code for "no serving lines found". */
+export const NO_DEPARTURES_CODE = -4050;
+
 /**
- * Whether `payload` is a valid departure monitor answer that found the stop
- * but lists no departure (late at night, a stop served only on weekdays):
- * EFA-BW then leaves `stopEvents` out, but the answer still carries its
- * `version` and the resolved stop (`type: "stop"`) under `locations`. An
- * answer without them (an error object, "stop not found", anything else) is
- * not "no departures".
+ * Whether `payload` is a valid departure monitor answer for `stopId` that
+ * lists no departure (late at night, a stop served only on weekdays). As
+ * recorded from EFA-BW, such an answer has no `stopEvents`, at most the error
+ * message {@link NO_DEPARTURES_CODE}, and the requested stop itself under
+ * `locations` (`type: "stop"`, `isBest: true`, its id, or a platform of it).
+ *
+ * Not "no departures", stays a 502: an unknown or removed stop (EFA answers
+ * with fuzzy candidates, `isBest: false`, other ids), any other error message
+ * (e.g. "invalid date" with the stop resolved), anything without `version`.
  */
-export function isEmptyDepartureMonitor(payload: unknown): boolean {
+export function isEmptyDepartureMonitor(payload: unknown, stopId: string): boolean {
   if (!isRecord(payload) || !isString(payload.version) || payload.stopEvents !== undefined) return false;
+  const messages = payload.systemMessages ?? [];
+  if (!isArray(messages)) return false;
+  const otherError = messages.some(
+    (message) => isRecord(message) && message.type === "error" && message.code !== NO_DEPARTURES_CODE,
+  );
+  if (otherError) return false;
   const locations = payload.locations;
-  return isArray(locations) && locations.some((location) => isRecord(location) && location.type === "stop");
+  return (
+    isArray(locations) &&
+    locations.some(
+      (location) =>
+        isRecord(location) &&
+        location.type === "stop" &&
+        location.isBest === true &&
+        isString(location.id) &&
+        (location.id === stopId || location.id.startsWith(`${stopId}:`)),
+    )
+  );
 }
 
 /**

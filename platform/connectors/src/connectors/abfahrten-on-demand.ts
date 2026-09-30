@@ -58,8 +58,9 @@
  *    src/connectors/efa.ts), no retry, 30 s timeout. The old request had no
  *    pacing and Node-RED's 120 s timeout, i.e. a hanging EFA ended in the
  *    nginx 504 after 60 s; now it is the node's own 502 after 30 s.
- *  * No departures is not an outage: a valid EFA answer that resolved the stop
- *    but carries no `stopEvents` (night, weekday-only stops) is a 200 with
+ *  * No departures is not an outage: a valid EFA answer that resolved the
+ *    requested stop but carries no `stopEvents` (night, weekday-only stops;
+ *    EFA's error -4050 "no serving lines found") is a 200 with
  *    `abfahrten: []` ({@link isEmptyDepartureMonitor}). The old node answered
  *    502 "Auskunft nicht erreichbar", so the dashboard dropped the board as if
  *    EFA were down, and the nginx kept serving the last evening's departures
@@ -303,7 +304,7 @@ export function departuresResponse(halt: Halt, upstream: Upstream, now: IsoTime)
       monitor = parseDepartureMonitor(upstream.payload);
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
-      if (isEmptyDepartureMonitor(upstream.payload)) monitor = { stopEvents: [] };
+      if (isEmptyDepartureMonitor(upstream.payload, halt.stopId ?? "")) monitor = { stopEvents: [] };
     }
   }
   if (monitor === null) return nodeRedJson(502, { fehler: "Auskunft nicht erreichbar", halt: name });
