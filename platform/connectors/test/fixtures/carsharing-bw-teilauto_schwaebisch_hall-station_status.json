@@ -1,0 +1,235 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/teilauto_schwaebisch_hall/station_status",
+  "recordedAt": "2026-09-28T03:09:40.724Z",
+  "note": "The complete live response, verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:18 GMT",
+    "etag": "\"07f6639850aa5254505560cd343391ab\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564838,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "stations": [
+        {
+          "station_id": "TAS:Station:6471",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:opelcorsae",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:5442",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:renaulr4",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:11040",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:toyotaaurishybrid",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:11020",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:suzukiswift",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:9480",
+          "num_bikes_available": 2,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:renaultzoe",
+              "count": 2
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:11438",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:opelfrontera",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:11437",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:opelfrontera",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:1699",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:suzukiswift",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:11439",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:opelfrontera",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:3531",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:renaultscenic",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:10045",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:mitsubishispacestar",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:96",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:citroenberlingo",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:2606",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:toyotaaygox",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:97",
+          "num_bikes_available": 2,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:suzukiswift",
+              "count": 1
+            },
+            {
+              "vehicle_type_id": "TAS:VehicleType:opelastrakombi",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        },
+        {
+          "station_id": "TAS:Station:10005",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "TAS:VehicleType:vwid3",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564838
+        }
+      ]
+    }
+  }
+}

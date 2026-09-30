@@ -1,2 +1,5 @@
 # Sourced by the nginx entrypoint (sh) – CRLF would break it on Windows checkouts.
 *.envsh text eol=lf
+# Prettier in platform/connectors enforces LF; a CRLF checkout (core.autocrlf)
+# would fail format:check on every file without a single real change.
+platform/connectors/** text eol=lf

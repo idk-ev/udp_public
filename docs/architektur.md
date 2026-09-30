@@ -19,7 +19,7 @@
 | DIN-SPEC-91357-Schicht | Komponenten dieser UDP |
 |---|---|
 | Geräte-/Sensorschicht (Edge) | LPWAN-Sensorik der Fachanwendungen (extern; via LoRa/NB-IoT/LTE-M/Mioty) |
-| Konnektivität / Datenaufnahme | Mosquitto (MQTT), FIWARE IoT-Agent JSON, HTTP-Ingest über APISIX (`/ingest`), Node-RED (Pull-Quellen/ETL) |
+| Konnektivität / Datenaufnahme | Mosquitto (MQTT), FIWARE IoT-Agent JSON, HTTP-Ingest über APISIX (`/ingest`), Konnektordienst (Pull-Quellen, `platform/connectors`), Node-RED (Low-Code-Flüsse/ETL) |
 | Daten- & Kontextmanagement | **Orion-LD** (NGSI-LD Context Broker), **Mintaka** (Temporal), FIWARE Smart Data Models + kommunale Modelle via @context |
 | Datenhaltung | **PostgreSQL** + **PostGIS** (Zeitreihen/TRoE und Geodaten; TimescaleDB 07/2026 abgelöst — keine Hypertables in Nutzung), MongoDB (Broker-Zustand) |
 | Dienste-/Anwendungsschicht | FROST-Server (SensorThings), GeoServer (OGC), CKAN (Open Data/DCAT-AP.de), Superset, Fachanwendungen |
@@ -49,18 +49,25 @@ Sensor ──LoRaWAN/NB-IoT──▶ Netzwerk-Server ──MQTT──▶ Mosquit
 ### Offene Daten (Pull/ETL)
 
 ```
-DWD / GDI / Fachverfahren ──HTTP──▶ Node-RED (Transformation, Validierung)
+DWD / GDI / MobiData BW / … ──HTTP──▶ Konnektordienst (Transformation, Validierung)
+      ──▶ Orion-LD (Kontext)
+Fachverfahren / eigene Quellen ──HTTP──▶ Node-RED (Low-Code-Fluss)
       ──▶ Orion-LD (Kontext)  und/oder  ──▶ CKAN (Datensatz + DCAT-AP.de-Metadaten)
 ```
 
 Referenzimplementierung dieses Pfads ist die Integration **„Smart City
-Reutlingen"**: vier Node-RED-Flow-Tabs lesen acht offene Quellen (DWD,
-UBA, sensor.community, MobiData BW ParkAPI/GBFS/OCPDB, EFA-BW) zyklisch
-ein und upserten Smart-Data-Model-Entitäten nach Orion-LD; Darstellung
-über die Cockpit-Dashboards (`/<kommune>` je Gemeinde, `/kreis-<slug>` je
-Landkreis, Kommunen-Suche und Betrieb unter `/dashboard.html`); Betriebs- und
-TRoE-Statistiken liefert Node-RED als PlatformStatus-Entitäten, Zeitreihen die
-Temporal-API (Mintaka).
+Reutlingen"** bzw. landesweit Baden-Württemberg: Der **Konnektordienst**
+(`platform/connectors`, TypeScript) liest mit 29 Konnektoren offene Quellen
+(DWD, UBA, sensor.community, MobiData BW ParkAPI/GBFS/OCPDB, EFA-BW, …)
+zyklisch ein und upsertet Smart-Data-Model-Entitäten nach Orion-LD. Takt,
+Aktivierung und Monitoring stehen in der Registry
+`platform/config/connectors.json`; je Konnektor gibt es ein Modul mit
+Paritäts- bzw. Unit-Test. Darstellung über die Cockpit-Dashboards
+(`/<kommune>` je Gemeinde, `/kreis-<slug>` je Landkreis, Kommunen-Suche und
+Betrieb unter `/dashboard.html`); Betriebs- und TRoE-Statistiken liefert der
+Konnektordienst als PlatformStatus-Entitäten, Zeitreihen die Temporal-API
+(Mintaka). Node-RED bleibt als Low-Code-Werkzeug mit einem Beispielfluss
+(Open Data → NGSI-LD → Orion-LD) für eigene Datenflüsse.
 
 ### Veröffentlichung
 

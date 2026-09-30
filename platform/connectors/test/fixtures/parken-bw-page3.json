@@ -1,0 +1,918 @@
+{
+  "source": "https://api.mobidata-bw.de/park-api/api/public/v3/parking-sites?limit=500&start=9290",
+  "recordedAt": "2026-09-28T03:09:06.216Z",
+  "note": "Page 3 of a live cursor sequence (limit=500), trimmed by hand: 24 of 500 items kept verbatim, in source order — 1 CAR and 10 BIKE sites with realtime data, 3 ITEM lockers (skipped: neither CAR nor BIKE), 7 sites without ARS around Basel/Loerrach and Lake Constance (strict geo fallback), 3 BIKE sites without realtime data. total_count verbatim; next_id and next_path set to null (they were 16925 / /api/public/v3/parking-sites?limit=500&start=16925) so the recorded sequence ends here as the last page of a run does.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "items": [
+      {
+        "source_id": 30,
+        "original_uid": "46dc62be-221e-400b-b139-c260a0ac5abb",
+        "name": "Felben-Wellhausen",
+        "operator_name": "SBB",
+        "address": "Poststrasse 16, 8552 Felben-Wellhausen",
+        "description": "Die Parkuhr ist in Pension. Ihre Nachfolgerin, die P+R App, kann aber noch viel mehr. ",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "fee_description": "ONLINE AND AUTOMAT",
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-06-30T01:00:16Z",
+        "lat": 47.5773311,
+        "lon": 8.944335,
+        "capacity": 16,
+        "capacity_disabled": 1,
+        "capacity_charging": 0,
+        "opening_hours": "24/7",
+        "id": 9331,
+        "created_at": "2024-08-13T07:10:36Z",
+        "modified_at": "2026-06-30T01:00:20Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 1
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 0
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 30,
+        "original_uid": "834242ca-c081-4175-adb4-b574826a8ddc",
+        "name": "Altnau",
+        "operator_name": "SBB",
+        "address": "Bahnhofstrasse 85, 8595 Altnau",
+        "description": "Die Parkuhr ist in Pension. Ihre Nachfolgerin, die P+R App, kann aber noch viel mehr. Tagesparkingtickets können auch am Billettautomaten gekauft werden.",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "fee_description": "ONLINE AND AUTOMAT",
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-06-30T01:00:16Z",
+        "lat": 47.6207584,
+        "lon": 9.2670527,
+        "capacity": 9,
+        "capacity_disabled": 1,
+        "capacity_charging": 0,
+        "opening_hours": "24/7",
+        "id": 9348,
+        "created_at": "2024-08-13T07:10:36Z",
+        "modified_at": "2026-06-30T01:00:21Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 1
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 0
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit10",
+        "name": "Efringen-Kirchen, Bahnhof",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=10",
+        "address": "Bahnhofstrasse, 79588 Efringen-Kirchen",
+        "description": "Mietdauer zwischen 1 Woche und 1 Jahr, untere Boxen für E-Bikes inkl. Lademöglichkeit",
+        "type": "LOCKERS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08336:6631/762f2044-cc78-4c2d-add2-4455575d508e.jpg",
+        "max_height": 116,
+        "max_width": 80,
+        "is_covered": true,
+        "fee_description": "1 Woche: 5€, 1 Jahr: 80€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 47.655382,
+        "lon": 7.564047,
+        "official_region_code": "083360014014",
+        "capacity": 18,
+        "capacity_charging": 12,
+        "realtime_capacity": 18,
+        "realtime_free_capacity": 1,
+        "opening_hours": "24/7",
+        "id": 9770,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 12
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08336:6631_Parent"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit1676",
+        "name": "Rastatt, Bahnhof, Schließfächer",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=1676",
+        "address": "Bahnhofstraße, 76437 Rastatt",
+        "description": "Schließfächer mit Lademöglichkeit (Schuko-Steckdose)",
+        "type": "LOCKERS",
+        "purpose": "ITEM",
+        "max_height": 39,
+        "max_width": 39,
+        "fee_description": "1 Tag: 1€, 1 Woche: 2€, 1 Monat: 5€, 1 Jahr: 30€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.861159,
+        "lon": 8.215451,
+        "official_region_code": "082165005043",
+        "capacity": 11,
+        "capacity_charging": 11,
+        "realtime_capacity": 11,
+        "realtime_free_capacity": 9,
+        "opening_hours": "24/7",
+        "id": 9771,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 11
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08216:1844_Parent"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit1719",
+        "name": "Filderstadt, Dr.-Peter-Bümlein-Platz",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=1719",
+        "address": "Dr. Peter-Bümlein-Platz, 70794 Filderstadt",
+        "description": "Radboxen 1 - 6 mit Lademöglichkeit nur tageweise buchbar",
+        "type": "LOCKERS",
+        "purpose": "BIKE",
+        "max_height": 127,
+        "max_width": 80,
+        "is_covered": true,
+        "fee_description": "1 Tag mit Ladeanschluss: 1€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.676602,
+        "lon": 9.217674,
+        "official_region_code": "081160077077",
+        "capacity": 15,
+        "capacity_charging": 6,
+        "realtime_capacity": 15,
+        "realtime_free_capacity": 5,
+        "opening_hours": "24/7",
+        "id": 9772,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 6
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08116:2006_Parent"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit1734",
+        "name": "Nürtingen, Bahnhof, Plochinger Straße",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=1734",
+        "address": "Plochinger Straße, 72622 Nürtingen",
+        "description": "Stellplatz-Nummern nicht fest zugeordnet, obere Etage für Räder bis 18 kg, Reifenbreite bis 55 mm, Öffnung mit Polygo-Card (RFID) möglich",
+        "type": "SHED",
+        "purpose": "BIKE",
+        "is_covered": true,
+        "fee_description": "1 Tag: 1€, 1 Woche: 4€, 1 Monat: 10€, 1 Jahr: 40€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.627815,
+        "lon": 9.343187,
+        "official_region_code": "081165005049",
+        "capacity": 20,
+        "realtime_capacity": 20,
+        "realtime_free_capacity": 1,
+        "opening_hours": "24/7",
+        "id": 9773,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08116:2931_Parent"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit344",
+        "name": "Kernen, Bahnhof Rommelshausen",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=344",
+        "address": "Max-Eyth-Straße, 71394 Kernen im Remstal",
+        "description": "Öffnung per RFID mit Polygo-Card möglich",
+        "type": "LOCKERS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08119:7701/859eecf0-b65c-494d-a6e1-ea26d25a32b0.jpg",
+        "max_height": 125,
+        "max_width": 80,
+        "fee_description": "1 Tag: 1€, 1 Woche: 2€, Mietzeiten bis 1 Jahr möglich",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.815251,
+        "lon": 9.319634,
+        "official_region_code": "081190093093",
+        "capacity": 38,
+        "capacity_charging": 39,
+        "realtime_capacity": 38,
+        "realtime_free_capacity": 7,
+        "opening_hours": "24/7",
+        "id": 9775,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 39
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08119:7701"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit373",
+        "name": "Pforzheim, Hauptbahnhof",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=373",
+        "address": "Güterstraße 30A, 75177 Pforzheim",
+        "description": "Plätze nicht nummeriert, 65 Plätze ab 1 Monat und 35 bis 1 Woche zu mieten",
+        "type": "FLOOR",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08231:50/ca2148f7-ef36-4772-b035-f4e0fc5ff373.jpg",
+        "has_lighting": true,
+        "is_covered": true,
+        "fee_description": "1 Tag 1€, 1 Woche: 5€, 1 Monat: 18€, 1 Jahr: 75€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.893736,
+        "lon": 8.701952,
+        "official_region_code": "082310000000",
+        "capacity": 100,
+        "realtime_capacity": 100,
+        "realtime_free_capacity": 53,
+        "opening_hours": "24/7",
+        "id": 9778,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08231:50"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit377",
+        "name": "Eutingen im Gäu, Bahnhof Nord",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=377",
+        "address": "Göttelfinger Straße, 72184 Eutingen im Gäu",
+        "description": "Untere Boxen mit Steckdose, max. Höhe oben: 106 cm",
+        "type": "LOCKERS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08237:8006/8e338310-b3c6-4355-9e9a-88a35a63f3bd.jpg",
+        "max_height": 116,
+        "max_width": 80,
+        "fee_description": "ohne/mit Steckdose: 1 Tag: 1,50/2€, 1 Woche: 5/8€, 1 Monat: 15/20€, 3 Monate: 30/42€, 1 Jahr: 90/120€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.484614,
+        "lon": 8.754067,
+        "official_region_code": "082375003027",
+        "capacity": 12,
+        "capacity_charging": 6,
+        "realtime_capacity": 12,
+        "realtime_free_capacity": 11,
+        "opening_hours": "24/7",
+        "id": 9779,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 6
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08237:8006"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit405",
+        "name": "Heidenheim, Bahnhof, Sammelgarage",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=405",
+        "address": "Bahnhofsplatz 1, 89522 Heidenheim",
+        "description": "Stellplätze nicht nummeriert, oben bis 18 kg",
+        "type": "SHED",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08135:600/89727a0f-f6e8-482a-a3ff-0bdf9328161e.jpg",
+        "fee_description": "1 Tag: 1€, 1 Woche: 4€, 1 Monat: 10€, 1 Jahr: 60€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.67968,
+        "lon": 10.156297,
+        "official_region_code": "081355002019",
+        "capacity": 27,
+        "realtime_capacity": 27,
+        "realtime_free_capacity": 15,
+        "opening_hours": "24/7",
+        "id": 9781,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08135:650"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit414",
+        "name": "Heidenheim, Bahnhof, Boxen",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=414",
+        "address": "Bahnhofsplatz 1, 89522 Heidenheim",
+        "description": "Bis 55 mm Reifenbreite, obere Boxen bis 28 kg; Boxen 1-8 bis 1 Woche, Box 9-28 bis 1 Jahr zu mieten",
+        "type": "LOCKERS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08135:600/bd7228fa-ab31-410c-9033-bff43c29c3fa.jpg",
+        "max_height": 125,
+        "max_width": 80,
+        "fee_description": "ohne/mit Ladesteckdose: 1 Tag: 1,59/2€, 1 Woche: 6/8€, 1 Monat: 15/18€, 1 Jahr: 90/120€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.679697,
+        "lon": 10.156351,
+        "official_region_code": "081355002019",
+        "capacity": 28,
+        "capacity_charging": 14,
+        "realtime_capacity": 28,
+        "realtime_free_capacity": 10,
+        "opening_hours": "24/7",
+        "id": 9782,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 14
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08135:650"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit432",
+        "name": "Neckarsulm, Bahnhof",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=432",
+        "address": "Obere Bahnhofstraße, 74172 Neckarsulm",
+        "description": "5 Boxen bis 1 Jahr zu mieten",
+        "type": "LOCKERS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08125:620/7229ad03-a619-43fb-894a-a6954acb1d5b.jpg",
+        "max_height": 125,
+        "max_width": 80,
+        "fee_description": "ohne/mit Ladefunktion: 1 Tag 1/2€, 1 Monat: 10/20€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 49.189347,
+        "lon": 9.220305,
+        "official_region_code": "081255008065",
+        "capacity": 17,
+        "capacity_charging": 5,
+        "realtime_capacity": 17,
+        "realtime_free_capacity": 4,
+        "opening_hours": "24/7",
+        "id": 9783,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 5
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08125:620"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit470",
+        "name": "Kernen, Bushaltestelle Diakonie Stetten",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=470",
+        "address": "Schloßstraße, 71394 Kernen im Remstal",
+        "description": "3 Boxen bis 1 Monat, 2 Boxen bis 1 Jahr zu mieten",
+        "type": "LOCKERS",
+        "purpose": "BIKE",
+        "max_height": 125,
+        "max_width": 80,
+        "fee_description": "1 Tag: 1€, 1 Woche: 2€, 1 Monat: 5€, 3 Monate: 15€, 1 Jahr: 60€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "BUS"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.792718,
+        "lon": 9.340193,
+        "official_region_code": "081190093093",
+        "capacity": 5,
+        "capacity_charging": 5,
+        "realtime_capacity": 5,
+        "realtime_free_capacity": 3,
+        "opening_hours": "24/7",
+        "id": 9784,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 5
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08119:4933"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit507",
+        "name": "Leinfelden-Echterdingen, Stadionstraße, Schließfächer",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=507",
+        "address": "Stadion Straße, 70771 Leinfelden-Echterdingen",
+        "description": "Ladesteckdose bis 600W bei geschlossener Tür aktiv. Öffnung mit polygo-Card (RFID) möglich",
+        "type": "LOCKERS",
+        "purpose": "ITEM",
+        "max_height": 39,
+        "max_width": 39,
+        "fee_description": "1 Tag: 0,50€, 1 Woche: 1€, 1 Monat: 2€, 1 Jahr: 20€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "TRAM"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.694573,
+        "lon": 9.175007,
+        "official_region_code": "081160078078",
+        "capacity": 19,
+        "capacity_charging": 20,
+        "realtime_capacity": 19,
+        "realtime_free_capacity": 18,
+        "opening_hours": "24/7",
+        "id": 9788,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 20
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08116:7180"
+          }
+        ]
+      },
+      {
+        "source_id": 31,
+        "original_uid": "unit564",
+        "name": "Leinfelden-Echterdingen, Stetten Hof, Schließfächer",
+        "public_url": "https://www.bikeandridebox.de/order/booking/?preselect_unit_uid=564",
+        "address": "Ungerhaldenweg, 70771 Leinfelden-Echterdingen",
+        "description": "5 Schließfächer bis 1 Woche, 3 Schließfächer bis 1 jahr zu mieten. Ladeanschluss (230V, 600W) bei geschlossener Tür aktiv, Öffnen mit polygo-Card (RFID) möglich",
+        "type": "LOCKERS",
+        "purpose": "ITEM",
+        "max_height": 39,
+        "max_width": 39,
+        "fee_description": "1 Tag: 0,50€, 1 Woche: 1€, 1 Monat: 2€, 1 Jahr: 20€",
+        "has_fee": true,
+        "park_and_ride_type": [
+          "BUS"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T01:01:55Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:31Z",
+        "lat": 48.671073,
+        "lon": 9.174711,
+        "official_region_code": "081160078078",
+        "capacity": 8,
+        "capacity_charging": 8,
+        "realtime_capacity": 8,
+        "realtime_free_capacity": 8,
+        "opening_hours": "24/7",
+        "id": 9792,
+        "created_at": "2024-08-20T11:33:49Z",
+        "modified_at": "2026-09-28T03:06:31Z",
+        "restrictions": [
+          {
+            "type": "CHARGING",
+            "capacity": 8
+          }
+        ],
+        "restricted_to": [],
+        "external_identifiers": [
+          {
+            "type": "DHID",
+            "value": "de:08116:2115"
+          }
+        ]
+      },
+      {
+        "source_id": 38,
+        "original_uid": "INFRA-ch:23005:6-FAHRRADANLAGE-4",
+        "name": "Vorderradhalter",
+        "address": "Basel",
+        "type": "WALL_LOOPS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/ch:23005:6/c1e0b6d0-c1a4-484b-a3bc-997f2b9da92a.jpg",
+        "has_lighting": false,
+        "is_covered": false,
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-28T01:03:17Z",
+        "lat": 47.567507,
+        "lon": 7.6067466,
+        "capacity": 120,
+        "id": 11249,
+        "created_at": "2024-09-10T14:43:03Z",
+        "modified_at": "2026-09-28T01:03:17Z",
+        "external_identifiers": [
+          {
+            "type": "OSM",
+            "value": "https://www.openstreetmap.org/way/1013481827"
+          },
+          {
+            "type": "DHID",
+            "value": "ch:23005:6"
+          }
+        ]
+      },
+      {
+        "source_id": 38,
+        "original_uid": "INFRA-ch:23005:6-FAHRRADANLAGE-6",
+        "name": "Fahrradparkhaus",
+        "address": "Basel",
+        "type": "BUILDING",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/ch:23005:6/065c00c9-51c9-4f67-9d4e-e2f2857cfed1.jpg",
+        "has_lighting": true,
+        "has_fee": false,
+        "park_and_ride_type": [
+          "YES"
+        ],
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-28T01:03:17Z",
+        "lat": 47.5668409,
+        "lon": 7.6071836,
+        "capacity": 280,
+        "id": 11251,
+        "created_at": "2024-09-10T14:43:03Z",
+        "modified_at": "2026-09-28T01:03:17Z",
+        "external_identifiers": [
+          {
+            "type": "OSM",
+            "value": "https://www.openstreetmap.org/node/10312987806"
+          },
+          {
+            "type": "DHID",
+            "value": "ch:23005:6"
+          }
+        ]
+      },
+      {
+        "source_id": 38,
+        "original_uid": "INFRA-ch:23005:826-FAHRRADANLAGE-1",
+        "name": "Anlehnbügel",
+        "address": "Riehen",
+        "type": "STANDS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/ch:23005:826/42760a00-ef43-4c0f-86ce-ca48bbb8c6e4.jpg",
+        "has_lighting": true,
+        "is_covered": true,
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-28T01:03:17Z",
+        "lat": 47.5829534,
+        "lon": 7.6516846,
+        "capacity": 16,
+        "id": 11252,
+        "created_at": "2024-09-10T14:43:03Z",
+        "modified_at": "2026-09-28T01:03:17Z",
+        "external_identifiers": [
+          {
+            "type": "OSM",
+            "value": "https://www.openstreetmap.org/way/1059801952"
+          },
+          {
+            "type": "DHID",
+            "value": "ch:23005:826"
+          }
+        ]
+      },
+      {
+        "source_id": 38,
+        "original_uid": "INFRA-ch:23005:826-FAHRRADANLAGE-2",
+        "name": "Anlehnbügel",
+        "address": "Riehen",
+        "type": "STANDS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/ch:23005:826/747e99e8-33b9-4ecd-960b-1dd7b8f171b1.jpg",
+        "has_lighting": true,
+        "is_covered": true,
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-28T01:03:17Z",
+        "lat": 47.5840829,
+        "lon": 7.6523973,
+        "capacity": 16,
+        "id": 11253,
+        "created_at": "2024-09-10T14:43:03Z",
+        "modified_at": "2026-09-28T01:03:17Z",
+        "external_identifiers": [
+          {
+            "type": "OSM",
+            "value": "https://www.openstreetmap.org/way/940401495"
+          },
+          {
+            "type": "DHID",
+            "value": "ch:23005:826"
+          }
+        ]
+      },
+      {
+        "source_id": 38,
+        "original_uid": "INFRA-ch:23005:826-FAHRRADANLAGE-3",
+        "name": "Anlehnbügel",
+        "address": "Riehen",
+        "type": "STANDS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/ch:23005:826/8c3b50f8-fabc-4eb4-b486-747b9637bbd0.jpg",
+        "has_lighting": true,
+        "is_covered": true,
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-28T01:03:17Z",
+        "lat": 47.5840206,
+        "lon": 7.6522905,
+        "capacity": 24,
+        "id": 11254,
+        "created_at": "2024-09-10T14:43:03Z",
+        "modified_at": "2026-09-28T01:03:17Z",
+        "external_identifiers": [
+          {
+            "type": "OSM",
+            "value": "https://www.openstreetmap.org/way/940401496"
+          },
+          {
+            "type": "DHID",
+            "value": "ch:23005:826"
+          }
+        ]
+      },
+      {
+        "source_id": 38,
+        "original_uid": "INFRA-de:08111:6056-FAHRRADANLAGE-1",
+        "name": "Anlehnbügel",
+        "address": "Stuttgart",
+        "description": ".",
+        "type": "STANDS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08111:6056/69aafdbd-1a3b-48ca-a309-e15a15fb5fab.jpg",
+        "has_lighting": false,
+        "is_covered": false,
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-28T01:03:17Z",
+        "lat": 48.777366,
+        "lon": 9.173799,
+        "official_region_code": "081110000000",
+        "capacity": 12,
+        "id": 11324,
+        "created_at": "2024-09-10T14:43:04Z",
+        "modified_at": "2026-09-28T01:03:18Z",
+        "external_identifiers": [
+          {
+            "type": "OSM",
+            "value": "https://www.openstreetmap.org/node/4791811359"
+          },
+          {
+            "type": "DHID",
+            "value": "de:08111:6056"
+          }
+        ]
+      },
+      {
+        "source_id": 38,
+        "original_uid": "INFRA-de:08111:6056-FAHRRADANLAGE-2",
+        "name": "Anlehnbügel",
+        "address": "Stuttgart",
+        "description": ".",
+        "type": "STANDS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08111:6056/a338eb6a-a1bc-44d4-92e0-a5481addd1a7.jpg",
+        "has_lighting": true,
+        "is_covered": false,
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-28T01:03:17Z",
+        "lat": 48.7768151,
+        "lon": 9.1751489,
+        "official_region_code": "081110000000",
+        "capacity": 8,
+        "id": 11325,
+        "created_at": "2024-09-10T14:43:04Z",
+        "modified_at": "2026-09-28T01:03:18Z",
+        "external_identifiers": [
+          {
+            "type": "OSM",
+            "value": "https://www.openstreetmap.org/node/11075219475"
+          },
+          {
+            "type": "DHID",
+            "value": "de:08111:6056"
+          }
+        ]
+      },
+      {
+        "source_id": 38,
+        "original_uid": "INFRA-de:08111:6056-FAHRRADANLAGE-4",
+        "name": "Anlehnbügel",
+        "address": "Stuttgart",
+        "description": ".",
+        "type": "STANDS",
+        "purpose": "BIKE",
+        "photo_url": "https://mobidata-bw.de/bfrk/haltestelle/bilder/de:08111:6056/d6bb484c-11bb-4219-8558-5a9222f7b21c.jpg",
+        "has_lighting": false,
+        "is_covered": false,
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-28T01:03:17Z",
+        "lat": 48.7740368,
+        "lon": 9.1719323,
+        "official_region_code": "081110000000",
+        "capacity": 18,
+        "id": 11327,
+        "created_at": "2024-09-10T14:43:04Z",
+        "modified_at": "2026-09-28T01:03:18Z",
+        "external_identifiers": [
+          {
+            "type": "OSM",
+            "value": "https://www.openstreetmap.org/way/1450316345"
+          },
+          {
+            "type": "DHID",
+            "value": "de:08111:6056"
+          }
+        ]
+      },
+      {
+        "source_id": 41,
+        "original_uid": "1445",
+        "name": "P+R Kirchheim am Neckar Ost",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "park_and_ride_type": [
+          "YES"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2025-04-30T12:00:00Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:00Z",
+        "lat": 49.0393846,
+        "lon": 9.1506836,
+        "official_region_code": "081185003040",
+        "capacity": 137,
+        "capacity_disabled": 0,
+        "capacity_woman": 0,
+        "capacity_family": 0,
+        "capacity_charging": 0,
+        "realtime_capacity": 147,
+        "realtime_free_capacity": 144,
+        "opening_hours": "24/7",
+        "id": 16590,
+        "created_at": "2024-09-10T14:45:47Z",
+        "modified_at": "2026-09-28T03:06:40Z"
+      }
+    ],
+    "total_count": 32019,
+    "next_id": null,
+    "next_path": null
+  }
+}

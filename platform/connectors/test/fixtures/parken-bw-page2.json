@@ -1,0 +1,700 @@
+{
+  "source": "https://api.mobidata-bw.de/park-api/api/public/v3/parking-sites?limit=500&start=1436",
+  "recordedAt": "2026-09-28T03:08:59.121Z",
+  "note": "Page 2 of a live cursor sequence (limit=500), trimmed by hand: 22 of 500 items kept verbatim, in source order — 2 CAR sites with realtime data, 4 Berlin/Potsdam sites (ARS outside BW), 5 Swiss sites without ARS close to the border, 3 sites without capacity, 4 BIKE and 4 CAR sites without realtime data. total_count, next_id and next_path verbatim; next_id is the start= of the next fixture page.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "items": [
+      {
+        "source_id": 15,
+        "original_uid": "Kepler-Gymnasium - Moltkestraße, Kepler-Gymnasium - Südseite: 48.48823260977598-9.206134796010806",
+        "name": "Kepler-Gymnasium - Moltkestraße, Kepler-Gymnasium - Südseite",
+        "type": "OTHER",
+        "purpose": "BIKE",
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:39Z",
+        "lat": 48.4882326,
+        "lon": 9.2061348,
+        "official_region_code": "084150061061",
+        "capacity": 5,
+        "id": 1440,
+        "created_at": "2024-05-07T08:12:36Z",
+        "modified_at": "2026-07-20T14:26:42Z"
+      },
+      {
+        "source_id": 15,
+        "original_uid": "Nordsternhaus - alter Stegfuß, Nordsternhaus: 48.4901862380841-9.207760705638517",
+        "name": "Nordsternhaus - alter Stegfuß, Nordsternhaus",
+        "type": "OTHER",
+        "purpose": "BIKE",
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:39Z",
+        "lat": 48.4901862,
+        "lon": 9.2077607,
+        "official_region_code": "084150061061",
+        "capacity": 8,
+        "id": 1441,
+        "created_at": "2024-05-07T08:12:36Z",
+        "modified_at": "2026-07-20T14:26:42Z"
+      },
+      {
+        "source_id": 15,
+        "original_uid": "Hoffmann-Schule - Weg zu Sportplätzen, Hoffmann-Schule: 48.49933275650404-9.182806853824843",
+        "name": "Hoffmann-Schule - Weg zu Sportplätzen, Hoffmann-Schule",
+        "type": "OTHER",
+        "purpose": "BIKE",
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:39Z",
+        "lat": 48.4993328,
+        "lon": 9.1828069,
+        "official_region_code": "084150061061",
+        "capacity": 9,
+        "id": 1444,
+        "created_at": "2024-05-07T08:12:36Z",
+        "modified_at": "2026-07-20T14:26:42Z"
+      },
+      {
+        "source_id": 15,
+        "original_uid": "Hoffmann-Schule - Schulhof Westende, Hoffmann-Schule: 48.49894663475428-9.182412982890217",
+        "name": "Hoffmann-Schule - Schulhof Westende, Hoffmann-Schule",
+        "type": "OTHER",
+        "purpose": "BIKE",
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:39Z",
+        "lat": 48.4989466,
+        "lon": 9.182413,
+        "official_region_code": "084150061061",
+        "capacity": 15,
+        "id": 1445,
+        "created_at": "2024-05-07T08:12:36Z",
+        "modified_at": "2026-07-20T14:26:42Z"
+      },
+      {
+        "source_id": 22,
+        "original_uid": "0",
+        "name": "P1 Schießwasen",
+        "operator_name": "Stadt Ellwangen",
+        "public_url": "https://www.ellwangen-tourismus.de/gaeste/gaesteservice-kontakt/anreise-parken/parken",
+        "address": "Rotenbacher Straße 37, 73479 Ellwangen",
+        "description": "wegen Baumaßnahmen bis 2026 geschlossen",
+        "type": "OFF_STREET_PARKING_GROUND",
+        "purpose": "CAR",
+        "has_lighting": true,
+        "fee_description": "kostenlos",
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:48Z",
+        "lat": 48.962311,
+        "lon": 10.126734,
+        "official_region_code": "081365003019",
+        "capacity": 0,
+        "capacity_disabled": 0,
+        "capacity_woman": 0,
+        "capacity_charging": 0,
+        "capacity_carsharing": 0,
+        "opening_hours": "24/7",
+        "id": 5972,
+        "created_at": "2024-05-28T07:31:38Z",
+        "modified_at": "2026-07-20T14:26:48Z"
+      },
+      {
+        "source_id": 22,
+        "original_uid": "1",
+        "name": "Hallenbad",
+        "operator_name": "Stadt Ellwangen",
+        "public_url": "https://www.ellwangen-tourismus.de/gaeste/gaesteservice-kontakt/anreise-parken/parken",
+        "address": "Rotenbacher Straße, 73479 Ellwangen",
+        "type": "OFF_STREET_PARKING_GROUND",
+        "purpose": "CAR",
+        "has_lighting": true,
+        "fee_description": "kostenlos",
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:48Z",
+        "lat": 48.9611616,
+        "lon": 10.1244038,
+        "official_region_code": "081365003019",
+        "capacity": 100,
+        "capacity_disabled": 0,
+        "capacity_woman": 0,
+        "capacity_charging": 0,
+        "capacity_carsharing": 0,
+        "opening_hours": "24/7",
+        "id": 5973,
+        "created_at": "2024-05-28T07:31:38Z",
+        "modified_at": "2026-07-20T14:26:48Z"
+      },
+      {
+        "source_id": 22,
+        "original_uid": "2",
+        "name": "P2 Parkpalette Innenstadt",
+        "operator_name": "Stadt Ellwangen",
+        "public_url": "https://www.ellwangen-tourismus.de/gaeste/gaesteservice-kontakt/anreise-parken/parken",
+        "address": "Schöner Graben 9, 73479 Ellwangen",
+        "description": "werktags ab 17 Uhr bis 9 Uhr unbegrenzt, und samstags, sonntags unbegrenzt",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "max_stay": 28800,
+        "has_lighting": true,
+        "fee_description": "2 Stunden frei",
+        "has_fee": true,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:48Z",
+        "lat": 48.9603529,
+        "lon": 10.1350062,
+        "official_region_code": "081365003019",
+        "capacity": 290,
+        "capacity_disabled": 4,
+        "capacity_woman": 29,
+        "capacity_charging": 2,
+        "capacity_carsharing": 2,
+        "opening_hours": "24/7",
+        "id": 5974,
+        "created_at": "2024-05-28T07:31:38Z",
+        "modified_at": "2026-07-20T14:26:48Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 4
+          },
+          {
+            "type": "WOMEN",
+            "capacity": 29
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 2
+          },
+          {
+            "type": "CARSHARING",
+            "capacity": 2
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 22,
+        "original_uid": "3",
+        "name": "P3 Mühlgraben Insel",
+        "operator_name": "Stadt Ellwangen",
+        "public_url": "https://www.ellwangen-tourismus.de/gaeste/gaesteservice-kontakt/anreise-parken/parken",
+        "address": "Mühlgraben 18, 73479 Ellwangen",
+        "description": "werktags ab 17 Uhr bis 9 Uhr unbegrenzt, und samstags ab 12 Uhr unbegrenzt, sonntags unbegrenzt",
+        "type": "OFF_STREET_PARKING_GROUND",
+        "purpose": "CAR",
+        "max_stay": 7200,
+        "has_lighting": true,
+        "fee_description": "kostenlos",
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:48Z",
+        "lat": 48.9613039,
+        "lon": 10.1288478,
+        "official_region_code": "081365003019",
+        "capacity": 150,
+        "capacity_disabled": 0,
+        "capacity_woman": 0,
+        "capacity_charging": 0,
+        "capacity_carsharing": 0,
+        "opening_hours": "24/7",
+        "id": 5975,
+        "created_at": "2024-05-28T07:31:39Z",
+        "modified_at": "2026-07-20T14:26:48Z"
+      },
+      {
+        "source_id": 22,
+        "original_uid": "4",
+        "name": "P4 Priestertörle",
+        "operator_name": "Stadt Ellwangen",
+        "public_url": "https://www.ellwangen-tourismus.de/gaeste/gaesteservice-kontakt/anreise-parken/parken",
+        "address": "Sebastiansgraben 14, 73479 Ellwangen",
+        "description": "werktags ab 17 Uhr bis 9 Uhr unbegrenzt, und samstags ab 12 Uhr unbegrenzt, sonntags unbegrenzt",
+        "type": "OFF_STREET_PARKING_GROUND",
+        "purpose": "CAR",
+        "max_stay": 5400,
+        "has_lighting": true,
+        "has_fee": true,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:48Z",
+        "lat": 48.9627148,
+        "lon": 10.1333748,
+        "official_region_code": "081365003019",
+        "capacity": 38,
+        "capacity_disabled": 2,
+        "capacity_woman": 0,
+        "capacity_charging": 0,
+        "capacity_carsharing": 0,
+        "opening_hours": "24/7",
+        "id": 5976,
+        "created_at": "2024-05-28T07:31:39Z",
+        "modified_at": "2026-07-20T14:26:48Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 2
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 22,
+        "original_uid": "31",
+        "name": "Adelmanssgasse / Zollgasse",
+        "operator_name": "Stadt Ellwangen",
+        "address": "Zollgasse 6, 73479 Ellwangen",
+        "type": "OFF_STREET_PARKING_GROUND",
+        "purpose": "CAR",
+        "has_lighting": true,
+        "fee_description": "kostenlos",
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:48Z",
+        "lat": 48.960757,
+        "lon": 10.134555,
+        "official_region_code": "081365003019",
+        "capacity": 0,
+        "capacity_disabled": 0,
+        "capacity_woman": 0,
+        "capacity_charging": 0,
+        "capacity_carsharing": 0,
+        "opening_hours": "24/7",
+        "id": 6002,
+        "created_at": "2024-05-28T07:31:39Z",
+        "modified_at": "2026-07-20T14:26:49Z"
+      },
+      {
+        "source_id": 22,
+        "original_uid": "32",
+        "name": "Färbergasse",
+        "operator_name": "Stadt Ellwangen",
+        "address": "Färbergasse 8, 73479 Ellwangen",
+        "type": "OFF_STREET_PARKING_GROUND",
+        "purpose": "CAR",
+        "has_lighting": true,
+        "fee_description": "kostenlos",
+        "has_fee": false,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-07-20T14:26:48Z",
+        "lat": 48.960536,
+        "lon": 10.134153,
+        "official_region_code": "081365003019",
+        "capacity": 0,
+        "capacity_disabled": 0,
+        "capacity_woman": 0,
+        "capacity_charging": 0,
+        "capacity_carsharing": 0,
+        "opening_hours": "24/7",
+        "id": 6003,
+        "created_at": "2024-05-28T07:31:39Z",
+        "modified_at": "2026-07-20T14:26:49Z"
+      },
+      {
+        "source_id": 23,
+        "original_uid": "P8_Parkdeck_Altstadt_Haagstrasse",
+        "name": "P8 Parkdeck Altstadt Haagstraße",
+        "operator_name": "Stadt Buchen",
+        "address": "Haagstraße, 74722 Buchen",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T03:02:00Z",
+        "realtime_data_updated_at": "2026-09-28T03:02:00Z",
+        "realtime_opening_status": "UNKNOWN",
+        "lat": 49.5221108,
+        "lon": 9.3265143,
+        "official_region_code": "082250014014",
+        "capacity": 60,
+        "realtime_capacity": 60,
+        "realtime_free_capacity": 52,
+        "id": 6328,
+        "created_at": "2024-06-05T09:47:46Z",
+        "modified_at": "2026-09-28T03:02:00Z"
+      },
+      {
+        "source_id": 25,
+        "original_uid": "fcde2f18-c277-11ed-b3ce-0050563bb33b",
+        "name": "A81 Ergenzingen",
+        "address": "Mercedesstraße 51, 72108 Rottenburg am Neckar",
+        "description": "A81 Ausfahrt 29-Rottenburg, über die B 28a und Mercedesstraße im Gewerbegebiet Ergenzingen Ost",
+        "type": "OFF_STREET_PARKING_GROUND",
+        "purpose": "CAR",
+        "park_and_ride_type": [
+          "CARPOOL"
+        ],
+        "has_realtime_data": true,
+        "static_data_updated_at": "2026-09-28T00:19:59Z",
+        "realtime_data_updated_at": "2026-09-28T03:06:32Z",
+        "lat": 48.50571,
+        "lon": 8.82799,
+        "official_region_code": "084165003036",
+        "capacity": 111,
+        "capacity_disabled": 4,
+        "capacity_woman": 0,
+        "capacity_charging": 0,
+        "realtime_capacity": 111,
+        "realtime_capacity_disabled": 4,
+        "realtime_capacity_woman": 0,
+        "realtime_capacity_charging": 0,
+        "realtime_free_capacity": 75,
+        "realtime_free_capacity_disabled": 4,
+        "realtime_free_capacity_woman": 0,
+        "realtime_free_capacity_charging": 0,
+        "id": 6674,
+        "created_at": "2024-06-19T05:36:58Z",
+        "modified_at": "2026-09-28T03:06:35Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 4,
+            "realtime_capacity": 4,
+            "realtime_free_capacity": 4
+          },
+          {
+            "type": "WOMEN",
+            "capacity": 0,
+            "realtime_capacity": 0,
+            "realtime_free_capacity": 0
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 0,
+            "realtime_capacity": 0,
+            "realtime_free_capacity": 0
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 26,
+        "original_uid": "38",
+        "name": "Berlin, Prager Passage",
+        "public_url": "https://www.apcoa.de/parken/BerLin/Prager-Passage",
+        "address": "Prager Platz 1-3, 10779 Berlin",
+        "type": "UNDERGROUND",
+        "purpose": "CAR",
+        "photo_url": "https://apcoatx.blob.core.windows.net/mdm/e5239471-4416-4a0b-b83c-dc827b0aba0e",
+        "has_fee": true,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-08-11T08:51:31Z",
+        "lat": 52.493185,
+        "lon": 13.332262,
+        "official_region_code": "110000000000",
+        "capacity": 240,
+        "capacity_disabled": 10,
+        "capacity_woman": 12,
+        "opening_hours": "Mo-Fr 06:00-22:00; Sa 06:00-22:00; Su 06:00-22:00",
+        "id": 7141,
+        "created_at": "2024-07-16T12:45:38Z",
+        "modified_at": "2026-08-12T01:00:24Z",
+        "restrictions": [
+          {
+            "type": "WOMEN",
+            "capacity": 12
+          },
+          {
+            "type": "DISABLED",
+            "capacity": 10
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 26,
+        "original_uid": "41",
+        "name": "Berlin, Alexa",
+        "public_url": "https://www.apcoa.de/parken/BerLin/ALexa",
+        "address": "Grunerstraße 20, 10179 Berlin",
+        "type": "UNDERGROUND",
+        "purpose": "CAR",
+        "photo_url": "https://apcoatx.blob.core.windows.net/mdm/cb2290e9-1ba2-4135-9c01-59d89f65ee75",
+        "has_fee": true,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-08-25T10:26:36Z",
+        "lat": 52.519366,
+        "lon": 13.416644,
+        "official_region_code": "110000000000",
+        "capacity": 1595,
+        "capacity_disabled": 51,
+        "capacity_woman": 80,
+        "capacity_charging": 4,
+        "opening_hours": "Mo-Fr 06:00-00:30; Sa 06:00-00:30; Su 06:00-00:30",
+        "id": 7142,
+        "created_at": "2024-07-16T12:45:38Z",
+        "modified_at": "2026-08-26T01:01:00Z",
+        "restrictions": [
+          {
+            "type": "WOMEN",
+            "capacity": 80
+          },
+          {
+            "type": "DISABLED",
+            "capacity": 51
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 4
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 26,
+        "original_uid": "69",
+        "name": "Berlin, Schönhauser Allee Arcaden",
+        "public_url": "https://www.apcoa.de/parken/BerLin/Schoenhauser-ALLee-Arcaden",
+        "address": "Schönhauser Allee 79-80, 10439 Berlin",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "photo_url": "https://apcoatx.blob.core.windows.net/mdm/fc16dd9b-be64-478c-81cf-dad4e4bbee71",
+        "has_fee": true,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-09-11T06:13:43Z",
+        "lat": 52.549486,
+        "lon": 13.416895,
+        "official_region_code": "110000000000",
+        "capacity": 328,
+        "capacity_disabled": 15,
+        "capacity_woman": 10,
+        "capacity_charging": 2,
+        "opening_hours": "Mo-Fr 07:00-23:00; Sa 07:00-23:00; Su 07:00-23:00",
+        "id": 7143,
+        "created_at": "2024-07-16T12:45:38Z",
+        "modified_at": "2026-09-12T01:00:22Z",
+        "restrictions": [
+          {
+            "type": "WOMEN",
+            "capacity": 10
+          },
+          {
+            "type": "DISABLED",
+            "capacity": 15
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 2
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 26,
+        "original_uid": "77",
+        "name": "Potsdam, Bahnhofspassagen PH 1",
+        "public_url": "https://www.apcoa.de/parken/Potsdam/Bahnhofspassagen-PH-1",
+        "address": "Babelsberger Strasse 16, 14473 Potsdam",
+        "type": "UNDERGROUND",
+        "purpose": "CAR",
+        "photo_url": "https://apcoatx.blob.core.windows.net/mdm/1d935838-8e0f-462b-81e1-91af85097dcf",
+        "has_fee": true,
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-05-20T03:22:58Z",
+        "lat": 52.392746,
+        "lon": 13.064823,
+        "official_region_code": "120540000000",
+        "capacity": 1041,
+        "capacity_disabled": 62,
+        "capacity_woman": 342,
+        "opening_hours": "24/7",
+        "id": 7146,
+        "created_at": "2024-07-16T12:45:39Z",
+        "modified_at": "2026-06-18T01:01:02Z",
+        "restrictions": [
+          {
+            "type": "WOMEN",
+            "capacity": 342
+          },
+          {
+            "type": "DISABLED",
+            "capacity": 62
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 30,
+        "original_uid": "3fc00b52-4fc3-483b-9dcd-46ae75e413ed",
+        "name": "Winterthur Wülflingen",
+        "operator_name": "SBB",
+        "address": "Wydenweg 13, 8408 Winterthur Wülflingen",
+        "description": "Diese Parkkasse ist in Pension. Ihre Nachfolgerin, die P+R App, kann aber noch viel mehr. Jetzt herunterladen unter: www.sbb.ch/parking",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "fee_description": "ONLINE AND AUTOMAT",
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-06-30T01:00:16Z",
+        "lat": 47.5069877,
+        "lon": 8.6801023,
+        "capacity": 7,
+        "capacity_disabled": 1,
+        "capacity_charging": 0,
+        "opening_hours": "24/7",
+        "id": 8864,
+        "created_at": "2024-08-13T07:10:30Z",
+        "modified_at": "2026-06-30T01:00:20Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 1
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 0
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 30,
+        "original_uid": "eebff470-d921-4247-b343-cbed26e2ea16",
+        "name": "Neukirch-Egnach (SOB)",
+        "operator_name": "SOB",
+        "address": "Bahnhofstrasse 36, 9315  Neukirch-Egnach",
+        "description": "Die Parkuhr ist in Pension. Ihre Nachfolgerin, die P+R App, kann aber noch viel mehr.",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "fee_description": "ONLINE AND AUTOMAT",
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-06-30T01:00:17Z",
+        "lat": 47.538783,
+        "lon": 9.37615,
+        "capacity": 34,
+        "capacity_disabled": 0,
+        "capacity_charging": 0,
+        "opening_hours": "24/7",
+        "id": 8869,
+        "created_at": "2024-08-13T07:10:31Z",
+        "modified_at": "2026-06-30T01:00:24Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 0
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 0
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 30,
+        "original_uid": "897766b8-b60e-4116-b011-49dcfb5c038d",
+        "name": "Hettlingen",
+        "operator_name": "SBB",
+        "address": "Stationsstrasse 350, 8442 Hettlingen",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "fee_description": "ONLINE AND AUTOMAT",
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-06-30T01:00:16Z",
+        "lat": 47.5444847,
+        "lon": 8.6954079,
+        "capacity": 83,
+        "capacity_disabled": 1,
+        "capacity_charging": 0,
+        "opening_hours": "24/7",
+        "id": 8988,
+        "created_at": "2024-08-13T07:10:32Z",
+        "modified_at": "2026-06-30T01:00:22Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 1
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 0
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 30,
+        "original_uid": "a82c3b7b-3fad-4118-b8df-f4ae29e8e69b",
+        "name": "Möhlin",
+        "operator_name": "SBB",
+        "address": "Bahnhofplatz 4, 4313 Möhlin",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "fee_description": "ONLINE AND AUTOMAT",
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-06-30T01:00:16Z",
+        "lat": 47.5611482,
+        "lon": 7.8314708,
+        "capacity": 46,
+        "capacity_disabled": 1,
+        "capacity_charging": 0,
+        "opening_hours": "24/7",
+        "id": 9004,
+        "created_at": "2024-08-13T07:10:32Z",
+        "modified_at": "2026-06-30T01:00:22Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 1
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 0
+          }
+        ],
+        "restricted_to": []
+      },
+      {
+        "source_id": 30,
+        "original_uid": "87d53212-6500-40d6-9b10-5f8f5c39dfab",
+        "name": "Stein am Rhein",
+        "operator_name": "SBB",
+        "address": "Bahnhofstrasse 13, 8260 Stein am Rhein",
+        "description": "Die Parkuhr ist in Pension. Ihre Nachfolgerin, die P+R App, kann aber noch viel mehr.",
+        "type": "CAR_PARK",
+        "purpose": "CAR",
+        "fee_description": "ONLINE AND AUTOMAT",
+        "park_and_ride_type": [
+          "TRAIN"
+        ],
+        "has_realtime_data": false,
+        "static_data_updated_at": "2026-06-30T01:00:16Z",
+        "lat": 47.6565688,
+        "lon": 8.8543612,
+        "capacity": 53,
+        "capacity_disabled": 3,
+        "capacity_charging": 0,
+        "opening_hours": "24/7",
+        "id": 9019,
+        "created_at": "2024-08-13T07:10:32Z",
+        "modified_at": "2026-06-30T01:00:22Z",
+        "restrictions": [
+          {
+            "type": "DISABLED",
+            "capacity": 3
+          },
+          {
+            "type": "CHARGING",
+            "capacity": 0
+          }
+        ],
+        "restricted_to": []
+      }
+    ],
+    "total_count": 32019,
+    "next_id": 9290,
+    "next_path": "/api/public/v3/parking-sites?limit=500&start=9290"
+  }
+}

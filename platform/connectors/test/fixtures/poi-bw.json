@@ -1,0 +1,2092 @@
+{
+  "source": "https://overpass-api.de/api/interpreter?data=%5Bout%3Ajson%5D%5Btimeout%3A90%5D%5Bbbox%3A47.575%2C7.58%2C47.61%2C7.64%5D%3B(nwr%5B%22amenity%22~%22%5E(pharmacy%7Cdoctors%7Ckindergarten%7Crecycling)%24%22%5D%3Bnwr%5B%22leisure%22%3D%22playground%22%5D%3Bnwr%5B%22emergency%22%3D%22defibrillator%22%5D%3Bnwr%5B%22amenity%22%3D%22drinking_water%22%5D%3B)%3Bout%20tags%20center%3B",
+  "recordedAt": "2026-09-28T03:14:23.674Z",
+  "note": "Recorded from overpass-api.de with the connector's own query, but with the bounding box reduced from the south-western tile of the 4x3 grid (K1) to 47.575,7.58,47.61,7.64 (the tri-border area Loerrach / Weil am Rhein / Basel / Alsace), so a single modest request suffices and the points fall into the municipalities of test/fixtures/grenzen-bw.json or just outside the state. Untrimmed: 149 elements. 84 of them lie in Weil am Rhein (08336091), all nine kinds, more than 50, so the round-robin cap applies; the rest are in Basel and Huningue.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip"
+  },
+  "format": "json",
+  "payload": {
+    "version": 0.6,
+    "generator": "Overpass API 0.7.62.11 87bfad18",
+    "osm3s": {
+      "timestamp_osm_base": "2026-09-28T03:13:06Z",
+      "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+    },
+    "elements": [
+      {
+        "type": "node",
+        "id": 440108361,
+        "lat": 47.5924988,
+        "lon": 7.6125491,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "302",
+          "addr:postcode": "79576",
+          "addr:street": "Hauptstraße",
+          "amenity": "pharmacy",
+          "check_date": "2025-06-09",
+          "contact:email": "info@stadt-apotheke-weil.de",
+          "contact:fax": "+49 7621 792291",
+          "contact:phone": "+49 7621 73060",
+          "contact:website": "http://www.stadt-apotheke-weil.de",
+          "dispensing": "yes",
+          "healthcare": "pharmacy",
+          "name": "Stadt-Apotheke",
+          "opening_hours": "Mo-Fr 08:15-18:30, Sa 08:15-16:00, PH off",
+          "operator": "Dr. Gunter Eberhardt",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 443328284,
+        "lat": 47.5930628,
+        "lon": 7.6117509,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "3",
+          "addr:postcode": "79576",
+          "addr:street": "Rathausplatz",
+          "amenity": "pharmacy",
+          "contact:email": "info@apo-rathaus.de",
+          "contact:fax": "+49 7621 9741115",
+          "contact:phone": "+49 7621 974110",
+          "contact:website": "http://www.apo-rathaus.de",
+          "dispensing": "yes",
+          "healthcare": "pharmacy",
+          "name": "Apotheke am Rathaus",
+          "opening_hours": "Mo-Fr 08:00-18:30; Sa 08:00-13:00, PH off",
+          "operator": "Thomas Harms",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 443328285,
+        "lat": 47.5940912,
+        "lon": 7.6288827,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "163",
+          "addr:postcode": "79576",
+          "addr:street": "Hauptstraße",
+          "amenity": "pharmacy",
+          "dispensing": "yes",
+          "healthcare": "pharmacy",
+          "name": "Park Apotheke",
+          "opening_hours": "Mo-Fr 08:30-12:30,14:30-18:30; Sa 08:30-12:30",
+          "phone": "+49 7621 974170",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 443328286,
+        "lat": 47.5935682,
+        "lon": 7.6257148,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "185",
+          "addr:postcode": "79576",
+          "addr:street": "Hauptstraße",
+          "amenity": "pharmacy",
+          "contact:email": "adlerapo.weil@gmx.de",
+          "contact:fax": "+49 7621 913322",
+          "contact:phone": "+49 7621 71413",
+          "contact:website": "http://www.adler-apotheke-weil.de",
+          "dispensing": "yes",
+          "healthcare": "pharmacy",
+          "name": "Adler-Apotheke",
+          "opening_hours": "Mo-Fr 08:00-18:30; Sa 08:00-12:30; Su,PH off",
+          "operator": "Axel Gerhardt",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 443328287,
+        "lat": 47.5936718,
+        "lon": 7.6237829,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "188",
+          "addr:postcode": "79576",
+          "addr:street": "Hauptstraße",
+          "amenity": "pharmacy",
+          "contact:email": "baerenapo.weil@yahoo.de",
+          "contact:fax": "+49 7621 1676250",
+          "contact:phone": "+49 7621 73000",
+          "contact:website": "http://www.baeren-apotheke-weil.de",
+          "dispensing": "yes",
+          "healthcare": "pharmacy",
+          "name": "Bären-Apotheke",
+          "opening_hours": "Mo-Sa 08:00-12:30, Mo-Fr 14:30-18:30, PH off",
+          "operator": "Axel Gerhardt",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 453054959,
+        "lat": 47.5933344,
+        "lon": 7.6125571,
+        "tags": {
+          "amenity": "doctors",
+          "healthcare": "centre",
+          "name": "Ärztehaus",
+          "toilets:wheelchair": "no",
+          "wheelchair": "limited",
+          "wheelchair:description:en": "ramp very steep"
+        }
+      },
+      {
+        "type": "node",
+        "id": 454249726,
+        "lat": 47.5942,
+        "lon": 7.6316923,
+        "tags": {
+          "amenity": "drinking_water",
+          "fountain": "drinking"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1399795390,
+        "lat": 47.5943981,
+        "lon": 7.6184093,
+        "tags": {
+          "amenity": "recycling",
+          "check_date:recycling": "2025-05-29",
+          "recycling:glass": "no",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1650226137,
+        "lat": 47.5930806,
+        "lon": 7.6352688,
+        "tags": {
+          "amenity": "drinking_water",
+          "check_date": "2023-03-05",
+          "fountain": "drinking"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1717809568,
+        "lat": 47.5850736,
+        "lon": 7.6057165,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:batteries": "yes",
+          "recycling:cans": "yes",
+          "recycling:glass": "yes",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1777001427,
+        "lat": 47.5815378,
+        "lon": 7.6088389,
+        "tags": {
+          "amenity": "recycling",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1790081092,
+        "lat": 47.57602,
+        "lon": 7.6361736,
+        "tags": {
+          "amenity": "recycling",
+          "check_date:recycling": "2024-01-29",
+          "location": "underground",
+          "recycling:batteries": "no",
+          "recycling:cans": "yes",
+          "recycling:clothes": "no",
+          "recycling:glass": "no",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1791374530,
+        "lat": 47.5768077,
+        "lon": 7.6393726,
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2405923252,
+        "lat": 47.5890184,
+        "lon": 7.6222396,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2405923256,
+        "lat": 47.5888773,
+        "lon": 7.63387,
+        "tags": {
+          "amenity": "recycling",
+          "check_date:recycling": "2025-12-26",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2405923274,
+        "lat": 47.5919199,
+        "lon": 7.6345939,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:clothes": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2519556587,
+        "lat": 47.5932111,
+        "lon": 7.6168718,
+        "tags": {
+          "amenity": "doctors",
+          "healthcare": "doctor",
+          "name": "Dr. Kuntner"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2519556588,
+        "lat": 47.5932239,
+        "lon": 7.6169246,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "4",
+          "addr:postcode": "79576",
+          "addr:street": "Semmelweisstraße",
+          "amenity": "doctors",
+          "email": "h.hasan@hasan-hno.de",
+          "healthcare": "doctor",
+          "healthcare:speciality": "otolaryngology",
+          "name": "Dr. Hasan",
+          "opening_hours": "Mo,Tu,Th 08:15-12:00,14:00-16:30;We 08:15-13:50;Fr 08:15-12:00;PH off",
+          "phone": "+49 7621 799894",
+          "website": "https://www.hno-hossam-hasan.com/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 3075830202,
+        "lat": 47.5942128,
+        "lon": 7.5810891,
+        "tags": {
+          "amenity": "pharmacy",
+          "dispensing": "yes",
+          "name": "Pharmacie de l'Ancienne Gare",
+          "ref:FR:FINESS": "680008935",
+          "ref:FR:SIRET": "94814859800014",
+          "source": "Celtipharm - 10/2014"
+        }
+      },
+      {
+        "type": "node",
+        "id": 3338408013,
+        "lat": 47.5910098,
+        "lon": 7.5926197,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "435",
+          "addr:postcode": "79576",
+          "addr:street": "Hauptstraße",
+          "amenity": "pharmacy",
+          "check_date": "2026-03-26",
+          "check_date:opening_hours": "2026-03-26",
+          "dispensing": "yes",
+          "email": "apo@theke.ch",
+          "fax": "+49 7621 791627",
+          "level": "0",
+          "name": "Apotheke im Rheincenter",
+          "opening_hours": "Mo-Sa 08:30-20:00",
+          "phone": "+49 7621 78000",
+          "website": "http://www.apotheke-rheincenter.de/",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 3840022062,
+        "lat": 47.5847348,
+        "lon": 7.5925255,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:batteries": "yes",
+          "recycling:cans": "yes",
+          "recycling:glass": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4145139998,
+        "lat": 47.5953578,
+        "lon": 7.6108062,
+        "tags": {
+          "amenity": "kindergarten",
+          "name": "Freie Kita Weil am Rhein e. V.",
+          "website": "https://freie-kita.de/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4266731524,
+        "lat": 47.5883752,
+        "lon": 7.5838914,
+        "tags": {
+          "access": "yes",
+          "amenity": "drinking_water",
+          "check_date": "2025-06-30",
+          "fee": "no",
+          "man_made": "water_well",
+          "operational_status": "out_of_order",
+          "pump": "manual"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534833,
+        "lat": 47.6017824,
+        "lon": 7.5885206,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:scrap_metal": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534834,
+        "lat": 47.6017832,
+        "lon": 7.5882514,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:cardboard": "yes",
+          "recycling:paper": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534835,
+        "lat": 47.6018276,
+        "lon": 7.5887551,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:green_waste": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534836,
+        "lat": 47.6019107,
+        "lon": 7.5887707,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:cans": "yes",
+          "recycling:plastic": "yes",
+          "recycling:plastic_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534837,
+        "lat": 47.6019316,
+        "lon": 7.5887468,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:cans": "yes",
+          "recycling:plastic": "yes",
+          "recycling:plastic_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534838,
+        "lat": 47.601951,
+        "lon": 7.5887276,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534839,
+        "lat": 47.6019696,
+        "lon": 7.5887037,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534840,
+        "lat": 47.6019921,
+        "lon": 7.5884333,
+        "tags": {
+          "amenity": "recycling",
+          "operator": "Déchetterie des 3 Frontières",
+          "recycling:plastic_packaging": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397534841,
+        "lat": 47.6019392,
+        "lon": 7.5885745,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:green_waste": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397540543,
+        "lat": 47.6018582,
+        "lon": 7.5883292,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:electrical_appliances": "yes",
+          "recycling:small_appliances": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4397540544,
+        "lat": 47.6018679,
+        "lon": 7.588413,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:batteries": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 4812836024,
+        "lat": 47.5934866,
+        "lon": 7.5800153,
+        "tags": {
+          "amenity": "drinking_water",
+          "seasonal": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5181345123,
+        "lat": 47.5842162,
+        "lon": 7.591875,
+        "tags": {
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5365382764,
+        "lat": 47.5972072,
+        "lon": 7.6292085,
+        "tags": {
+          "amenity": "recycling",
+          "opening_hours": "Mo-Sa 07:00-20:00; PH off",
+          "operator": "REMONDIS",
+          "operator:wikidata": "Q884975",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5650144758,
+        "lat": 47.5750126,
+        "lon": 7.6011213,
+        "tags": {
+          "amenity": "drinking_water",
+          "artwork_type": "sculpture",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskbrunnen",
+          "sculpture": "basilisk"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5681692985,
+        "lat": 47.5940658,
+        "lon": 7.6258824,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:housenumber": "2",
+          "addr:postcode": "79576",
+          "addr:street": "Königsberger Straße",
+          "amenity": "doctors",
+          "check_date:opening_hours": "2024-08-19",
+          "fax": "+49 7621 793459",
+          "healthcare": "doctor",
+          "healthcare:speciality": "general",
+          "level": "0",
+          "name": "Regine Kullen",
+          "opening_hours": "Mo,Tu,Th 09:00-11:00,16:00-18:00; We,Fr 09:00-11:00; Sa,Su,PH off",
+          "phone": "+49 7621 71477",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5774846353,
+        "lat": 47.5953262,
+        "lon": 7.6283357,
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Kleinkinder-Spielbereich Läublinpark"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5787881918,
+        "lat": 47.5939648,
+        "lon": 7.5833925,
+        "tags": {
+          "amenity": "recycling",
+          "recycling_type": "container",
+          "source": "local knowledge"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6433833785,
+        "lat": 47.5797207,
+        "lon": 7.5915565,
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6635277404,
+        "lat": 47.5909493,
+        "lon": 7.6348532,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:clothes": "yes",
+          "recycling:shoes": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6780081303,
+        "lat": 47.5782534,
+        "lon": 7.6244011,
+        "tags": {
+          "amenity": "drinking_water",
+          "man_made": "drinking_fountain"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6784964160,
+        "lat": 47.5768802,
+        "lon": 7.5916198,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "colour": "darkgreen",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskenbrunnen",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wikidata": "Q72951232",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Wiesenplatz)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6800320230,
+        "lat": 47.5757402,
+        "lon": 7.5888609,
+        "tags": {
+          "amenity": "drinking_water",
+          "artist:wikidata": "Q14954590",
+          "artist_name": "Wilhelm Bubeck",
+          "artwork_type": "sculpture",
+          "colour": "darkgreen",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "name": "Basiliskenbrunnen",
+          "sculpture": "basilisk",
+          "tourism": "artwork",
+          "wikidata": "Q72951243",
+          "wikimedia_commons": "Category:Basiliskenbrunnen (Kleinhüningerstrasse/Klybeckstrasse)"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6802962380,
+        "lat": 47.5805209,
+        "lon": 7.604121,
+        "tags": {
+          "amenity": "drinking_water",
+          "man_made": "drinking_fountain"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6804168204,
+        "lat": 47.5838987,
+        "lon": 7.5918947,
+        "tags": {
+          "amenity": "drinking_water",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6814713555,
+        "lat": 47.5787248,
+        "lon": 7.5884572,
+        "tags": {
+          "amenity": "drinking_water",
+          "man_made": "drinking_fountain"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6816121121,
+        "lat": 47.5762841,
+        "lon": 7.5975924,
+        "tags": {
+          "amenity": "drinking_water",
+          "man_made": "drinking_fountain"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6838722395,
+        "lat": 47.5781565,
+        "lon": 7.6243327,
+        "tags": {
+          "amenity": "drinking_water",
+          "fountain": "bubbler"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7673849469,
+        "lat": 47.5780831,
+        "lon": 7.5955613,
+        "tags": {
+          "amenity": "recycling",
+          "opening_hours": "Mo-Sa 07:00-20:00",
+          "recycling:aluminium": "yes",
+          "recycling:batteries": "yes",
+          "recycling:cans": "yes",
+          "recycling:glass_bottles": "yes",
+          "recycling:scrap_metal": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7807287762,
+        "lat": 47.5935312,
+        "lon": 7.6331043,
+        "tags": {
+          "amenity": "drinking_water",
+          "fountain": "drinking"
+        }
+      },
+      {
+        "type": "node",
+        "id": 8722859334,
+        "lat": 47.58482,
+        "lon": 7.5919181,
+        "tags": {
+          "amenity": "recycling",
+          "opening_hours": "Mo-Sa 07:00-20:00",
+          "recycling:batteries": "yes",
+          "recycling:cans": "yes",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 8722859376,
+        "lat": 47.5770615,
+        "lon": 7.5908864,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:batteries": "yes",
+          "recycling:cans": "yes",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9026035317,
+        "lat": 47.5953494,
+        "lon": 7.6223423,
+        "tags": {
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9100062600,
+        "lat": 47.5939482,
+        "lon": 7.6278051,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:housenumber": "169",
+          "addr:postcode": "79576",
+          "addr:street": "Hauptstraße",
+          "amenity": "doctors",
+          "healthcare": "doctor",
+          "healthcare:speciality": "dermatology;venereology",
+          "name": "Hautarzt Schulze",
+          "opening_hours": "Mo-Fr 08:00-13:00; PH off",
+          "operator": "Dr. med. Lothar Schulze",
+          "phone": "+49762178001",
+          "website": "http://hautsache-weil.com/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9131353517,
+        "lat": 47.5803125,
+        "lon": 7.5959054,
+        "tags": {
+          "access": "yes",
+          "defibrillator:location": "Stücki Center Kiosk /Migros",
+          "description": "während Oeffzngszeiten Verfügbar",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "opening_hours": "Mo-Fr 09:00-19:00; Sa 09:00-18:00"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9131353518,
+        "lat": 47.5803125,
+        "lon": 7.5959054,
+        "tags": {
+          "access": "yes",
+          "defibrillator:location": "Stücki Center direkt bei Migros Kundendienst",
+          "description": "während Oeffungszeiten",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "opening_hours": "Mo-Fr 09:00-19:00; Sa 09:00-18:00",
+          "operator": "Migros"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9155722959,
+        "lat": 47.5768163,
+        "lon": 7.6032564,
+        "tags": {
+          "amenity": "drinking_water",
+          "fountain": "bubbler"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9175447039,
+        "lat": 47.5975453,
+        "lon": 7.6166287,
+        "tags": {
+          "amenity": "kindergarten",
+          "check_date": "2025-08-13",
+          "name": "Haus der kleinen Stühle"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9178515208,
+        "lat": 47.5984713,
+        "lon": 7.6184875,
+        "tags": {
+          "amenity": "kindergarten",
+          "check_date": "2025-10-17",
+          "name": "Familienzentrum Wunderfitz"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9197188563,
+        "lat": 47.5960504,
+        "lon": 7.6321165,
+        "tags": {
+          "leisure": "playground",
+          "playground": "sandpit"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9246942979,
+        "lat": 47.5904976,
+        "lon": 7.6014293,
+        "tags": {
+          "amenity": "kindergarten",
+          "check_date": "2024-09-10",
+          "name": "Katholische Kindertagesstätte St. Elisabeth"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9383919224,
+        "lat": 47.5976968,
+        "lon": 7.618053,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:clothes": "yes",
+          "recycling:glass": "no",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9385560064,
+        "lat": 47.59629,
+        "lon": 7.6192063,
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Kleinkinder-Spielbereich Gotthold-Schlusser-Weg",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9385560069,
+        "lat": 47.5936795,
+        "lon": 7.6246297,
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Berliner Platz",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9525051358,
+        "lat": 47.5908341,
+        "lon": 7.6005558,
+        "tags": {
+          "amenity": "doctors",
+          "healthcare": "doctor",
+          "name": "Hausärzte Dreiländereck",
+          "opening_hours": "Mo-Fr 09:00-13:00,15:00-19:00; Tu 09:00-13:00; We 09:00-12:00; Th 09:00-13:00,15:00-18:00; Fr 09:00-12:00",
+          "phone": "+49 7621 798070",
+          "website": "https://www.hausaerzte-dreilaendereck.de/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9577631617,
+        "lat": 47.5810231,
+        "lon": 7.6391365,
+        "tags": {
+          "access": "yes",
+          "defibrillator:location": "Grendelmatte, draussen, neben der Tür.",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "no",
+          "opening_hours": "24/7"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9663452539,
+        "lat": 47.5942976,
+        "lon": 7.6212676,
+        "tags": {
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9663452540,
+        "lat": 47.5944166,
+        "lon": 7.6217604,
+        "tags": {
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9870305444,
+        "lat": 47.5957859,
+        "lon": 7.6250878,
+        "tags": {
+          "defibrillator:location": "Oberrhein Gymnasium - Foyer EG",
+          "emergency": "defibrillator",
+          "indoor": "yes",
+          "opening_hours": "\"zu den Schulzeiten\"",
+          "operator": "Björn Steiger Stiftung",
+          "operator:wikidata": "Q879521",
+          "operator:wikipedia": "de:Björn Steiger Stiftung",
+          "ref": "1786"
+        }
+      },
+      {
+        "type": "node",
+        "id": 9926287126,
+        "lat": 47.5799675,
+        "lon": 7.5908303,
+        "tags": {
+          "addr:city": "Basel",
+          "addr:housenumber": "177",
+          "addr:postcode": "4057",
+          "addr:street": "Kleinhüningerstrasse",
+          "alt_name": "Druckkammerzentrum Basel",
+          "amenity": "doctors",
+          "name": "Hyperbarzentrum Basel",
+          "website": "https://swissoxygen.ch/kontakt/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10148201497,
+        "lat": 47.5937239,
+        "lon": 7.6094809,
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "level": "-1"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10148201510,
+        "lat": 47.5935564,
+        "lon": 7.6096257,
+        "tags": {
+          "amenity": "pharmacy",
+          "healthcare": "pharmacy",
+          "level": "0",
+          "name": "Dreiländereck Apotheke",
+          "opening_hours": "Mo-Sa 09:00-20:00"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10727661989,
+        "lat": 47.5775031,
+        "lon": 7.5895486,
+        "tags": {
+          "amenity": "pharmacy",
+          "healthcare": "pharmacy",
+          "name": "zur Waage",
+          "phone": "+41 61 631 09 60",
+          "website": "https://www.apotheke-kleinbasel.ch/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11034488082,
+        "lat": 47.5982781,
+        "lon": 7.6257071,
+        "tags": {
+          "amenity": "recycling",
+          "opening_hours": "Mo-Sa 07:00-20:00; Su,PH off",
+          "operator": "REMONDIS",
+          "operator:wikidata": "Q884975",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11038060226,
+        "lat": 47.5789648,
+        "lon": 7.5969815,
+        "tags": {
+          "defibrillator:location": "Lonza Rezeption",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "no",
+          "opening_hours": "Mo-Fr 08:00-12:00",
+          "operator": "Lonza DPS",
+          "phone": "+41 78 7222403",
+          "source": "local_knowledge, defikarte.ch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11038063813,
+        "lat": 47.5776982,
+        "lon": 7.5967938,
+        "tags": {
+          "defibrillator:location": "Lonza Rezeption",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "no",
+          "level": "0",
+          "opening_hours": "Mo-Fr 08:00-17:30",
+          "operator": "Lonza DPS",
+          "phone": "+41 78 7222403",
+          "source": "local_knowledge, defikarte.ch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11060592995,
+        "lat": 47.6026307,
+        "lon": 7.6160581,
+        "tags": {
+          "amenity": "drinking_water",
+          "bottle": "yes",
+          "dog": "no",
+          "fee": "no",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11297019846,
+        "lat": 47.59399,
+        "lon": 7.6122461,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:housenumber": "6",
+          "addr:postcode": "79576",
+          "addr:street": "Am Rathaus",
+          "amenity": "doctors",
+          "fax": "+49 7621 797409",
+          "healthcare": "doctor",
+          "healthcare:speciality": "orthopaedics",
+          "name": "Dr. Saltenberger",
+          "opening_hours": "Mo,We,Th 08:00-12:30,15:00-17:00; Tu,Fr 08:00-12:30; Sa,Su,PH off",
+          "operator": "Dr. med. Hanno Saltenberger",
+          "phone": "+49 7621 72021"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11546554370,
+        "lat": 47.5784871,
+        "lon": 7.5972819,
+        "tags": {
+          "defibrillator:location": "Rezeption Hochbergerstrasse 60c",
+          "description": "während der Öffnungszeiten verfügbar.",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "level": "0",
+          "opening_hours": "08:00-17:00",
+          "operator": "Techpark Basel",
+          "source": "local_knowledge, defikarte.ch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11723225743,
+        "lat": 47.5818013,
+        "lon": 7.6002196,
+        "tags": {
+          "access": "private",
+          "defibrillator:location": "Betriebsgebäude",
+          "description": "Blauer Foppa Rucksack 1388 LTB",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "level": "0",
+          "name": "ProRheno AG",
+          "opening_hours": "24/7",
+          "operator": "Lifetec AG Schweiz",
+          "phone": "+41 800 122 144"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11723369994,
+        "lat": 47.5817492,
+        "lon": 7.6004643,
+        "tags": {
+          "access": "private",
+          "defibrillator:location": "Betriebsgebäude",
+          "description": "Blauer Foppa Rucksack 1387 LTB",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "level": "0",
+          "name": "ProRheno AG",
+          "opening_hours": "24/7",
+          "operator": "Lifetec AG Schweiz",
+          "phone": "+41 800 122 144"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11746548591,
+        "lat": 47.5992396,
+        "lon": 7.6207425,
+        "tags": {
+          "amenity": "kindergarten",
+          "name": "Haus der kleinen Stühle II"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11780914907,
+        "lat": 47.5869643,
+        "lon": 7.5827395,
+        "tags": {
+          "amenity": "recycling",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11780996073,
+        "lat": 47.5900958,
+        "lon": 7.5827044,
+        "tags": {
+          "amenity": "recycling",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 11897195669,
+        "lat": 47.5792525,
+        "lon": 7.6374359,
+        "tags": {
+          "access": "yes",
+          "defibrillator:location": "Clubhaus",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "no",
+          "level": "0",
+          "opening_hours": "24/7",
+          "operator": "Tennisclub Riehen",
+          "phone": "+41793216468",
+          "source": "aed-source"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12066085338,
+        "lat": 47.5876419,
+        "lon": 7.6103706,
+        "tags": {
+          "amenity": "kindergarten",
+          "name": "Städtischer Waldkindergarten Märchenwald",
+          "website": "https://kinderbetreuung.weil-am-rhein.de/waldkita/home"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12144942794,
+        "lat": 47.5871884,
+        "lon": 7.585688,
+        "tags": {
+          "amenity": "drinking_water",
+          "man_made": "water_tap"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12216139495,
+        "lat": 47.5878741,
+        "lon": 7.616283,
+        "tags": {
+          "access": "yes",
+          "amenity": "drinking_water",
+          "description": "Anlässlich der Kampagne “EIN SPIEL – EIN TRINKBRUNNEN” für die Fußball-EM 2024 der Männer aufgestellt. Vom Bundesministerium für Umwelt, Naturschutz, nukleare Sicherheit und Verbraucherschutz (BMUV) gefördert und durchgeführt von a tip: tap e.V.",
+          "fee": "no",
+          "fountain": "bubbler",
+          "name": "Euro-Trinkbrunnen",
+          "operator": "Stadt Weil am Rhein"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12328442190,
+        "lat": 47.5912588,
+        "lon": 7.5824346,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:glass_bottles": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12328442191,
+        "lat": 47.5913078,
+        "lon": 7.5824024,
+        "tags": {
+          "amenity": "recycling",
+          "recycling:cardboard": "yes",
+          "recycling_type": "container"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12355091801,
+        "lat": 47.5879022,
+        "lon": 7.5893265,
+        "tags": {
+          "access": "permissive",
+          "defibrillator:location": "Basler Personenschifffahrt AG",
+          "description": "während Betriebszeiten verfügbar",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "level": "-1",
+          "opening_hours": "24/7",
+          "operator": "Firma",
+          "phone": "+41616399500",
+          "source": "local_knowledge, defikarte.ch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12355094501,
+        "lat": 47.5874644,
+        "lon": 7.5892621,
+        "tags": {
+          "access": "permissive",
+          "defibrillator:location": "Basler Personenschifffahrt AG",
+          "description": "während Betriebszeiten verfügbar",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "level": "1",
+          "operator": "Firma",
+          "phone": "+41616399500",
+          "source": "local_knowledge, defikarte.ch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12487097044,
+        "lat": 47.5924955,
+        "lon": 7.612315,
+        "tags": {
+          "amenity": "doctors",
+          "name": "Regiopraxis",
+          "opening_hours": "Mo-Th 08:00-12:00,15:00-18:00; Fr 08:00-12:00; PH off",
+          "phone": "+49 7621 577070",
+          "website": "https://www.regiopraxis.de"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13115987656,
+        "lat": 47.5918686,
+        "lon": 7.5934004,
+        "tags": {
+          "amenity": "drinking_water",
+          "fountain": "drinking"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13144454625,
+        "lat": 47.5949566,
+        "lon": 7.6229541,
+        "tags": {
+          "access": "yes",
+          "defibrillator:location": "Gemeinschaftsschule Weil am Rhein -",
+          "emergency": "defibrillator",
+          "indoor": "yes",
+          "opening_hours": "zu den Schulzeiten",
+          "operator": "Björn Steiger Stiftung",
+          "operator:wikidata": "Q879521",
+          "operator:wikipedia": "de:Björn Steiger Stiftung",
+          "ref": "3728"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13524173358,
+        "lat": 47.5819496,
+        "lon": 7.5937199,
+        "tags": {
+          "amenity": "pharmacy",
+          "healthcare": "pharmacy",
+          "name": "Rhein-Apotheke"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13718194301,
+        "lat": 47.5890889,
+        "lon": 7.5906381,
+        "tags": {
+          "access": "yes",
+          "defibrillator:location": "Revierzentrale Hiltalingerstrasse 79, Cafeteria",
+          "description": "Die Revierzentrale ist täglich von 05:00 bis 21:00 erreichbar unter +41 61 639 95 30",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "level": "0",
+          "opening_hours": "05:00 - 21:00",
+          "operator": "Schweizerische Rheinhäfen",
+          "phone": "+41 61 639 95 30"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13718351102,
+        "lat": 47.5822875,
+        "lon": 7.5907762,
+        "tags": {
+          "access": "permissive",
+          "defibrillator:location": "Hochbergerstrasse 160",
+          "emergency": "defibrillator",
+          "emergency:phone": "144",
+          "indoor": "yes",
+          "level": "0",
+          "opening_hours": "Mo - Fr 08:00 - 12:00, 13:00 - 16:00",
+          "operator": "Schweizerische Rheinhäfen",
+          "phone": "+41 61 639 95 30"
+        }
+      },
+      {
+        "type": "node",
+        "id": 13995315165,
+        "lat": 47.5966576,
+        "lon": 7.6070416,
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:housenumber": "9",
+          "addr:postcode": "79576",
+          "addr:street": "Weidstraße",
+          "amenity": "recycling",
+          "description": "Lofo-Gewerbepark, ab 01.07.2026 nachdem das Recyclingzentrum Weil am Rhein - Märkt geschlossen ist.\nVgl. https://www.abfallwirtschaft-loerrach-landkreis.de/aktuelles/meldungen?view=publish&item=article&id=8008",
+          "name": "Übergangsrecyclinghof Weil am Rhein",
+          "opening_hours": "Mo,We,Fr 14:00-17:00; Tu,Th 12:00-17:00; Sa 08:00-14:00; Su,PH off",
+          "operator": "Abfallwirtschaft Landkreis Lörrach",
+          "operator:type": "public",
+          "recycling:aluminium": "yes",
+          "recycling:cartons": "yes",
+          "recycling:clothes": "yes",
+          "recycling:glass": "yes",
+          "recycling:glass_bottles": "yes",
+          "recycling:metal_packaging": "yes",
+          "recycling:paper": "yes",
+          "recycling:paper_packaging": "yes",
+          "recycling_type": "centre",
+          "website": "https://www.abfallwirtschaft-loerrach-landkreis.de/einrichtungen"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14094180103,
+        "lat": 47.5989744,
+        "lon": 7.6209702,
+        "tags": {
+          "amenity": "drinking_water"
+        }
+      },
+      {
+        "type": "way",
+        "id": 68687056,
+        "center": {
+          "lat": 47.5891015,
+          "lon": 7.6125745
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Im Mooswald",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 91875512,
+        "center": {
+          "lat": 47.5855326,
+          "lon": 7.6125578
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Tatzelwurm",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 100804034,
+        "center": {
+          "lat": 47.5972132,
+          "lon": 7.631447
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Rümminger Weg",
+          "toilets:wheelchair": "no",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "type": "way",
+        "id": 102476020,
+        "center": {
+          "lat": 47.5891218,
+          "lon": 7.633839
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Schutzacker",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 102724057,
+        "center": {
+          "lat": 47.5912723,
+          "lon": 7.6343835
+        },
+        "tags": {
+          "amenity": "kindergarten",
+          "name": "Kindergarten Eisenbahnstraße",
+          "website": "https://www.ekiweil.de/kindergaerten/kindergarten-eisenbahnstrasse/"
+        }
+      },
+      {
+        "type": "way",
+        "id": 103513772,
+        "center": {
+          "lat": 47.5899893,
+          "lon": 7.6280703
+        },
+        "tags": {
+          "leisure": "playground",
+          "name": "Pfädlistraße",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 107104065,
+        "center": {
+          "lat": 47.5922876,
+          "lon": 7.6216979
+        },
+        "tags": {
+          "amenity": "kindergarten",
+          "name": "Katholischer Kindergarten St. Michael",
+          "operator": "Katholische Kirchengemeinde Weil am Rhein",
+          "website": "https://www.kath-weil.de/lebendige-gemeinde/kindergaerten-der-kath-kirchengemeinde-weil-am-rhein/st-michael"
+        }
+      },
+      {
+        "type": "way",
+        "id": 107106174,
+        "center": {
+          "lat": 47.5891694,
+          "lon": 7.6165589
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:housenumber": "3",
+          "addr:postcode": "79576",
+          "addr:street": "Hebelplatz",
+          "amenity": "kindergarten",
+          "check_date": "2026-03-26",
+          "name": "Städtische Kindertagesstätte Hebelplatz",
+          "website": "https://kinderbetreuung.weil-am-rhein.de/weil-am-rhein-kita-hebelplatz/home"
+        }
+      },
+      {
+        "type": "way",
+        "id": 231961037,
+        "center": {
+          "lat": 47.5854152,
+          "lon": 7.6221535
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Kieswerk",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt",
+          "wheelchair": "no",
+          "wheelchair:description": "zu viel Kies"
+        }
+      },
+      {
+        "type": "way",
+        "id": 232578919,
+        "center": {
+          "lat": 47.5885075,
+          "lon": 7.6267433
+        },
+        "tags": {
+          "leisure": "playground",
+          "name": "Schutzacker III",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 232788532,
+        "center": {
+          "lat": 47.583106,
+          "lon": 7.606377
+        },
+        "tags": {
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 236569706,
+        "center": {
+          "lat": 47.6022739,
+          "lon": 7.5879936
+        },
+        "tags": {
+          "amenity": "recycling",
+          "recycling:batteries": "yes",
+          "recycling:cans": "yes",
+          "recycling:clothes": "yes",
+          "recycling:glass_bottles": "yes",
+          "recycling:paper": "yes",
+          "recycling:scrap_metal": "yes",
+          "recycling_type": "Balance de pesée pour les professionnels"
+        }
+      },
+      {
+        "type": "way",
+        "id": 307689366,
+        "center": {
+          "lat": 47.5916618,
+          "lon": 7.5846704
+        },
+        "tags": {
+          "amenity": "doctors",
+          "building": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 316500275,
+        "center": {
+          "lat": 47.5758234,
+          "lon": 7.6355291
+        },
+        "tags": {
+          "addr:city": "Riehen",
+          "addr:country": "CH",
+          "addr:housenumber": "255",
+          "addr:postcode": "4125",
+          "addr:street": "Aeussere Baselstrasse",
+          "amenity": "pharmacy",
+          "building": "terrace",
+          "check_date:opening_hours": "2022-05-06",
+          "name": "Wiesen Apotheke",
+          "opening_hours": "PH,Su-Fr 08:30-12:15, PH,Mo-Su 13:45-18:30, Sa 08:30-12:15",
+          "phone": "+41 61 601 29 29",
+          "source": "GeoDaten Kanton Basel-Stadt",
+          "wheelchair": "no",
+          "wheelchair:description": "4 Stufen am Eingang"
+        }
+      },
+      {
+        "type": "way",
+        "id": 318953116,
+        "center": {
+          "lat": 47.5977345,
+          "lon": 7.6253855
+        },
+        "tags": {
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 533670779,
+        "center": {
+          "lat": 47.5828601,
+          "lon": 7.5925517
+        },
+        "tags": {
+          "amenity": "drinking_water",
+          "historic": "drinking_fountain",
+          "man_made": "drinking_fountain",
+          "natural": "water"
+        }
+      },
+      {
+        "type": "way",
+        "id": 655205632,
+        "center": {
+          "lat": 47.5824753,
+          "lon": 7.6064684
+        },
+        "tags": {
+          "amenity": "kindergarten",
+          "name": "Katholischer Kindergarten St. Franziskus",
+          "website": "https://www.kath-weil.de/lebendige-gemeinde/kindergaerten-der-kath-kirchengemeinde-weil-am-rhein/st-franziskus/?"
+        }
+      },
+      {
+        "type": "way",
+        "id": 743529850,
+        "center": {
+          "lat": 47.601909,
+          "lon": 7.5885426
+        },
+        "tags": {
+          "amenity": "recycling",
+          "fax": "+33 3 89 89 72 20",
+          "name": "Déchèterie de la CC3F",
+          "operator": "Communauté d'Agglomération de Saint-louis Agglomération",
+          "phone": "+33 3 89 67 88 36",
+          "recycling:aluminium": "yes",
+          "recycling:batteries": "yes",
+          "recycling:beverage_cartons": "yes",
+          "recycling:books": "yes",
+          "recycling:cans": "yes",
+          "recycling:cardboard": "yes",
+          "recycling:cartons": "yes",
+          "recycling:clothes": "yes",
+          "recycling:electrical_appliances": "yes",
+          "recycling:glass": "yes",
+          "recycling:glass_bottles": "yes",
+          "recycling:green_waste": "yes",
+          "recycling:magazines": "yes",
+          "recycling:newspaper": "yes",
+          "recycling:paper": "yes",
+          "recycling:paper_packaging": "yes",
+          "recycling:plastic": "yes",
+          "recycling:plastic_bottles": "yes",
+          "recycling:plastic_packaging": "yes",
+          "recycling:scrap_metal": "yes",
+          "recycling:shoes": "yes",
+          "recycling:small_appliances": "yes",
+          "recycling:waste": "yes",
+          "recycling:wood": "yes",
+          "recycling_type": "centre",
+          "ref:FR:SINOE": "2605",
+          "source": "ADEME - SINOE ® - Annuaire 2017 des déchèteries de déchets ménagers et assimilés (DMA)",
+          "start_date": "1996"
+        }
+      },
+      {
+        "type": "way",
+        "id": 963959315,
+        "center": {
+          "lat": 47.5901356,
+          "lon": 7.6184809
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Mattenstraße",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 975439114,
+        "center": {
+          "lat": 47.5944504,
+          "lon": 7.6203945
+        },
+        "tags": {
+          "amenity": "kindergarten",
+          "check_date": "2025-01-18",
+          "max_age": "6",
+          "min_age": "1",
+          "name": "Kindertagesstätte Don Bosco",
+          "operator": "Katholische Kirchengemeinde Weil am Rhein",
+          "website": "https://www.kath-weil.de/lebendige-gemeinde/kindergaerten-der-kath-kirchengemeinde-weil-am-rhein/don-bosco/?"
+        }
+      },
+      {
+        "type": "way",
+        "id": 991341096,
+        "center": {
+          "lat": 47.5974777,
+          "lon": 7.6171132
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Leimgrubenstraße"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1001863371,
+        "center": {
+          "lat": 47.5906121,
+          "lon": 7.601838
+        },
+        "tags": {
+          "access": "private",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1006607807,
+        "center": {
+          "lat": 47.5798425,
+          "lon": 7.5949195
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1017553851,
+        "center": {
+          "lat": 47.5916585,
+          "lon": 7.6250291
+        },
+        "tags": {
+          "leisure": "playground",
+          "name": "Kleinkinder-Spielbereich Talstraße",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1017553853,
+        "center": {
+          "lat": 47.5943819,
+          "lon": 7.6177228
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Messeplatz",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1025826640,
+        "center": {
+          "lat": 47.592776,
+          "lon": 7.5937346
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1025826645,
+        "center": {
+          "lat": 47.592105,
+          "lon": 7.5932766
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Rheinpark"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1026037348,
+        "center": {
+          "lat": 47.5925937,
+          "lon": 7.5935499
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1037436551,
+        "center": {
+          "lat": 47.5792057,
+          "lon": 7.5887798
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1043812655,
+        "center": {
+          "lat": 47.6026753,
+          "lon": 7.6177757
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1054134530,
+        "center": {
+          "lat": 47.6075888,
+          "lon": 7.6194053
+        },
+        "tags": {
+          "leisure": "playground",
+          "name": "Weinbergstraße"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1054134531,
+        "center": {
+          "lat": 47.6070275,
+          "lon": 7.6173542
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Am Mittelpfad"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1054134536,
+        "center": {
+          "lat": 47.6098738,
+          "lon": 7.6129561
+        },
+        "tags": {
+          "leisure": "playground",
+          "name": "Im Rad"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1054144343,
+        "center": {
+          "lat": 47.5927062,
+          "lon": 7.6028372
+        },
+        "tags": {
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1054144345,
+        "center": {
+          "lat": 47.5901885,
+          "lon": 7.5963385
+        },
+        "tags": {
+          "access": "yes",
+          "barrier": "hedge",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1054145479,
+        "center": {
+          "lat": 47.5918224,
+          "lon": 7.5986965
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Schwarzenbach"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1054145480,
+        "center": {
+          "lat": 47.5867946,
+          "lon": 7.6019663
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1063796689,
+        "center": {
+          "lat": 47.596213,
+          "lon": 7.6161842
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "name": "Kleinkinder-Spielbereich Hermann-Löns-Platz",
+          "website": "https://www.weil-am-rhein.de/start/leben/kinderundjugendliche/spielplaetze/kernstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1066934089,
+        "center": {
+          "lat": 47.5855721,
+          "lon": 7.614154
+        },
+        "tags": {
+          "access": "customers",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1075332918,
+        "center": {
+          "lat": 47.5921106,
+          "lon": 7.6325858
+        },
+        "tags": {
+          "access": "private",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1220374801,
+        "center": {
+          "lat": 47.5874908,
+          "lon": 7.5855937
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1220374802,
+        "center": {
+          "lat": 47.5893882,
+          "lon": 7.5818954
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground",
+          "playground:theme": "climbing"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1223218916,
+        "center": {
+          "lat": 47.5904604,
+          "lon": 7.5799884
+        },
+        "tags": {
+          "access": "yes",
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1356773477,
+        "center": {
+          "lat": 47.5941974,
+          "lon": 7.5822263
+        },
+        "tags": {
+          "leisure": "playground"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1498868175,
+        "center": {
+          "lat": 47.593504,
+          "lon": 7.5979674
+        },
+        "tags": {
+          "addr:housenumber": "63",
+          "addr:street": "Blauenstraße",
+          "amenity": "kindergarten",
+          "email": "kita.handinhand.weilamrhein@kbz.ekiba.de",
+          "name": "Kita Hand in Hand",
+          "operator": "Evangelische Kirchengemeinde Weil am Rhein",
+          "phone": "+49 7621 9155178",
+          "website": "https://www.ekiweil.de/kindergaerten/kita-hand-in-hand/"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1541406124,
+        "center": {
+          "lat": 47.5990712,
+          "lon": 7.6212269
+        },
+        "tags": {
+          "leisure": "playground",
+          "name": "Hohe Straße",
+          "wheelchair": "yes"
+        }
+      }
+    ]
+  }
+}

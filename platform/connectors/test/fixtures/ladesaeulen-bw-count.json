@@ -1,0 +1,145 @@
+{
+  "source": "https://api.mobidata-bw.de/ocpdb/api/public/v1/locations?lat=48.65&lon=9.0&radius=190000&limit=1&offset=0",
+  "recordedAt": "2026-09-28T03:09:52.310Z",
+  "note": "The complete live answer of the count request (limit=1), verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "items": [
+      {
+        "address": "Kinderloreweg 2",
+        "postal_code": "91550",
+        "city": "Dinkelsbühl",
+        "state": "Bayern",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T09:23:14Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "73344",
+        "publish": true,
+        "original_id": "1005281",
+        "source": "bnetza_api",
+        "official_region_code": "095710136136",
+        "coordinates": {
+          "latitude": 49.064395,
+          "longitude": 10.319956,
+          "lat": 49.064395,
+          "lon": 10.319956
+        },
+        "operator": {
+          "name": "SWD Plus GmbH & Co. KG"
+        },
+        "evses": [
+          {
+            "uid": "259996298",
+            "evse_id": "DE*LVP*E21116*002",
+            "status": "STATIC",
+            "presence": "PRESENT",
+            "last_updated": "2026-09-25T09:23:14Z",
+            "original_uid": "BNETZA*1126567*2",
+            "capabilities": [
+              "REMOTE_START_STOP_CAPABLE",
+              "RFID_READER"
+            ],
+            "connectors": [
+              {
+                "standard": "IEC_62196_T2",
+                "format": "SOCKET",
+                "power_type": "AC_3_PHASE",
+                "max_voltage": 400,
+                "max_amperage": 32,
+                "max_electric_power": 22000,
+                "last_updated": "2026-09-25T09:23:14Z",
+                "id": "260770407",
+                "original_id": "1"
+              }
+            ]
+          },
+          {
+            "uid": "259996297",
+            "evse_id": "DE*LVP*E21116*001",
+            "status": "STATIC",
+            "presence": "PRESENT",
+            "last_updated": "2026-09-25T09:23:14Z",
+            "original_uid": "BNETZA*1126567*1",
+            "capabilities": [
+              "REMOTE_START_STOP_CAPABLE",
+              "RFID_READER"
+            ],
+            "connectors": [
+              {
+                "standard": "IEC_62196_T2",
+                "format": "SOCKET",
+                "power_type": "AC_3_PHASE",
+                "max_voltage": 400,
+                "max_amperage": 32,
+                "max_electric_power": 22000,
+                "last_updated": "2026-09-25T09:23:14Z",
+                "id": "260770406",
+                "original_id": "1"
+              }
+            ]
+          },
+          {
+            "uid": "259996296",
+            "evse_id": "DE*LVP*E21685*002",
+            "status": "STATIC",
+            "presence": "PRESENT",
+            "last_updated": "2026-09-25T09:23:14Z",
+            "original_uid": "BNETZA*1005281*2",
+            "capabilities": [
+              "REMOTE_START_STOP_CAPABLE",
+              "RFID_READER"
+            ],
+            "connectors": [
+              {
+                "standard": "IEC_62196_T2",
+                "format": "SOCKET",
+                "power_type": "AC_3_PHASE",
+                "max_voltage": 400,
+                "max_amperage": 32,
+                "max_electric_power": 22000,
+                "last_updated": "2026-09-25T09:23:14Z",
+                "id": "260770405",
+                "original_id": "1"
+              }
+            ]
+          },
+          {
+            "uid": "259996295",
+            "evse_id": "DE*LVP*E21685*001",
+            "status": "STATIC",
+            "presence": "PRESENT",
+            "last_updated": "2026-09-25T09:23:14Z",
+            "original_uid": "BNETZA*1005281*1",
+            "capabilities": [
+              "REMOTE_START_STOP_CAPABLE",
+              "RFID_READER"
+            ],
+            "connectors": [
+              {
+                "standard": "IEC_62196_T2",
+                "format": "SOCKET",
+                "power_type": "AC_3_PHASE",
+                "max_voltage": 400,
+                "max_amperage": 32,
+                "max_electric_power": 22000,
+                "last_updated": "2026-09-25T09:23:14Z",
+                "id": "260770404",
+                "original_id": "1"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "total_count": 31461,
+    "next_offset": 1,
+    "next_path": "/ocpdb/api/public/v1/locations?lat=48.65&lon=9.0&radius=190000&limit=1&offset=1"
+  }
+}

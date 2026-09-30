@@ -1,0 +1,38 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs",
+  "recordedAt": "2026-09-28T03:09:22.874Z",
+  "note": "Trimmed by hand: 6 of 109 systems kept verbatim and in source order — the three station-based car sharing systems of the carsharing-bw fixtures (two of them around Ulm/Neu-Ulm, on the Bavarian border), the two free-floating systems of the sharing-bw fixtures, and bird-basel (a Swiss system, no fixture: its feeds answer 404 in the tests). Shared by sharing-bw and carsharing-bw, which read the same list.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "systems": [
+      {
+        "id": "teilauto_schwaebisch_hall",
+        "url": "https://api.mobidata-bw.de/sharing/gbfs/v2/teilauto_schwaebisch_hall/gbfs"
+      },
+      {
+        "id": "swu2go",
+        "url": "https://api.mobidata-bw.de/sharing/gbfs/v2/swu2go/gbfs"
+      },
+      {
+        "id": "conficars_ulm",
+        "url": "https://api.mobidata-bw.de/sharing/gbfs/v2/conficars_ulm/gbfs"
+      },
+      {
+        "id": "hopp_konstanz",
+        "url": "https://api.mobidata-bw.de/sharing/gbfs/v2/hopp_konstanz/gbfs"
+      },
+      {
+        "id": "zeus_tuttlingen",
+        "url": "https://api.mobidata-bw.de/sharing/gbfs/v2/zeus_tuttlingen/gbfs"
+      },
+      {
+        "id": "bird-basel",
+        "url": "https://api.mobidata-bw.de/sharing/gbfs/v2/bird-basel/gbfs"
+      }
+    ]
+  }
+}

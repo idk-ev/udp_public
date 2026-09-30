@@ -1,0 +1,238 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/swu2go/station_information",
+  "recordedAt": "2026-09-28T03:09:39.456Z",
+  "note": "All 31 stations of the live response, in source order; only the rental_uris of each station removed (deep links, never read).",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:27 GMT",
+    "etag": "\"5ee23a0bf1ad670803333943cef6b6f0\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564847,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "stations": [
+        {
+          "station_id": "SWU:Station:5162",
+          "name": "Albeck, Osterstetter Straße 14",
+          "lat": 48.484814,
+          "lon": 10.060742,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5660",
+          "name": "Ulm, Eselsbergsteige 101",
+          "lat": 48.4123,
+          "lon": 9.9499,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:9182",
+          "name": "Pfuhl, Hauptstraße 14",
+          "lat": 48.407,
+          "lon": 10.033,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:9183",
+          "name": "Reutti, Neu-Ulmer Straße 11",
+          "lat": 48.363,
+          "lon": 10.07,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:8273",
+          "name": "Parkhaus Fischerviertel Ulm, Himmelgasse 5",
+          "lat": 48.39605,
+          "lon": 9.98816,
+          "capacity": 2
+        },
+        {
+          "station_id": "SWU:Station:9184",
+          "name": "Burlafingen, Gerstmayerstraße 2",
+          "lat": 48.41424,
+          "lon": 10.06859,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5160",
+          "name": "Langenau, Sonnenstraße 4",
+          "lat": 48.500666,
+          "lon": 10.120674,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:8272",
+          "name": "Parkhaus Salzstadel Ulm, Salzstadelgasse 14",
+          "lat": 48.40112,
+          "lon": 9.99013,
+          "capacity": 2
+        },
+        {
+          "station_id": "SWU:Station:10139",
+          "name": "Ulm, Keplerstraße 19",
+          "lat": 48.40422,
+          "lon": 9.992887,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:10154",
+          "name": "Steinheim, Straßer Weg 6",
+          "lat": 48.398491,
+          "lon": 10.108844,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5159",
+          "name": "Langenau, Kuftenstraße 4",
+          "lat": 48.49727,
+          "lon": 10.121653,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:4984",
+          "name": "Gerhausen, Helfensteinstraße 12",
+          "lat": 48.398674,
+          "lon": 9.80661,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5413",
+          "name": "Ulm, Wilhelmstraße",
+          "lat": 48.40496,
+          "lon": 9.985599,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5216",
+          "name": "Thalfingen, Elchinger Straße 8",
+          "lat": 48.437521,
+          "lon": 10.052272,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:7759",
+          "name": "Ulm, Am Zundeltor",
+          "lat": 48.402258,
+          "lon": 9.999726,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:10379",
+          "name": "Parkhaus Hauptbahnhof Ulm P1, Friedrich-Ebert-Straße 11",
+          "lat": 48.398947,
+          "lon": 9.983852,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:7717",
+          "name": "Ulm, Wörthstraße 40",
+          "lat": 48.392667,
+          "lon": 9.975135,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:9013",
+          "name": "Ludwigsfeld, Reichenberger Straße 3",
+          "lat": 48.36905,
+          "lon": 10.01417,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:11291",
+          "name": "Parkhaus am Rathaus Ulm, Hans-Und-Sophie-Scholl-Platz 1",
+          "lat": 48.397207,
+          "lon": 9.992001,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5155",
+          "name": "Langenau, Keplerstraße 16",
+          "lat": 48.505274,
+          "lon": 10.128072,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:10380",
+          "name": "Ulm, Kässbohrerstraße 19",
+          "lat": 48.39719,
+          "lon": 9.970587,
+          "capacity": 2
+        },
+        {
+          "station_id": "SWU:Station:10140",
+          "name": "Ulm, Kleiststraße 12",
+          "lat": 48.400878,
+          "lon": 9.97966,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5158",
+          "name": "Langenau, Beethovenstraße 40",
+          "lat": 48.493226,
+          "lon": 10.113409,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:8380",
+          "name": "Offenhausen, Augsburgerstraße 179",
+          "lat": 48.40159,
+          "lon": 10.0204,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5170",
+          "name": "Hörvelsingen, Herwigstraße 21",
+          "lat": 48.485074,
+          "lon": 10.028637,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:5171",
+          "name": "Göttingen, Hallenweg 32",
+          "lat": 48.474776,
+          "lon": 10.08575,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:9968",
+          "name": "Ulm, Wilhelmstraße ID Buzz",
+          "lat": 48.40496,
+          "lon": 9.985599,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:10186",
+          "name": "Ulm, Wengengasse 29",
+          "lat": 48.3999,
+          "lon": 9.98731,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:8459",
+          "name": "Ulm, Schafgarbenweg 6",
+          "lat": 48.41316,
+          "lon": 9.96171,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:8977",
+          "name": "Ulm, Emmy-Wechßler-Weg 1",
+          "lat": 48.39512,
+          "lon": 9.96393,
+          "capacity": 1
+        },
+        {
+          "station_id": "SWU:Station:9929",
+          "name": "Ulm, Kornhausplatz 1",
+          "lat": 48.399791,
+          "lon": 9.994638,
+          "capacity": 1
+        }
+      ]
+    }
+  }
+}

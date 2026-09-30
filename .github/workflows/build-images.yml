@@ -9,10 +9,10 @@
 #   postgres-timescale-cnpg  platform/config/postgres-cnpg  -> Helm: timescale.image
 #   postgres-timescale-oss   platform/config/postgres       -> Helm: timescale.legacy.image
 #                                                              (+ docker compose)
-#   node-red-udp             platform/config/nodered        -> Helm: nodeRed.image
+#   udp-connectors           platform/connectors            -> Helm: connectors.image
 #
-# Alle übrigen Images (Orion-LD, Keycloak, APISIX, …) kommen unverändert von
-# Upstream und werden hier bewusst NICHT gespiegelt.
+# Alle übrigen Images (Orion-LD, Keycloak, APISIX, Node-RED, …) kommen
+# unverändert von Upstream und werden hier bewusst NICHT gespiegelt.
 #
 # Anschließend verpackt der Job „chart“ das Helm-Chart und pusht es als
 # OCI-Artefakt nach oci://ghcr.io/<owner>/<repo>/charts/udp. Er hängt per
@@ -25,12 +25,29 @@
 # testen lässt).
 #
 # Der paths-Filter ist die VEREINIGUNG aus Image- und Chart-Quellen. Ein Commit,
-# der nur helm/** anfasst, baut die Images also mit (aus dem Layer-Cache in
-# ~30 s) – dafür gibt es zu JEDEM Chart die passenden Images. Ohne das zeigte
-# ein Chart auf Image-Tags, die für diesen Commit nie gebaut wurden.
+# der nur helm/** anfasst, durchläuft also auch die Images – dafür gibt es zu
+# JEDEM Chart die passenden Image-Tags. Ohne das zeigte ein Chart auf
+# Image-Tags, die für diesen Commit nie gesetzt wurden.
 #
-# Aufräumen: die pr-*-Tags bleiben nach dem Merge liegen. Gelegentlich unter
-# GitHub → Packages → <image> → Manage versions entfernen.
+# Unveränderte Images behalten ihren Digest (inhaltsadressierte Wiederverwendung):
+# Jedes Image bekommt einen Hash seiner Build-Eingaben (Dockerfile, die Dateien
+# aus seinen COPY/ADD-Anweisungen, die aufgelösten Digests der FROM-Basis-Images,
+# Plattform und Metadaten) und den Tag „inputs-<hash>“. Gibt es diesen Tag schon,
+# wird NICHT gebaut: der vorhandene Digest bekommt nur die Tags dieses Laufs und
+# landet so im Chart. Geschrieben wird „inputs-<hash>“ nur aus vertrauenswürdigen
+# Läufen (Push auf main, Release, workflow_dispatch auf main) – PR-Läufe dürfen
+# vorhandene inputs-Images wiederverwenden, aber keine setzen: sonst könnte ein
+# PR ein Image unterschieben, das main oder ein Release später per Digest pinnt. Sonst würde jeder Lauf ein bit-verschiedenes, inhaltlich
+# gleiches Image erzeugen (Zeitstempel, Attestationen, apt) – und jedes
+# Chart-Release z. B. die Datenbank neu ausrollen (CNPG: Switchover des Primary).
+# Neu gebaut wird, wenn sich eine Eingabe ändert, ein Basis-Image upstream einen
+# neuen Digest bekommt (Sicherheitsupdates) oder per workflow_dispatch mit
+# force_rebuild (frische apt/pip/npm-Pakete aus RUN-Schritten).
+#
+# Aufräumen: die pr-*-Tags bleiben nach dem Merge liegen. Unter GitHub →
+# Packages → <image> → Manage versions NUR Versionen löschen, die ausschließlich
+# pr-*-Tags tragen: durch die Wiederverwendung kann dieselbe Version auch
+# main-, SemVer- oder inputs-Tags tragen und in einem Chart gepinnt sein.
 name: Images & Chart
 
 on:
@@ -43,7 +60,9 @@ on:
       - 'platform/config/ckan/**'
       - 'platform/config/postgres/**'
       - 'platform/config/postgres-cnpg/**'
-      - 'platform/config/nodered/**'
+      # The connector image carries the registry (connectors.json) as well.
+      - 'platform/connectors/**'
+      - 'platform/config/connectors.json'
       - 'helm/**'
       - '.github/workflows/build-images.yml'
   pull_request:
@@ -53,14 +72,24 @@ on:
       - 'platform/config/ckan/**'
       - 'platform/config/postgres/**'
       - 'platform/config/postgres-cnpg/**'
-      - 'platform/config/nodered/**'
+      # The connector image carries the registry (connectors.json) as well.
+      - 'platform/connectors/**'
+      - 'platform/config/connectors.json'
       - 'helm/**'
       - '.github/workflows/build-images.yml'
   # Releases haben absichtlich keinen paths-Filter: ein Release muss immer alle
-  # Images erzeugen, auch wenn der getaggte Commit nur Doku geändert hat.
+  # Images taggen, auch wenn der getaggte Commit nur Doku geändert hat.
+  # Releases verwenden unveränderte Images ebenfalls wieder (kein Zwangs-Rebuild):
+  # sie bekommen damit genau die Bits, die auf main/im PR getestet wurden, und ein
+  # Release-Upgrade rollt nur, was sich geändert hat.
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Alle Images neu bauen statt unveränderte wiederzuverwenden (frische Pakete aus apt/pip/npm)
+        type: boolean
+        default: false
 
 # Vorgabe für beide Jobs; sie heben sich das nötige packages: write selbst an.
 # Schützt davor, dass ein Umstellen der Repo-Vorgabe (Settings → Actions →
@@ -105,14 +134,22 @@ jobs:
             dockerfile: platform/config/postgres/Dockerfile
             valueKey: timescale.legacy
             description: PostgreSQL 16 + PostGIS + TimescaleDB Apache Edition
-          # Build-Kontext ist das Repo-Root: das Dockerfile kopiert die
-          # generierten Flows aus platform/config/nodered/.
-          - name: node-red-udp
+          # Build context is the repository root: the Dockerfile copies the
+          # registry from platform/config/connectors.json.
+          - name: udp-connectors
             context: .
-            dockerfile: platform/config/nodered/Dockerfile
-            valueKey: nodeRed
-            description: Node-RED mit den generierten UDP-Datenflüssen
+            dockerfile: platform/connectors/Dockerfile
+            valueKey: connectors
+            description: UDP-Konnektordienst (Ingestion offener Datenquellen nach NGSI-LD)
 
+    env:
+      # Single source for the build step AND the input hash below.
+      PLATFORMS: linux/amd64
+      # Part of the input hash. Bump it whenever this workflow changes HOW an
+      # image is built (build args, provenance/SBOM, a new build-push-action
+      # option, …): every image is then rebuilt once. Changes that do not touch
+      # the image contents need no bump.
+      INPUTS_VERSION: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -135,26 +172,6 @@ jobs:
             echo "push=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Tags und Labels ableiten
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ghcr.io/${{ steps.ctx.outputs.path }}/${{ matrix.name }}
-          # Bei PRs setzt die Action {{sha}} auf den HEAD-Commit des Branches,
-          # nicht auf den Merge-Commit – der Tag zeigt also auf das, was im PR
-          # steht. "pr-<nr>" wandert mit jedem Push, "pr-<nr>-<sha>" ist fest.
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=raw,value=pr-${{ github.event.pull_request.number }}-{{sha}},enable=${{ github.event_name == 'pull_request' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=long
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
-          labels: |
-            org.opencontainers.image.title=${{ matrix.name }}
-            org.opencontainers.image.description=${{ matrix.description }}
-
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: An ghcr.io anmelden
@@ -165,8 +182,218 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Content address of the image: equal hash <=> equal build inputs.
+      # Hashed are the Dockerfile, the files its COPY/ADD instructions take from
+      # the build context (derived from the Dockerfile itself, so a new COPY
+      # cannot be forgotten here), the .dockerignore, the digests the FROM
+      # images resolve to right now (an upstream security rebuild of a base
+      # image therefore triggers a rebuild) and the build recipe.
+      # Anything the parser cannot account for fails the job instead of
+      # silently producing a hash that misses an input. If a base image cannot
+      # be resolved, the hash stays empty: the image is built, but gets no
+      # inputs-* tag and nothing is reused.
+      # Not covered (by design): packages that RUN steps fetch from the network
+      # without a pin (apt, pip, npm). They are refreshed with force_rebuild.
+      - name: Build-Eingaben hashen
+        id: inputs
+        env:
+          NAME: ${{ matrix.name }}
+          CONTEXT: ${{ matrix.context }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          DESCRIPTION: ${{ matrix.description }}
+        run: |
+          set -euo pipefail
+          set -f   # word splitting of Dockerfile arguments without globbing
+          ctx="${CONTEXT%/}"
+          fail() { echo "::error file=$DOCKERFILE::$*"; exit 1; }
+          # A --from= reference: a build stage defined above (by name or by
+          # index) needs nothing; anything else is an image and is hashed like
+          # a FROM base. A variable cannot be resolved here and fails the job.
+          account_from() {
+            local ref="$1" what="$2"
+            [ -n "$ref" ] || fail "$what with an empty from="
+            case "$ref" in *'$'*) fail "$what from a variable ($ref) cannot be hashed" ;; esac
+            if [[ "$ref" =~ ^[0-9]+$ ]]; then
+              [ "$ref" -lt "$nstages" ] || fail "$what refers to stage $ref, which is not defined above"
+              return 0
+            fi
+            if [ "${stages#* "${ref,,}" }" != "$stages" ]; then return 0; fi
+            bases+=("$ref")
+          }
+          # Path of a build-context source relative to the repository root.
+          inctx() { local p="${1#./}"; p="${p%/}"; [ -z "$p" ] && p=.
+                    if [ "$ctx" = "." ]; then echo "$p"; elif [ "$p" = "." ]; then echo "$ctx"; else echo "$ctx/$p"; fi; }
+
+          # Instructions one per line: comment lines dropped, "\" continuations joined.
+          instructions=$(awk '
+            /^[[:space:]]*#/ { next }
+            { line = line $0 }
+            /\\[[:space:]]*$/ { sub(/\\[[:space:]]*$/, "", line); line = line " "; next }
+            { print line; line = "" }
+            END { if (line != "") print line }
+          ' "$DOCKERFILE")
+
+          paths=("$DOCKERFILE")
+          for ignore in "$(inctx .dockerignore)" "$DOCKERFILE.dockerignore"; do
+            if [ -n "$(git ls-files -- "$ignore")" ]; then paths+=("$ignore"); fi
+          done
+          bases=()
+          stages=" scratch "
+          nstages=0
+          while read -r keyword rest; do
+            # shellcheck disable=SC2086  # intentional word splitting
+            set -- $rest
+            case "${keyword^^}" in
+              FROM)
+                while [ "$#" -gt 0 ] && [ "${1#--}" != "$1" ]; do shift; done   # --platform=…
+                image="${1:?FROM without image}"
+                if [ "${2:-}" != "" ] && [ "${2,,}" = "as" ]; then stage="${3,,}"; else stage=""; fi
+                case "$image" in *'$'*) fail "FROM with a variable ($image) cannot be hashed" ;; esac
+                if [ "${stages#* "${image,,}" }" = "$stages" ]; then bases+=("$image"); fi
+                if [ -n "$stage" ]; then stages="$stages$stage "; fi
+                nstages=$((nstages + 1))
+                ;;
+              COPY|ADD)
+                case "$rest" in '['*) fail "JSON form of ${keyword^^} is not supported by the input hash" ;; esac
+                case "$rest" in *'<<'*) fail "heredoc in ${keyword^^} is not supported by the input hash" ;; esac
+                from=""
+                while [ "$#" -gt 0 ] && [ "${1#--}" != "$1" ]; do
+                  case "$1" in --from=*) from="${1#--from=}" ;; esac
+                  shift
+                done
+                if [ -n "$from" ]; then                             # another stage or an image
+                  account_from "$from" "${keyword^^} --from"
+                  continue
+                fi
+                [ "$#" -ge 2 ] || fail "${keyword^^} without source: $rest"
+                while [ "$#" -gt 1 ]; do                           # last word = destination
+                  case "$1" in *://*|git@*) fail "remote source in ${keyword^^} cannot be hashed: $1" ;; esac
+                  paths+=("$(inctx "$1")")
+                  shift
+                done
+                ;;
+              RUN)
+                for word in "$@"; do
+                  case "$word" in
+                    --mount=*)
+                      spec="${word#--mount=}"
+                      case ",$spec," in *,type=*) ;; *) spec="type=bind,$spec" ;; esac   # bind is the default
+                      case ",$spec," in
+                        *,type=bind,*) case ",$spec," in *,from=*) ;; *) fail "RUN --mount of the build context cannot be hashed: $word" ;; esac ;;
+                      esac
+                      case ",$spec," in
+                        *,from=*) mfrom=",$spec,"; mfrom="${mfrom#*,from=}"; account_from "${mfrom%%,*}" "RUN --mount" ;;
+                      esac
+                      ;;
+                  esac
+                done
+                ;;
+            esac
+          done <<< "$instructions"
+
+          for p in "${paths[@]}"; do
+            [ -n "$(git ls-files -- "$p" | head -n 1)" ] \
+              || fail "build input '$p' is not tracked in git (generated file? extend the hash)"
+          done
+
+          {
+            echo "udp-image-inputs v${INPUTS_VERSION}"
+            echo "name=$NAME"
+            echo "context=$CONTEXT"
+            echo "dockerfile=$DOCKERFILE"
+            echo "platforms=$PLATFORMS"
+            echo "description=$DESCRIPTION"
+          } > "$RUNNER_TEMP/inputs.txt"
+          resolved=true
+          for base in $(printf '%s\n' "${bases[@]}" | LC_ALL=C sort -u); do
+            case "$base" in
+              *@sha256:*) digest="${base##*@}" ;;
+              *)
+                digest=""
+                for attempt in 1 2 3; do
+                  if digest=$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$base"); then break; fi
+                  digest=""; if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
+                done
+                digest="${digest//\"/}"
+                ;;
+            esac
+            if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::warning::$NAME: base image $base could not be resolved – building without reuse."
+              resolved=false
+            fi
+            echo "base $base $digest" >> "$RUNNER_TEMP/inputs.txt"
+          done
+          # Mode, blob id and path of every input file (content-addressed by git).
+          git ls-files -s -- "${paths[@]}" >> "$RUNNER_TEMP/inputs.txt"   # index order: stable, one line per file
+
+          hash=$(sha256sum "$RUNNER_TEMP/inputs.txt" | cut -c1-32)
+          echo "::group::Build inputs of $NAME (inputs-$hash)"
+          cat "$RUNNER_TEMP/inputs.txt"
+          echo "::endgroup::"
+          if [ "$resolved" = "true" ]; then
+            echo "hash=$hash" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tags und Labels ableiten
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ steps.ctx.outputs.path }}/${{ matrix.name }}
+          # Bei PRs setzt die Action {{sha}} auf den HEAD-Commit des Branches,
+          # nicht auf den Merge-Commit – der Tag zeigt also auf das, was im PR
+          # steht. "pr-<nr>" wandert mit jedem Push, "pr-<nr>-<sha>" ist fest.
+          # "inputs-<hash>" is the content address that later runs reuse.
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=pr-${{ github.event.pull_request.number }}-{{sha}},enable=${{ github.event_name == 'pull_request' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            # Only trusted runs write the content address (see the header).
+            type=raw,value=inputs-${{ steps.inputs.outputs.hash }},enable=${{ steps.inputs.outputs.hash != '' && github.event_name != 'pull_request' && (github.event_name == 'release' || github.ref == 'refs/heads/main') }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.name }}
+            org.opencontainers.image.description=${{ matrix.description }}
+
+      # Is there already an image with exactly these inputs? Only where this run
+      # may push (fork PRs build as before) and not on force_rebuild. Any
+      # registry error means "build" – that costs a new digest, never a stale
+      # image.
+      # Trust: PR runs look the tag up and reuse what trusted runs built, but
+      # never write an inputs-* tag themselves (tags above) – otherwise a PR
+      # could plant an image that main or a release later pins by digest.
+      - name: Vorhandenes Image suchen
+        id: reuse
+        if: steps.ctx.outputs.push == 'true' && steps.inputs.outputs.hash != ''
+        env:
+          REF: ghcr.io/${{ steps.ctx.outputs.path }}/${{ matrix.name }}:inputs-${{ steps.inputs.outputs.hash }}
+          FORCE: ${{ inputs.force_rebuild && 'true' || 'false' }}
+        run: |
+          set -uo pipefail
+          if [ "$FORCE" = "true" ]; then
+            echo "::notice::${{ matrix.name }}: force_rebuild – building anew."
+            exit 0
+          fi
+          if out=$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$REF" 2> "$RUNNER_TEMP/lookup.err"); then
+            digest="${out//\"/}"
+            if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::notice::${{ matrix.name }}: build inputs unchanged – reusing $digest."
+              echo "digest=$digest" >> "$GITHUB_OUTPUT"
+              echo "reuse=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          err=$(tr '\n' ' ' < "$RUNNER_TEMP/lookup.err")
+          case "$err" in
+            *"not found"*) echo "${{ matrix.name }}: no image for these inputs yet – building." ;;
+            *) echo "::warning::${{ matrix.name }}: registry lookup failed (${err:-$out}) – building." ;;
+          esac
+
       - name: Bauen und pushen
         id: build
+        if: steps.reuse.outputs.reuse != 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: ${{ matrix.context }}
@@ -176,18 +403,65 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Nur amd64: das Postgres-Image zieht TimescaleDB-Debian-Pakete, ein
           # arm64-Build läuft dafür in QEMU-Emulation (>20 min). Bei Bedarf
-          # hier "linux/amd64,linux/arm64" setzen.
-          platforms: linux/amd64
-          # Layer-Cache pro Image – unveränderte Images sind so in ~30 s durch.
+          # PLATFORMS oben auf "linux/amd64,linux/arm64" setzen.
+          platforms: ${{ env.PLATFORMS }}
+          # Layer-Cache pro Image.
           cache-from: type=gha,scope=${{ matrix.name }}
           # Gelesen wird immer, geschrieben nur aus vertrauenswürdigen Läufen:
           # der Actions-Cache ist auf 10 GB je Repository gedeckelt und wird
-          # repo-weit nach LRU verdrängt. Vier mode=max-Caches pro Fork-PR
+          # repo-weit nach LRU verdrängt. Fünf mode=max-Caches pro Fork-PR
           # schöben sonst die warmen Layer von main heraus.
           cache-to: ${{ steps.ctx.outputs.push == 'true' && format('type=gha,scope={0},mode=max', matrix.name) || '' }}
           # Signierte Herkunft + SBOM als OCI-Attestation am Image (Supply-Chain).
+          # (Changing these needs an INPUTS_VERSION bump.)
           provenance: mode=max
           sbom: true
+
+      # Only adds tags: with a single index as source, imagetools pushes the
+      # manifest bytes unchanged, so the digest (and the attestations hanging
+      # off the index) stay exactly the same. Verified below anyway – a new
+      # digest here would defeat the whole point.
+      - name: Tags an vorhandenes Image hängen
+        if: steps.reuse.outputs.reuse == 'true'
+        env:
+          IMAGE: ghcr.io/${{ steps.ctx.outputs.path }}/${{ matrix.name }}
+          DIGEST: ${{ steps.reuse.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          args=()
+          while read -r tag; do
+            if [ -n "$tag" ]; then args+=(-t "$tag"); fi
+          done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            got=$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$tag")
+            if [ "${got//\"/}" != "$DIGEST" ]; then
+              echo "::error::$tag points to ${got//\"/} instead of $DIGEST"
+              exit 1
+            fi
+          done <<< "$TAGS"
+
+      - name: Digest bestimmen
+        id: digest
+        if: steps.ctx.outputs.push == 'true'
+        env:
+          REUSED: ${{ steps.reuse.outputs.digest }}
+          BUILT: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          digest="${REUSED:-$BUILT}"
+          if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::no digest for ${{ matrix.name }} (reused='$REUSED', built='$BUILT')"
+            exit 1
+          fi
+          echo "value=$digest" >> "$GITHUB_OUTPUT"
+          if [ -n "$REUSED" ]; then
+            echo "origin=wiederverwendet (Build-Eingaben unverändert)" >> "$GITHUB_OUTPUT"
+          else
+            echo "origin=neu gebaut" >> "$GITHUB_OUTPUT"
+          fi
 
       # Der Digest gehört nach helm/udp/values-prod.yaml (repo:tag@sha256:…),
       # damit in Produktion kein beweglicher Tag deployt wird. Bei PRs steht
@@ -196,11 +470,14 @@ jobs:
         if: steps.ctx.outputs.push == 'true'
         env:
           IMAGE: ghcr.io/${{ steps.ctx.outputs.path }}/${{ matrix.name }}
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.digest.outputs.value }}
+          ORIGIN: ${{ steps.digest.outputs.origin }}
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           {
             echo "### ${{ matrix.name }}"
+            echo
+            echo "$ORIGIN"
             echo
             echo '```'
             echo "${IMAGE}@${DIGEST}"
@@ -208,14 +485,16 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Der Chart-Job pinnt die Images auf genau diesen Digest. Ein Matrix-Job
-      # kann keine Outputs pro Matrix-Eintrag setzen (der letzte gewinnt),
-      # deshalb der Umweg über ein Artefakt je Image.
+      # Der Chart-Job pinnt die Images auf genau diesen Digest – gebaut oder
+      # wiederverwendet. Ein Matrix-Job kann keine Outputs pro Matrix-Eintrag
+      # setzen (der letzte gewinnt), deshalb der Umweg über ein Artefakt je Image.
       - name: Digest für den Chart-Job ablegen
         if: steps.ctx.outputs.push == 'true'
+        env:
+          DIGEST: ${{ steps.digest.outputs.value }}
         run: |
           mkdir -p digests
-          echo "${{ steps.build.outputs.digest }}" > "digests/${{ matrix.valueKey }}"
+          echo "$DIGEST" > "digests/${{ matrix.valueKey }}"
 
       - name: Digest als Artefakt anhängen
         if: steps.ctx.outputs.push == 'true'
@@ -332,12 +611,14 @@ jobs:
           else
             echo "push=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "builds=$BUILDS" >> "$GITHUB_OUTPUT"
           FIRST="${BUILDS%% *}"
-          echo "version=${FIRST%%|*}" >> "$GITHUB_OUTPUT"
-          echo "appVersion=$APP_VERSION" >> "$GITHUB_OUTPUT"
-          # ghcr.io akzeptiert nur kleingeschriebene Pfade; github.repository ist "idk-ev/UDP".
-          echo "path=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          {
+            echo "builds=$BUILDS"
+            echo "version=${FIRST%%|*}"
+            echo "appVersion=$APP_VERSION"
+            # ghcr.io akzeptiert nur kleingeschriebene Pfade; github.repository ist "idk-ev/UDP".
+            echo "path=${GITHUB_REPOSITORY,,}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Chart packen
         # Geschrieben wird nur im Arbeitsverzeichnis des Runners – values.yaml im
@@ -358,7 +639,7 @@ jobs:
 
             pinned=""
             if [ "$mode" = "pin" ]; then
-              for key in cockpit ckan timescale timescale.legacy nodeRed; do
+              for key in cockpit ckan timescale timescale.legacy connectors; do
                 if [ ! -s "digests/$key" ]; then pinned=""; break; fi
                 TAGVAL="${tag}@$(cat "digests/$key")" \
                   yq -i ".${key}.image.tag = strenv(TAGVAL)" "$CHART_DIR/values.yaml"

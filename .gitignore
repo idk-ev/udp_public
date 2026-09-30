@@ -8,3 +8,8 @@ platform/config/masterportal/Basic/
 __pycache__/
 gui/tsconfig.tsbuildinfo
 helm/udp/values-prod.yaml
+platform/connectors/dist/
+platform/connectors/tsconfig.tsbuildinfo
+
+# Local tool state of AI coding assistants; never committed.
+.claude/

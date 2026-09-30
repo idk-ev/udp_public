@@ -30,15 +30,6 @@ exports["Registry und Status-Export sind synchron"] = () => {
   for (const c of exp) if (c.pending) assert(reg.find(r => r.id === c.id).pending, `pending nicht aus Registry: ${c.id}`);
 };
 
-exports["Jeder aktive Registry-Konnektor hat Flow-Nodes (nodePrefixes)"] = () => {
-  const reg = J("platform/config/connectors.json").connectors;
-  const ids = new Set(J("platform/config/nodered/flows.json").map(n => String(n.id || "")));
-  for (const c of reg.filter(c => c.active !== false)) {
-    const hit = c.nodePrefixes.some(p => [...ids].some(id => id.startsWith(p)));
-    assert(hit, `Konnektor ${c.id}: keine Nodes mit Präfix ${c.nodePrefixes}`);
-  }
-};
-
 exports["dashboards.json und Compose parsen"] = () => {
   J("gui/public/dashboards.json");
   const compose = fs.readFileSync(path.join(ROOT, "platform/docker-compose.yml"), "utf8");
@@ -47,32 +38,50 @@ exports["dashboards.json und Compose parsen"] = () => {
   assert(images.includes("valkey"), "Valkey fehlt");
 };
 
-exports["Node-RED-Image bringt Flows, settings.js und pg mit"] = () => {
-  // Die Flows kommen im Cluster aus dem eigenen Image, nicht aus einer
-  // ConfigMap oder einem Volume. Bricht das, startet Node-RED mit leerer
-  // Flow-Liste: kein Konnektor ingestiert, /abfahrten und /warnungen.ics 404.
-  const df = fs.readFileSync(path.join(ROOT, "platform/config/nodered/Dockerfile"), "utf8");
-  assert(/COPY\s+platform\/config\/nodered\/flows\.json\s+\/data\/flows\.json/.test(df),
-    "Dockerfile kopiert flows.json nicht nach /data");
-  assert(/COPY\s+platform\/config\/nodered\/settings\.js\s+\/data\/settings\.js/.test(df),
-    "Dockerfile kopiert settings.js nicht nach /data");
-  assert(/npm install[^\n]*\bpg@/.test(df),
-    "pg wird nicht ins Image installiert — der Function-Node zöge es zur Laufzeit von npmjs.org");
+exports["Node-RED: nur der Beispielfluss, gleiche Dateien in Compose und Helm"] = () => {
+  // Node-RED ist Low-Code-Baustein (B.II.4), keine Ingestion-Laufzeit mehr:
+  // flows.json trägt genau den Beispiel-Tab. Kein http-in-Node — /abfahrten
+  // und /warnungen.ics beantwortet der Konnektordienst.
+  const flows = J("platform/config/nodered/flows.json");
+  assert.deepStrictEqual(flows.map(n => n.id).sort(),
+    ["udp-debug-1", "udp-func-1", "udp-http-1", "udp-inject-1", "udp-tab-1"]);
+  assert.deepStrictEqual(flows.filter(n => n.type === "tab").map(n => n.label), ["Beispiel: Open Data → NGSI-LD"]);
+  assert(!flows.some(n => n.type === "http in"), "Node-RED bedient wieder einen HTTP-Endpunkt");
+  assert(/^http:\/\/orion-ld:1026\/ngsi-ld\/v1\/entityOperations\/upsert/.test(flows.find(n => n.id === "udp-http-1").url),
+    "Beispielfluss schreibt nicht mehr nach Orion-LD");
+  // Ausgeliefert deaktiviert: sonst schriebe er alle 10 min Zufallswerte in
+  // den produktiven Broker. Zum Ausprobieren im Editor aktivieren.
+  assert.strictEqual(flows.find(n => n.type === "tab").disabled, true, "Beispielfluss ist nicht deaktiviert ausgeliefert");
 
-  // Ein Volume auf /data würde die Dateien aus dem Image verdecken.
-  const apps = fs.readFileSync(path.join(ROOT, "helm/udp/templates/apps.yaml"), "utf8");
-  const nodeRedBlock = apps.slice(0, apps.indexOf("kind: Service"));
-  assert(!/mountPath:\s*\/data/.test(nodeRedBlock),
-    "Node-RED mountet wieder etwas auf /data — das verdeckt die Flows aus dem Image");
-
-  // settings.js trägt zwei Einstellungen, ohne die die Flows nicht laufen.
+  // settings.js: nichts mehr, was nur die Ingestion brauchte.
   const settings = fs.readFileSync(path.join(ROOT, "platform/config/nodered/settings.js"), "utf8");
-  assert(/^\s*functionExternalModules:\s*true/m.test(settings),
-    "functionExternalModules fehlt — die TRoE-Nodes können pg nicht laden");
-  assert(/^\s*contextStorage:/m.test(settings), "contextStorage fehlt");
+  assert(!/^\s*contextStorage:/m.test(settings), "contextStorage ist wieder aktiv");
+  assert(/^\s*functionExternalModules:\s*false/m.test(settings), "functionExternalModules ist nicht aus");
+  // Anmeldung am Editor aus der Umgebung (leer = offen, wie bisher).
+  assert(/^\s*adminAuth:\s*udpAdminAuth,/m.test(settings), "adminAuth kommt nicht aus NODE_RED_ADMIN_*");
+  assert(/process\.env\.NODE_RED_ADMIN_USER/.test(settings) && /process\.env\.NODE_RED_ADMIN_PASSWORD_HASH/.test(settings),
+    "settings.js liest NODE_RED_ADMIN_USER/NODE_RED_ADMIN_PASSWORD_HASH nicht");
 
-  // Die beiden öffentlich proxied Endpunkte müssen in den Flows existieren.
-  const urls = J("platform/config/nodered/flows.json")
-    .filter(n => n.type === "http in").map(n => n.url).sort();
-  assert.deepStrictEqual(urls, ["/abfahrten", "/warnungen.ics"]);
+  // Das Chart liefert dieselben Dateien per ConfigMap aus (Upstream-Image).
+  const eol = t => t.replace(/\r\n/g, "\n");
+  for (const f of ["flows.json", "settings.js"]) {
+    assert.strictEqual(eol(fs.readFileSync(path.join(ROOT, "helm/udp/files/nodered", f), "utf8")),
+      eol(fs.readFileSync(path.join(ROOT, "platform/config/nodered", f), "utf8")),
+      `helm/udp/files/nodered/${f} weicht von platform/config/nodered/${f} ab — kopieren`);
+  }
+  const apps = fs.readFileSync(path.join(ROOT, "helm/udp/templates/apps.yaml"), "utf8");
+  const nodeRed = apps.slice(apps.indexOf("  name: node-red\n"), apps.indexOf("kind: Service"));
+  assert(/image: \{\{ include "udp\.image" \(dict "ctx" \. "image" \.Values\.nodeRed\.image\) \}\}/.test(nodeRed),
+    "Node-RED läuft nicht auf dem Upstream-Image");
+  assert(!/TROE_DB_|HYSTREET_API_TOKEN/.test(nodeRed), "Node-RED bekommt wieder Zugangsdaten der Ingestion");
+  const compose = fs.readFileSync(path.join(ROOT, "platform/docker-compose.yml"), "utf8");
+  const nrCompose = compose.slice(compose.indexOf("\n  node-red:"), compose.indexOf("\n  connectors:"));
+  assert(!/TROE_DB_|HYSTREET_API_TOKEN/.test(nrCompose), "Compose: Node-RED bekommt wieder Zugangsdaten der Ingestion");
+  // Editor/Admin-API: standardmäßig nur lokal veröffentlicht, Anmeldung durchgereicht.
+  assert(/"\$\{WORKFLOW_BIND:-127\.0\.0\.1\}:\$\{WORKFLOW_PORT:-4900\}:1880"/.test(nrCompose),
+    "Compose: Node-RED ist nicht standardmäßig an 127.0.0.1 gebunden");
+  for (const name of ["NODE_RED_ADMIN_USER", "NODE_RED_ADMIN_PASSWORD_HASH"]) {
+    assert(new RegExp(`${name}: \\$\\{${name}:-\\}`).test(nrCompose), `Compose: ${name} wird nicht durchgereicht`);
+    assert(new RegExp(`name: ${name}\\n\\s+valueFrom:`).test(nodeRed), `Helm: ${name} fehlt im Node-RED-Container`);
+  }
 };

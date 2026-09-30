@@ -1,0 +1,654 @@
+{
+  "source": "https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json?includeTimeseries=true&includeCurrentMeasurement=true",
+  "recordedAt": "2026-09-28T03:15:51.299Z",
+  "note": "Trimmed by hand: 17 of 786 stations, order and values verbatim. Kept: the Upper Rhine gauges from Basel (Switzerland, rejected by the strict lookup) down to Worms (Rhineland-Palatinate, rejected), the Mannheim gauges on Rhine and Neckar (08222000), Iffezheim and Maxau (inside the BW box but outside the polygons of the trimmed geo fixture), the two Konstanz gauges (no polygon in the fixture), Celle (outside the BW box), one station without a W/cm series (126013 ABBENFLETH SPERRWERK) and one without coordinates (123456785 DORDRECHT). Several kept stations list Q (m3/s) before W — the case the W/cm selection exists for. Use with test/fixtures/grenzen-bw.json and stammdaten-bw.json as geo context.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json;charset=UTF-8",
+    "content-encoding": "gzip",
+    "etag": "\"020092ff783b31aada6065ea2c2933b22\""
+  },
+  "format": "json",
+  "payload": [
+    {
+      "uuid": "b475386c-30cc-453a-b3b7-1d17ace13595",
+      "number": "48300105",
+      "shortname": "CELLE",
+      "longname": "CELLE",
+      "km": 1.74,
+      "agency": "VERDEN",
+      "longitude": 10.062164,
+      "latitude": 52.622706,
+      "voiceServiceNumber": "+49228 286527 001",
+      "water": {
+        "shortname": "ALLER",
+        "longname": "ALLER"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 113,
+            "stateMnwMhw": "low",
+            "stateNswHsw": "normal"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NN",
+            "value": 31.82,
+            "validFrom": "1936-11-01"
+          }
+        },
+        {
+          "shortname": "WT",
+          "longname": "WASSERTEMPERATUR ROHDATEN",
+          "unit": "°C",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-10T10:30:00+02:00",
+            "value": 0
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "6c6f84c2-b7ea-4720-8ecd-a83c100c6291",
+      "number": "123456785",
+      "shortname": "DORDRECHT",
+      "longname": "DORDRECHT",
+      "km": 975,
+      "agency": "RIJKSWATERSTAAT",
+      "water": {
+        "shortname": "ALTE_MAAS",
+        "longname": "ALTE MAAS"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 10,
+          "currentMeasurement": {
+            "timestamp": "2026-09-27T23:30:00+02:00",
+            "value": -5,
+            "stateMnwMhw": "unknown",
+            "stateNswHsw": "unknown"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "aa9179c1-17ef-4c61-a48a-74193fa7bfdf",
+      "number": "906",
+      "shortname": "KONSTANZ",
+      "longname": "KONSTANZ",
+      "km": 0,
+      "agency": "REGIERUNGSPRÄSIDIUM FREIBURG",
+      "longitude": 9.181039,
+      "latitude": 47.66075,
+      "voiceServiceNumber": "+49228 286527 008",
+      "water": {
+        "shortname": "BODENSEE",
+        "longname": "BODENSEE"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 253,
+            "stateMnwMhw": "low",
+            "stateNswHsw": "unknown"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 391.89,
+            "validFrom": "2004-04-14"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "28ec91e8-90c0-44d1-8fd2-b0b64c00c43b",
+      "number": "126013",
+      "shortname": "ABBENFLETH SPERRWERK",
+      "longname": "ABBENFLETH SPERRWERK",
+      "km": 2.95,
+      "agency": "STANDORT HAMBURG",
+      "longitude": 9.494307,
+      "latitude": 53.668963,
+      "water": {
+        "shortname": "BSE",
+        "longname": "BÜTZFLETHER SÜDERELBE"
+      },
+      "timeseries": [
+        {
+          "shortname": "LF",
+          "longname": "ELEKTRISCHE_LEITFÄHIGKEIT_ROHDATEN",
+          "unit": "µS/cm",
+          "equidistance": 1,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:12:00+02:00",
+            "value": 3807
+          }
+        },
+        {
+          "shortname": "WT",
+          "longname": "WASSERTEMPERATUR ROHDATEN",
+          "unit": "°C",
+          "equidistance": 1,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:12:00+02:00",
+            "value": 16
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "25582d3f-dc5f-4c70-bd08-e84fd13201ca",
+      "number": "23800900",
+      "shortname": "Mannheim Neckar",
+      "longname": "MANNHEIM NECKAR",
+      "km": 3.1,
+      "agency": "STANDORT MANNHEIM",
+      "longitude": 8.469365,
+      "latitude": 49.49435,
+      "voiceServiceNumber": "+49228 286527 397",
+      "water": {
+        "shortname": "NECKAR",
+        "longname": "NECKAR"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 53,
+            "stateMnwMhw": "unknown",
+            "stateNswHsw": "unknown"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 84.787,
+            "validFrom": "2017-07-18"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "e020e651-e422-46d3-ae28-34887c5a4a8e",
+      "number": "3329",
+      "shortname": "KONSTANZ-RHEIN",
+      "longname": "KONSTANZ-RHEIN",
+      "km": 0.5,
+      "agency": "REGIERUNGSPRÄSIDIUM FREIBURG",
+      "longitude": 9.172858,
+      "latitude": 47.667889,
+      "voiceServiceNumber": "+49228 286527 540",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 235,
+            "stateMnwMhw": "unknown",
+            "stateNswHsw": "unknown"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "94f6eff1-4f3f-4850-82e0-a086198e9ffd",
+      "number": "2310010",
+      "shortname": "Basel-Rheinhalle",
+      "longname": "BASEL-RHEINHALLE",
+      "km": 164.3,
+      "agency": "BUNDESAMT FÜR UMWELT CH",
+      "longitude": 7.616666,
+      "latitude": 47.559486,
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 5,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 479,
+            "stateMnwMhw": "unknown",
+            "stateNswHsw": "normal"
+          },
+          "gaugeZero": {
+            "unit": "mü.M.",
+            "value": 240,
+            "validFrom": "2010-02-01"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "06b978dd-8c4d-48ac-a0c8-2c16681ed281",
+      "number": "23300130",
+      "shortname": "RHEINWEILER",
+      "longname": "RHEINWEILER",
+      "km": 186.2,
+      "agency": "STANDORT FREIBURG",
+      "longitude": 7.529275,
+      "latitude": 47.711059,
+      "voiceServiceNumber": "+49228 286527 541",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "Q",
+          "longname": "ABFLUSS_ROHDATEN",
+          "unit": "m³/s",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T04:45:00+02:00",
+            "value": 37.7
+          },
+          "comment": {
+            "shortDescription": "Abflusswerte im niedrigen Bereich nicht plausibel",
+            "longDescription": "Abflusswerte im niedrigen Bereich nicht plausibel"
+          }
+        },
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 196,
+            "stateMnwMhw": "normal",
+            "stateNswHsw": "unknown"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 217.291,
+            "validFrom": "2018-11-01"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "9da1ad2b-88db-4cbb-8132-eddfab07d5ba",
+      "number": "23300320",
+      "shortname": "BREISACH",
+      "longname": "BREISACH",
+      "km": 227.6,
+      "agency": "STANDORT FREIBURG",
+      "longitude": 7.57257,
+      "latitude": 48.043211,
+      "voiceServiceNumber": "+49228 286527 542",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 182,
+            "stateMnwMhw": "unknown",
+            "stateNswHsw": "unknown"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 184.515,
+            "validFrom": "2018-11-01"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "5389b878-fad5-4f37-bb87-e6cb36b7078b",
+      "number": "23300580",
+      "shortname": "RUST",
+      "longname": "RUST",
+      "km": 254.2,
+      "agency": "STANDORT FREIBURG",
+      "longitude": 7.682373,
+      "latitude": 48.257469,
+      "voiceServiceNumber": "+49228 286527 543",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 81,
+            "stateMnwMhw": "unknown",
+            "stateNswHsw": "unknown"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 161.511,
+            "validFrom": "2018-11-01"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "787e5d63-61e2-48cc-acf0-633e2bf923f2",
+      "number": "23300800",
+      "shortname": "OTTENHEIM",
+      "longname": "OTTENHEIM",
+      "km": 270.6,
+      "agency": "STANDORT FREIBURG",
+      "longitude": 7.732657,
+      "latitude": 48.384644,
+      "voiceServiceNumber": "+49228 286527 544",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 298,
+            "stateMnwMhw": "unknown",
+            "stateNswHsw": "unknown"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 147.32,
+            "validFrom": "2018-11-01"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "23af9b02-5c82-4f6e-acb8-f92a06e5e4da",
+      "number": "23300900",
+      "shortname": "KEHL-KRONENHOF",
+      "longname": "KEHL-KRONENHOF",
+      "km": 292.2,
+      "agency": "STANDORT FREIBURG",
+      "longitude": 7.807692,
+      "latitude": 48.56332,
+      "voiceServiceNumber": "+49228 286527 545",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "Q",
+          "longname": "ABFLUSS_ROHDATEN",
+          "unit": "m³/s",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T04:45:00+02:00",
+            "value": 294
+          }
+        },
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 176,
+            "stateMnwMhw": "low",
+            "stateNswHsw": "unknown"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 133.02,
+            "validFrom": "2018-11-01"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "b02be240-1364-4c97-8bb6-675d7d842332",
+      "number": "23500600",
+      "shortname": "IFFEZHEIM",
+      "longname": "IFFEZHEIM",
+      "km": 336.2,
+      "agency": "STANDORT FREIBURG",
+      "longitude": 8.116902,
+      "latitude": 48.852149,
+      "voiceServiceNumber": "+49228 286527 546",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "Q",
+          "longname": "ABFLUSS_ROHDATEN",
+          "unit": "m³/s",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T04:45:00+02:00",
+            "value": 300
+          }
+        },
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 38,
+            "stateMnwMhw": "low",
+            "stateNswHsw": "unknown"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 110.019,
+            "validFrom": "2018-11-01"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "b6c6d5c8-e2d5-4469-8dd8-fa972ef7eaea",
+      "number": "23700200",
+      "shortname": "MAXAU",
+      "longname": "MAXAU",
+      "km": 362.327,
+      "agency": "STANDORT MANNHEIM",
+      "longitude": 8.305564,
+      "latitude": 49.038977,
+      "voiceServiceNumber": "+49228 286527 548",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "Q",
+          "longname": "ABFLUSS_ROHDATEN",
+          "unit": "m³/s",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T04:45:00+02:00",
+            "value": 342
+          }
+        },
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 285,
+            "stateMnwMhw": "low",
+            "stateNswHsw": "normal"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 97.721,
+            "validFrom": "2017-07-18"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "2cb8ae5b-c5c9-4fa8-bac0-bb724f2754f4",
+      "number": "23700600",
+      "shortname": "SPEYER",
+      "longname": "SPEYER",
+      "km": 400.61,
+      "agency": "STANDORT MANNHEIM",
+      "longitude": 8.448705,
+      "latitude": 49.323807,
+      "voiceServiceNumber": "+49228 286527 550",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "Q",
+          "longname": "ABFLUSS_ROHDATEN",
+          "unit": "m³/s",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T04:45:00+02:00",
+            "value": 347
+          }
+        },
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 147,
+            "stateMnwMhw": "low",
+            "stateNswHsw": "normal"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 88.467,
+            "validFrom": "2017-07-18"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "57090802-c51a-4d09-8340-b4453cd0e1f5",
+      "number": "23700700",
+      "shortname": "MANNHEIM",
+      "longname": "MANNHEIM",
+      "km": 424.733,
+      "agency": "STANDORT MANNHEIM",
+      "longitude": 8.455165,
+      "latitude": 49.48394,
+      "voiceServiceNumber": "+49228 286527 551",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": 59,
+            "stateMnwMhw": "low",
+            "stateNswHsw": "normal"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 85.117,
+            "validFrom": "2017-07-18"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "844a620f-f3b8-4b6b-8e3c-783ae2aa232a",
+      "number": "23900200",
+      "shortname": "WORMS",
+      "longname": "WORMS",
+      "km": 443.37,
+      "agency": "STANDORT MANNHEIM",
+      "longitude": 8.377519,
+      "latitude": 49.631837,
+      "voiceServiceNumber": "+49228 286527 552",
+      "water": {
+        "shortname": "RHEIN",
+        "longname": "RHEIN"
+      },
+      "timeseries": [
+        {
+          "shortname": "Q",
+          "longname": "ABFLUSS_ROHDATEN",
+          "unit": "m³/s",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T04:45:00+02:00",
+            "value": 386
+          }
+        },
+        {
+          "shortname": "W",
+          "longname": "WASSERSTAND ROHDATEN",
+          "unit": "cm",
+          "equidistance": 15,
+          "currentMeasurement": {
+            "timestamp": "2026-09-28T05:00:00+02:00",
+            "value": -22,
+            "stateMnwMhw": "low",
+            "stateNswHsw": "normal"
+          },
+          "gaugeZero": {
+            "unit": "m. ü. NHN",
+            "value": 84.112,
+            "validFrom": "2017-07-18"
+          }
+        }
+      ]
+    }
+  ]
+}

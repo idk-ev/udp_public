@@ -1,5 +1,5 @@
 {
- "stand": "2026-08-27T00:33:30+00:00",
+ "stand": "2026-09-29T10:12:06+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -86,7 +86,7 @@
    "name": "Wetter alle Gemeinden (Open-Meteo)",
    "scope": "land",
    "enabledFor": "*",
-   "sollMinutes": 260,
+   "sollMinutes": 390,
    "sampleEntity": "urn:ngsi-ld:WeatherObserved:bw-08111000",
    "provides": [
     "wetter"
@@ -101,10 +101,10 @@
   },
   {
    "id": "vorhersage-bw",
-   "name": "Vorhersage landesweit (Open-Meteo, 2-h-Takt)",
+   "name": "Vorhersage landesweit (Open-Meteo, 6-h-Takt)",
    "scope": "land",
    "enabledFor": "*",
-   "sollMinutes": 180,
+   "sollMinutes": 390,
    "sampleEntity": "urn:ngsi-ld:WeatherForecast:bw-08111000",
    "provides": [
     "vorhersage-basis",

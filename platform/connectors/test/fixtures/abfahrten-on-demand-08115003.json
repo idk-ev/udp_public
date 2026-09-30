@@ -1,0 +1,378 @@
+{
+  "source": "https://www.efa-bw.de/nvbw/XML_DM_REQUEST?outputFormat=rapidJSON&type_dm=any&name_dm=de%3A08115%3A7100&mode=direct&useRealtime=1&limit=12",
+  "recordedAt": "2026-09-28T03:12:49.865Z",
+  "note": "Trimmed by hand: top-level serverInfo, systemMessages and locations removed; in every stop event only the fields listed here are kept (isCancelled, realtimeStatus, isRealtimeControlled, location.{id,name,type,properties}, departureTimePlanned/BaseTimetable/Estimated, transportation.{id,name,disassembledName,number,destination}). Neither the old function node nor the port reads anything else. All 12 stop events are kept, values verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip"
+  },
+  "format": "json",
+  "payload": {
+    "version": "11.0.6.72",
+    "stopEvents": [
+      {
+        "realtimeStatus": [
+          "EXTRA_STOPS",
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08115:7100:10:13",
+          "name": "Böblingen ZOB",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "10",
+            "platform": "13",
+            "platformName": "Bstg. 13",
+            "plannedPlatformName": "Bstg. 13"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:09:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:09:00Z",
+        "departureTimeEstimated": "2026-09-28T03:12:06Z",
+        "transportation": {
+          "id": "vvs:31766: :H:j26",
+          "name": "Bus 766",
+          "disassembledName": "766",
+          "number": "766",
+          "destination": {
+            "id": "5001303",
+            "name": "Weil der Stadt Bf",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08115:7100:2:3",
+          "name": "Böblingen",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "2",
+            "platform": "3",
+            "platformName": "3",
+            "plannedPlatformName": "3"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:15:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:15:00Z",
+        "departureTimeEstimated": "2026-09-28T03:16:00Z",
+        "transportation": {
+          "id": "ddb:92T01: :H:j26",
+          "name": "S-Bahn S1",
+          "disassembledName": "S1",
+          "number": "S1",
+          "destination": {
+            "id": "5007802",
+            "name": "Plochingen",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08115:7100:10:9",
+          "name": "Böblingen ZOB",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "10",
+            "platform": "9",
+            "platformName": "Bstg. 9",
+            "plannedPlatformName": "Bstg. 9"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:20:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:20:00Z",
+        "transportation": {
+          "id": "vvs:31703: :H:j26",
+          "name": "Bus 703",
+          "disassembledName": "703",
+          "number": "703",
+          "destination": {
+            "id": "5002234",
+            "name": "Sindelf. Mercedes-Benz Hst. I",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08115:7100:2:2",
+          "name": "Böblingen",
+          "type": "platform",
+          "properties": {
+            "occupancy": "FEW_SEATS",
+            "stopId": "5007100",
+            "area": "2",
+            "platform": "2",
+            "platformName": "2",
+            "plannedPlatformName": "2"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:21:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:21:00Z",
+        "departureTimeEstimated": "2026-09-28T03:21:00Z",
+        "transportation": {
+          "id": "ddb:90T14:A:R:j26",
+          "name": "R-Bahn RE14a",
+          "disassembledName": "RE14a",
+          "number": "RE14a",
+          "destination": {
+            "id": "5006115",
+            "name": "Stuttgart Hauptbahnhof (oben)",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08115:7100:9:11",
+          "name": "Böblingen ZOB",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "9",
+            "platform": "11",
+            "platformName": "Bstg. 11",
+            "plannedPlatformName": "Bstg. 11"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:21:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:21:00Z",
+        "transportation": {
+          "id": "vvs:31X16: :H:j26",
+          "name": "Bus X16",
+          "disassembledName": "X16",
+          "number": "X16",
+          "destination": {
+            "id": "5002931",
+            "name": "Nürtingen ZOB",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08115:7100:1:5",
+          "name": "Böblingen",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "5007100",
+            "area": "1",
+            "platform": "5",
+            "platformName": "5",
+            "plannedPlatformName": "5"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:22:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:22:00Z",
+        "departureTimeEstimated": "2026-09-28T03:24:00Z",
+        "transportation": {
+          "id": "ddb:90T14:A:H:j26",
+          "name": "R-Bahn RE14a",
+          "disassembledName": "RE14a",
+          "number": "RE14a",
+          "destination": {
+            "id": "8806584",
+            "name": "Rottweil Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08115:7100:9:5",
+          "name": "Böblingen ZOB",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "9",
+            "platform": "5",
+            "platformName": "Bstg. 5",
+            "plannedPlatformName": "Bstg. 5"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:23:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:23:00Z",
+        "transportation": {
+          "id": "vvs:31723: :H:j26",
+          "name": "Bus 723",
+          "disassembledName": "723",
+          "number": "723",
+          "destination": {
+            "id": "5004689",
+            "name": "Böblingen Tannenberg",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08115:7100:9:12",
+          "name": "Böblingen ZOB",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "9",
+            "platform": "12",
+            "platformName": "Bstg. 12",
+            "plannedPlatformName": "Bstg. 12"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:23:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:23:00Z",
+        "departureTimeEstimated": "2026-09-28T03:23:00Z",
+        "transportation": {
+          "id": "vvs:31763: :R:j26",
+          "name": "Bus 763",
+          "disassembledName": "763",
+          "number": "763",
+          "destination": {
+            "id": "5002283",
+            "name": "Sindelf. Mercedes-Benz Hst. P",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08115:7100:9:4",
+          "name": "Böblingen ZOB",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "9",
+            "platform": "4",
+            "platformName": "Bstg. 4",
+            "plannedPlatformName": "Bstg. 4"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:24:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:24:00Z",
+        "transportation": {
+          "id": "vvs:31701: :H:j26",
+          "name": "Bus 701",
+          "disassembledName": "701",
+          "number": "701",
+          "destination": {
+            "id": "5004603",
+            "name": "Sindelf. Eichholz",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08115:7100:1:4",
+          "name": "Böblingen",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "1",
+            "platform": "4",
+            "platformName": "4",
+            "plannedPlatformName": "4"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:29:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:29:00Z",
+        "departureTimeEstimated": "2026-09-28T03:31:00Z",
+        "transportation": {
+          "id": "ddb:92T01: :R:j26",
+          "name": "S-Bahn S1",
+          "disassembledName": "S1",
+          "number": "S1",
+          "destination": {
+            "id": "5004512",
+            "name": "Herrenberg",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08115:7100:2:3",
+          "name": "Böblingen",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "2",
+            "platform": "3",
+            "platformName": "3",
+            "plannedPlatformName": "3"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:30:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:30:00Z",
+        "departureTimeEstimated": "2026-09-28T03:31:00Z",
+        "transportation": {
+          "id": "ddb:92T01: :H:j26",
+          "name": "S-Bahn S1",
+          "disassembledName": "S1",
+          "number": "S1",
+          "destination": {
+            "id": "5004211",
+            "name": "Kirchheim (T)",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08115:7100:9:8",
+          "name": "Böblingen ZOB",
+          "type": "platform",
+          "properties": {
+            "stopId": "5007100",
+            "area": "9",
+            "platform": "8",
+            "platformName": "Bstg. 8",
+            "plannedPlatformName": "Bstg. 8"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:30:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:30:00Z",
+        "transportation": {
+          "id": "vvs:31706: :H:j26",
+          "name": "Bus 706",
+          "disassembledName": "706",
+          "number": "706",
+          "destination": {
+            "id": "5004665",
+            "name": "Sindelf. Viehweide",
+            "type": "stop"
+          }
+        }
+      }
+    ]
+  }
+}

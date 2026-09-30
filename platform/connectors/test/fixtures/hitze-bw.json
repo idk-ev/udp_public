@@ -1,0 +1,201 @@
+{
+  "source": "https://opendata.dwd.de/climate_environment/health/alerts/gt.json",
+  "recordedAt": "2026-09-28T03:13:48.838Z",
+  "note": "Trimmed by hand: the response carries 34 representative cities of Germany, this file keeps 10 in their original order. The five Baden-Wuerttemberg cities the connector emits (Konstanz, Mannheim, Ulm, Stuttgart, Freiburg) plus five others it must skip (Osnabrueck, the first entry; Muenchen, Saarbruecken, Wuerzburg and Frankfurt, the neighbours). The top-level metadata is unchanged.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Sun, 27 Sep 2026 05:28:08 GMT",
+    "etag": "\"6ab8a968-3196\""
+  },
+  "format": "json",
+  "payload": {
+    "content": [
+      {
+        "city": "Osnabrück",
+        "forecast": {
+          "today_15MEZ": "gering",
+          "tomorrow_03MEZ": "keine",
+          "tomorrow_21MEZ": "keine",
+          "dayafter_to_09MEZ": "keine",
+          "today_21MEZ": "keine",
+          "today_03MEZ": "keine",
+          "today_09MEZ": "keine",
+          "tomorrow_15MEZ": "gering",
+          "after_threedays_03MEZ": "keine",
+          "tomorrow_09MEZ": "keine",
+          "dayafter_to_03MEZ": "keine",
+          "dayafter_to_15MEZ": "gering",
+          "dayafter_to_21MEZ": "keine"
+        }
+      },
+      {
+        "forecast": {
+          "tomorrow_15MEZ": "gering",
+          "after_threedays_03MEZ": "keine",
+          "tomorrow_09MEZ": "keine",
+          "dayafter_to_03MEZ": "keine",
+          "dayafter_to_15MEZ": "gering",
+          "dayafter_to_21MEZ": "keine",
+          "today_15MEZ": "gering",
+          "tomorrow_03MEZ": "keine",
+          "tomorrow_21MEZ": "keine",
+          "dayafter_to_09MEZ": "keine",
+          "today_03MEZ": "keine",
+          "today_21MEZ": "keine",
+          "today_09MEZ": "keine"
+        },
+        "city": "München"
+      },
+      {
+        "city": "Saarbrücken",
+        "forecast": {
+          "today_21MEZ": "keine",
+          "today_03MEZ": "keine",
+          "today_09MEZ": "keine",
+          "today_15MEZ": "mittel",
+          "tomorrow_03MEZ": "keine",
+          "tomorrow_21MEZ": "keine",
+          "dayafter_to_09MEZ": "keine",
+          "dayafter_to_15MEZ": "gering",
+          "dayafter_to_21MEZ": "keine",
+          "after_threedays_03MEZ": "keine",
+          "tomorrow_15MEZ": "gering",
+          "tomorrow_09MEZ": "gering",
+          "dayafter_to_03MEZ": "keine"
+        }
+      },
+      {
+        "city": "Würzburg",
+        "forecast": {
+          "dayafter_to_09MEZ": "keine",
+          "tomorrow_21MEZ": "keine",
+          "today_15MEZ": "gering",
+          "tomorrow_03MEZ": "keine",
+          "today_09MEZ": "keine",
+          "today_03MEZ": "keine",
+          "today_21MEZ": "keine",
+          "dayafter_to_03MEZ": "keine",
+          "tomorrow_09MEZ": "keine",
+          "tomorrow_15MEZ": "mittel",
+          "after_threedays_03MEZ": "keine",
+          "dayafter_to_21MEZ": "keine",
+          "dayafter_to_15MEZ": "gering"
+        }
+      },
+      {
+        "forecast": {
+          "dayafter_to_03MEZ": "keine",
+          "tomorrow_09MEZ": "keine",
+          "after_threedays_03MEZ": "keine",
+          "tomorrow_15MEZ": "mittel",
+          "dayafter_to_21MEZ": "keine",
+          "dayafter_to_15MEZ": "gering",
+          "dayafter_to_09MEZ": "keine",
+          "tomorrow_21MEZ": "keine",
+          "tomorrow_03MEZ": "keine",
+          "today_15MEZ": "gering",
+          "today_09MEZ": "keine",
+          "today_21MEZ": "keine",
+          "today_03MEZ": "keine"
+        },
+        "city": "Konstanz"
+      },
+      {
+        "forecast": {
+          "tomorrow_21MEZ": "keine",
+          "today_15MEZ": "mittel",
+          "tomorrow_03MEZ": "keine",
+          "dayafter_to_09MEZ": "gering",
+          "today_09MEZ": "keine",
+          "today_03MEZ": "keine",
+          "today_21MEZ": "keine",
+          "tomorrow_15MEZ": "mittel",
+          "after_threedays_03MEZ": "keine",
+          "dayafter_to_03MEZ": "keine",
+          "tomorrow_09MEZ": "gering",
+          "dayafter_to_15MEZ": "mittel",
+          "dayafter_to_21MEZ": "keine"
+        },
+        "city": "Mannheim"
+      },
+      {
+        "forecast": {
+          "after_threedays_03MEZ": "keine",
+          "tomorrow_15MEZ": "gering",
+          "tomorrow_09MEZ": "keine",
+          "dayafter_to_03MEZ": "keine",
+          "dayafter_to_15MEZ": "gering",
+          "dayafter_to_21MEZ": "keine",
+          "today_15MEZ": "gering",
+          "tomorrow_03MEZ": "keine",
+          "tomorrow_21MEZ": "keine",
+          "dayafter_to_09MEZ": "keine",
+          "today_03MEZ": "keine",
+          "today_21MEZ": "keine",
+          "today_09MEZ": "keine"
+        },
+        "city": "Ulm"
+      },
+      {
+        "forecast": {
+          "today_03MEZ": "keine",
+          "today_21MEZ": "keine",
+          "today_09MEZ": "keine",
+          "tomorrow_03MEZ": "keine",
+          "today_15MEZ": "mittel",
+          "tomorrow_21MEZ": "keine",
+          "dayafter_to_09MEZ": "keine",
+          "dayafter_to_15MEZ": "gering",
+          "dayafter_to_21MEZ": "keine",
+          "tomorrow_15MEZ": "mittel",
+          "after_threedays_03MEZ": "keine",
+          "tomorrow_09MEZ": "gering",
+          "dayafter_to_03MEZ": "keine"
+        },
+        "city": "Stuttgart"
+      },
+      {
+        "forecast": {
+          "dayafter_to_09MEZ": "keine",
+          "tomorrow_21MEZ": "keine",
+          "tomorrow_03MEZ": "keine",
+          "today_15MEZ": "mittel",
+          "today_09MEZ": "keine",
+          "today_03MEZ": "keine",
+          "today_21MEZ": "keine",
+          "dayafter_to_03MEZ": "keine",
+          "tomorrow_09MEZ": "gering",
+          "tomorrow_15MEZ": "mittel",
+          "after_threedays_03MEZ": "keine",
+          "dayafter_to_21MEZ": "keine",
+          "dayafter_to_15MEZ": "gering"
+        },
+        "city": "Freiburg"
+      },
+      {
+        "city": "Frankfurt",
+        "forecast": {
+          "after_threedays_03MEZ": "keine",
+          "tomorrow_15MEZ": "mittel",
+          "dayafter_to_03MEZ": "keine",
+          "tomorrow_09MEZ": "gering",
+          "dayafter_to_15MEZ": "mittel",
+          "dayafter_to_21MEZ": "keine",
+          "tomorrow_21MEZ": "keine",
+          "today_15MEZ": "mittel",
+          "tomorrow_03MEZ": "keine",
+          "dayafter_to_09MEZ": "keine",
+          "today_09MEZ": "keine",
+          "today_21MEZ": "keine",
+          "today_03MEZ": "keine"
+        }
+      }
+    ],
+    "sender": "Deutscher Wetterdienst - Medizin-Meteorologie",
+    "forecast_day": "2026-09-27",
+    "next_update": "2026-09-28T07:30:00",
+    "name": "Thermischer Gefahrenindex",
+    "last_update": "2026-09-27T07:30:00"
+  }
+}

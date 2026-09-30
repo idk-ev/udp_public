@@ -1,0 +1,58 @@
+{
+  "source": "https://api.brightsky.dev/current_weather?dwd_station_id=13965",
+  "recordedAt": "2026-09-28T03:13:33.376Z",
+  "note": "Verbatim response of BrightSky current_weather for the station; nothing trimmed.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "weather": {
+      "source_id": 338773,
+      "timestamp": "2026-09-28T03:00:00+00:00",
+      "cloud_cover": null,
+      "condition": null,
+      "dew_point": 6.68,
+      "solar_10": null,
+      "solar_30": null,
+      "solar_60": null,
+      "precipitation_10": 0,
+      "precipitation_30": 0,
+      "precipitation_60": 0,
+      "pressure_msl": null,
+      "relative_humidity": 64,
+      "visibility": null,
+      "wind_direction_10": 230,
+      "wind_direction_30": 230,
+      "wind_direction_60": 227,
+      "wind_speed_10": 7.9,
+      "wind_speed_30": 8.3,
+      "wind_speed_60": 9.4,
+      "wind_gust_direction_10": 230,
+      "wind_gust_direction_30": 230,
+      "wind_gust_direction_60": 230,
+      "wind_gust_speed_10": 8.6,
+      "wind_gust_speed_30": 10.4,
+      "wind_gust_speed_60": 12.6,
+      "sunshine_30": null,
+      "sunshine_60": null,
+      "temperature": 13.4,
+      "icon": "clear-night"
+    },
+    "sources": [
+      {
+        "id": 338773,
+        "dwd_station_id": "13965",
+        "observation_type": "synop",
+        "lat": 48.2639,
+        "lon": 8.81344,
+        "height": 619,
+        "station_name": "Balingen-Bronnhaupte",
+        "wmo_station_id": "Q740",
+        "first_record": "2026-09-26T20:30:00+00:00",
+        "last_record": "2026-09-28T03:00:00+00:00"
+      }
+    ]
+  }
+}

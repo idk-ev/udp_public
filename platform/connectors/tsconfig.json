@@ -1,0 +1,53 @@
+{
+  /* SPDX-License-Identifier: EUPL-1.2
+     © 2024–2026 Thomas Kieß and contributors
+
+     Hardening of the connector service. The options below "strict" are not a
+     matter of taste, they catch exactly the classes of error that actually
+     occurred in the Node-RED flows being replaced:
+
+       noUncheckedIndexedAccess   The source data arrives as positional arrays
+                                  (ParkAPI: 12 columns, bw-gemeinden: 9). Their
+                                  meaning used to live in a comment. Without
+                                  this option a[11] is silently number instead
+                                  of number | undefined.
+       erasableSyntaxOnly         Keeps the door open to running without tsc
+                                  (Node's own type stripping), should it lose
+                                  its experimental status there. Forbids enum,
+                                  namespace and parameter properties — none of
+                                  which is needed here.
+       verbatimModuleSyntax       Enforces import type and explicit .js endings
+                                  in the import paths; under NodeNext that is
+                                  mandatory anyway and should not surface only
+                                  at runtime. */
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "rootDir": ".",
+    "outDir": "dist",
+    "sourceMap": true,
+    "declaration": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src", "test"],
+  "exclude": ["dist", "node_modules", "test/hardening"]
+}

@@ -92,6 +92,19 @@ Nicht Teil der Auslieferung — sie erzeugen bzw. prüfen das Bundle nur.
 Direkte Werkzeuge: Vite (MIT), TypeScript (Apache-2.0), ESLint (MIT),
 typescript-eslint (MIT), Prettier (MIT), jsdom (MIT), @vitejs/plugin-react (MIT).
 
+### 3.1 Konnektordienst (`platform/connectors`)
+
+Eigenes npm-Paket (Node 22, TypeScript). Die Laufzeit hat **eine** Abhängigkeit:
+
+| Paket | Lizenz | Rolle |
+|---|---|---|
+| `pg` | MIT | TRoE-Statistiken und Retention sprechen direkt SQL |
+
+Werkzeuge (`devDependencies`, nicht ausgeliefert): TypeScript (Apache-2.0),
+ESLint (MIT), typescript-eslint (MIT), Prettier (MIT), `@types/node` (MIT),
+`@types/pg` (MIT). Bis auf die beiden `@types`-Pakete dieselben Werkzeuge wie
+im Cockpit — die Lizenzlage ändert sich durch das zweite Paket nicht.
+
 MPL-2.0 ist dateibezogenes Copyleft und laut EUPL-Anhang kompatibel; da
 `lightningcss` unverändert als Build-Werkzeug genutzt und nicht ausgeliefert wird,
 entstehen keine weitergehenden Pflichten.
@@ -142,6 +155,7 @@ eigenständige Container betrieben. Sie sind nicht Teil dieses Repositorys.
 | FROST-Server | `fraunhoferiosb/frost-server:2.7.3` | OGC SensorThings API | LGPL-3.0 | ✅ |
 | Eclipse Mosquitto | `eclipse-mosquitto:2.0` | MQTT-Broker | EPL-2.0 / EDL-1.0 | ✅ |
 | Apache APISIX | `apache/apisix:3.17.0-debian` | API-Gateway | Apache-2.0 | ✅ |
+| Node-RED | `nodered/node-red:4.1` | Low-Code-Datenflüsse (Beispielfluss) | Apache-2.0 | ✅ |
 | Keycloak | `quay.io/keycloak/keycloak:26.7` | Identität, Rollen, Mandanten | Apache-2.0 | ✅ |
 | Apache Solr | `ckan/ckan-solr:2.10-solr9` | CKAN-Suchindex | Apache-2.0 | ✅ |
 | Valkey | `valkey/valkey:8-alpine` | CKAN-Queues/Sessions | BSD-3-Clause | ✅ |
@@ -153,14 +167,14 @@ eigenständige Container betrieben. Sie sind nicht Teil dieses Repositorys.
 
 ## 6. Selbst gebaute Images
 
-Diese vier Images entstehen aus Dateien dieses Repositorys und werden vom Workflow
+Diese Images entstehen aus Dateien dieses Repositorys und werden vom Workflow
 `.github/workflows/build-images.yml` in die GitHub Container Registry
 veröffentlicht — sie werden also **weiterverbreitet**.
 
 | Image | Basis | Zusatz | Lizenzlage |
 |---|---|---|---|
 | `cockpit` | `nginxinc/nginx-unprivileged:1.30-alpine` (BSD-2-Clause), Build mit `node:24-alpine` (MIT) | eigenes GUI-Bundle | Eigenanteil EUPL-1.2 + permissive Basis — unkritisch |
-| `node-red-udp` | `nodered/node-red:4.1` (Apache-2.0) | `pg@8` (MIT) | permissiv — unkritisch |
+| `udp-connectors` | `node:22-alpine` (MIT) | `pg@8` (MIT) | permissiv — unkritisch |
 | `ckan-dcat` | `ckan/ckan-base:2.10.10` (**AGPL-3.0**) | `ckanext-dcat>=1.7.0` (AGPL-3.0) | **REVIEW NEEDED** (§8.1) |
 | `postgres-timescale-oss` | `postgis/postgis:16-3.5` — PostgreSQL-Lizenz + PostGIS (**GPL-2.0**) | TimescaleDB **Apache Edition** (`timescaledb-2-oss`, Apache-2.0) | **REVIEW NEEDED** (§8.1) |
 

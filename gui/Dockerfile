@@ -24,6 +24,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY platform/config/nginx/cockpit.conf.template /etc/nginx/templates/default.conf.template
 # Trusted proxy networks for the client address (UDP_TRUSTED_PROXIES).
 COPY --chmod=755 gui/docker/16-udp-realip.envsh /docker-entrypoint.d/16-udp-realip.envsh
+# Upstream of /abfahrten and /warnungen.ics (the connector service), checked.
+COPY --chmod=755 gui/docker/17-udp-upstreams.envsh /docker-entrypoint.d/17-udp-upstreams.envsh
 
 # Der Entrypoint liest die Nameserver aus /etc/resolv.conf nach
 # NGINX_LOCAL_RESOLVERS – so stimmt der resolver in Docker (127.0.0.11) wie in
@@ -36,5 +38,5 @@ ENV NGINX_ENVSUBST_FILTER=^(UDP_|NGINX_LOCAL_RESOLVERS)
 # beide: nginx wendet auf Namen, die es über den resolver auflöst, die
 # search-Domains nicht an und braucht daher voll qualifizierte Servicenamen.
 ENV UDP_GATEWAY_UPSTREAM=apisix:9080 \
-    UDP_NODERED_UPSTREAM=node-red:1880
+    UDP_CONNECTORS_UPSTREAM=connectors:1880
 EXPOSE 8080

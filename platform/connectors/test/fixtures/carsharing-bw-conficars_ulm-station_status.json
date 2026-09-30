@@ -1,0 +1,419 @@
+{
+  "source": "https://api.mobidata-bw.de/sharing/gbfs/v2/conficars_ulm/station_status",
+  "recordedAt": "2026-09-28T03:09:40.238Z",
+  "note": "The complete live response, verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "last-modified": "Mon, 28 Sep 2026 03:07:31 GMT",
+    "etag": "\"5e12627b755873edc0806442d6db6eff\""
+  },
+  "format": "json",
+  "payload": {
+    "last_updated": 1790564851,
+    "ttl": 60,
+    "version": "2.3",
+    "data": {
+      "stations": [
+        {
+          "station_id": "CFU:Station:6451",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:daciajogger",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:3661",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:hyundaii10",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:3167",
+          "num_bikes_available": 2,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:vwup",
+              "count": 1
+            },
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodafabia",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:2297",
+          "num_bikes_available": 3,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodafabia",
+              "count": 1
+            },
+            {
+              "vehicle_type_id": "CFU:VehicleType:vwup",
+              "count": 1
+            },
+            {
+              "vehicle_type_id": "CFU:VehicleType:renaultkangoo",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:8351",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodafabia",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:5619",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodafabia",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:2986",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:hyundaii10",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:10530",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:hyundaii20",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:3656",
+          "num_bikes_available": 2,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodafabia",
+              "count": 1
+            },
+            {
+              "vehicle_type_id": "CFU:VehicleType:renaultkangoo",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:10554",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:hyundaii20",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:4746",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:hyundaii10",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:10457",
+          "num_bikes_available": 2,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:toyotayarishybrid",
+              "count": 1
+            },
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodacitigo",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:5958",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:vwup",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:9018",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:renaulttrafic",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:5254",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:vwup",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:6222",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:mbvitotransporter",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:7633",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodafabia",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:9096",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:toyotaaygox",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:1448",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:vwup",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:1844",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:daciajogger",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:11539",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:mbsprintertransporter",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:11133",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodafabia",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:10583",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:vwup",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:4479",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:hyundaii10",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:9428",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:skodafabia",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:9926",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:hyundaii10",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        },
+        {
+          "station_id": "CFU:Station:10148",
+          "num_bikes_available": 1,
+          "vehicle_types_available": [
+            {
+              "vehicle_type_id": "CFU:VehicleType:toyotaaygox",
+              "count": 1
+            }
+          ],
+          "is_installed": true,
+          "is_renting": true,
+          "is_returning": true,
+          "last_reported": 1790564851
+        }
+      ]
+    }
+  }
+}

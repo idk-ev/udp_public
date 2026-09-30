@@ -1,0 +1,11 @@
+{
+  /* SPDX-License-Identifier: EUPL-1.2
+     © 2024–2026 Thomas Kieß and contributors
+
+     Build for the image: src/ only, without tests and without fixtures. The
+     parity tests are compiled in the working tree (tsconfig.json) and run by
+     tests/run.js — inside the container they have no business. */
+  "extends": "./tsconfig.json",
+  "include": ["src"],
+  "exclude": ["dist", "node_modules", "test"]
+}

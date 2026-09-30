@@ -1,0 +1,15 @@
+{
+  "source": "https://hystreet.com/api/locations",
+  "recordedAt": "2026-09-28T03:30:00.000Z",
+  "note": "SYNTHETIC — not a recorded response. The hystreet API needs a token (HYSTREET_API_TOKEN) this port was written without; an unauthenticated request answers 401 (see hystreet-unauthorized.json, which IS recorded). Shaped exactly like the old FN_HY_FIND node expects: an array of locations, one of them mentioning Reutlingen and carrying an id. Ids, names and cities are invented.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": [
+    { "id": 101, "name": "Kaiserstraße (Mitte)", "city": "Karlsruhe" },
+    { "id": 245, "name": "Wilhelmstraße", "city": "Reutlingen" },
+    { "id": 312, "name": "Königstraße (Nord)", "city": "Stuttgart" }
+  ]
+}

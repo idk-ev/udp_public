@@ -1,0 +1,1521 @@
+{
+  "source": "https://overpass-api.de/api/interpreter?data=%5Bout%3Ajson%5D%5Btimeout%3A90%5D%5Bbbox%3A47.55%2C7.5%2C47.8%2C7.9%5D%3B(node%5B%22amenity%22%3D%22townhall%22%5D%3Bway%5B%22amenity%22%3D%22townhall%22%5D%3B)%3Bout%20tags%20center%3B",
+  "recordedAt": "2026-09-28T03:10:16.464Z",
+  "note": "Recorded from overpass-api.de with the connector's own query, but with the bounding box reduced from the state (47.5,7.4,49.9,10.6) to 47.55,7.5,47.8,7.9 (the district of Loerrach with Basel and the southern tip of Alsace), so a single modest request suffices and the points fall into the municipalities of test/fixtures/grenzen-bw.json or just outside the state. Untrimmed: 86 elements (30 nodes, 56 ways), 70 of them in fixture municipalities, 16 in Switzerland/France. Several municipalities have more than one townhall (Ortsverwaltungen), including score ties, unnamed elements and way centers.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip"
+  },
+  "format": "json",
+  "payload": {
+    "version": 0.6,
+    "generator": "Overpass API 0.7.62.11 87bfad18",
+    "osm3s": {
+      "timestamp_osm_base": "2026-09-28T03:09:15Z",
+      "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+    },
+    "elements": [
+      {
+        "type": "node",
+        "id": 267965768,
+        "lat": 47.6315076,
+        "lon": 7.7439425,
+        "tags": {
+          "addr:city": "Steinen",
+          "addr:country": "DE",
+          "addr:housenumber": "35",
+          "addr:postcode": "79585",
+          "addr:street": "Adelhauser Straße",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Hüsingen"
+        }
+      },
+      {
+        "type": "node",
+        "id": 271284906,
+        "lat": 47.63685,
+        "lon": 7.812853,
+        "tags": {
+          "addr:city": "Schopfheim",
+          "addr:housenumber": "20",
+          "addr:postcode": "79650",
+          "addr:street": "Silberrankstraße",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Wiechs",
+          "toilets:wheelchair": "no",
+          "website": "https://wiechs.schopfheim.de/de/Ortsverwaltung",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "type": "node",
+        "id": 294508457,
+        "lat": 47.7086283,
+        "lon": 7.6088541,
+        "tags": {
+          "addr:city": "Kandern",
+          "addr:country": "DE",
+          "addr:housenumber": "25",
+          "addr:postcode": "79400",
+          "addr:street": "Kirchmättle",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Tannenkirch"
+        }
+      },
+      {
+        "type": "node",
+        "id": 301838958,
+        "lat": 47.7870609,
+        "lon": 7.5957508,
+        "tags": {
+          "amenity": "townhall",
+          "name": "Gemeinde Auggen Rathaus",
+          "website": "https://www.auggen.de/index.php?article_id=4"
+        }
+      },
+      {
+        "type": "node",
+        "id": 309244192,
+        "lat": 47.555244,
+        "lon": 7.6622597,
+        "tags": {
+          "addr:city": "Grenzach-Wyhlen",
+          "addr:housenumber": "10",
+          "addr:postcode": "79639",
+          "addr:street": "Hauptstraße",
+          "amenity": "townhall",
+          "name": "Rathaus Grenzach",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "node",
+        "id": 389607320,
+        "lat": 47.6512819,
+        "lon": 7.5964371,
+        "tags": {
+          "addr:city": "Fischingen",
+          "addr:country": "DE",
+          "addr:housenumber": "6",
+          "addr:postcode": "79592",
+          "addr:street": "Kirchplatz",
+          "amenity": "townhall"
+        }
+      },
+      {
+        "type": "node",
+        "id": 615919591,
+        "lat": 47.7315088,
+        "lon": 7.5563709,
+        "tags": {
+          "addr:city": "Bad Bellingen",
+          "addr:country": "DE",
+          "addr:housenumber": "25",
+          "addr:postcode": "79415",
+          "addr:street": "Rheinstraße",
+          "amenity": "townhall",
+          "name": "Rathaus Bad Bellingen",
+          "opening_hours": "Mo-Fr 08:00-12:00, We 08:00-12:00,14:00-18:00"
+        }
+      },
+      {
+        "type": "node",
+        "id": 685768447,
+        "lat": 47.7137933,
+        "lon": 7.6638639,
+        "tags": {
+          "addr:city": "Kandern",
+          "addr:housenumber": "39",
+          "addr:postcode": "79400",
+          "addr:street": "Waldeckstraße",
+          "amenity": "townhall",
+          "check_date": "2023-06-11",
+          "name": "Stadtverwaltung Kandern",
+          "opening_hours": "Mo-We,Fr 08:00-12:00; Th 08:00-12:00,14:15-18:00; Sa-Su,PH off",
+          "townhall:type": "town",
+          "website": "https://www.kandern.de/"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1115320157,
+        "lat": 47.5867415,
+        "lon": 7.6972399,
+        "tags": {
+          "amenity": "townhall",
+          "name": "Bürgermeisteramt Inzlingen",
+          "opening_hours": "Mo-Fr 08:00-12:00, Th 14:30-18:30"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1258710689,
+        "lat": 47.7491444,
+        "lon": 7.7701675,
+        "tags": {
+          "amenity": "townhall",
+          "name": "Rathaus"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1422468508,
+        "lat": 47.5611826,
+        "lon": 7.8427941,
+        "tags": {
+          "addr:city": "Möhlin",
+          "addr:country": "CH",
+          "addr:housenumber": "36",
+          "addr:postcode": "4313",
+          "addr:street": "Hauptstrasse",
+          "amenity": "townhall",
+          "name": "Gemeindeverwaltung Möhlin",
+          "opening_hours": "Mo-We,Fr 08:00-12:00,13:30-17:00; Th 08:00-12:00,13:30-18:00",
+          "phone": "+4161 855 33 33",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1654377385,
+        "lat": 47.5524992,
+        "lon": 7.5462997,
+        "tags": {
+          "addr:housenumber": "111",
+          "addr:postcode": "4123",
+          "addr:street": "Baslerstrasse",
+          "amenity": "townhall",
+          "name": "Einwohnergemeinde Allschwil",
+          "opening_hours": "Mo 08:30-11:30,13:30-18:00; Tu 08:30-11:30; We 08:30-11:30,13:30-17:00; Th 08:30-11:30; Fr 08:30-14:00",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1704095533,
+        "lat": 47.6499519,
+        "lon": 7.8208711,
+        "tags": {
+          "addr:city": "Schopfheim",
+          "addr:country": "DE",
+          "addr:housenumber": "29",
+          "addr:postcode": "79650",
+          "addr:street": "Hauptstraße",
+          "amenity": "townhall",
+          "name": "Rathaus",
+          "opening_hours": "Mo-Fr 08:00-12:00, Mo,Th 14:00-16:00, We 14:00-18:00",
+          "toilets:wheelchair": "no",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1794698507,
+        "lat": 47.59897,
+        "lon": 7.7568716,
+        "tags": {
+          "addr:city": "Rheinfelden (Baden)",
+          "addr:country": "DE",
+          "addr:housenumber": "1",
+          "addr:postcode": "79618",
+          "addr:street": "Birkenweg",
+          "addr:suburb": "Eichsel",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Eichsel",
+          "toilets:wheelchair": "no",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1798963837,
+        "lat": 47.6055185,
+        "lon": 7.5700687,
+        "tags": {
+          "amenity": "townhall",
+          "contact:email": "sg.mairie@mairie-village-neuf.fr",
+          "contact:phone": "+33 3 89 89 79 19",
+          "contact:website": "https://www.mairie-village-neuf.fr/",
+          "name": "Mairie de Village-Neuf",
+          "opening_hours": "Mo-Th 08:00-12:00,16:00-18:00; Fr 08:00-12:00,15:00-17:00",
+          "ref:FR:SIRET": "21680349400014",
+          "source": "Service-Public.fr - 07/2025",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1851227322,
+        "lat": 47.6899286,
+        "lon": 7.7418599,
+        "tags": {
+          "addr:city": "Steinen",
+          "addr:country": "DE",
+          "addr:housenumber": "14",
+          "addr:postcode": "79585",
+          "addr:street": "Krämelweg",
+          "addr:suburb": "Schlächtenhaus",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Schlächtenhaus"
+        }
+      },
+      {
+        "type": "node",
+        "id": 1992650317,
+        "lat": 47.6141477,
+        "lon": 7.8555406,
+        "tags": {
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Dossenbach"
+        }
+      },
+      {
+        "type": "node",
+        "id": 2152912791,
+        "lat": 47.6393554,
+        "lon": 7.748117,
+        "tags": {
+          "amenity": "townhall",
+          "toilets:wheelchair": "no",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "node",
+        "id": 5290392704,
+        "lat": 47.6747705,
+        "lon": 7.5677615,
+        "tags": {
+          "addr:city": "Efringen-Kirchen",
+          "addr:country": "DE",
+          "addr:housenumber": "17",
+          "addr:postcode": "79588",
+          "addr:street": "Dorfstraße",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Wintersweiler",
+          "operator": "Gemeinde Efringen-Kirchen",
+          "townhall:type": "village"
+        }
+      },
+      {
+        "type": "node",
+        "id": 6767747883,
+        "lat": 47.6303242,
+        "lon": 7.5946916,
+        "tags": {
+          "amenity": "townhall"
+        }
+      },
+      {
+        "type": "node",
+        "id": 7780866836,
+        "lat": 47.7546142,
+        "lon": 7.5780981,
+        "tags": {
+          "addr:city": "Schliengen",
+          "addr:country": "DE",
+          "addr:housenumber": "2",
+          "addr:postcode": "79418",
+          "addr:street": "Altinger Straße",
+          "amenity": "townhall",
+          "name": "Gemeindeverwaltung Schliengen",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "node",
+        "id": 10093732904,
+        "lat": 47.6376922,
+        "lon": 7.67564,
+        "tags": {
+          "addr:city": "Lörrach",
+          "addr:country": "DE",
+          "addr:housenumber": "6",
+          "addr:postcode": "79541",
+          "addr:street": "Manzentalstraße",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Haagen",
+          "operator": "Stadt Lörrach"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12056655268,
+        "lat": 47.5553638,
+        "lon": 7.7931435,
+        "tags": {
+          "addr:housenumber": "16",
+          "addr:street": "Marktgasse",
+          "amenity": "townhall",
+          "building:roof": "tile",
+          "check_date": "2025-08-28",
+          "name": "Rathaus",
+          "wikidata": "Q29580581"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12978987291,
+        "lat": 47.7546137,
+        "lon": 7.6302892,
+        "tags": {
+          "addr:city": "Schliengen",
+          "addr:country": "DE",
+          "addr:housenumber": "4",
+          "addr:postcode": "79418",
+          "addr:street": "Feuerbacher Straße",
+          "amenity": "townhall",
+          "email": "ortsverwaltungniedereggenen@gmx.de",
+          "name": "Ortsverwaltung Niedereggenen",
+          "phone": "+49 15 15 4 82 92 29",
+          "source": "https://www.schliengen.de/buerger-und-gemeinde/rathaus/ortsverwaltung"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12978987292,
+        "lat": 47.76268,
+        "lon": 7.5918357,
+        "tags": {
+          "addr:city": "Schliengen",
+          "addr:country": "DE",
+          "addr:housenumber": "16",
+          "addr:postcode": "79418",
+          "addr:street": "Auggener Straße",
+          "addr:suburb": "Mauchen",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Mauchen"
+        }
+      },
+      {
+        "type": "node",
+        "id": 12978987293,
+        "lat": 47.7398018,
+        "lon": 7.6099902,
+        "tags": {
+          "addr:city": "Schliengen",
+          "addr:housenumber": "17",
+          "addr:postcode": "79418",
+          "addr:street": "Kirchstraße",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Liel"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14040560675,
+        "lat": 47.6808001,
+        "lon": 7.8098591,
+        "tags": {
+          "addr:city": "Schopfheim",
+          "addr:country": "DE",
+          "addr:housenumber": "14",
+          "addr:postcode": "79650",
+          "addr:street": "Maibergstraße",
+          "addr:suburb": "Enkenstein",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Enkenstein"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14040560676,
+        "lat": 47.6606233,
+        "lon": 7.7993381,
+        "tags": {
+          "addr:city": "Schopfheim",
+          "addr:housenumber": "27",
+          "addr:postcode": "79650",
+          "addr:street": "Landstraße",
+          "addr:suburb": "Langenau",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Langenau"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14040560677,
+        "lat": 47.665447,
+        "lon": 7.8692298,
+        "tags": {
+          "addr:city": "Schopfheim",
+          "addr:housenumber": "79",
+          "addr:postcode": "79650",
+          "addr:street": "Kürnberg",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Kürnberg",
+          "website": "https://kuernberg.schopfheim.de/de/Ortsverwaltung"
+        }
+      },
+      {
+        "type": "node",
+        "id": 14069618057,
+        "lat": 47.6781089,
+        "lon": 7.7657488,
+        "tags": {
+          "addr:city": "Steinen",
+          "addr:country": "DE",
+          "addr:housenumber": "52",
+          "addr:postcode": "79585",
+          "addr:street": "Talstraße",
+          "addr:suburb": "Weitenau",
+          "amenity": "townhall",
+          "name": "Ortsverwaltung Weitenau"
+        }
+      },
+      {
+        "type": "way",
+        "id": 23909327,
+        "center": {
+          "lat": 47.6316909,
+          "lon": 7.5954748
+        },
+        "tags": {
+          "addr:city": "Eimeldingen",
+          "addr:country": "DE",
+          "addr:housenumber": "1",
+          "addr:postcode": "79591",
+          "addr:street": "Dorfstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Rathaus Eimeldingen"
+        }
+      },
+      {
+        "type": "way",
+        "id": 28918776,
+        "center": {
+          "lat": 47.6515634,
+          "lon": 7.5648766
+        },
+        "tags": {
+          "addr:city": "Efringen-Kirchen",
+          "addr:country": "DE",
+          "addr:housenumber": "26",
+          "addr:postcode": "79588",
+          "addr:street": "Hauptstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Rathaus",
+          "operator": "Gemeinde Efringen-Kirchen",
+          "townhall:type": "city",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 30483981,
+        "center": {
+          "lat": 47.6712988,
+          "lon": 7.6526514
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "source:outline": "maps4bw (LGL, www.lgl-bw.de); Mapbox Satellite"
+        }
+      },
+      {
+        "type": "way",
+        "id": 40096728,
+        "center": {
+          "lat": 47.6499933,
+          "lon": 7.8212559
+        },
+        "tags": {
+          "addr:city": "Schopfheim",
+          "addr:country": "DE",
+          "addr:housenumber": "31",
+          "addr:postcode": "79650",
+          "addr:street": "Hauptstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Rathaus Schopfheim",
+          "opening_hours": "Mo-Fr 08:00-12:00, Mo,Th 14:00-16:00, We 14:00-18:00",
+          "source:geometry": "maps4bw (LGL, www.lgl-bw.de); Mapbox Satellite",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "way",
+        "id": 44886727,
+        "center": {
+          "lat": 47.5921177,
+          "lon": 7.8738934
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Bürgermeisteramt Schwörstadt"
+        }
+      },
+      {
+        "type": "way",
+        "id": 46581155,
+        "center": {
+          "lat": 47.561339,
+          "lon": 7.5265704
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "contact:email": "mairie@hegenheim.fr",
+          "contact:phone": "+33 3 89 69 18 54",
+          "contact:website": "https://www.ville-hegenheim.fr",
+          "name": "Mairie d'Hegenheim",
+          "opening_hours": "Mo-Tu 14:00-18:00; Th-Fr 08:00-12:00",
+          "ref:FR:SIRET": "21680126600018",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2009;Service-Public.fr - 07/2025",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 57780536,
+        "center": {
+          "lat": 47.6018368,
+          "lon": 7.7906822
+        },
+        "tags": {
+          "addr:city": "Rheinfelden (Baden)",
+          "addr:housenumber": "48",
+          "addr:postcode": "79618",
+          "addr:street": "Wiesentalstraße",
+          "addr:suburb": "Minseln",
+          "amenity": "townhall",
+          "building": "public",
+          "name": "Ortsverwaltung Minseln"
+        }
+      },
+      {
+        "type": "way",
+        "id": 59277476,
+        "center": {
+          "lat": 47.5605154,
+          "lon": 7.7860234
+        },
+        "tags": {
+          "addr:city": "Rheinfelden",
+          "addr:housenumber": "2",
+          "addr:postcode": "79618",
+          "addr:street": "Kirchplatz",
+          "amenity": "townhall",
+          "building": "public",
+          "name": "Rathaus Rheinfelden",
+          "townhall:type": "town",
+          "website": "https://www.rheinfelden.de/"
+        }
+      },
+      {
+        "type": "way",
+        "id": 86322977,
+        "center": {
+          "lat": 47.6425413,
+          "lon": 7.7415869
+        },
+        "tags": {
+          "addr:city": "Steinen",
+          "addr:country": "DE",
+          "addr:housenumber": "31",
+          "addr:postcode": "79585",
+          "addr:street": "Eisenbahnstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Rathaus Steinen",
+          "toilets:wheelchair": "no",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "way",
+        "id": 86323418,
+        "center": {
+          "lat": 47.6150172,
+          "lon": 7.6644353
+        },
+        "tags": {
+          "addr:city": "Lörrach",
+          "addr:country": "DE",
+          "addr:housenumber": "16",
+          "addr:postcode": "79539",
+          "addr:street": "Luisenstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "building:levels": "17",
+          "check_date": "2025-10-20",
+          "name": "Rathaus Lörrach",
+          "townhall:type": "town",
+          "wheelchair": "yes",
+          "wikipedia": "de:Lörracher Rathaus"
+        }
+      },
+      {
+        "type": "way",
+        "id": 89233820,
+        "center": {
+          "lat": 47.7372486,
+          "lon": 7.7128138
+        },
+        "tags": {
+          "addr:city": "Malsburg-Marzell",
+          "addr:country": "DE",
+          "addr:housenumber": "1",
+          "addr:postcode": "79429",
+          "addr:street": "Rathausplatz",
+          "amenity": "townhall",
+          "building": "yes",
+          "name": "Gemeindeverwaltung Malsburg-Marzell",
+          "source": "bing",
+          "website": "https://www.malsburg-marzell.de/"
+        }
+      },
+      {
+        "type": "way",
+        "id": 90505577,
+        "center": {
+          "lat": 47.5938132,
+          "lon": 7.6116395
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:housenumber": "1",
+          "addr:postcode": "79576",
+          "addr:street": "Rathausplatz",
+          "amenity": "townhall",
+          "building": "civic",
+          "email": "stadt@weil-am-rhein.de",
+          "fax": "+49 7621 704-123",
+          "name": "Rathaus",
+          "phone": "+49 7621 7040",
+          "website": "https://www.weil-am-rhein.de/"
+        }
+      },
+      {
+        "type": "way",
+        "id": 93689278,
+        "center": {
+          "lat": 47.6429392,
+          "lon": 7.6942615
+        },
+        "tags": {
+          "addr:city": "Lörrach",
+          "addr:country": "DE",
+          "addr:housenumber": "1",
+          "addr:postcode": "79541",
+          "addr:street": "Steinenstraße",
+          "addr:suburb": "Hauingen",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Hauingen",
+          "wheelchair": "no"
+        }
+      },
+      {
+        "type": "way",
+        "id": 102476700,
+        "center": {
+          "lat": 47.6419748,
+          "lon": 7.6429224
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Rathaus"
+        }
+      },
+      {
+        "type": "way",
+        "id": 103967681,
+        "center": {
+          "lat": 47.6124928,
+          "lon": 7.7606469
+        },
+        "tags": {
+          "addr:city": "Rheinfelden (Baden)",
+          "addr:housenumber": "9",
+          "addr:postcode": "79618",
+          "addr:street": "Rheintalstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Adelhausen"
+        }
+      },
+      {
+        "type": "way",
+        "id": 107352076,
+        "center": {
+          "lat": 47.7872353,
+          "lon": 7.5066623
+        },
+        "tags": {
+          "addr:city": "Ottmarsheim",
+          "addr:housenumber": "20",
+          "addr:postcode": "68490",
+          "addr:street": "Rue du Général de Gaulle",
+          "amenity": "townhall",
+          "building": "civic",
+          "check_date": "2026-07-22",
+          "email": "mairie@ottmarsheim.fr",
+          "name": "Mairie d'Ottmarsheim",
+          "opening_hours": "Mo 08:30-12:00,13:30-17:00; Tu 13:30-19:00; We 10:30-12:00,13:30-17:00; Th 08:30-12:00,13:30-17:00; Fr 10:30-12:00,13:30-17:00",
+          "phone": "+33 3 89 26 06 42",
+          "ref:FR:SIRET": "21680253800019",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2011;Service-Public.fr - 07/2025",
+          "website": "https://www.ottmarsheim.fr/",
+          "wheelchair": "yes",
+          "wikipedia": "fr:Ottmarsheim"
+        }
+      },
+      {
+        "type": "way",
+        "id": 136187578,
+        "center": {
+          "lat": 47.7352118,
+          "lon": 7.6717177
+        },
+        "tags": {
+          "addr:city": "Kandern",
+          "addr:country": "DE",
+          "addr:housenumber": "13",
+          "addr:postcode": "79400",
+          "addr:street": "Breitestraße",
+          "amenity": "townhall",
+          "building": "yes",
+          "name": "Rathaus Sitzenkirch"
+        }
+      },
+      {
+        "type": "way",
+        "id": 142648468,
+        "center": {
+          "lat": 47.5857545,
+          "lon": 7.560776
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "yes",
+          "police:FR": "police_municipale",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2011"
+        }
+      },
+      {
+        "type": "way",
+        "id": 142652348,
+        "center": {
+          "lat": 47.5860215,
+          "lon": 7.561057
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "yes",
+          "name": "Hôtel de Ville de Saint-Louis",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2011"
+        }
+      },
+      {
+        "type": "way",
+        "id": 146036811,
+        "center": {
+          "lat": 47.7859283,
+          "lon": 7.6585278
+        },
+        "tags": {
+          "addr:city": "Badenweiler",
+          "addr:housenumber": "18/1",
+          "addr:postcode": "79410",
+          "addr:street": "Ernst-Scheffelt-Straße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Lipburg-Sehringen"
+        }
+      },
+      {
+        "type": "way",
+        "id": 146256194,
+        "center": {
+          "lat": 47.5939995,
+          "lon": 7.5792825
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "contact:email": "mairie@ville-huningue.fr",
+          "contact:phone": "+33 3 89 69 17 80",
+          "name": "Mairie d'Huningue",
+          "opening_hours": "Mo 08:30-12:00,13:30-18:00; Tu-We 09:00-12:00,14:00-17:00; Th 09:00-14:00; Fr 09:00-12:00,14:00-17:00",
+          "ref:FR:SIRET": "21680149800017",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2012;Service-Public.fr - 07/2025",
+          "website": "https://www.ville-huningue.fr/",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 150872007,
+        "center": {
+          "lat": 47.6252355,
+          "lon": 7.5805835
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "32",
+          "addr:postcode": "79576",
+          "addr:street": "Rheinstraße",
+          "amenity": "townhall",
+          "building": "civic"
+        }
+      },
+      {
+        "type": "way",
+        "id": 151992340,
+        "center": {
+          "lat": 47.6311728,
+          "lon": 7.6240177
+        },
+        "tags": {
+          "addr:city": "Binzen",
+          "addr:housenumber": "6",
+          "addr:street": "Am Rathausplatz",
+          "amenity": "townhall",
+          "building": "civic",
+          "check_date": "2024-06-22"
+        }
+      },
+      {
+        "type": "way",
+        "id": 152456017,
+        "center": {
+          "lat": 47.6153156,
+          "lon": 7.6160979
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housename": "Ortsverwaltung Haltingen",
+          "addr:housenumber": "5",
+          "addr:postcode": "79576",
+          "addr:street": "Große Gaß",
+          "addr:suburb": "Haltingen",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Haltingen",
+          "wheelchair": "no",
+          "wikimedia_commons": "File:Haltingen, Rathaus.jpg"
+        }
+      },
+      {
+        "type": "way",
+        "id": 153135873,
+        "center": {
+          "lat": 47.6224245,
+          "lon": 7.6228063
+        },
+        "tags": {
+          "addr:city": "Weil am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "44",
+          "addr:postcode": "79576",
+          "addr:street": "Dorfstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung",
+          "roof:shape": "gabled"
+        }
+      },
+      {
+        "type": "way",
+        "id": 162432464,
+        "center": {
+          "lat": 47.7730754,
+          "lon": 7.6421268
+        },
+        "tags": {
+          "addr:city": "Müllheim im Markgräflerland",
+          "addr:country": "DE",
+          "addr:housenumber": "28",
+          "addr:postcode": "79379",
+          "addr:street": "Bürgelnstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Feldberg",
+          "opening_hours": "Mo 08:00-12:00; Th 16:00-18:00",
+          "source": "bing aerial imagery"
+        }
+      },
+      {
+        "type": "way",
+        "id": 162444415,
+        "center": {
+          "lat": 47.7665961,
+          "lon": 7.5550862
+        },
+        "tags": {
+          "addr:city": "Neuenburg am Rhein",
+          "addr:country": "DE",
+          "addr:housenumber": "22",
+          "addr:postcode": "79395",
+          "addr:street": "Hauptstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Steinenstadt",
+          "source:addr": "LGL, www.lgl-bw.de"
+        }
+      },
+      {
+        "type": "way",
+        "id": 173901335,
+        "center": {
+          "lat": 47.576292,
+          "lon": 7.52111
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "contact:email": "mairie@hesingue.fr",
+          "contact:phone": "+33 3 89 89 70 30",
+          "contact:website": "https://www.ville-hesingue.fr/",
+          "opening_hours": "Mo 16:00-19:00; Tu-We 10:00-12:30,16:00-19:00; Th 10:00-12:30",
+          "ref:FR:SIRET": "21680135700015",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2012;Service-Public.fr - 07/2025",
+          "wall": "no",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 182897013,
+        "center": {
+          "lat": 47.7953891,
+          "lon": 7.8283037
+        },
+        "tags": {
+          "addr:city": "Kleines Wiesental",
+          "addr:country": "DE",
+          "addr:housenumber": "2",
+          "addr:postcode": "79692",
+          "addr:street": "Hauweg",
+          "addr:suburb": "Neuenweg",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Neuenweg",
+          "website": "https://www.kleines-wiesental.eu/Rathaus/Ortschaftsraete-und-weitere-Infos/Ortsteil-Neuenweg"
+        }
+      },
+      {
+        "type": "way",
+        "id": 183251361,
+        "center": {
+          "lat": 47.557646,
+          "lon": 7.5069455
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "contact:email": "mairie@buschwiller.fr",
+          "contact:phone": "+33 3 89 67 12 60",
+          "contact:website": "https://www.buschwiller.fr/",
+          "opening_hours": "Mo 16:00-19:00; Tu 16:30-18:30; We 10:00-12:00; Th 14:00-16:00",
+          "ref:FR:SIRET": "21680061500017",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2012;Service-Public.fr - 07/2025",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "type": "way",
+        "id": 186294495,
+        "center": {
+          "lat": 47.6541265,
+          "lon": 7.504069
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "yes",
+          "name": "Loechlé",
+          "operator": "Commune de Kembs",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2012",
+          "townhall:type": "mairie_annexe"
+        }
+      },
+      {
+        "type": "way",
+        "id": 186298678,
+        "center": {
+          "lat": 47.7122906,
+          "lon": 7.5090941
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "contact:email": "mairie.niffer@wanadoo.fr",
+          "contact:phone": "+33 3 89 48 37 33",
+          "contact:website": "https://www.intramuros.org/niffer",
+          "name": "Mairie de Niffer",
+          "opening_hours": "Mo-Th 10:00-12:00,15:00-17:00; Fr 10:00-12:00,14:00-16:00",
+          "ref:FR:SIRET": "21680238900017",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2012;Service-Public.fr - 07/2025",
+          "wheelchair": "yes",
+          "wikipedia": "fr:Niffer"
+        }
+      },
+      {
+        "type": "way",
+        "id": 186301945,
+        "center": {
+          "lat": 47.730346,
+          "lon": 7.5200885
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "contact:email": "mairie@petit-landau.fr",
+          "contact:phone": "+33 3 89 48 37 15",
+          "contact:website": "http://www.petit-landau.fr",
+          "name": "Mairie de Petit-Landau",
+          "opening_hours": "Mo 09:00-11:00; Tu 16:00-19:00; Th 09:00-11:00,16:00-18:00; Fr 09:00-11:00",
+          "ref:FR:SIRET": "21680254600012",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2012;Service-Public.fr - 07/2025",
+          "wheelchair": "yes",
+          "wikipedia": "fr:Petit-Landau"
+        }
+      },
+      {
+        "type": "way",
+        "id": 186312836,
+        "center": {
+          "lat": 47.758864,
+          "lon": 7.504808
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "civic",
+          "contact:email": "accueil@hombourg68.fr",
+          "contact:phone": "+33 3 89 83 21 83",
+          "name": "Mairie de Hombourg",
+          "opening_hours": "We-Th 09:00-11:30; Fr 09:00-11:30,14:00-17:00; Mo-Tu 09:00-11:30,16:00-18:00",
+          "ref:FR:SIRET": "21680144900077",
+          "source": "cadastre-dgi-fr source : Direction Générale des Impôts - Cadastre. Mise à jour : 2012;Service-Public.fr - 07/2025",
+          "website": "https://www.hombourg68.fr/",
+          "wheelchair": "yes",
+          "wikipedia": "fr:Hombourg (Haut-Rhin)"
+        }
+      },
+      {
+        "type": "way",
+        "id": 197317256,
+        "center": {
+          "lat": 47.6600459,
+          "lon": 7.5390761
+        },
+        "tags": {
+          "addr:city": "Efringen-Kirchen",
+          "addr:country": "DE",
+          "addr:housenumber": "65",
+          "addr:postcode": "79588",
+          "addr:street": "Neue Straße",
+          "amenity": "townhall",
+          "building": "civic"
+        }
+      },
+      {
+        "type": "way",
+        "id": 207310910,
+        "center": {
+          "lat": 47.6611694,
+          "lon": 7.7277544
+        },
+        "tags": {
+          "addr:city": "Steinen",
+          "addr:housenumber": "16",
+          "addr:postcode": "79585",
+          "addr:street": "Untere Dorfstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "building:name": "Altes Rathaus",
+          "name": "Ortsverwaltung Hägelberg"
+        }
+      },
+      {
+        "type": "way",
+        "id": 207799536,
+        "center": {
+          "lat": 47.7573114,
+          "lon": 7.6468682
+        },
+        "tags": {
+          "addr:city": "Schliengen",
+          "addr:country": "DE",
+          "addr:housenumber": "4",
+          "addr:postcode": "79418",
+          "addr:street": "Rathausplatz",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Obereggenen"
+        }
+      },
+      {
+        "type": "way",
+        "id": 225033779,
+        "center": {
+          "lat": 47.7928941,
+          "lon": 7.8822567
+        },
+        "tags": {
+          "addr:city": "Schönenberg",
+          "addr:country": "DE",
+          "addr:housenumber": "1",
+          "addr:postcode": "79677",
+          "addr:street": "Belchenstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Rathaus Schönenberg",
+          "website": "https://gemeinde-schoenenberg.de/"
+        }
+      },
+      {
+        "type": "way",
+        "id": 225036612,
+        "center": {
+          "lat": 47.7732635,
+          "lon": 7.886947
+        },
+        "tags": {
+          "addr:city": "Wembach",
+          "addr:country": "DE",
+          "addr:housenumber": "2",
+          "addr:postcode": "79677",
+          "addr:street": "Bifigstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Gemeindeverwaltung Wembach"
+        }
+      },
+      {
+        "type": "way",
+        "id": 225141169,
+        "center": {
+          "lat": 47.7584609,
+          "lon": 7.8835992
+        },
+        "tags": {
+          "addr:city": "Fröhnd",
+          "addr:country": "DE",
+          "addr:housenumber": "21",
+          "addr:postcode": "79677",
+          "addr:street": "Unterkastel",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Gemeindeverwaltung Fröhnd",
+          "source": "Maps4BW, LGL, www.lgl-bw.de"
+        }
+      },
+      {
+        "type": "way",
+        "id": 225611773,
+        "center": {
+          "lat": 47.6806265,
+          "lon": 7.8429122
+        },
+        "tags": {
+          "addr:city": "Hausen im Wiesental",
+          "addr:country": "DE",
+          "addr:housenumber": "9",
+          "addr:postcode": "79688",
+          "addr:street": "Bahnhofstraße",
+          "amenity": "townhall",
+          "building": "yes",
+          "name": "Rathaus Hausen",
+          "opening_hours": "Mo, Tu, Th 08:00-12:00; We 14:00-18:00; Fr 07:00-12:00"
+        }
+      },
+      {
+        "type": "way",
+        "id": 276146301,
+        "center": {
+          "lat": 47.6535594,
+          "lon": 7.8984823
+        },
+        "tags": {
+          "addr:city": "Hasel",
+          "addr:country": "DE",
+          "addr:housenumber": "2",
+          "addr:postcode": "79686",
+          "addr:street": "Hofstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Bürgermeisteramt Hasel",
+          "source:outline": "maps4bw (LGL, www.lgl-bw.de)"
+        }
+      },
+      {
+        "type": "way",
+        "id": 277655793,
+        "center": {
+          "lat": 47.7199002,
+          "lon": 7.7944123
+        },
+        "tags": {
+          "addr:city": "Kleines Wiesental",
+          "addr:country": "DE",
+          "addr:housenumber": "9",
+          "addr:postcode": "79692",
+          "addr:street": "Tegernauer Ortsstraße",
+          "addr:suburb": "Tegernau",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Gemeindeverwaltung Kleines Wiesental",
+          "source:outline": "maps4bw (LGL, www.lgl-bw.de)"
+        }
+      },
+      {
+        "type": "way",
+        "id": 414858102,
+        "center": {
+          "lat": 47.7861073,
+          "lon": 7.8932171
+        },
+        "tags": {
+          "addr:city": "Schönau im Schwarzwald",
+          "addr:country": "DE",
+          "addr:housenumber": "22",
+          "addr:postcode": "79677",
+          "addr:street": "Talstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "description": "Zusätzlich Sitz des Gemeindeverwaltungsverbands Schönau im Schwarzwald",
+          "name": "Stadt Schönau im Schwarzwald",
+          "townhall:type": "town"
+        }
+      },
+      {
+        "type": "way",
+        "id": 427893541,
+        "center": {
+          "lat": 47.7079126,
+          "lon": 7.8529934
+        },
+        "tags": {
+          "addr:city": "Zell im Wiesental",
+          "addr:country": "DE",
+          "addr:housenumber": "4",
+          "addr:postcode": "79669",
+          "addr:street": "Constanze-Weber-Gasse",
+          "alt_name": "Town Hall of Zell im Wiesental",
+          "amenity": "townhall",
+          "building": "civic",
+          "int_name": "City Hall of Zell im Wiesental",
+          "name": "Rathaus der Stadt Zell im Wiesental",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 428959017,
+        "center": {
+          "lat": 47.6820915,
+          "lon": 7.8606485
+        },
+        "tags": {
+          "addr:city": "Schopfheim",
+          "addr:country": "DE",
+          "addr:housenumber": "17",
+          "addr:postcode": "79650",
+          "addr:street": "Raitbach",
+          "addr:suburb": "Raitbach",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Raitbach",
+          "website": "https://raitbach.schopfheim.de/de/Ortsverwaltung"
+        }
+      },
+      {
+        "type": "way",
+        "id": 431533064,
+        "center": {
+          "lat": 47.6471968,
+          "lon": 7.8428426
+        },
+        "tags": {
+          "addr:city": "Schopfheim",
+          "addr:country": "DE",
+          "addr:housenumber": "17",
+          "addr:postcode": "79650",
+          "addr:street": "Webergasse",
+          "amenity": "townhall",
+          "building": "civic",
+          "building:name": "Rathaus",
+          "name": "Ortsverwaltung Eichen",
+          "source:geometry": "maps4bw (LGL, www.lgl-bw.de); Mapbox Satellite"
+        }
+      },
+      {
+        "type": "way",
+        "id": 435402140,
+        "center": {
+          "lat": 47.6193851,
+          "lon": 7.817301
+        },
+        "tags": {
+          "addr:city": "Rheinfelden (Baden)",
+          "addr:country": "DE",
+          "addr:housenumber": "5",
+          "addr:postcode": "79618",
+          "addr:street": "Auf dem Buck",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Nordschwaben",
+          "source:geometry": "maps4bw (LGL, www.lgl-bw.de); Mapbox Satellite"
+        }
+      },
+      {
+        "type": "way",
+        "id": 438304045,
+        "center": {
+          "lat": 47.7129219,
+          "lon": 7.7363218
+        },
+        "tags": {
+          "addr:city": "Steinen",
+          "addr:country": "DE",
+          "addr:housenumber": "3",
+          "addr:postcode": "79585",
+          "addr:street": "Mühlematten",
+          "addr:suburb": "Endenburg",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Endenburg"
+        }
+      },
+      {
+        "type": "way",
+        "id": 445241642,
+        "center": {
+          "lat": 47.7912831,
+          "lon": 7.6222609
+        },
+        "tags": {
+          "addr:city": "Müllheim im Markgräflerland",
+          "addr:country": "DE",
+          "addr:housenumber": "40",
+          "addr:postcode": "79379",
+          "addr:street": "Brunnenstraße",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Verwaltungsstelle Vögisheim",
+          "opening_hours": "We 14:00-15:30; Fr 07:30-09:30",
+          "source:outline": "maps4bw (LGL, www.lgl-bw.de); Mapbox Satellite",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 611540932,
+        "center": {
+          "lat": 47.6410854,
+          "lon": 7.7790855
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "yes",
+          "name": "Rathaus Maulburg"
+        }
+      },
+      {
+        "type": "way",
+        "id": 613943728,
+        "center": {
+          "lat": 47.6567705,
+          "lon": 7.6504182
+        },
+        "tags": {
+          "amenity": "townhall",
+          "building": "yes",
+          "name": "Rathaus Wittlingen",
+          "wikimedia_commons": "File:Wittlingen Rathaus.jpg"
+        }
+      },
+      {
+        "type": "way",
+        "id": 658464937,
+        "center": {
+          "lat": 47.5728848,
+          "lon": 7.7456655
+        },
+        "tags": {
+          "addr:city": "Rheinfelden (Baden)",
+          "addr:country": "DE",
+          "addr:housenumber": "18",
+          "addr:postcode": "79618",
+          "addr:street": "Lörracher Straße",
+          "amenity": "townhall",
+          "building": "civic",
+          "check_date": "2025-08-26",
+          "name": "Ortsverwaltung Degerfelden",
+          "source": "Maps4BW, LGL, www.lgl-bw.de"
+        }
+      },
+      {
+        "type": "way",
+        "id": 659125789,
+        "center": {
+          "lat": 47.5852227,
+          "lon": 7.8077903
+        },
+        "tags": {
+          "addr:city": "Rheinfelden (Baden)",
+          "addr:country": "DE",
+          "addr:housenumber": "2",
+          "addr:postcode": "79618",
+          "addr:street": "Steigweg",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Karsau",
+          "source": "Maps4BW, LGL, www.lgl-bw.de"
+        }
+      },
+      {
+        "type": "way",
+        "id": 992697868,
+        "center": {
+          "lat": 47.6378679,
+          "lon": 7.533506
+        },
+        "tags": {
+          "addr:city": "Rosenau",
+          "addr:housenumber": "5",
+          "addr:postcode": "68128",
+          "addr:street": "Rue de Kembs",
+          "amenity": "townhall",
+          "building": "civic",
+          "contact:email": "mairie@rosenau.fr",
+          "contact:phone": "+33 3 89 68 31 10",
+          "contact:website": "https://www.rosenau.fr",
+          "name": "Mairie de Rosenau",
+          "opening_hours": "Mo 14:00-17:00; Tu 14:00-19:00; We 09:00-12:00; Th 09:00-12:00,15:00-17:00; Fr 09:00-12:00",
+          "ref:FR:SIRET": "21680286800010",
+          "source": "Service-Public.fr - 07/2025",
+          "wheelchair": "yes"
+        }
+      },
+      {
+        "type": "way",
+        "id": 1535908359,
+        "center": {
+          "lat": 47.5569309,
+          "lon": 7.7333137
+        },
+        "tags": {
+          "addr:city": "Rheinfelden (Baden)",
+          "addr:housenumber": "33",
+          "addr:postcode": "79618",
+          "addr:street": "Hauptstraße",
+          "addr:suburb": "Herten",
+          "amenity": "townhall",
+          "building": "civic",
+          "name": "Ortsverwaltung Herten"
+        }
+      }
+    ]
+  }
+}

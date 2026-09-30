@@ -26,7 +26,7 @@ einen Kubernetes-Cluster zu bringen. Das Chart liegt in `helm/udp/`.
 | API & Identität | APISIX (Gateway), Keycloak (OIDC)                        |
 | Open Data       | CKAN (DCAT-AP.de) + Solr + Valkey *(`ckan.enabled`)*     |
 | Geo             | GeoServer *(`geoserver.enabled`)*, Masterportal *(aus)*  |
-| Anwendungen     | Node-RED, Cockpit                                        |
+| Anwendungen     | Konnektordienst *(`connectors.enabled`)*, Node-RED (Low-Code, Beispielfluss), Cockpit |
 | Betrieb         | DB-Backup (pg_dump) *(`backup.enabled`)*                 |
 | Netzwerk        | Ingress, NetworkPolicies, PodDisruptionBudgets           |
 
@@ -55,7 +55,7 @@ den Context Broker).
 |------|------|----------|
 | `/` | Cockpit (SPA + generierte Kommunenseiten) | offen |
 | `/gateway/…` | Cockpit-nginx → APISIX, **nur GET/HEAD/OPTIONS** (Micro-Cache) | offen |
-| `/abfahrten`, `/warnungen.ics` | Cockpit-nginx → Node-RED (exakte Pfade) | offen |
+| `/abfahrten`, `/warnungen.ics` | Cockpit-nginx → Konnektordienst (exakte Pfade, `cockpit.connectorsUpstream`) | offen |
 | `/ngsi-ld`, `/temporal`, `/FROST-Server` | APISIX | aus (`ingress.apiPaths: []`) |
 | `/iot`, `/ingest` | APISIX → IoT-Agent | aus (`iotAgentJson.exposeRoutes: false`) |
 | `/catalog`, `/geoserver`, `/portal` | APISIX → CKAN / GeoServer / Masterportal | aus (`ingress.exposeComponentPaths: false`) |
@@ -315,7 +315,8 @@ Mindestens anpassen:
 - `cockpit.image` – euer selbst gebautes, in eure Registry gepushtes Image
 - `frost.serviceRootUrl` – auf den echten Host zeigen
 - `networkPolicies.ingressControllerNamespaceLabel` – Namespace eures Ingress-
-  Controllers (Default: `ingress-nginx`)
+  Controllers (Default: `ingress-nginx`; leer bricht das Rendern ab – ein
+  leerer Selektor öffnete die öffentlichen Dienste für jeden Namespace)
 - `networkPolicies.monitoringNamespaceLabel` – Namespace von Uptime Kuma /
   Prometheus, sonst erreicht das Monitoring die Dienste nicht (leer = aus)
 
@@ -326,7 +327,7 @@ Mindestens anpassen:
 
 ## 6. Eigene Images
 
-Vier der Images gibt es nicht als Upstream-Image. Gebaut und gepusht werden sie
+Diese Images gibt es nicht als Upstream-Image. Gebaut und gepusht werden sie
 von der GitHub Action **`.github/workflows/build-images.yml`** nach
 `ghcr.io/idk-ev/udp/…`:
 
@@ -335,17 +336,63 @@ von der GitHub Action **`.github/workflows/build-images.yml`** nach
 | `cockpit.image` | `cockpit` | Eigenentwicklung: SPA + nginx-Konfiguration |
 | `ckan.image` | `ckan-dcat` | CKAN 2.10 + `ckanext-dcat` (DCAT-AP.de) |
 | `timescale.image` | `postgres-timescale-oss` | PostGIS **und** TimescaleDB Apache Edition |
-| `nodeRed.image` | `node-red-udp` | Node-RED + generierte Datenflüsse, gehärtete `settings.js`, `pg` |
+| `connectors.image` | `udp-connectors` | Konnektordienst (`platform/connectors`) samt Konnektor-Registry |
 
-> Node-RED bekommt seine Flows aus dem Image, nicht aus einer ConfigMap oder
-> einem Volume: `flows.json` ist ein generiertes Artefakt
-> (`scripts/generate-nodered-flows.py`), liegt bei ~420 KB und wächst mit jedem
-> Konnektor – die etcd-Grenze für ConfigMaps liegt bei 1 MiB. Deshalb hat
-> Node-RED auch **kein PVC**: `/data` kommt aus dem Image, ein Volume darüber
-> würde die Flows verdecken. Ein Neustart verwirft damit die Signatur-Historie
-> der Änderungserkennung – der erste Zyklus danach schreibt einmalig alle
-> Entitäten neu. Flow-Änderungen brauchen einen neuen Image-Build, kein
-> `helm upgrade` mit neuer ConfigMap.
+> **Node-RED** läuft auf dem Upstream-Image `nodered/node-red` (`nodeRed.image`,
+> kein eigenes Image mehr): Low-Code-Baustein mit einem Beispielfluss, keine
+> Ingestion. Der Beispielfluss ist **deaktiviert** ausgeliefert (er schriebe
+> Zufallswerte in den Broker); zum Ausprobieren im Editor aktivieren.
+> `flows.json` und `settings.js` kommen aus der ConfigMap
+> `node-red-config` (`helm/udp/files/nodered/`); ein initContainer kopiert sie
+> in ein `emptyDir` auf `/data`, damit Deploys aus dem Editor funktionieren –
+> sie überleben keinen Pod-Neustart. Kein PVC, keine Ingress-Route und keine
+> NetworkPolicy-Regel: Der Editor ist nur per
+> `kubectl -n <ns> port-forward deploy/node-red 1880` erreichbar. Werte des
+> früheren eigenen Images `node-red-udp` unter `nodeRed.image` (`name`, ein Tag
+> wie `main`, `sha-…`, `pr-…` oder die Chart-Version – mit oder ohne Digest)
+> lassen das Rendern mit einem Hinweis abbrechen – entfernen.
+>
+> **Editor nie ohne Anmeldung veröffentlichen.** Wer den Editor erreicht,
+> deployt Flows mit beliebigem Code und dem Netzzugang des Pods. Ohne
+> `nodeRed.adminAuth` ist er offen – vertretbar nur hinter `port-forward`. Vor
+> jeder Ingress-Route, jedem LoadBalancer oder `networkPolicies.extraFrom.node-red`
+> eine Anmeldung setzen:
+>
+> ```bash
+> # bcrypt-Hash erzeugen (fragt das Passwort ab)
+> docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw
+> ```
+>
+> ```yaml
+> nodeRed:
+>   adminAuth:
+>     username: admin
+>     passwordHash: "$2y$08$…"      # oder existingSecret mit den Schlüsseln
+>                                   # NODE_RED_ADMIN_USER / NODE_RED_ADMIN_PASSWORD_HASH
+> ```
+
+> **Konnektordienst** (Deployment `connectors`): die Ingestion der Plattform.
+> Er führt jeden aktiven Eintrag der Registry aus (im Image) und beantwortet
+> `/abfahrten` und `/warnungen.ics` für das Cockpit. Immer **eine** Replik mit
+> `strategy: Recreate` (Zustand in TimescaleDB, Schema `udp_connectors`, ein
+> Schreiber per Advisory-Lock; der DB-Nutzer braucht `CREATE` auf `orion`).
+> Der Service zeigt nur Port 1880 (die beiden Endpunkte), die NetworkPolicy
+> lässt dort nur das Cockpit zu; der Admin-Port 1881 (`/healthz`, `/trigger`)
+> steht in keinem Service. Kein PVC, Root-Dateisystem read-only. Der
+> hystreet-Token steht unter `connectors.hystreetApiToken` bzw.
+> `connectors.hystreetExistingSecret` (die früheren Schlüssel unter `nodeRed.`
+> werden weiter gelesen). Auslösen eines Konnektors:
+> `CONNECTORS_EXEC="kubectl -n <ns> exec deploy/connectors --" bash scripts/trigger-connector.sh <id>`.
+>
+> **Admin-Port 1881:** lauscht auf allen Interfaces (für die Kubelet-Probes)
+> und ist nur durch zwei Dinge geschützt – die NetworkPolicy (keine Regel öffnet
+> 1881) und die Loopback-Prüfung von `/trigger`. Deshalb den Pod **nie** hinter
+> einen Service-Mesh-Sidecar (oder anderen Proxy) stellen, der eingehenden
+> Verkehr von 127.0.0.1 an die Anwendung weiterreicht: dann sieht jeder Aufrufer
+> wie Loopback aus und `/trigger` steht offen. Mit
+> `networkPolicies.enabled=false` ist 1881 clusterweit erreichbar – `/trigger`
+> lehnt Nicht-Loopback-Aufrufer weiterhin ab, `/healthz` ist aber für jeden
+> lesbar.
 
 > Das Datenbank-Image ist Pflicht, kein Komfort: `files/postgres/01-databases.sql`
 > legt `CREATE EXTENSION timescaledb` an – mit einem reinen `postgis/postgis`
@@ -357,6 +404,20 @@ von der GitHub Action **`.github/workflows/build-images.yml`** nach
 | GitHub-Release `v1.0.0` | `1.0.0`, `1.0`, `latest` |
 | Pull Request #42 | `pr-42` (wandert mit jedem Push), `pr-42-<sha>` (fest) |
 | PR aus einem Fork | wird nur gebaut, **nicht** gepusht (read-only Token) |
+| jeder Lauf | zusätzlich `inputs-<hash>` (Hash der Build-Eingaben) |
+
+**Unveränderte Images behalten ihren Digest.** Jeder Lauf hasht je Image dessen
+Build-Eingaben: Dockerfile, die per `COPY`/`ADD` übernommenen Dateien, die
+aktuellen Digests der `FROM`-Basis-Images und das Build-Rezept. Existiert
+`inputs-<hash>` schon, wird nicht gebaut – der vorhandene Digest bekommt nur die
+Tags des Laufs und wird so ins Chart gepinnt. Ein Chart-Release rollt damit nur
+die Komponenten neu aus, die sich wirklich geändert haben (ohne das bekäme z. B.
+die Datenbank bei jedem Release ein neues Image und CloudNativePG einen
+Switchover des Primary). Neu gebaut wird, wenn sich eine Eingabe ändert oder ein
+Basis-Image upstream aktualisiert wurde. Pakete, die `RUN`-Schritte ungepinnt
+aus dem Netz holen (apt, pip, npm), frischt ein manueller Lauf mit
+*Run workflow → force_rebuild* auf. Ob ein Image gebaut oder wiederverwendet
+wurde, steht in der Job-Zusammenfassung.
 
 ### Einen PR-Stand testen
 
@@ -373,7 +434,10 @@ Zurück auf den regulären Stand: `--set cockpit.image.tag=` (leer → `udpTag`)
 oder den `--set` beim nächsten Upgrade weglassen.
 
 > Die `pr-*`-Tags bleiben nach dem Merge in der Registry liegen. Gelegentlich
-> unter GitHub → Packages → \<image\> → Manage versions aufräumen.
+> unter GitHub → Packages → \<image\> → Manage versions aufräumen – aber **nur
+> Versionen löschen, die ausschließlich `pr-*`-Tags tragen**: durch die
+> Wiederverwendung kann dieselbe Version auch `main`-, SemVer- oder
+> `inputs-*`-Tags tragen und in einem ausgerollten Chart gepinnt sein.
 
 Registry und Tag gelten für alle drei gemeinsam – `global.udpRegistry` und
 `global.udpTag`. Wer die Images spiegelt, ändert nur `udpRegistry`
@@ -808,7 +872,7 @@ Bleibt erhalten (bewusst, gegen Datenverlust):
 - PVC `db-backup-data` mit den letzten Dumps (`resource-policy: keep`)
 
 Wird mit entfernt: PVC `ckan-data` – vorher sichern. Node-RED hat kein PVC
-(Flows kommen aus dem Image), es geht dort also nichts verloren.
+(Beispielfluss aus der ConfigMap), es geht dort also nichts verloren.
 Vollständig aufräumen:
 ```bash
 kubectl -n udp delete cluster timescale
@@ -844,7 +908,8 @@ Das Monitoring hat ein eigenes Release und wird separat entfernt
 - [ ] **CORS einschränken:** `global_rules` `allow_origins: "*"` → echte Origins.
 - [ ] **strictEgress** erproben und aktivieren (`networkPolicies.strictEgress`).
       Internetzugang behalten dann nur `networkPolicies.internetEgress.components`
-      (Default: Node-RED, Orion-LD, IoT-Agent, CKAN).
+      (Default: Konnektordienst, Orion-LD, IoT-Agent, CKAN; Node-RED nur, wenn
+      eigene Flüsse externe Quellen abrufen).
 - [ ] **Monitoring:** `networkPolicies.monitoringNamespaceLabel` setzen – öffnet
       die HTTP-Dienste und APISIX-Metrics `:9091` für diesen Namespace.
 - [ ] **Backups** für mongo/timescale-Volumes einrichten (Velero/Snapshots).

@@ -1,0 +1,9 @@
+{
+  "source": "exec: cat /proc/loadavg; echo ---; free -m; echo ---; df -P /; echo ---; cat /proc/uptime; echo ---; nproc",
+  "recordedAt": "2026-09-28T03:11:45.406Z",
+  "note": "Recorded with node:child_process exec() (timeout 10 s, as the port runs it) inside node:22-alpine, the base image of platform/connectors/Dockerfile and of the Node-RED image alike (busybox free/df/nproc), on a Docker Desktop host (8 cores, 32 GB). Not trimmed: this is the complete stdout. statusCode carries the exit code of the command (0). The disk section is `df -P /`, not the `df -P /data` of the old exec node: in this image /data does not exist, and busybox then prints only the header line (see src/connectors/ops-host.ts).",
+  "statusCode": 0,
+  "headers": {},
+  "format": "text",
+  "payload": "0.10 0.26 0.47 3/499 14\n---\n              total        used        free      shared  buff/cache   available\nMem:          32098        1172       23815           5        7111       30550\nSwap:          8192           0        8192\n---\nFilesystem           1024-blocks    Used Available Capacity Mounted on\noverlay              1055762868 264377320 737682076  26% /\n---\n23375.25 182202.03\n---\n8\n"
+}

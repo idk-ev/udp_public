@@ -1,0 +1,826 @@
+{
+  "source": "https://api.mobidata-bw.de/ocpdb/api/public/v1/locations?lat=48.65&lon=9.0&radius=190000&limit=1000&offset=20000",
+  "recordedAt": "2026-09-28T05:00:29.176Z",
+  "note": "The page at offset 20000 of the live radius query, trimmed by hand: 16 of 1000 locations kept verbatim in source order, picked as 6 BW with AVAILABLE/CHARGING EVSEs, 3 BW with OUTOFORDER, 1 BW with UNKNOWN only, 3 outside the BW box, 3 inside the box but outside BW (a location counts once). Each EVSE slimmed to uid, evse_id and status (connectors, capabilities and timestamps removed; FN_OC_WRAP reads only status and the count). total_count, next_offset and next_path verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "items": [
+      {
+        "name": "ACHTUNG: Private Ladestation - kein öffentliches Laden!",
+        "address": "Musterstraße",
+        "postal_code": "12345",
+        "city": "Musterstadt",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-06T10:32:00Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316615",
+        "publish": true,
+        "original_id": "ChargePoint-3d18cd29-f2df-4e06-ba0b-306eaa81cc2c",
+        "source": "datex2_ecomovement",
+        "official_region_code": "064400003003",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 50.174215,
+          "longitude": 8.738476,
+          "lat": 50.174215,
+          "lon": 8.738476
+        },
+        "operator": {
+          "name": "ChargePoint"
+        },
+        "owner": {
+          "name": "ChargePoint"
+        },
+        "evses": [
+          {
+            "uid": "262351606",
+            "evse_id": "10d2fa16-6df3-4f43-affc-836043a286e4",
+            "status": "INOPERATIVE"
+          }
+        ]
+      },
+      {
+        "name": "Mer Germany GmbH Autohaus Burkhart GmbH & Co. KG - Illertissen - Memminger Straße 59 #1",
+        "address": "59 Memminger Straße",
+        "postal_code": "89257",
+        "city": "Illertissen",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-27T16:43:18Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316618",
+        "publish": true,
+        "original_id": "Mer Germany-603",
+        "source": "datex2_ecomovement",
+        "official_region_code": "097750129129",
+        "energy_mix": {
+          "is_green_energy": true,
+          "energy_sources": null,
+          "environ_impact": null,
+          "supplier_name": null,
+          "energy_product_name": null
+        },
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.2152249,
+          "longitude": 10.1026784,
+          "lat": 48.2152249,
+          "lon": 10.1026784
+        },
+        "operator": {
+          "name": "Mer Germany"
+        },
+        "owner": {
+          "name": "Mer Germany"
+        },
+        "evses": [
+          {
+            "uid": "262363810",
+            "evse_id": "1839",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262363809",
+            "evse_id": "1840",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "HAHN AUTOMOBILE VK PF AU ABB 22",
+        "address": "Karlsruherstr. 32",
+        "postal_code": "75179",
+        "city": "Pforzheim",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-25T12:43:41Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316620",
+        "publish": true,
+        "original_id": "ChargePoint-DECPIL6579555",
+        "source": "datex2_ecomovement",
+        "official_region_code": "082310000000",
+        "energy_mix": {
+          "is_green_energy": true,
+          "energy_sources": null,
+          "environ_impact": null,
+          "supplier_name": null,
+          "energy_product_name": null
+        },
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.903289,
+          "longitude": 8.658677,
+          "lat": 48.903289,
+          "lon": 8.658677
+        },
+        "operator": {
+          "name": "ChargePoint"
+        },
+        "owner": {
+          "name": "ChargePoint"
+        },
+        "evses": [
+          {
+            "uid": "262355745",
+            "evse_id": "3206805",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262355746",
+            "evse_id": "3206815",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "STW_Stingbert_9_ABAT_rechte_Saeule",
+        "address": "Kaiserstraße 170",
+        "postal_code": "66386",
+        "city": "Sankt Ingbert",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-27T04:54:50Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316621",
+        "publish": true,
+        "original_id": "ChargePoint-4e5f171c-9745-4da6-a9e4-a9a14188ad93",
+        "source": "datex2_ecomovement",
+        "official_region_code": "100450117117",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 49.28013,
+          "longitude": 7.12231,
+          "lat": 49.28013,
+          "lon": 7.12231
+        },
+        "operator": {
+          "name": "ChargePoint"
+        },
+        "owner": {
+          "name": "ChargePoint"
+        },
+        "evses": [
+          {
+            "uid": "262356765",
+            "evse_id": "bb54d763-5143-4ae2-8568-95626c1ae06e",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262356768",
+            "evse_id": "e6fafd2f-17f2-4cda-b85d-ea9a3283916a",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262356766",
+            "evse_id": "b40a204a-0ea3-4922-9e94-2dd9451c6c34",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262356767",
+            "evse_id": "559b7f77-20d0-4223-8cb6-bf1ab2f84bdb",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "Lidl Filiale Lörrach",
+        "address": "Weiler Straße 26",
+        "postal_code": "79540",
+        "city": "Lörrach",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-28T04:47:20Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316623",
+        "publish": true,
+        "original_id": "Lidl-a87aa732-f49d-4f9e-888b-98e1859ca405",
+        "source": "datex2_ecomovement",
+        "official_region_code": "083365003050",
+        "coordinates": {
+          "latitude": 47.603982,
+          "longitude": 7.65358,
+          "lat": 47.603982,
+          "lon": 7.65358
+        },
+        "operator": {
+          "name": "Lidl"
+        },
+        "owner": {
+          "name": "Lidl"
+        },
+        "evses": [
+          {
+            "uid": "262361088",
+            "evse_id": "f5ef9762-3f04-43ee-9144-b285f2ab3e85",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262361087",
+            "evse_id": "4b940ae0-0510-48ff-8678-08bf8a136c6d",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262361089",
+            "evse_id": "792eb502-43eb-49d5-bd4d-b8083d1a7f41",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "FS_45309_MENNEKES_U10237",
+        "address": "Hauptstraße 9",
+        "postal_code": "74424",
+        "city": "Bühlertann",
+        "country": "DEU",
+        "time_zone": "Europe/Busingen",
+        "last_updated": "2026-09-27T13:53:17Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316624",
+        "publish": true,
+        "original_id": "Würth Elektrogroßhandel GmbH & Co.KG-be561bf0-b185-4b40-b975-6217f2e06cd1",
+        "source": "datex2_ecomovement",
+        "official_region_code": "081275007012",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 49.040944,
+          "longitude": 9.908752,
+          "lat": 49.040944,
+          "lon": 9.908752
+        },
+        "operator": {
+          "name": "Würth Elektrogroßhandel GmbH & Co.KG"
+        },
+        "owner": {
+          "name": "Würth Elektrogroßhandel GmbH & Co.KG"
+        },
+        "evses": [
+          {
+            "uid": "262357999",
+            "evse_id": "df35e494-34eb-42b7-98a7-f1355b400050",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262357998",
+            "evse_id": "bfed8bf5-78f1-4f64-8276-55c2cb858817",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "Gemeindewerke_Herxheim 2",
+        "address": "Bonifatiusstraße",
+        "postal_code": "76863",
+        "city": "Herxheim bei Landau",
+        "country": "DEU",
+        "time_zone": "Europe/Luxembourg",
+        "last_updated": "2026-09-27T09:44:09Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316627",
+        "publish": true,
+        "original_id": "ChargePoint-72866757-cfe5-4a9e-87b5-22564843e4ce",
+        "source": "datex2_ecomovement",
+        "official_region_code": "073375004038",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 49.144933,
+          "longitude": 8.216691,
+          "lat": 49.144933,
+          "lon": 8.216691
+        },
+        "operator": {
+          "name": "ChargePoint"
+        },
+        "owner": {
+          "name": "ChargePoint"
+        },
+        "evses": [
+          {
+            "uid": "262361515",
+            "evse_id": "5ea1f13d-20e7-4a9f-8b49-35746038b255",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262361516",
+            "evse_id": "6cbccf49-c379-4518-8a63-519318963670",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "Hermann Schäfer Virta Eve Double Stock",
+        "address": "Oberer Mauergarten 14",
+        "postal_code": "67550",
+        "city": "Worms",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-08-04T09:53:10Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316628",
+        "publish": true,
+        "original_id": "Virta-DEVIRLJRENSLXU",
+        "source": "datex2_ecomovement",
+        "official_region_code": "073190000000",
+        "coordinates": {
+          "latitude": 49.656315,
+          "longitude": 8.332532,
+          "lat": 49.656315,
+          "lon": 8.332532
+        },
+        "operator": {
+          "name": "Virta"
+        },
+        "owner": {
+          "name": "Virta"
+        },
+        "evses": [
+          {
+            "uid": "262355079",
+            "evse_id": "DE*VIR*E155281",
+            "status": "OUTOFORDER"
+          },
+          {
+            "uid": "262355080",
+            "evse_id": "DE*VIR*E155280",
+            "status": "OUTOFORDER"
+          }
+        ]
+      },
+      {
+        "name": "HAHN AUTOMOBILE VK VWSIFI AC 11",
+        "address": "Fronäckerstraße 26",
+        "postal_code": "71063",
+        "city": "Sindelfingen",
+        "country": "DEU",
+        "time_zone": "Europe/Paris",
+        "last_updated": "2026-09-14T23:52:44Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316634",
+        "publish": true,
+        "original_id": "ChargePoint-DECPIL6514205",
+        "source": "datex2_ecomovement",
+        "official_region_code": "081150045045",
+        "energy_mix": {
+          "is_green_energy": true,
+          "energy_sources": null,
+          "environ_impact": null,
+          "supplier_name": null,
+          "energy_product_name": null
+        },
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.70839,
+          "longitude": 8.989898,
+          "lat": 48.70839,
+          "lon": 8.989898
+        },
+        "operator": {
+          "name": "ChargePoint"
+        },
+        "owner": {
+          "name": "ChargePoint"
+        },
+        "evses": [
+          {
+            "uid": "262357960",
+            "evse_id": "3115985",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262357959",
+            "evse_id": "3115975",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "Stadt Vaihingen an der Enz - Gewerbegebiet Ensingen - LS1",
+        "address": "Sogenring 1",
+        "postal_code": "71665",
+        "city": "Vaihingen an der Enz",
+        "country": "DEU",
+        "time_zone": "Europe/Busingen",
+        "last_updated": "2026-09-28T02:00:53Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316639",
+        "publish": true,
+        "original_id": "EnBW Ostwürttemberg DonauRies AG-c9fe36f5-38ff-45ab-b348-bfe402e86431",
+        "source": "datex2_ecomovement",
+        "official_region_code": "081185008073",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.954391,
+          "longitude": 8.959887,
+          "lat": 48.954391,
+          "lon": 8.959887
+        },
+        "operator": {
+          "name": "EnBW Ostwürttemberg DonauRies AG"
+        },
+        "owner": {
+          "name": "EnBW Ostwürttemberg DonauRies AG"
+        },
+        "evses": [
+          {
+            "uid": "262350577",
+            "evse_id": "c97abafc-5bf1-4592-aa81-ec6bd5d581bd",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262350576",
+            "evse_id": "ba16987a-7dcd-4099-91c4-027b0fe41473",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "NaturEnergie Community - Freiburg, SIC",
+        "address": "Emmy-Noether-Strasse 2",
+        "postal_code": "79110",
+        "city": "Freiburg",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-26T06:30:31Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316640",
+        "publish": true,
+        "original_id": "naturenergie holding AG-6359b685-0274-4926-ae3b-38610538fe20",
+        "source": "datex2_ecomovement",
+        "official_region_code": "083110000000",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.01188,
+          "longitude": 7.8363,
+          "lat": 48.01188,
+          "lon": 7.8363
+        },
+        "operator": {
+          "name": "naturenergie holding AG"
+        },
+        "owner": {
+          "name": "naturenergie holding AG"
+        },
+        "evses": [
+          {
+            "uid": "262366902",
+            "evse_id": "d7e4f4f8-cdd0-4612-b793-a9cdc97e25af",
+            "status": "CHARGING"
+          },
+          {
+            "uid": "262366903",
+            "evse_id": "4da3756b-1a3e-4cb5-bc72-de3d3225459d",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "IONITY GmbH IONITY Schweinfurt",
+        "address": "Straßburgstraße 63",
+        "postal_code": "97424",
+        "city": "Schweinfurt",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-27T17:04:29Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316716",
+        "publish": true,
+        "original_id": "IONITY-1191",
+        "source": "datex2_ecomovement",
+        "official_region_code": "096620000000",
+        "energy_mix": {
+          "is_green_energy": true,
+          "energy_sources": null,
+          "environ_impact": null,
+          "supplier_name": null,
+          "energy_product_name": null
+        },
+        "coordinates": {
+          "latitude": 50.021333,
+          "longitude": 10.214668,
+          "lat": 50.021333,
+          "lon": 10.214668
+        },
+        "operator": {
+          "name": "IONITY"
+        },
+        "owner": {
+          "name": "IONITY"
+        },
+        "evses": [
+          {
+            "uid": "262368375",
+            "evse_id": "DE*IOY*E237303",
+            "status": "INOPERATIVE"
+          },
+          {
+            "uid": "262368378",
+            "evse_id": "DE*IOY*E237302",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262368373",
+            "evse_id": "DE*IOY*E237372",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262368377",
+            "evse_id": "DE*IOY*E237371",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262368376",
+            "evse_id": "DE*IOY*E237304",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262368374",
+            "evse_id": "DE*IOY*E237301",
+            "status": "AVAILABLE"
+          }
+        ]
+      },
+      {
+        "name": "Lidl Filiale Lorch",
+        "address": "Maierhofstraße 26-28",
+        "postal_code": "73547",
+        "city": "Lorch",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-28T04:46:34Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316892",
+        "publish": true,
+        "original_id": "Lidl-6d5a9157-bf1b-419f-b937-1f93200669a2",
+        "source": "datex2_ecomovement",
+        "official_region_code": "081360042042",
+        "coordinates": {
+          "latitude": 48.797164,
+          "longitude": 9.67507,
+          "lat": 48.797164,
+          "lon": 9.67507
+        },
+        "operator": {
+          "name": "Lidl"
+        },
+        "owner": {
+          "name": "Lidl"
+        },
+        "evses": [
+          {
+            "uid": "262358665",
+            "evse_id": "11ab580d-0bcf-4ec9-9540-a6a315b11018",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262358666",
+            "evse_id": "f6b1c6e1-e90f-4fe8-a0bf-476e709820d1",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262358667",
+            "evse_id": "9a886c00-6efe-445c-9565-9e2a5d2409cd",
+            "status": "OUTOFORDER"
+          }
+        ]
+      },
+      {
+        "name": "Syntegon Crailsheim - Besucherparkplatz - 5",
+        "address": "Blaufelder Straße 45",
+        "postal_code": "74564",
+        "city": "Crailsheim",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-28T04:51:21Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316931",
+        "publish": true,
+        "original_id": "EnBW Ostwürttemberg DonauRies AG-488b45f7-813f-47c0-bbe9-ab2353dc134a",
+        "source": "datex2_ecomovement",
+        "official_region_code": "081275002014",
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 49.148489,
+          "longitude": 10.072687,
+          "lat": 49.148489,
+          "lon": 10.072687
+        },
+        "operator": {
+          "name": "EnBW Ostwürttemberg DonauRies AG"
+        },
+        "owner": {
+          "name": "EnBW Ostwürttemberg DonauRies AG"
+        },
+        "evses": [
+          {
+            "uid": "262360941",
+            "evse_id": "002f57df-a92f-415d-ab1f-ba1b61801696",
+            "status": "OUTOFORDER"
+          },
+          {
+            "uid": "262360943",
+            "evse_id": "53cdb389-0f77-4127-a520-b144b262c8be",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262360939",
+            "evse_id": "eeb63ce5-08be-4cef-ab01-4cc044d6e380",
+            "status": "CHARGING"
+          },
+          {
+            "uid": "262360946",
+            "evse_id": "75c1c943-d746-4297-9aa0-c4ce7b9aadf0",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262360944",
+            "evse_id": "1a6e4ec6-6442-4867-b5c4-45fd84ce33e9",
+            "status": "OUTOFORDER"
+          },
+          {
+            "uid": "262360945",
+            "evse_id": "f591c032-9738-4757-b612-d5ae7ffdb817",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262360937",
+            "evse_id": "138de700-c252-4b80-8544-576e4243d529",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262360938",
+            "evse_id": "8bffb4b8-4b03-479d-8c74-8ee3c432b433",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262360935",
+            "evse_id": "12c05112-58b0-41aa-8dcf-f8c46aa7f5ff",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262360936",
+            "evse_id": "98130480-c1ad-4f79-8521-74f3f1908c55",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262360942",
+            "evse_id": "038e6860-da1c-4077-a6b9-ffa840d1c0d3",
+            "status": "CHARGING"
+          },
+          {
+            "uid": "262360940",
+            "evse_id": "69659881-e604-48e3-be45-014d459fe521",
+            "status": "CHARGING"
+          }
+        ]
+      },
+      {
+        "name": "Porsche Sales & Marketplace Porsche Zentrum Karlsruhe Ladesäule 2",
+        "address": "Porscheplatz 9-11",
+        "postal_code": "76275",
+        "city": "Ettlingen",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-14T10:41:34Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "316975",
+        "publish": true,
+        "original_id": "Porsche Sales & Marketplace-DE9110000590_CPN02",
+        "source": "datex2_ecomovement",
+        "official_region_code": "082150017017",
+        "coordinates": {
+          "latitude": 48.9409,
+          "longitude": 8.38156,
+          "lat": 48.9409,
+          "lon": 8.38156
+        },
+        "operator": {
+          "name": "Porsche Sales & Marketplace"
+        },
+        "owner": {
+          "name": "Porsche Sales & Marketplace"
+        },
+        "evses": [
+          {
+            "uid": "262350322",
+            "evse_id": "DE9110000590_CPN02_1",
+            "status": "AVAILABLE"
+          },
+          {
+            "uid": "262350321",
+            "evse_id": "DE9110000590_CPN01_1",
+            "status": "OUTOFORDER"
+          }
+        ]
+      },
+      {
+        "name": "PNEUHAGE 202-ETTLINGE-01",
+        "address": "Gutenbergstraße 3",
+        "postal_code": "76275",
+        "city": "Ettlingen",
+        "country": "DEU",
+        "time_zone": "Europe/Berlin",
+        "last_updated": "2026-09-26T20:05:18Z",
+        "has_in_person_support": false,
+        "facilities": [],
+        "facility_description": "",
+        "id": "317862",
+        "publish": true,
+        "original_id": "ChargePoint-DECPIL6762475",
+        "source": "datex2_ecomovement",
+        "official_region_code": "082150017017",
+        "energy_mix": {
+          "is_green_energy": true,
+          "energy_sources": null,
+          "environ_impact": null,
+          "supplier_name": null,
+          "energy_product_name": null
+        },
+        "opening_times": {
+          "twentyfourseven": true
+        },
+        "coordinates": {
+          "latitude": 48.946829,
+          "longitude": 8.379294,
+          "lat": 48.946829,
+          "lon": 8.379294
+        },
+        "operator": {
+          "name": "ChargePoint"
+        },
+        "owner": {
+          "name": "ChargePoint"
+        },
+        "evses": [
+          {
+            "uid": "262369346",
+            "evse_id": "3492285",
+            "status": "UNKNOWN"
+          },
+          {
+            "uid": "262369347",
+            "evse_id": "3492275",
+            "status": "UNKNOWN"
+          }
+        ]
+      }
+    ],
+    "total_count": 31461,
+    "next_offset": 21000,
+    "next_path": "/ocpdb/api/public/v1/locations?lat=48.65&lon=9.0&radius=190000&limit=1000&offset=21000"
+  }
+}

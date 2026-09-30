@@ -10,44 +10,47 @@ platform/config/connectors.json          gui/public/dashboards.json
    Registry: JEDER Konnektor                Kommunen-Abweichungen (Stufe/Branding)
    │                                        │
    ▼                                        ▼
-scripts/generate-nodered-flows.py       scripts/generate-city-pages.py (SSG)
-   liest Registry → flows.json             1.103 Stubs gui/public/g/<slug>/index.html
-   exportiert connectors-status.json       │
-   │                                       ▼
+platform/connectors (Konnektordienst)   scripts/generate-city-pages.py (SSG)
+   liest Registry, ein Modul je id         1.103 Stubs gui/public/g/<slug>/index.html
+   │  scripts/export-connector-status.py   │
+   │  → connectors-status.json             ▼
    ▼                                    stadt.html (Template) + smartcity-lib.js
-Node-RED → Orion-LD/TRoE ◄──────────────── + smartcity-theme.css (Themes)
+Orion-LD/TRoE ◄─────────────────────────── + smartcity-theme.css (Themes)
                                            nginx: try_files … /g$uri/index.html
 ```
 
 ## Konnektor-Registry (`platform/config/connectors.json`)
 
-Deklariert jeden Konnektor; der Flow-Generator ist Interpreter. Felder je Eintrag:
+Deklariert jeden Konnektor; der Konnektordienst führt jeden aktiven Eintrag mit
+Modul aus. Felder je Eintrag:
 `id`, `name`, `scope` (land|kreis|kommune|betrieb), `enabledFor` (AGS-Liste oder `"*"`),
 `params` (je AGS, z. B. EFA-Stop-IDs), `intervalSeconds` **oder** `cron`,
 `sollMinutes` (Monitoring-Ampel), `sampleEntity`, `provides` (steuert Frontend-Kacheln),
 `attribution` (Fußzeile), `requiresSecret` (z. B. `HYSTREET_API_TOKEN` — Healthcheck
-meldet „WARTET" statt Fehler), `active`, `nodePrefixes` (Zuordnung zu generierten Nodes).
+meldet „WARTET" statt Fehler), `active`, optional `refireOnRestart`, `healthUrl`,
+`rowBudget24h`, `sensorDetailFor`, `pending`, `supersededBy`.
 
 Regeln:
-- Neuer Konnektor = Registry-Eintrag + Pipeline im Generator mit passendem
-  `nodePrefix`; Takt/Aktivierung kommen IMMER aus der Registry.
-- `active: false` entfernt die Nodes beim Generieren.
-- Vollständiges Entfernen eines Konnektors = Registry-Eintrag löschen **und** den
-  hartkodierten Pipeline-Block (`udp-rt-<prefix>-*`) im Generator entfernen (der
-  Generator baut Pipelines in Python, nicht aus der Registry — eine gelöschte
-  Registry ohne Code-Löschung erzeugt sonst verwaiste Nodes). Anschließend die
-  verwaisten Alt-Entitäten aus Orion-LD löschen (NGSI-LD DELETE). Die ehemaligen
-  Reutlingen-Altkonnektoren wurden so auf die BW-Basis migriert und entfernt.
-- Nach Änderung: `python3 scripts/generate-nodered-flows.py` → Syntax-Check läuft im
-  Container (`node --check`) → Node-RED neu starten → `scripts/healthcheck.sh`.
+- Neuer Konnektor = Registry-Eintrag + Modul im Konnektordienst mit Test
+  (`docs/staedte-hinzufuegen.md`, Stufe 3); Takt/Aktivierung kommen IMMER aus
+  der Registry.
+- `active: false` nimmt den Konnektor aus dem Zeitplan.
+- Vollständiges Entfernen eines Konnektors = Registry-Eintrag, Modul samt Zeile
+  in `src/connectors/index.ts` und Test löschen (`test/parity/registry.test.ts`
+  hält beide Listen gleich). Anschließend die verwaisten Alt-Entitäten aus
+  Orion-LD löschen (NGSI-LD DELETE). Die ehemaligen Reutlingen-Altkonnektoren
+  wurden so auf die BW-Basis migriert und entfernt.
+- Nach Änderung: `python3 scripts/export-connector-status.py` → Konnektordienst
+  neu starten (Compose: `docker compose restart connectors`, bei Codeänderung
+  mit `--build`) → `scripts/healthcheck.sh`.
 - Kommune-spezifische Quellen (Stufe 3) sind normale Einträge mit `scope: kommune`
-  und `enabledFor: ["<AGS>"]` — zentral verwaltet, gleiches Node-RED (Referenz:
+  und `enabledFor: ["<AGS>"]` — zentral verwaltet, derselbe Konnektordienst (Referenz:
   Reutlingen mit EFA-Abfahrten, B+R, Laden-live, DWD-Station).
 
 ## Eine-Basis-Prinzip (Betriebsregel)
 
 Alle Daten werden landesweit ingestiert und per AGS zugeordnet
-(Punkt-in-Polygon über `bw-grenzen.json`, Fallback Zentroid-Distanz).
+(strikt Punkt-in-Polygon über `bw-grenzen.json`, kein Zentroid-Fallback).
 Kommunen-Dashboards sind AUSSCHLIESSLICH Filter auf diese Basis — keine
 Parallel-Ingestion je Kommune. Reutlingen bezieht seine Basis-Kacheln aus
 derselben Quelle wie Böllen; Stufe 3 ergänzt nur zusätzliche Quellen.

@@ -3,7 +3,7 @@
 # © 2024–2026 Thomas Kieß and contributors
 
 # Registry-getriebener Health-Check aller Konnektoren (Masterplan §5 F1).
-# Quelle: gui/public/connectors-status.json (Export des Flow-Generators).
+# Quelle: gui/public/connectors-status.json (scripts/export-connector-status.py).
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 STATUS="$REPO/gui/public/connectors-status.json"
@@ -38,15 +38,48 @@ while IFS=$'\t' read -r name url; do
   printf '%-46s %s %s\n' "$name" "$st" "HTTP $code"
 done < <(jq -r '.connectors[] | select(.active != false and .healthUrl != null) | [.name, .healthUrl] | @tsv' "$STATUS")
 
-echo "-- Node-RED-Fehler (70 min): $(docker logs udp-node-red --since 70m 2>&1 | grep -cE '\[error\]')"
-# Warnungen mitzählen: Ein Komplettausfall einer Quelle (z. B. alle EFA-Städte
-# gleichzeitig »JSON parse error«) erscheint nur als [warn] und blieb bisher
-# unsichtbar. Die drei häufigsten Warnquellen werden benannt.
-WARN=$(docker logs udp-node-red --since 70m 2>&1 | grep -cE '\[warn\]')
-echo "-- Node-RED-Warnungen (70 min): $WARN"
-if [ "$WARN" -gt 10 ]; then
-    docker logs udp-node-red --since 70m 2>&1 | grep -E '\[warn\]' \
-        | sed -E 's/.*\[warn\] \[([^]]*)\].*/   \1/' | sort | uniq -c | sort -rn | head -3
+# [error]/[warn] lines of the connector service, the ingestion runtime (Node-RED
+# only runs the low-code example flow). Lines read "... [warn] [<component>] ...",
+# so the grouping names the sources. Warnings count as well: a complete outage
+# of a source (e.g. every EFA city at once "JSON parse error") shows up only as
+# [warn]. The three most frequent warning sources are named.
+if docker inspect udp-connectors >/dev/null 2>&1; then
+    LOGS=$(docker logs udp-connectors --since 70m 2>&1)
+    ERR=$(grep -cE '\[error\]' <<<"$LOGS")
+    WARN=$(grep -cE '\[warn\]' <<<"$LOGS")
+    echo "-- udp-connectors errors (70 min): $ERR"
+    echo "-- udp-connectors warnings (70 min): $WARN"
+    if [ "$WARN" -gt 10 ]; then
+        grep -E '\[warn\]' <<<"$LOGS" \
+            | sed -E 's/.*\[warn\] \[([^]]*)\].*/   \1/' | sort | uniq -c | sort -rn | head -3
+    fi
+fi
+
+# Connector service: what it runs and its state store (/healthz on the admin
+# port, which answers only inside the container). Fails the check when active
+# connectors exist and the state store is unhealthy, /healthz is gone or the
+# container is missing.
+ACTIVE_COUNT=$(jq '[.connectors[] | select(.active != false)] | length' "$STATUS")
+if docker inspect udp-connectors >/dev/null 2>&1; then
+    HEALTHZ=$(docker exec udp-connectors node -e '
+fetch("http://127.0.0.1:" + (process.env.UDP_CONNECTORS_ADMIN_PORT || "1881") + "/healthz")
+  .then((r) => r.text()).then((t) => process.stdout.write(t), () => {});' 2>/dev/null)
+    if jq -e '.stateStore' >/dev/null 2>&1 <<<"$HEALTHZ"; then
+        jq -r '"-- connector service: \(.connectors | length) connector(s) scheduled, state store "
+               + (if .stateStore.healthy then "healthy" else "UNHEALTHY" end)
+               + " (writer: \(.stateStore.writer)"
+               + (if .stateStore.reason then ", \(.stateStore.reason)" else "" end) + ")"
+               + (if (.stateStore.notLoaded | length) > 0 then "\n   not loaded" + (if .stateStore.reloading == true then " (reloading)" else "" end) + ": \(.stateStore.notLoaded | join(", "))" else "" end)
+               + (if ((.stateStore.loadFailed // []) | length) > 0 then "\n   failing loads: \(.stateStore.loadFailed | join(", "))" else "" end)
+               + (if (.stateStore.failing | length) > 0 then "\n   failing writes: \(.stateStore.failing | join(", "))" else "" end)' <<<"$HEALTHZ"
+        jq -e '(.connectors | length) == 0 or .stateStore.healthy' >/dev/null <<<"$HEALTHZ" || fail=1
+    else
+        echo "-- connector service: /healthz not answering"
+        [ "$ACTIVE_COUNT" -gt 0 ] && fail=1
+    fi
+elif [ "$ACTIVE_COUNT" -gt 0 ]; then
+    echo "-- connector service: container not found, but $ACTIVE_COUNT connector(s) are active"
+    fail=1
 fi
 echo "-- TRoE gesamt: $(docker exec udp-timescale psql -U udp -d orion -Atc 'SELECT count(*) FROM attributes;')"
 

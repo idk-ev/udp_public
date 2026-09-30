@@ -1,0 +1,32 @@
+{
+  "name": "udp-connectors",
+  "private": true,
+  "version": "1.0.0",
+  "description": "UDP connector service – ingestion of open data sources into NGSI-LD (replaces the Node-RED flows)",
+  "license": "EUPL-1.2",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node --enable-source-maps dist/src/index.js",
+    "lint": "eslint .",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+    "test": "npm run build && node ../../tests/run.js"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.18.12",
+    "@types/pg": "^8.15.5",
+    "eslint": "^10.8.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.65.0"
+  }
+}

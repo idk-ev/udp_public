@@ -32,7 +32,7 @@ global:
   #   ckan-dcat                (platform/config/ckan)
   #   postgres-timescale-cnpg  (platform/config/postgres-cnpg)
   #   postgres-timescale-oss   (platform/config/postgres, nur zur Migration)
-  #   node-red-udp             (platform/config/nodered)
+  #   udp-connectors           (platform/connectors)
   # Registry und Tag stehen hier EINMAL für alle. Pro Komponente
   # überschreibbar: <komponente>.image.registry / .image.tag.
   # imageRegistry gilt hier nicht – udpRegistry ist bereits ein vollständiger
@@ -45,7 +45,7 @@ global:
   # Laufs ein – bei fester Chart-Version die DIGESTS unter cockpit/ckan/
   # timescale.image.tag, bei 1.0.0-pr.<nr> den beweglichen Tag "pr-<nr>".
   udpTag: "main"
-  # Pull-Policy NUR für die vier eigenen Images. "main"/"pr-<nr>" sind
+  # Pull-Policy NUR für die eigenen Images. "main"/"pr-<nr>" sind
   # bewegliche Tags – mit IfNotPresent startet ein Knoten, der den Tag schon
   # kennt, weiter das alte Image, obwohl die Registry längst ein neues hat.
   # Bei digest-gepinnten Images (values-prod.yaml) auf IfNotPresent stellen.
@@ -164,6 +164,8 @@ networkPolicies:
   # – nur aktivieren, wenn bewusst gewünscht.
   strictEgress: false
   # Namespace-Selector-Label des Ingress-Controllers (für Freigabe → Gateway).
+  # Pflicht: leer würde die öffentlichen Dienste für JEDEN Namespace öffnen –
+  # das Chart bricht dann ab.
   ingressControllerNamespaceLabel:
     kubernetes.io/metadata.name: ingress-nginx
   # Namespace of the availability monitoring / metrics scraper
@@ -180,11 +182,15 @@ networkPolicies:
   #       - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: analytics } }
   extraFrom: {}
   # Only with strictEgress: which components may reach the internet (TCP
-  # 80/443 to everything outside the private ranges below). Node-RED pulls
-  # every open-data source from outside, Orion-LD and the IoT agent fetch
-  # JSON-LD @contexts, CKAN harvests remote catalogues.
+  # 80/443 to everything outside the private ranges below). The connector
+  # service pulls the open-data sources from outside, Orion-LD and the IoT
+  # agent fetch JSON-LD @contexts, CKAN harvests remote catalogues. Node-RED
+  # is not in the list: its example flow only writes to Orion-LD. Add
+  # node-red here for own flows that fetch external sources. (Without
+  # strictEgress there is no egress policy at all: every pod, Node-RED
+  # included, reaches the internet.)
   internetEgress:
-    components: [node-red, orion-ld, iot-agent-json, ckan]
+    components: [connectors, orion-ld, iot-agent-json, ckan]
     ports: [80, 443]
     # Cluster/private networks stay excluded – internal traffic is governed by
     # the in-namespace rules, not by the internet exception.
@@ -971,24 +977,34 @@ keycloakApp:
 
 # ---------- Anwendungsdienste ----------
 nodeRed:
-  # Eigenes Image (platform/config/nodered/Dockerfile): Node-RED plus die
-  # GENERIERTEN Datenflüsse, die gehärtete settings.js und ein vorinstalliertes
-  # "pg". registry/tag leer -> global.udpRegistry / global.udpTag.
-  #
-  # Die Flows sind ein Build-Artefakt (scripts/generate-nodered-flows.py), kein
-  # im Editor gepflegter Zustand — deshalb Image statt ConfigMap/Volume:
-  #   * ~420 KB und wachsend sprengen absehbar die 1-MiB-Grenze für ConfigMaps,
-  #   * ein Volume auf /data würde die Flows aus dem Image verdecken,
-  #   * per Digest gepinnt läuft im Cluster exakt der gebaute Stand.
-  # Es gibt daher bewusst KEIN PVC: /data hält nur flüchtigen Laufzeitzustand.
-  image: { name: node-red-udp, registry: "", tag: "" }
+  # Low-code building block (requirement B.II.4): the upstream image with a
+  # preconfigured example flow (open data -> NGSI-LD -> Orion-LD). The
+  # ingestion runs in the connector service, not here. flows.json and
+  # settings.js come from the ConfigMap node-red-config
+  # (helm/udp/files/nodered/, copies of platform/config/nodered/). /data is an
+  # emptyDir: flows deployed in the editor last until the pod restarts. No PVC,
+  # no ingress route, no NetworkPolicy rule – the editor is reached via
+  # kubectl port-forward. The example flow ships DISABLED (it would write
+  # random values into the broker); enable it in the editor to try it.
+  image: { repository: nodered/node-red, tag: "4.1" }
+  # Login for the editor and the admin API (settings.js adminAuth). Empty =
+  # no login, as before – acceptable only while the editor stays behind
+  # kubectl port-forward. NEVER expose it (ingress, LoadBalancer,
+  # networkPolicies.extraFrom.node-red) without a login: a flow runs arbitrary
+  # code with the pod's network access. passwordHash is a bcrypt hash:
+  #   docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw
+  # Set -> the chart renders the secret udp-node-red-admin.
+  adminAuth:
+    username: ""
+    passwordHash: ""
+    # Alternatively an existing secret with the keys NODE_RED_ADMIN_USER and
+    # NODE_RED_ADMIN_PASSWORD_HASH (username/passwordHash then stay empty).
+    existingSecret: ""
   timezone: "Europe/Berlin"
-  # Passantenfrequenz hystreet.com (kostenpflichtig/vertragsgebunden).
-  # Leer -> der Flow bleibt inaktiv, alles andere läuft normal weiter.
-  hystreetApiToken: ""
+  # Sized for the example flow and some editor use, no longer for 29 connectors.
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits:   { cpu: 500m, memory: 768Mi }
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 1000
@@ -1011,6 +1027,68 @@ nodeRed:
       timeoutSeconds: 10
       failureThreshold: 4
 
+# Connector service (platform/connectors): the ingestion of the platform. It
+# runs every active entry of the registry (platform/config/connectors.json,
+# baked into the image) and serves /abfahrten and /warnungen.ics to the
+# cockpit. Always ONE replica with strategy Recreate (fixed in
+# templates/apps.yaml): the state store in TimescaleDB (schema udp_connectors)
+# has a single writer.
+connectors:
+  # false switches the platform's ingestion off completely (Node-RED ingests
+  # nothing) and /abfahrten and /warnungen.ics answer 502 – the chart refuses
+  # it unless disableIngestion is set as well.
+  enabled: true
+  disableIngestion: false
+  # Own image (platform/connectors/Dockerfile). registry/tag empty ->
+  # global.udpRegistry / global.udpTag.
+  image: { name: udp-connectors, registry: "", tag: "" }
+  timezone: "Europe/Berlin"
+  orionUrl: "http://orion-ld:1026"
+  # Service of the database (TROE_DB_HOST); credentials come from the DB secret.
+  # The user needs CREATE on the database "orion" for the schema udp_connectors,
+  # or the schema has to exist beforehand.
+  dbHost: "timescale"
+  # Pedestrian counts hystreet.com (paid/contract-bound). Empty -> the
+  # connector hystreet skips its runs, everything else keeps working. Set ->
+  # the chart renders the secret udp-hystreet (key HYSTREET_API_TOKEN).
+  # (Former place nodeRed.hystreetApiToken is still read as a fallback.)
+  hystreetApiToken: ""
+  # Alternatively an existing secret with the key HYSTREET_API_TOKEN
+  # (SealedSecrets / External Secrets); set -> hystreetApiToken must stay empty
+  # (both set fail the render).
+  # (Former place nodeRed.hystreetExistingSecret is still read as a fallback.)
+  hystreetExistingSecret: ""
+  # Minimum spacing of two manual triggers per connector (never below 60).
+  triggerCooldownSeconds: 60
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000       # "node" in node:22-alpine
+    runAsGroup: 1000
+  # Writes nothing to disk.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+  # Liveness: process only. /healthz on the admin port stays 200 even when the
+  # state store is unhealthy – restarting does not fix a database.
+  # Readiness: the public port the cockpit proxies to is listening.
+  probes:
+    startup:
+      httpGet: { path: /healthz, port: 1881 }
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 24
+    readiness:
+      tcpSocket: { port: 1880 }
+      periodSeconds: 10
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /healthz, port: 1881 }
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 4
+
 # Uptime Kuma ist NICHT mehr Teil dieses Charts: ein Monitoring, das mit der
 # ueberwachten Plattform ausgerollt wird, meldet deren Ausfall nicht. Eigenes
 # Release unter monitoring/helm/uptime-kuma – Migration eines bestehenden PVC
@@ -1027,14 +1105,19 @@ cockpit:
   # endpoint – and with maxSurge 0 (spread mode required) the Service was
   # briefly empty (seen as ~3 s of 503 on every route during a rollout).
   minReadySeconds: 10
-  # nginx im Cockpit proxyt /gateway/ und /abfahrten intern weiter und löst die
+  # nginx im Cockpit proxyt /gateway/, /abfahrten und /warnungen.ics intern weiter und löst die
   # Upstreams zur Laufzeit auf (Gateway-Neustart erzwingt so keinen
   # Cockpit-Neustart). Diese Namen müssen VOLL QUALIFIZIERT sein: auf Namen, die
   # nginx über den resolver auflöst, wendet es die search-Domains aus
   # /etc/resolv.conf nicht an – "apisix" allein bliebe unauflösbar.
   # Den Resolver selbst ermittelt der Container-Entrypoint aus /etc/resolv.conf.
   gatewayUpstream: ""     # leer -> apisix.<Release-Namespace>.svc.<global.clusterDomain>:9080
-  noderedUpstream: ""     # leer -> node-red.<Release-Namespace>.svc.<global.clusterDomain>:1880
+  # Who answers /abfahrten and /warnungen.ics: the connector service.
+  # Empty -> connectors.<Release-Namespace>.svc.<global.clusterDomain>:1880;
+  # host:port only when it runs elsewhere (checked at render time). (The
+  # former per-endpoint switch cockpit.endpoints between Node-RED and the
+  # connector service is gone.)
+  connectorsUpstream: ""
   # Proxy networks (ingress controller pods / load balancer) whose
   # X-Forwarded-For entries the cockpit trusts when resolving the client
   # address for the per-client rate limit (apisix.rateLimit). Empty -> all
@@ -1064,7 +1147,7 @@ cockpit:
   # Node-RED hat bewusst KEINE Ingress-Route (Betriebswerkzeug), und Uptime
   # Kuma wird gar nicht mehr von diesem Chart ausgerollt (eigenes Release,
   # s. monitoring/). Wer sie veröffentlicht, trägt die Adressen hier ein:
-  #   nodered: "https://nodered.example.org"
+  #   nodered: "https://nodered.example.org"   # nur mit nodeRed.adminAuth!
   #   uptimeKuma: "https://status.example.org"
   extraModuleUrls: {}
   # Auswahlliste der Mandanten (NGSI-LD-Tenant) im Cockpit; "" = Standard.

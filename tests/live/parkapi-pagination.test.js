@@ -80,7 +80,7 @@ exports["ParkAPI: offset= wird ignoriert (Grund für die Cursor-Pagination)"] = 
   const b = (mit.items || []).map(i => i.id).join(",");
   if (a !== b) {
     console.log("    HINWEIS: ParkAPI wertet offset= inzwischen aus — Kommentare in " +
-      "scripts/generate-nodered-flows.py (FN_PARK_FETCH) prüfen.");
+      "platform/connectors/src/connectors/parken-bw.ts (Cursor-Pagination) prüfen.");
   }
 };
 

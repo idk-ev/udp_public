@@ -1,0 +1,616 @@
+{
+  "source": "https://www.efa-bw.de/nvbw/XML_DM_REQUEST?outputFormat=rapidJSON&type_dm=any&name_dm=de:08415:22006&mode=direct&useRealtime=1&limit=20",
+  "recordedAt": "2026-09-28T03:12:42.923Z",
+  "note": "Trimmed by hand: top-level serverInfo, systemMessages and locations removed; in every stop event only the fields listed here are kept (isCancelled, realtimeStatus, isRealtimeControlled, location.{id,name,type,properties}, departureTimePlanned/BaseTimetable/Estimated, transportation.{id,name,disassembledName,number,destination}). Neither the old function node nor the port reads anything else. All 20 stop events are kept, values verbatim.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-encoding": "gzip"
+  },
+  "format": "json",
+  "payload": {
+    "version": "11.0.6.72",
+    "stopEvents": [
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29334:1:1",
+          "name": "Reutlingen Hbf/Listplatz",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029334",
+            "area": "1",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:12:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:12:00Z",
+        "departureTimeEstimated": "2026-09-28T03:12:00Z",
+        "transportation": {
+          "id": "tub:07008: :H:j26",
+          "name": "Stadtverkehr Reutlingen 8",
+          "disassembledName": "8",
+          "number": "8",
+          "destination": {
+            "id": "8029130",
+            "name": "Reutlingen Hohbuch",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:22006:1:H1",
+          "name": "Reutlingen Hauptbahnhof",
+          "type": "platform",
+          "properties": {
+            "stopId": "8022006",
+            "area": "1",
+            "platform": "H1",
+            "platformName": "Bstg. H1",
+            "plannedPlatformName": "Bstg. H1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:14:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:14:00Z",
+        "departureTimeEstimated": "2026-09-28T03:14:00Z",
+        "transportation": {
+          "id": "rab:04606: :H:26a",
+          "name": "Regionalbus 7606",
+          "disassembledName": "7606",
+          "number": "7606",
+          "destination": {
+            "id": "8021510",
+            "name": "Münsingen Bhf",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:24480:0:1",
+          "name": "Reutlingen Hbf/Gartenstraße",
+          "type": "platform",
+          "properties": {
+            "stopId": "8024480",
+            "area": "0",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:15:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:15:00Z",
+        "departureTimeEstimated": "2026-09-28T03:15:36Z",
+        "transportation": {
+          "id": "tub:07006: :R:j26",
+          "name": "Stadtverkehr Reutlingen 6",
+          "disassembledName": "6",
+          "number": "6",
+          "destination": {
+            "id": "8029146",
+            "name": "Reutlingen Markwasen",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:22006:2:1",
+          "name": "Reutlingen Hauptbahnhof",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "8022006",
+            "area": "2",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:16:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:16:00Z",
+        "departureTimeEstimated": "2026-09-28T03:16:00Z",
+        "transportation": {
+          "id": "ddb:90T12:S:R:j26",
+          "name": "Metropolexpress MEX12",
+          "disassembledName": "MEX12",
+          "number": "MEX12",
+          "destination": {
+            "id": "5006115",
+            "name": "Stuttgart Hauptbahnhof (oben)",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29334:2:1",
+          "name": "Reutlingen Hbf/Listplatz",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029334",
+            "area": "2",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:16:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:16:00Z",
+        "departureTimeEstimated": "2026-09-28T03:16:00Z",
+        "transportation": {
+          "id": "tub:07004: :H:j26",
+          "name": "Stadtverkehr Reutlingen 4",
+          "disassembledName": "4",
+          "number": "4",
+          "destination": {
+            "id": "8029150",
+            "name": "Reutlingen Nördlinger Str.",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29336:0:4",
+          "name": "Reutlingen Hbf/U.d.Linden",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029336",
+            "area": "0",
+            "platform": "4"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:17:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:17:00Z",
+        "departureTimeEstimated": "2026-09-28T03:17:30Z",
+        "transportation": {
+          "id": "tub:07007: :H:j26",
+          "name": "Stadtverkehr Reutlingen 7",
+          "disassembledName": "7",
+          "number": "7",
+          "destination": {
+            "id": "8029050",
+            "name": "Betz. Wildermuth-Siedlg.",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29334:2:1",
+          "name": "Reutlingen Hbf/Listplatz",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029334",
+            "area": "2",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:21:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:21:00Z",
+        "departureTimeEstimated": "2026-09-28T03:21:18Z",
+        "transportation": {
+          "id": "tub:07007: :R:j26",
+          "name": "Stadtverkehr Reutlingen 7",
+          "disassembledName": "7",
+          "number": "7",
+          "destination": {
+            "id": "8029239",
+            "name": "Sondelfingen Im Efeu",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:24480:0:1",
+          "name": "Reutlingen Hbf/Gartenstraße",
+          "type": "platform",
+          "properties": {
+            "stopId": "8024480",
+            "area": "0",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:22:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:22:00Z",
+        "departureTimeEstimated": "2026-09-28T03:26:36Z",
+        "transportation": {
+          "id": "tub:07001: :R:j26",
+          "name": "Stadtverkehr Reutlingen 1",
+          "disassembledName": "1",
+          "number": "1",
+          "destination": {
+            "id": "8028411",
+            "name": "Eningen Scherbental",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29334:1:1",
+          "name": "Reutlingen Hbf/Listplatz",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029334",
+            "area": "1",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:23:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:23:00Z",
+        "departureTimeEstimated": "2026-09-28T03:23:00Z",
+        "transportation": {
+          "id": "tub:07004: :R:j26",
+          "name": "Stadtverkehr Reutlingen 4",
+          "disassembledName": "4",
+          "number": "4",
+          "destination": {
+            "id": "8029130",
+            "name": "Reutlingen Hohbuch",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:24480:0:1",
+          "name": "Reutlingen Hbf/Gartenstraße",
+          "type": "platform",
+          "properties": {
+            "stopId": "8024480",
+            "area": "0",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:24:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:24:00Z",
+        "departureTimeEstimated": "2026-09-28T03:24:00Z",
+        "transportation": {
+          "id": "tub:07022: :H:j26",
+          "name": "Stadtverkehr Reutlingen 22",
+          "disassembledName": "22",
+          "number": "22",
+          "destination": {
+            "id": "8029224",
+            "name": "Ohmenhausen Mahdach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29334:2:1",
+          "name": "Reutlingen Hbf/Listplatz",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029334",
+            "area": "2",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:26:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:26:00Z",
+        "departureTimeEstimated": "2026-09-28T03:26:54Z",
+        "transportation": {
+          "id": "tub:07008: :R:j26",
+          "name": "Stadtverkehr Reutlingen 8",
+          "disassembledName": "8",
+          "number": "8",
+          "destination": {
+            "id": "8029114",
+            "name": "Reutlingen Burgholz",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08415:29336:0:4",
+          "name": "Reutlingen Hbf/U.d.Linden",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029336",
+            "area": "0",
+            "platform": "4"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:27:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:27:00Z",
+        "transportation": {
+          "id": "tub:07021: :H:j26",
+          "name": "Stadtverkehr Reutlingen 21",
+          "disassembledName": "21",
+          "number": "21",
+          "destination": {
+            "id": "8004391",
+            "name": "K'furt Mahden",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29336:0:4",
+          "name": "Reutlingen Hbf/U.d.Linden",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029336",
+            "area": "0",
+            "platform": "4"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:28:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:28:00Z",
+        "departureTimeEstimated": "2026-09-28T03:28:00Z",
+        "transportation": {
+          "id": "tub:070x3: :H:j26",
+          "name": "Stadtverkehr Reutlingen X3",
+          "disassembledName": "X3",
+          "number": "X3",
+          "destination": {
+            "id": "5002103",
+            "name": "Flughafen/Messe",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29336:0:4",
+          "name": "Reutlingen Hbf/U.d.Linden",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029336",
+            "area": "0",
+            "platform": "4"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:29:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:29:00Z",
+        "departureTimeEstimated": "2026-09-28T03:30:36Z",
+        "transportation": {
+          "id": "tub:07001: :H:j26",
+          "name": "Stadtverkehr Reutlingen 1",
+          "disassembledName": "1",
+          "number": "1",
+          "destination": {
+            "id": "8029036",
+            "name": "Rübgarten Mitte",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:22006:2:1",
+          "name": "Reutlingen Hauptbahnhof",
+          "type": "platform",
+          "properties": {
+            "stopId": "8022006",
+            "area": "2",
+            "platform": "1",
+            "platformName": "1",
+            "plannedPlatformName": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:30:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:30:00Z",
+        "departureTimeEstimated": "2026-09-28T03:30:00Z",
+        "transportation": {
+          "id": "ddb:90T63: :H:j26",
+          "name": "R-Bahn RB 63",
+          "disassembledName": "RB63",
+          "number": "RB 63",
+          "destination": {
+            "id": "8028129",
+            "name": "Bad Urach Bahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:22006:3:2",
+          "name": "Reutlingen Hauptbahnhof",
+          "type": "platform",
+          "properties": {
+            "occupancy": "MANY_SEATS",
+            "stopId": "8022006",
+            "area": "3",
+            "platform": "2",
+            "platformName": "2",
+            "plannedPlatformName": "2"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:32:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:32:00Z",
+        "departureTimeEstimated": "2026-09-28T03:32:00Z",
+        "transportation": {
+          "id": "ddb:90T63: :R:j26",
+          "name": "R-Bahn RB 63",
+          "disassembledName": "RB63",
+          "number": "RB 63",
+          "destination": {
+            "id": "8011000",
+            "name": "Tübingen Hauptbahnhof",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29334:1:1",
+          "name": "Reutlingen Hbf/Listplatz",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029334",
+            "area": "1",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:32:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:32:00Z",
+        "departureTimeEstimated": "2026-09-28T03:36:30Z",
+        "transportation": {
+          "id": "tub:07002: :H:j26",
+          "name": "Stadtverkehr Reutlingen 2",
+          "disassembledName": "2",
+          "number": "2",
+          "destination": {
+            "id": "8029224",
+            "name": "Ohmenhausen Mahdach",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "location": {
+          "id": "de:08415:29334:1:1",
+          "name": "Reutlingen Hbf/Listplatz",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029334",
+            "area": "1",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:32:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:32:00Z",
+        "transportation": {
+          "id": "tub:07008: :H:j26",
+          "name": "Stadtverkehr Reutlingen 8",
+          "disassembledName": "8",
+          "number": "8",
+          "destination": {
+            "id": "8029130",
+            "name": "Reutlingen Hohbuch",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29336:0:4",
+          "name": "Reutlingen Hbf/U.d.Linden",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029336",
+            "area": "0",
+            "platform": "4"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:33:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:33:00Z",
+        "departureTimeEstimated": "2026-09-28T03:33:00Z",
+        "transportation": {
+          "id": "tub:07006: :H:j26",
+          "name": "Stadtverkehr Reutlingen 6",
+          "disassembledName": "6",
+          "number": "6",
+          "destination": {
+            "id": "8028252",
+            "name": "Mittelstadt Metzinger Str.",
+            "type": "stop"
+          }
+        }
+      },
+      {
+        "realtimeStatus": [
+          "MONITORED"
+        ],
+        "isRealtimeControlled": true,
+        "location": {
+          "id": "de:08415:29336:0:1",
+          "name": "Reutlingen Hbf/U.d.Linden",
+          "type": "platform",
+          "properties": {
+            "stopId": "8029336",
+            "area": "0",
+            "platform": "1"
+          }
+        },
+        "departureTimePlanned": "2026-09-28T03:35:00Z",
+        "departureTimeBaseTimetable": "2026-09-28T03:35:00Z",
+        "departureTimeEstimated": "2026-09-28T03:35:00Z",
+        "transportation": {
+          "id": "tub:07011: :R:j26",
+          "name": "Stadtverkehr Reutlingen 11",
+          "disassembledName": "11",
+          "number": "11",
+          "destination": {
+            "id": "8024438",
+            "name": "Eningen Sulzwiesenstraße",
+            "type": "stop"
+          }
+        }
+      }
+    ]
+  }
+}

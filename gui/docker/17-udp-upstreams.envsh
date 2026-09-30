@@ -1,0 +1,42 @@
+#!/bin/sh
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+#
+# Sourced by the nginx entrypoint before the templates are rendered: the
+# upstream of /abfahrten and /warnungen.ics (cockpit.conf.template).
+#
+#   UDP_CONNECTORS_UPSTREAM  host:port of the connector service
+#                            (default connectors:1880, the Compose service;
+#                            Kubernetes sets the fully qualified name)
+#
+# A value that is not host:port stops the container (non-zero exit of the
+# entrypoint) instead of rendering a broken nginx configuration. The check
+# also keeps anything but host:port characters out of it.
+#
+# The former per-endpoint variables UDP_ABFAHRTEN_UPSTREAM and
+# UDP_WARNUNGEN_UPSTREAM (switch between Node-RED and the connector service)
+# are gone; a leftover value is reported and ignored.
+: "${UDP_CONNECTORS_UPSTREAM:=connectors:1880}"
+# Exactly one colon, a non-empty host of [0-9A-Za-z._-], a numeric port.
+case "$UDP_CONNECTORS_UPSTREAM" in
+    *[!0-9A-Za-z.:_-]* | *:*:* | :* | *:) udp_valid=no ;;
+    *:*)
+        case "${UDP_CONNECTORS_UPSTREAM##*:}" in
+            *[!0-9]*) udp_valid=no ;;
+            *) udp_valid=yes ;;
+        esac ;;
+    *) udp_valid=no ;;
+esac
+if [ "$udp_valid" != yes ]; then
+    echo "17-udp-upstreams: ERROR: UDP_CONNECTORS_UPSTREAM must be host:port (e.g. connectors:1880), got '$UDP_CONNECTORS_UPSTREAM' - refusing to start" >&2
+    exit 1
+fi
+export UDP_CONNECTORS_UPSTREAM
+echo "17-udp-upstreams: UDP_CONNECTORS_UPSTREAM=$UDP_CONNECTORS_UPSTREAM"
+for udp_name in UDP_ABFAHRTEN_UPSTREAM UDP_WARNUNGEN_UPSTREAM UDP_NODERED_UPSTREAM; do
+    eval "udp_value=\${$udp_name:-}"
+    if [ -n "$udp_value" ]; then
+        echo "17-udp-upstreams: $udp_name is no longer used (both endpoints go to UDP_CONNECTORS_UPSTREAM), ignored" >&2
+    fi
+done
+unset udp_name udp_value udp_valid

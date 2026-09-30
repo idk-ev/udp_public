@@ -92,4 +92,4 @@ Deinstallation:  helm -n {{ .Release.Namespace }} uninstall {{ .Release.Name }}
    Hinweis Datenerhalt bei uninstall:
      - udp-db / udp-keycloak (Secrets): bleiben erhalten (resource-policy=keep)
      - mongo/timescale-PVCs (StatefulSet): bleiben erhalten (von Helm nicht verwaltet)
-     - Node-RED: kein PVC (Flows liegen im Image) -> nichts zu sichern
+     - Node-RED: kein PVC (Beispielfluss aus der ConfigMap) -> nichts zu sichern
