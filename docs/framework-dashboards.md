@@ -136,6 +136,10 @@ Autos), nicht die an Stationen angedockten Räder und Autos stationsgebundener
 Anbieter. Fällt eine Gemeinde unter drei Komponenten, wird ihr Puls nach 24 h
 gelöscht. Scheitert eine der Abfragen, entfällt der Lauf.
 
+Offene Entscheidung: Fahrzeuge eines Anbieters ohne `vehicle_types` zählen als
+„sonstige“ (`other`), passend zu „unbekannt“ in `carsharing-bw`. Laut GBFS
+wären es Fahrräder; umgestellt würde das nur in beiden Konnektoren zugleich.
+
 ## Bekannte Schulden / Folgepunkte
 
 - `dashboard.html` trägt noch eigene

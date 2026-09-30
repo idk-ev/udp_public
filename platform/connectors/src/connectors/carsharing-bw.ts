@@ -147,6 +147,7 @@ import {
   feedAllowed,
   feedUrl,
   parseSystems,
+  prevailingFormFactor,
   SkippedFeeds,
   SYSTEMS_URL,
   systemKey,
@@ -307,16 +308,7 @@ export function replaceSystem(
  */
 export function formFactorOf(raw: unknown): { readonly system: string; readonly formFactor: string | null } {
   const { system, data } = dataOf(raw);
-  const types = data.vehicle_types;
-  const counts = new Map<string, number>();
-  for (const type of isArray(types) ? types : []) {
-    if (!isRecord(type)) continue;
-    const form = isTruthy(type.form_factor) && isString(type.form_factor) ? type.form_factor : "unbekannt";
-    counts.set(form, (counts.get(form) ?? 0) + 1);
-  }
-  // Stable sort by count, descending: ties keep the order of first sighting.
-  const top = [...counts].sort((a, b) => b[1] - a[1])[0];
-  return { system, formFactor: top === undefined ? null : top[0] };
+  return { system, formFactor: prevailingFormFactor(data.vehicle_types) };
 }
 
 /* ------------------------------------------------------------------ status */

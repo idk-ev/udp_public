@@ -118,6 +118,7 @@ import type {
 } from "../kernel/types.js";
 import type { GbfsSystem } from "./gbfs.js";
 import {
+  prevailingFormFactor,
   FEED_FETCH,
   feedAllowed,
   feedUrl,
@@ -179,16 +180,14 @@ export function parseVehicleTypes(raw: unknown): VehicleTypes {
   const types = isRecord(data) ? data.vehicle_types : undefined;
   if (!isArray(types)) return NO_TYPES;
   const byId = new Map<string, FormFactor>();
-  const counts = new Map<FormFactor, number>();
   for (const type of types) {
     if (!isRecord(type) || !isString(type.vehicle_type_id)) continue;
-    const form = formFactorKey(type.form_factor);
-    byId.set(type.vehicle_type_id, form);
-    counts.set(form, (counts.get(form) ?? 0) + 1);
+    byId.set(type.vehicle_type_id, formFactorKey(type.form_factor));
   }
-  // Ties keep the order of first sighting, as in carsharing-bw's formFactorOf.
-  const top = [...counts].sort((a, b) => b[1] - a[1])[0];
-  return { byId, prevailing: top === undefined ? null : top[0] };
+  // Decided on the raw strings, as carsharing-bw decides its FleetStatus type,
+  // then mapped: both agree on which docked vehicles the station side counts.
+  const top = prevailingFormFactor(types);
+  return { byId, prevailing: top === null ? null : formFactorKey(top) };
 }
 
 /** Form factors whose docked vehicles the station side counts (see the module header). */
@@ -402,6 +401,8 @@ export const TYPES_RETRY_MS = 6 * HOUR_MS;
 export interface KeptTypes {
   readonly types: VehicleTypes;
   readonly fetchedMs: number;
+  /** `false` after an empty or failed answer (the types then are the older ones, if any). */
+  readonly complete: boolean;
 }
 
 /** Per system key: the last `vehicle_types` read. Process lifetime, not persisted. */
@@ -416,7 +417,7 @@ export function typesStale(kept: KeptTypes | undefined, feed: FreeBikeFeed, nowM
   const age = nowMs - kept.fetchedMs;
   if (age > TYPES_MAX_AGE_MS) return true;
   if (age <= TYPES_RETRY_MS) return false;
-  if (kept.types.byId.size === 0) return true;
+  if (!kept.complete || kept.types.byId.size === 0) return true;
   return feed.vehicles.some(([, , , typeId]) => typeId !== null && !kept.types.byId.has(typeId));
 }
 
@@ -443,10 +444,11 @@ async function vehicleTypes(
   } catch (error) {
     skipped.noteRefusal(error);
   }
-  // Kept even when empty, so a system without a usable list is asked again
-  // only after TYPES_RETRY_MS, not every run.
-  if (types.byId.size === 0 && old !== undefined) types = old.types;
-  kept.set(feed.system, { types, fetchedMs: nowMs });
+  // Kept even when empty or failed (then with the older types, if any), so it
+  // is asked again after TYPES_RETRY_MS, neither every run nor only in a day.
+  const complete = types.byId.size > 0;
+  if (!complete && old !== undefined) types = old.types;
+  kept.set(feed.system, { types, fetchedMs: nowMs, complete });
   return types;
 }
 

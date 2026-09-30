@@ -42,6 +42,7 @@ import {
   typesStale,
 } from "../../src/connectors/sharing-bw.js";
 import type { SharingSummaryEntity, Vehicle } from "../../src/connectors/sharing-bw.js";
+import { formFactorOf as formFactorOfCarsharing } from "../../src/connectors/carsharing-bw.js";
 import type { EntityId, UpsertPlan } from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, httpResponse, recordingLog } from "../harness/kernel.js";
@@ -560,7 +561,11 @@ async function vehicleTypesAreFetchedOnceAndOnlyForBw(): Promise<void> {
 
   // A type id the kept list lacks fetches again.
   const feed = parse({ system: "hopp_konstanz", payload: feedPayload("hopp_konstanz") });
-  const kept = { types: parseVehicleTypes(typesFixture("hopp_konstanz").payload), fetchedMs: now };
+  const kept = {
+    types: parseVehicleTypes(typesFixture("hopp_konstanz").payload),
+    fetchedMs: now,
+    complete: true,
+  };
   assert.equal(typesStale(kept, feed, now + HOUR), false);
   assert.equal(typesStale(undefined, feed, now), true);
   // An unknown type id or an empty list: fetched again, but not before TYPES_RETRY_MS.
@@ -568,12 +573,80 @@ async function vehicleTypesAreFetchedOnceAndOnlyForBw(): Promise<void> {
   const withNew = { ...feed, vehicles: [newType] };
   assert.equal(typesStale(kept, withNew, now + HOUR), false);
   assert.equal(typesStale(kept, withNew, now + TYPES_RETRY_MS + HOUR), true);
-  const empty = { types: parseVehicleTypes({}), fetchedMs: now };
+  const empty = { types: parseVehicleTypes({}), fetchedMs: now, complete: false };
   assert.equal(typesStale(empty, feed, now + HOUR), false);
   assert.equal(typesStale(empty, feed, now + TYPES_RETRY_MS + HOUR), true);
+  // A failed refetch that kept the older list: retried after TYPES_RETRY_MS too.
+  const failed = { ...kept, complete: false };
+  assert.equal(typesStale(failed, feed, now + HOUR), false);
+  assert.equal(typesStale(failed, feed, now + TYPES_RETRY_MS + HOUR), true);
+
+  // In run(): the list goes missing after a successful fetch; the old one is
+  // kept and asked for again after TYPES_RETRY_MS, not only after a day.
+  const later = mobilityCtx({ id: "sharing-bw", start: now });
+  serveFeeds(later.broker);
+  await run(later.ctx);
+  const laterTypes = (): number =>
+    later.broker.requests.filter((r) => r.url.pathname.endsWith("/vehicle_types")).length;
+  later.broker.sources.delete(typesFixture("hopp_konstanz").source);
+  later.broker.requests.length = 0;
+  later.clock.now = now + TYPES_MAX_AGE_MS + HOUR;
+  await run(later.ctx);
+  assert.equal(laterTypes(), 2, "a day old: both fetched again");
+  later.broker.requests.length = 0;
+  later.clock.now = now + TYPES_MAX_AGE_MS + TYPES_RETRY_MS + 2 * HOUR;
+  await run(later.ctx);
+  assert.equal(laterTypes(), 1, "the failed refetch not retried after TYPES_RETRY_MS");
+  const split = later.broker.upserts
+    .flat()
+    .filter(
+      (entity) => isRecord(entity) && isRecord(entity.system) && entity.system.value === "hopp_konstanz",
+    )
+    .at(-1);
+  assert.ok(
+    isRecord(split) && isRecord(split.vehiclesByFormFactor) && isRecord(split.vehiclesByFormFactor.value),
+  );
+  assert.equal(split.vehiclesByFormFactor.value.other, 0, "the older list was not used");
+}
+
+function prevailingFormFactorIsShared(): void {
+  // The review example: one bicycle, one seated scooter, one "other". On the
+  // raw strings the bicycle prevails (first sighting), for carsharing-bw
+  // (FleetStatus "Leihräder") and for sharing-bw alike, so the docked bike is
+  // counted once — mapping first would make "other" prevail here.
+  const types = {
+    data: {
+      vehicle_types: [
+        { vehicle_type_id: "a", form_factor: "bicycle" },
+        { vehicle_type_id: "b", form_factor: "scooter_seated" },
+        { vehicle_type_id: "c", form_factor: "other" },
+      ],
+    },
+  };
+  assert.equal(formFactorOfCarsharing({ system: "x", payload: types }).formFactor, "bicycle");
+  assert.equal(parseVehicleTypes(types).prevailing, "bicycle");
+  const feed = parse({
+    system: "x",
+    vehicleTypes: types,
+    payload: {
+      data: {
+        bikes: [
+          { lat: STUTTGART[0], lon: STUTTGART[1], vehicle_type_id: "a", station_id: "s" },
+          { lat: STUTTGART[0], lon: STUTTGART[1], vehicle_type_id: "b" },
+        ],
+      },
+    },
+  });
+  const summaries = build(feed, fullGeo().index, new Date().toISOString());
+  assert.equal(summaries[0]?.availableVehicles.value, 1, "the docked bike counted by both sides");
+  // Unknown values stay unknown for both: carsharing "unbekannt", sharing "other".
+  const unknown = { data: { vehicle_types: [{ vehicle_type_id: "u" }] } };
+  assert.equal(formFactorOfCarsharing({ system: "x", payload: unknown }).formFactor, "unbekannt");
+  assert.equal(parseVehicleTypes(unknown).prevailing, "other");
 }
 
 export {
+  prevailingFormFactorIsShared as "sharing-bw / carsharing-bw: one prevailing form factor on the raw strings",
   formFactorsSplitTheTotal as "sharing-bw: vehiclesByFormFactor splits the total, docked vehicles of station-based systems are not counted (deliberate)",
   vehicleTypesAreNarrowed as "sharing-bw: vehicle_types narrowed to the six form factors, prevailing one per system",
   vehicleTypesAreFetchedOnceAndOnlyForBw as "sharing-bw: vehicle_types fetched only for systems with BW vehicles and kept for a day",

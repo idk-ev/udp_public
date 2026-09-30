@@ -11,12 +11,25 @@
  * forecast, unknown level, `hoch`/`extrem`, an umlaut city slug), run() against
  * the old node's output, and the three guard branches.
  *
+ * DELIBERATE DEVIATION (module header): the entities carry `forecastDay`
+ * (`forecast_day` of the file) and `dateObserved` is the file's `last_update`
+ * instead of the run time. {@link withForecastDay} applies both to the old
+ * node's entities before every comparison; {@link forecastDayIsWritten} pins
+ * them.
+ *
  * Fixture: test/fixtures/hitze-bw.json — the real `gt.json`, trimmed to ten
  * cities as described in its `note`.
  */
 
 import assert from "node:assert/strict";
-import { build, parse, run, slugOf, type HeatHealthWarningEntity } from "../../src/connectors/hitze-bw.js";
+import {
+  berlinLocalToIso,
+  build,
+  parse,
+  run,
+  slugOf,
+  type HeatHealthWarningEntity,
+} from "../../src/connectors/hitze-bw.js";
 import { messageFromFixture, readFixture } from "../harness/fixtures.js";
 import {
   assertClockStamps,
@@ -41,6 +54,20 @@ async function legacyOn(
   });
 }
 
+/** The old node's entities with the deliberate fix: `forecastDay`, and `dateObserved` from the file. */
+function withForecastDay(legacy: unknown, payload: unknown): unknown {
+  if (!Array.isArray(legacy)) return legacy;
+  const { forecastDay, issuedAt } = parse(payload);
+  return legacy.map((entity: unknown) => {
+    if (!isRecord(entity)) return entity;
+    const fixed: Record<string, unknown> = { ...entity };
+    if (forecastDay !== null) fixed.forecastDay = { type: "Property", value: forecastDay };
+    if (issuedAt !== null)
+      fixed.dateObserved = { type: "Property", value: { "@type": "DateTime", "@value": issuedAt } };
+    return fixed;
+  });
+}
+
 function ported(payload: unknown): readonly HeatHealthWarningEntity[] {
   return build(parse(payload), null, new Date().toISOString());
 }
@@ -59,7 +86,35 @@ async function fixtureIsIdentical(): Promise<void> {
     ),
     "BW cities in source order, the others skipped",
   );
-  assertEntitiesEqual(solePayload(legacy), entities);
+  assertEntitiesEqual(withForecastDay(solePayload(legacy), fixture.payload), entities);
+}
+
+async function forecastDayIsWritten(): Promise<void> {
+  const fixture = readFixture(FIXTURE);
+  // Recorded: forecast_day 2026-09-27, last_update 2026-09-27T07:30:00 (summer time).
+  for (const entity of ported(fixture.payload)) {
+    assert.equal(entity.forecastDay?.value, "2026-09-27");
+    assert.deepEqual(entity.dateObserved.value, {
+      "@type": "DateTime",
+      "@value": "2026-09-27T05:30:00.000Z",
+    });
+  }
+  assert.equal(berlinLocalToIso("2026-12-01T07:30:00"), "2026-12-01T06:30:00.000Z", "winter time");
+  assert.equal(berlinLocalToIso("2026-09-27T07:30"), "2026-09-27T05:30:00.000Z");
+  for (const bad of [undefined, 7, "gestern", "2026-09-27", "2026-09-27T07:30:00Z"]) {
+    assert.equal(berlinLocalToIso(bad), null, String(bad));
+  }
+  // Without the two fields: no forecastDay, dateObserved the run time — as the old node.
+  const payload = structuredClone(fixture.payload);
+  assert.ok(isRecord(payload));
+  delete payload.forecast_day;
+  delete payload.last_update;
+  const legacy = await legacyOn(payload);
+  const now = new Date().toISOString();
+  const bare = build(parse(payload), null, now);
+  assert.ok(bare.every((entity) => entity.forecastDay === undefined));
+  assert.equal(bare[0]?.dateObserved.value["@value"], now);
+  assertEntitiesEqual(solePayload(legacy), bare);
 }
 
 async function levelBranchesMatch(): Promise<void> {
@@ -81,7 +136,7 @@ async function levelBranchesMatch(): Promise<void> {
 
   const legacy = await legacyOn(payload);
   const entities = ported(payload);
-  assertEntitiesEqual(solePayload(legacy), entities);
+  assertEntitiesEqual(withForecastDay(solePayload(legacy), payload), entities);
   assert.deepEqual(
     entities.map((entity) => [entity.todayLevel.value, entity.tomorrowLevel.value, entity.maxRank.value]),
     [
@@ -111,7 +166,7 @@ async function hochDecidesTheRank(): Promise<void> {
 
     const legacy = await legacyOn(payload);
     const entities = ported(payload);
-    assertEntitiesEqual(solePayload(legacy), entities);
+    assertEntitiesEqual(withForecastDay(solePayload(legacy), payload), entities);
     const entity = entities.find((candidate) => candidate.id === "urn:ngsi-ld:HeatHealthWarning:bw-mannheim");
     assert.ok(entity !== undefined);
     assert.deepEqual(
@@ -147,7 +202,7 @@ function slugMatchesTheOldExpression(): void {
 async function runWritesTheEntitiesOfTheOldNode(): Promise<void> {
   const fixture = readFixture(FIXTURE);
   const legacyClock = openClock();
-  const legacy = solePayload(await legacyOn(fixture.payload));
+  const legacy = withForecastDay(solePayload(await legacyOn(fixture.payload)), fixture.payload);
   const legacyWindow = legacyClock.close();
   const network = weatherFetcher((call) =>
     call.method === "POST"
@@ -222,7 +277,7 @@ function malformedEntryIsCountedNotWritten(): void {
 
 async function aDriftedCoordinateFailsTheComparison(): Promise<void> {
   const fixture = readFixture(FIXTURE);
-  const legacy = solePayload(await legacyOn(fixture.payload));
+  const legacy = withForecastDay(solePayload(await legacyOn(fixture.payload)), fixture.payload);
   const drifted = ported(fixture.payload).map<HeatHealthWarningEntity>((entity, index) =>
     index === 2
       ? { ...entity, location: { type: "GeoProperty", value: { type: "Point", coordinates: [48.4, 9.99] } } }
@@ -241,6 +296,7 @@ async function aDriftedCoordinateFailsTheComparison(): Promise<void> {
 }
 
 export {
+  forecastDayIsWritten as "hitze-bw: forecastDay and dateObserved come from the file, Berlin local time (deliberate)",
   fixtureIsIdentical as "hitze-bw: old FN_HITZE and ported build() produce identical entities on the recorded DWD answer",
   levelBranchesMatch as "hitze-bw: missing forecast, empty and unknown levels and the rank maximum match the old node",
   hochDecidesTheRank as 'hitze-bw: "hoch" against "mittel" on either day ranks 3, as in the old node',

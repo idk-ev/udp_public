@@ -14,9 +14,19 @@
  * municipality lookup.
  *
  * No change gate and no chunking: five entities, written in full in one
- * request twice a day (cron `5 6,11 * * *`), as the old upsert node did.
+ * request twice a day, as the old upsert node did.
  *
- * Deliberate differences, only for input the source does not produce:
+ * Deliberate differences:
+ *
+ *  * The day the forecast is for: DWD updates `gt.json` at about 07:30 local
+ *    time, so a run before that fetched YESTERDAY's file and stamped it with
+ *    today's `dateObserved` — the page then showed yesterday's "today". Now
+ *    `forecastDay` carries the file's `forecast_day` (the day "today" means),
+ *    and `dateObserved` is the file's `last_update` (Berlin local time); only
+ *    without it the run time, as before. The cron moved from `5 6,11 * * *`
+ *    to `40 7,11 * * *` (registry), after the morning update.
+ *
+ * And two only for input the source does not produce:
  *
  *  * The city and level tables are `Map`s, not object literals —
  *    `CITIES["constructor"]` would find something on an object literal.
@@ -85,6 +95,10 @@ export interface HeatForecast {
 
 export interface HeatIndex {
   readonly forecasts: readonly HeatForecast[];
+  /** `forecast_day` (`YYYY-MM-DD`): the day "today" refers to; `null` if absent or malformed. */
+  readonly forecastDay: string | null;
+  /** `last_update` (Berlin local time) as an instant; `null` if absent or malformed. */
+  readonly issuedAt: IsoTime | null;
   /** Entries dropped as malformed (see the module comment). */
   readonly malformed: number;
 }
@@ -107,11 +121,48 @@ function parseForecast(raw: unknown, index: number): HeatForecast {
   };
 }
 
+/**
+ * A Berlin wall-clock time without zone (`2026-09-27T07:30:00`, as `gt.json`
+ * gives it) as an ISO instant, or `null`.
+ */
+export function berlinLocalToIso(local: unknown): IsoTime | null {
+  if (!isString(local) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(local)) return null;
+  const asUtc = Date.parse(`${local}Z`);
+  if (!Number.isFinite(asUtc)) return null;
+  // Berlin's offset at that moment: its wall clock read back as if it were UTC.
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Berlin",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(asUtc));
+  const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
+  const wall = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour"),
+    part("minute"),
+    part("second"),
+  );
+  return new Date(asUtc - (wall - asUtc)).toISOString();
+}
+
 /** Narrows `gt.json`. Loud on the outer shape, lenient per entry. */
 export function parse(raw: unknown): HeatIndex {
   const content = requireArray(field(raw, "content"), "content");
   const { values, skipped } = mapLenient(content, parseForecast);
-  return { forecasts: values, malformed: skipped };
+  const day = field(raw, "forecast_day");
+  return {
+    forecasts: values,
+    malformed: skipped,
+    forecastDay: isString(day) && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null,
+    issuedAt: berlinLocalToIso(field(raw, "last_update")),
+  };
 }
 
 /** `r.city.toLowerCase().replace(/ä/g, 'ae')…replace(/[^a-z0-9]+/g, '-')`. */
@@ -131,6 +182,8 @@ export interface HeatHealthWarningEntity extends NgsiEntity {
   readonly todayLevel: { readonly type: "Property"; readonly value: string; readonly observedAt: IsoTime };
   readonly tomorrowLevel: { readonly type: "Property"; readonly value: string; readonly observedAt: IsoTime };
   readonly maxRank: { readonly type: "Property"; readonly value: number; readonly observedAt: IsoTime };
+  /** The day `todayLevel` is for; absent when the file names none. */
+  readonly forecastDay?: Property<string>;
   readonly dateObserved: Property<NgsiDateTime>;
   readonly dataProvider: Property<string>;
   readonly location: { readonly type: "GeoProperty"; readonly value: GeoJsonPoint };
@@ -160,7 +213,8 @@ export function build(
         value: Math.max(RANK.get(forecast.today) ?? 0, RANK.get(forecast.tomorrow) ?? 0),
         observedAt: now,
       },
-      dateObserved: { type: "Property", value: { "@type": "DateTime", "@value": now } },
+      ...(raw.forecastDay === null ? {} : { forecastDay: { type: "Property", value: raw.forecastDay } }),
+      dateObserved: { type: "Property", value: { "@type": "DateTime", "@value": raw.issuedAt ?? now } },
       dataProvider: { type: "Property", value: DATA_PROVIDER },
       // GeoJSON order: longitude before latitude, the table the other way round.
       location: { type: "GeoProperty", value: { type: "Point", coordinates: [lon, lat] } },

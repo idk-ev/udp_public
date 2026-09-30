@@ -213,8 +213,9 @@ const KREIS_NAME = {
 // Levels of the DWD heat index; the index is the rank, as RANK in hitze-bw.ts.
 const HITZE_LVL = ["keine", "gering", "mittel", "hoch", "extrem"];
 const heatRank = l => Math.max(0, HITZE_LVL.indexOf(l));
-// A representative city further away says nothing about the place (median 37 km, max 99 km).
-const HITZE_MAX_KM = 50;
+// Beyond this the representative city only gives the regional picture (median
+// distance 37 km, max 99 km); the tile says so instead of hiding the warning.
+const HITZE_REGIONAL_KM = 50;
 // Calendar day in Berlin as YYYY-MM-DD.
 const berlinDay = t => new Date(t).toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
 
@@ -693,22 +694,25 @@ async function render() {
       status: grade(val(trafficUba, "no2"), 40, 100), mini: { v: no2V, min: 0, max: 100, stops: NO2_STOPS }, hint: esc(val(trafficUba, "stationName")),
       explain: "Stickstoffdioxid an der höchstbelasteten UBA-Station (Grenzwert Jahresmittel: 40 µg/m³). Klick: Grenzwert-Gauge und Verlauf." });
   }
-  // Heat (DWD heat index): the nearest of the five representative cities, at
-  // most HITZE_MAX_KM away. Shown only if today or tomorrow is at least
-  // "gering". Value, colour and steps are today's; tomorrow is in the hint
-  // (so with only tomorrow elevated the tile reads "keine", green, and the
-  // hint "morgen: …"). The connector runs in the morning: between midnight
-  // and its first run, yesterday's "tomorrow" is today.
+  // Heat (DWD heat index): the nearest of the five representative cities, its
+  // distance in the hint (marked "regional" beyond HITZE_REGIONAL_KM). Shown
+  // only if today or tomorrow is at least "gering". Value, colour and steps are
+  // today's; tomorrow is in the hint (so with only tomorrow elevated the tile
+  // reads "keine", green, and the hint "morgen: …"). "Today" is the file's
+  // forecastDay (hitze-bw): a file of yesterday (DWD updates at about 07:30)
+  // makes its "tomorrow" today. Without forecastDay or dateObserved: not shown.
   {
     const hitze = (hitzeAll || []).filter(e => e.location && Array.isArray(e.location.coordinates))
       .map(e => ({ e, km: (() => { const c = e.location.coordinates; const dy = (c[1] - lat) * 111, dx = (c[0] - lon) * 111 * Math.cos(lat * Math.PI / 180); return Math.sqrt(dy * dy + dx * dx); })() }))
       .sort((a, b) => a.km - b.km)[0];
-    const h = hitze && hitze.km <= HITZE_MAX_KM ? hitze.e : null;
+    const h = hitze ? hitze.e : null;
     const lvl = l => HITZE_LVL.includes(l) ? l : "keine";
     const issued = h ? Date.parse(h.dateObserved && typeof h.dateObserved === "object" ? h.dateObserved["@value"] : h.dateObserved) : NaN;
     const today = berlinDay(Date.now());
     const yesterday = berlinDay(Date.now() - 864e5);
-    const dayOf = isFinite(issued) ? berlinDay(issued) : today;
+    // forecastDay of the file; entities written before it existed: the day of dateObserved.
+    const dayOf = h && typeof h.forecastDay === "string" && /^\d{4}-\d{2}-\d{2}$/.test(h.forecastDay) ? h.forecastDay
+      : isFinite(issued) ? berlinDay(issued) : null;
     // Issued yesterday: shift by one day, tomorrow unknown. Older: no statement.
     const shifted = dayOf === yesterday;
     const current = dayOf === today || shifted;
@@ -717,7 +721,7 @@ async function render() {
     if (h && current && (heatRank(heute) >= 1 || heatRank(morgen) >= 1)) {
       const rank = heatRank(heute);
       const km = Math.round(hitze.km);
-      const where = "Vertreterstadt " + (h.name || "?") + ", ~" + km + " km";
+      const where = (km > HITZE_REGIONAL_KM ? "regional: " : "") + "Vertreterstadt " + (h.name || "?") + ", ~" + km + " km";
       // Detail: 5-step scale of the heat index
       const HITZE_COL = ["var(--status-good)", "#a3b18a", "var(--status-warn)", "#f97316", "var(--status-serious)"];
       D.hitze = { kind: "info",
@@ -1116,10 +1120,19 @@ async function render() {
         explain: "Median der Verspätungen der nächsten Abfahrten am zentralen Halt (EFA-BW, beim Seitenaufruf abgerufen). Nur Abfahrten mit echter Echtzeitmeldung fließen ein — bei den übrigen ist die Verspätung unbekannt, nicht null. Unplausible Meldungen (über 60 min) werden als Datenartefakt ausgeschlossen. Klick: Fahrplan der nächsten Abfahrten." });
   } else if (D.oepnv) {
     // No realtime delay, but departures: the next departure as the value
-    // (time · line); the row count was only the query limit.
-    const next = zeilen[0];
-    tiles += tile("ÖPNV", String(next.zeit || "–") + (next.linie ? " · " + next.linie : ""), "", { topic: "mobilitaet", detail: "oepnv",
-      hint: (next.ziel ? "→ " + esc(next.ziel) + " · " : "") + esc(haltName),
+    // (time · line); the row count was only the query limit. Only a departure
+    // still ahead (Berlin clock, HH:MM, across midnight): the fallback list of
+    // the PublicTransportStop entity can be older than the page view, and one
+    // older than 3 h does not count at all. Nothing ahead: "–" with its stand.
+    const clockMin = t => { const [hh, mm] = new Date(t).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).split(":").map(Number); return hh * 60 + mm; };
+    const nowMin = clockMin(Date.now());
+    const ahead = d => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(d.zeit || "")); return !!m && ((+m[1] * 60 + +m[2]) - nowMin + 1440) % 1440 < 720; };
+    const fromEntity = !abfList.length;
+    const entityStand = fromEntity ? staleStand(ptStops[0], 3 * 3600e3) : "";
+    const next = entityStand ? null : zeilen.find(ahead);
+    const standTxt = fromEntity && obsTime(ptStops[0]) != null ? "Stand " + SC.fmtT(obsTime(ptStops[0])) : "keine anstehende Abfahrt";
+    tiles += tile("ÖPNV", next ? String(next.zeit) + (next.linie ? " · " + next.linie : "") : "–", "", { topic: "mobilitaet", detail: "oepnv",
+      hint: next ? (next.ziel ? "→ " + esc(next.ziel) + " · " : "") + esc(haltName) : esc(haltName) + " · " + esc(entityStand || standTxt),
       explain: "Nächste Abfahrt am zentralen Halt (EFA-BW), beim Seitenaufruf abgerufen. Klick: Fahrplan der nächsten Abfahrten." });
   }
   $("#tiles").innerHTML = tiles;

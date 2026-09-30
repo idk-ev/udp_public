@@ -19,6 +19,10 @@ const { JSDOM, PUB, GEM, json, renderStadt, renderPage, labels, tileOf } = requi
 const AGS = "08415061";
 const P = (value, extra = {}) => ({ type: "Property", value, ...extra });
 const nowIso = () => new Date().toISOString();
+// Berlin calendar day, `offset` days from today, as YYYY-MM-DD.
+const berlinDay = offset => new Date(Date.now() + offset * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+// Berlin clock HH:MM, `min` minutes from now.
+const berlinClock = min => new Date(Date.now() + min * 6e4).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const WX = { id: "urn:ngsi-ld:WeatherObserved:bw-" + AGS, type: "WeatherObserved",
   temperature: P(14.2, { observedAt: nowIso() }), windSpeed: P(8, { observedAt: nowIso() }) };
 const base = (extra = {}) => ({ entities: { [WX.id]: WX, ...(extra.entities || {}) }, ...extra });
@@ -124,7 +128,7 @@ exports["stadt.html: Versorgung and Ausflugsziele show the uncapped totals"] = a
 const heat = (name, lon, lat, today, tomorrow) => ({ id: "urn:ngsi-ld:HeatHealthWarning:bw-" + name, type: "HeatHealthWarning",
   name, todayLevel: today, tomorrowLevel: tomorrow,
   maxRank: Math.max(["keine", "gering", "mittel", "hoch", "extrem"].indexOf(today), ["keine", "gering", "mittel", "hoch", "extrem"].indexOf(tomorrow)),
-  location: { type: "Point", coordinates: [lon, lat] } });
+  forecastDay: berlinDay(0), location: { type: "Point", coordinates: [lon, lat] } });
 const STUTTGART = (today, tomorrow) => heat("Stuttgart", 9.18, 48.78, today, tomorrow);
 // Active segment of the step display: its index is the level the tile is coloured by.
 const activeStep = t => [...t.el.querySelectorAll(".mini-steps span")].findIndex(s => !/rgba\(255, ?255, ?255/.test(s.getAttribute("style")));
@@ -152,29 +156,46 @@ exports["stadt.html: Hitze tile only from 'gering', coloured by today, distance 
   today.w.close();
 };
 
-exports["stadt.html: Hitze issued yesterday: its 'tomorrow' is today, an older one says nothing"] = async () => {
+exports["stadt.html: Hitze: 'today' is the file's forecastDay; yesterday's file shifts, none is not shown"] = async () => {
   if (!JSDOM) return;
-  const issued = days => ({ "@type": "DateTime", "@value": new Date(Date.now() - days * 864e5).toISOString() });
-  const yesterday = await renderStadt(base({ types: { HeatHealthWarning: [{ ...STUTTGART("keine", "hoch"), dateObserved: issued(1) }] } }));
+  // DWD updates gt.json at about 07:30: a file of yesterday makes its "tomorrow" today.
+  const yesterday = await renderStadt(base({ types: { HeatHealthWarning: [{ ...STUTTGART("keine", "hoch"), forecastDay: berlinDay(-1) }] } }));
   const t = tileOf(yesterday.d, "Hitzebelastung");
   assert(t, "yesterday's 'tomorrow: hoch' not shown as today");
   assert.match(t.value, /hoch/);
   assert.strictEqual(activeStep(t), 3);
   assert.match(t.hint, /^\(Vertreterstadt Stuttgart, ~\d+ km\)$/, "a 'tomorrow' that is not known");
   yesterday.w.close();
-  const old = await renderStadt(base({ types: { HeatHealthWarning: [{ ...STUTTGART("hoch", "hoch"), dateObserved: issued(3) }] } }));
+  // forecastDay wins over dateObserved (a run before 07:30 stamped today on yesterday's file).
+  const stamped = await renderStadt(base({ types: { HeatHealthWarning: [{ ...STUTTGART("hoch", "keine"),
+    forecastDay: berlinDay(-1), dateObserved: { "@type": "DateTime", "@value": nowIso() } }] } }));
+  assert(!labels(stamped.d).includes("Hitzebelastung"), "yesterday's 'today: hoch' shown as today");
+  stamped.w.close();
+  const old = await renderStadt(base({ types: { HeatHealthWarning: [{ ...STUTTGART("hoch", "hoch"), forecastDay: berlinDay(-3) }] } }));
   assert(!labels(old.d).includes("Hitzebelastung"), "a three-day-old forecast shown");
   old.w.close();
+  // Entities from before forecastDay: the day of dateObserved; neither: not current.
+  const legacy = await renderStadt(base({ types: { HeatHealthWarning: [{ ...STUTTGART("mittel", "keine"), forecastDay: undefined,
+    dateObserved: { "@type": "DateTime", "@value": nowIso() } }] } }));
+  assert.match(tileOf(legacy.d, "Hitzebelastung").value, /mittel/);
+  legacy.w.close();
+  const undated = await renderStadt(base({ types: { HeatHealthWarning: [{ ...STUTTGART("hoch", "hoch"), forecastDay: undefined }] } }));
+  assert(!labels(undated.d).includes("Hitzebelastung"), "a forecast without any date shown");
+  undated.w.close();
 };
 
-exports["stadt.html: Hitze tile hidden beyond 50 km from the representative city"] = async () => {
+exports["stadt.html: Hitze beyond 50 km stays, marked regional with the distance"] = async () => {
   if (!JSDOM) return;
   const CITIES = [[48.78, 9.18], [47.99, 7.85], [49.49, 8.47], [47.66, 9.18], [48.4, 9.99]];
   const km = (a, b) => { const dy = (a[0] - b[0]) * 111, dx = (a[1] - b[1]) * 111 * Math.cos(a[0] * Math.PI / 180); return Math.hypot(dx, dy); };
   const far = GEM.gemeinden.find(g => Math.min(...CITIES.map(c => km([g[2], g[3]], c))) > 60);
   assert(far, "no municipality far from all five cities");
   const { w, d } = await renderStadt({ row: far, types: { HeatHealthWarning: CITIES.map(([lat, lon], i) => heat("S" + i, lon, lat, "extrem", "extrem")) } });
-  assert(!labels(d).includes("Hitzebelastung"), `${far[1]}: heat of a city more than 50 km away`);
+  const t = tileOf(d, "Hitzebelastung");
+  assert(t, `${far[1]}: the warning is hidden`);
+  assert.match(t.value, /extrem/);
+  assert.match(t.hint, /^morgen: extrem \(regional: Vertreterstadt S\d, ~(\d+) km\)$/);
+  assert(Number(t.hint.match(/~(\d+) km/)[1]) > 50);
   w.close();
 };
 
@@ -192,8 +213,8 @@ exports["stadt.html: humidity, cycling, warnings, pollen and ÖPNV values"] = as
     types: { WeatherObserved: [station], TrafficFlowObserved: [radSum], PollenForecast: [pollen] },
     abfahrten: () => json({ halt: "Reutlingen ZOB", stopId: "x", stand: nowIso(), medianVerspaetung: null,
       echtzeitAbfahrten: 0, quelle: "EFA-BW", abfahrten: [
-        { linie: "7", ziel: "Hauptbahnhof", zeit: "14:32", verspaetung: null },
-        { linie: "4", ziel: "Orschel-Hagen", zeit: "14:35", verspaetung: null }] }),
+        { linie: "7", ziel: "Hauptbahnhof", zeit: berlinClock(5), verspaetung: null },
+        { linie: "4", ziel: "Orschel-Hagen", zeit: berlinClock(8), verspaetung: null }] }),
   }));
   assert.match(tileOf(d, "Luftfeuchte").hint, /^Metzingen · \d+,\d km entfernt$/);
   assert.strictEqual(tileOf(d, "Radverkehr").hint, "2 Zählstellen · am 28.09.");
@@ -202,9 +223,34 @@ exports["stadt.html: humidity, cycling, warnings, pollen and ÖPNV values"] = as
   assert.match(pol.value, /mittel–hoch/);
   assert.strictEqual(pol.hint, "Gräser, Beifuß");
   const oe = tileOf(d, "ÖPNV");
-  assert.strictEqual(oe.value, "14:32 · 7", "the query limit instead of the next departure");
+  assert.strictEqual(oe.value, berlinClock(5) + " · 7", "the query limit instead of the next departure");
   assert.strictEqual(oe.hint, "→ Hauptbahnhof · Reutlingen ZOB");
   w.close();
+};
+
+exports["stadt.html: ÖPNV value only from departures still ahead, else '–' with the stand"] = async () => {
+  if (!JSDOM) return;
+  // /abfahrten has no stop (404): the fallback list of the PublicTransportStop entity.
+  const stop = (departures, observedAt = nowIso()) => ({ id: "urn:ngsi-ld:PublicTransportStop:bw-" + AGS, type: "PublicTransportStop",
+    ags: P(AGS), name: P("Reutlingen ZOB"), departures: P(departures, { observedAt }),
+    dateObserved: P({ "@type": "DateTime", "@value": observedAt }) });
+  const dep = (min, line) => ({ line, destination: "Ziel " + line, estimated: berlinClock(min), delayMinutes: null });
+  const mixed = await renderStadt(base({ types: { PublicTransportStop: [stop([dep(-30, "1"), dep(-5, "2"), dep(12, "3")])] } }));
+  let t = tileOf(mixed.d, "ÖPNV");
+  assert.strictEqual(t.value, berlinClock(12) + " · 3", "a past departure as the next one");
+  assert.strictEqual(t.hint, "→ Ziel 3 · Reutlingen ZOB");
+  mixed.w.close();
+  const past = await renderStadt(base({ types: { PublicTransportStop: [stop([dep(-40, "1"), dep(-10, "2")])] } }));
+  t = tileOf(past.d, "ÖPNV");
+  assert.strictEqual(t.value, "–");
+  assert.match(t.hint, /^Reutlingen ZOB · Stand \d\d:\d\d$/);
+  past.w.close();
+  // An entity older than 3 h: its departures do not count at all.
+  const old = await renderStadt(base({ types: { PublicTransportStop: [stop([dep(30, "4")], new Date(Date.now() - 4 * 3600e3).toISOString())] } }));
+  t = tileOf(old.d, "ÖPNV");
+  assert.strictEqual(t.value, "–");
+  assert.match(t.hint, /^Reutlingen ZOB · Stand: /);
+  old.w.close();
 };
 
 exports["stadt.html: Parken shows free spaces while realtime is current, else the capacity"] = async () => {
