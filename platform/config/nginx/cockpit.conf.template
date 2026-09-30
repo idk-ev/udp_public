@@ -43,6 +43,49 @@ proxy_cache_path /var/cache/nginx/connectors levels=1:2 keys_zone=udpconnectors:
 limit_req_zone $binary_remote_addr zone=udp_abfahrten:10m rate=30r/m;
 limit_req_zone $binary_remote_addr zone=udp_warnungen:10m rate=10r/m;
 
+# Empty answers of the context and temporal API ([] / {}) are cached for 10 s
+# only, not 60 s / 300 s: a transient empty answer (broker restart, a source
+# being rewritten) would otherwise hide a tile for everyone for a minute. A
+# data-poor municipality asks for many legitimately empty lists, so they are
+# still cached briefly (like the 10 s for 404) instead of not at all.
+#
+# How: proxy_cache_valid cannot vary by body, and proxy_no_cache on empty
+# answers would be worse – the old non-empty entry would stay and, with
+# "use_stale updating" + background update, be served stale for as long as it
+# is asked for. So the gateway is reached through a loopback hop (server
+# below) that adds X-Accel-Expires: 10 to an empty 200; the caching locations
+# honour that header over proxy_cache_valid, and nginx never passes X-Accel-*
+# on to the client. Empty is recognised by Content-Length 2: Orion-LD sends a
+# Content-Length, and the hop talks HTTP/1.0 upstream, so nothing on the way
+# switches to chunked. NGSILD-Results-Count would need count=true (an extra
+# count per query). Without a Content-Length the answer keeps 60 s / 300 s.
+map "$upstream_status:$upstream_http_content_length" $udp_empty_ttl {
+    "200:2"  10;
+    default  "";
+}
+
+# Loopback hop in front of the gateway (see the map above). Not reachable from
+# outside the container; only the two caching /gateway locations use it.
+server {
+    listen 127.0.0.1:8081;
+    server_name _;
+    access_log off;
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    location / {
+        limit_except GET HEAD OPTIONS { deny all; }
+        set $gateway http://${UDP_GATEWAY_UPSTREAM};
+        proxy_pass $gateway;
+        # Passed on as the public location set them (client address for the
+        # per-client rate limit in APISIX included).
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $http_x_real_ip;
+        proxy_set_header X-Forwarded-For $http_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        add_header X-Accel-Expires $udp_empty_ttl;
+    }
+}
+
 server {
     # Client address behind the ingress controller / load balancer: take it
     # from X-Forwarded-For, skipping trusted proxy hops. The set_real_ip_from
@@ -214,9 +257,10 @@ server {
     # beantwortet (Regex schlägt sonst jeden Präfix-Treffer).
     location ^~ /gateway/ngsi-ld/ {
         limit_except GET HEAD OPTIONS { deny all; }
-        set $gateway http://${UDP_GATEWAY_UPSTREAM};
         rewrite ^/gateway/(.*)$ /$1 break;
-        proxy_pass $gateway;
+        # Through the loopback hop: empty answers come back with
+        # X-Accel-Expires: 10 (see the map at the top).
+        proxy_pass http://127.0.0.1:8081;
         proxy_set_header Host $host;
         # Client address for the per-client rate limit in APISIX. Always SET,
         # never passed through – a client cannot choose its own bucket.
@@ -231,6 +275,7 @@ server {
         proxy_set_header Fiware-ServicePath "";
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
+        # 60 s; an empty result ([]) only 10 s (X-Accel-Expires of the hop).
         proxy_cache_valid 200 60s;
         # "No such entity" briefly too: otherwise every page view asking for a
         # missing entity reaches Orion-LD. A new entity shows up within 10 s.
@@ -276,7 +321,9 @@ server {
         # cached, so the next request after recovery is answered again.
         # http_404 is in the list so a 404 of a restarting upstream never
         # overwrites the last good answer; an unknown stop has no stale entry
-        # and still gets its (briefly cached) 404.
+        # and still gets its (briefly cached) 404. A stop without departures
+        # right now is a 200 with an empty list (not a 502), so it replaces
+        # the last good answer instead of keeping old departures stale.
         proxy_cache_use_stale updating error timeout http_404 http_500 http_502 http_503 http_504;
         proxy_cache_background_update on;
         # add_header here replaces the server-level headers; repeated.
@@ -289,9 +336,9 @@ server {
     # Zeitreihen: 300 s
     location ^~ /gateway/temporal/ {
         limit_except GET HEAD OPTIONS { deny all; }
-        set $gateway http://${UDP_GATEWAY_UPSTREAM};
         rewrite ^/gateway/(.*)$ /$1 break;
-        proxy_pass $gateway;
+        # Through the loopback hop, as /gateway/ngsi-ld/.
+        proxy_pass http://127.0.0.1:8081;
         proxy_set_header Host $host;
         # Client address for the per-client rate limit in APISIX. Always SET,
         # never passed through – a client cannot choose its own bucket.
@@ -303,6 +350,7 @@ server {
         proxy_set_header Fiware-ServicePath "";
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
+        # 300 s; an empty answer ([] / {}) only 10 s, as /gateway/ngsi-ld/.
         proxy_cache_valid 200 300s;
         # Tenant, Accept and Link change the answer – s. /gateway/ngsi-ld/.
         proxy_cache_key "$request_uri|$http_ngsild_tenant|$http_accept|$http_link";
