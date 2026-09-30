@@ -24,6 +24,17 @@ export interface AnalyticsConfig {
   includeCockpit: boolean;
 }
 
+// Operator logo (Helm: cockpit.branding.logo); null = default badge.
+export interface LogoConfig {
+  src: string;
+  alt: string;
+  href: string;
+}
+
+export interface BrandingConfig {
+  logo: LogoConfig | null;
+}
+
 export interface UdpConfig {
   gatewayUrl: string;
   // Anmeldung über Keycloak anbieten. In der öffentlichen Auslieferung schaltet
@@ -35,6 +46,7 @@ export interface UdpConfig {
   tenants: Tenant[];
   legal: LegalConfig;
   analytics: AnalyticsConfig;
+  branding: BrandingConfig;
 }
 
 declare global {
@@ -53,6 +65,7 @@ const defaults: UdpConfig = {
   tenants: [{ id: "", name: "Standard" }],
   legal: { impressumUrl: "", datenschutzUrl: "" },
   analytics: { headHtml: "", includeCockpit: false },
+  branding: { logo: null },
 };
 
 export const config: UdpConfig = {
@@ -66,6 +79,7 @@ export const config: UdpConfig = {
   tenants: window.UDP_CONFIG?.tenants ?? defaults.tenants,
   legal: { ...defaults.legal, ...window.UDP_CONFIG?.legal },
   analytics: { ...defaults.analytics, ...window.UDP_CONFIG?.analytics },
+  branding: { logo: window.UDP_CONFIG?.branding?.logo ?? defaults.branding.logo },
 };
 
 // Same rule as public/site.js and the chart's render-time check: http(s) with a

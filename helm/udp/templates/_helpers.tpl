@@ -264,6 +264,87 @@ erzeugt Metadaten mit unerreichbaren URLs.
 {{- end -}}
 
 {{/*
+URL rule for operator links (cockpit.legal.*, cockpit.branding.logo.href):
+http(s) with a host, or a path starting with exactly one "/" ("//host" and
+"/\host" are protocol-relative in browsers); no whitespace, control or
+invisible format characters (U+200B, U+202E, U+FEFF, ...).
+gui/public/site.js and gui/src/config.ts apply the same rule again in the
+browser, so a Compose config.js cannot slip through either
+(tests/static/site-js.test.js keeps the three copies identical).
+*/}}
+{{- define "udp.safeUrlRegex" -}}
+(?i)^(?:https?://[^/\\\s\p{Cc}\p{Cf}\p{Z}][^\s\p{Cc}\p{Cf}\p{Z}]*|/(?:[^/\\\s\p{Cc}\p{Cf}\p{Z}][^\s\p{Cc}\p{Cf}\p{Z}]*)?)$
+{{- end -}}
+
+{{/*
+Operator logo and favicon (cockpit.branding), validated. Returns JSON:
+  files: { "logo.<ext>": <base64>, "favicon.<ext>": <base64> } -> ConfigMap
+         cockpit-branding (binaryData), mounted at /usr/share/nginx/html/branding
+  logo:  { src, alt, href } for config.js, or {} without a logo
+Call: {{- $b := include "udp.branding" . | fromJson }}
+
+The images are served by the platform itself (no hotlinking). Checks: type
+from an allowlist, strict base64 (line breaks are tolerated and removed), at
+most 128 KiB (logo) / 64 KiB (favicon) decoded, and
+the file's magic bytes must match the type – a JPEG declared as PNG would be
+served with the wrong Content-Type. SVG has no magic bytes; it must contain
+an <svg element.
+*/}}
+{{- define "udp.branding" -}}
+{{- $in := .Values.cockpit.branding | default dict -}}
+{{- $exts := dict "image/png" "png" "image/svg+xml" "svg" "image/webp" "webp" "image/jpeg" "jpg" "image/x-icon" "ico" -}}
+{{- /* Size limits: every image sits in the Helm release Secret (max 1 MiB,
+     base64 of the gzipped chart + values + manifest) TWICE – once in the
+     values, once in the rendered ConfigMap. Base64 does not compress, so two
+     256 KiB images would already overflow it ("data: Too long"). */ -}}
+{{- $maxBytes := dict "logo" 131072 "favicon" 65536 -}}
+{{- $allowed := dict "logo" (list "image/png" "image/svg+xml" "image/webp" "image/jpeg") "favicon" (list "image/png" "image/svg+xml" "image/x-icon") -}}
+{{- $urlRe := include "udp.safeUrlRegex" . -}}
+{{- $files := dict -}}
+{{- $logo := dict -}}
+{{- range $name := list "logo" "favicon" -}}
+{{- $img := get $in $name | default dict -}}
+{{- $data := regexReplaceAll `\s+` (toString ($img.data | default "")) "" -}}
+{{- $type := toString ($img.type | default "") -}}
+{{- if $data -}}
+{{- if not (has $type (get $allowed $name)) -}}
+{{- fail (printf "cockpit.branding.%s.type: %q is not allowed – with data set use one of %s" $name $type (join ", " (get $allowed $name))) -}}
+{{- end -}}
+{{- if or (ne (mod (len $data) 4) 0) (not (regexMatch `^[A-Za-z0-9+/]+={0,2}$` $data)) (ne (b64enc (b64dec $data)) $data) -}}
+{{- fail (printf "cockpit.branding.%s.data is not valid base64 – encode the file with: base64 -w0 <file>" $name) -}}
+{{- end -}}
+{{- $raw := b64dec $data -}}
+{{- $max := get $maxBytes $name -}}
+{{- if gt (len $raw) (int $max) -}}
+{{- fail (printf "cockpit.branding.%s.data: %d bytes decoded, at most %d (%d KiB) – scale the image down; the Helm release Secret holds at most 1 MiB" $name (len $raw) (int $max) (div (int $max) 1024)) -}}
+{{- end -}}
+{{- $magic := false -}}
+{{- if eq $type "image/png" }}{{ $magic = hasPrefix "\x89PNG\r\n\x1a\n" $raw }}{{ end -}}
+{{- if eq $type "image/jpeg" }}{{ $magic = hasPrefix "\xff\xd8\xff" $raw }}{{ end -}}
+{{- if eq $type "image/webp" }}{{ $magic = and (ge (len $raw) 12) (hasPrefix "RIFF" $raw) (eq (substr 8 12 $raw) "WEBP") }}{{ end -}}
+{{- if eq $type "image/x-icon" }}{{ $magic = hasPrefix "\x00\x00\x01\x00" $raw }}{{ end -}}
+{{- if eq $type "image/svg+xml" }}{{ $magic = contains "<svg" $raw }}{{ end -}}
+{{- if not $magic -}}
+{{- fail (printf "cockpit.branding.%s.data does not look like %s (file signature does not match) – check type" $name $type) -}}
+{{- end -}}
+{{- $file := printf "%s.%s" $name (get $exts $type) -}}
+{{- $_ := set $files $file $data -}}
+{{- if eq $name "logo" -}}
+{{- $href := toString ($img.href | default "") -}}
+{{- if and $href (not (regexMatch $urlRe $href)) -}}
+{{- fail (printf "cockpit.branding.logo.href: %q is not allowed – use https://…, http://… or a path on this site starting with a single \"/\"; leave it empty for no link" $href) -}}
+{{- end -}}
+{{- $alt := trim (toString ($img.alt | default "")) | default "Logo" -}}
+{{- $logo = dict "src" (printf "/branding/%s" $file) "alt" $alt "href" $href -}}
+{{- end -}}
+{{- else if $type -}}
+{{- fail (printf "cockpit.branding.%s.type is set but data is empty – provide the image as base64 or clear type" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- toJson (dict "files" $files "logo" $logo) -}}
+{{- end -}}
+
+{{/*
 Inhalt von /usr/share/nginx/html/config.js im Cockpit-Container (überschreibt
 die auf Compose vorbelegte Datei aus dem Image, s. templates/configmaps.yaml).
 
@@ -293,17 +374,13 @@ cockpit.extraModuleUrls lassen sie sich nachtragen, sobald sie veröffentlicht s
 {{- if and .Values.geoserver.enabled .Values.ingress.exposeComponentPaths }}{{- $_ := set $modules "geoserver" (printf "%s/geoserver" $public) }}{{- end }}
 {{- if and .Values.masterportal.enabled .Values.ingress.exposeComponentPaths }}{{- $_ := set $modules "masterportal" (printf "%s/portal" $public) }}{{- end }}
 {{- $modules = mergeOverwrite $modules (.Values.cockpit.extraModuleUrls | default dict) -}}
-{{- /* Legal links (cockpit.legal): empty, http(s) with a host, or a path
-     starting with exactly one "/" ("//host" and "/\host" are
-     protocol-relative in browsers); no whitespace, control or invisible
-     format characters (U+200B, U+202E, U+FEFF, ...).
-     gui/public/site.js and gui/src/config.ts apply the same rule again in
-     the browser, so a Compose config.js cannot slip through either. */ -}}
+{{- /* Legal links (cockpit.legal): empty or matching udp.safeUrlRegex. */ -}}
+{{- $urlRe := include "udp.safeUrlRegex" . -}}
 {{- $legalIn := .Values.cockpit.legal | default dict -}}
 {{- $legal := dict -}}
 {{- range $key := list "impressumUrl" "datenschutzUrl" -}}
 {{- $url := toString (get $legalIn $key | default "") -}}
-{{- if and $url (not (regexMatch `(?i)^(?:https?://[^/\\\s\p{Cc}\p{Cf}\p{Z}][^\s\p{Cc}\p{Cf}\p{Z}]*|/(?:[^/\\\s\p{Cc}\p{Cf}\p{Z}][^\s\p{Cc}\p{Cf}\p{Z}]*)?)$` $url)) -}}
+{{- if and $url (not (regexMatch $urlRe $url)) -}}
 {{- fail (printf "cockpit.legal.%s: %q is not allowed – use https://…, http://… or a path on this site starting with a single \"/\" (e.g. /impressum); leave it empty for no link" $key $url) -}}
 {{- end -}}
 {{- $_ := set $legal $key $url -}}
@@ -324,6 +401,11 @@ cockpit.extraModuleUrls lassen sie sich nachtragen, sobald sie veröffentlicht s
 {{- if not (kindIs "bool" $includeCockpit) -}}
 {{- fail (printf "cockpit.analytics.includeCockpit must be true or false (got %q)" (toString $includeCockpit)) -}}
 {{- end -}}
+{{- /* Logo (cockpit.branding.logo): null without one – site.js and the
+     cockpit keep their default look then. */ -}}
+{{- $branding := include "udp.branding" . | fromJson -}}
+{{- $brandingCfg := dict "logo" nil -}}
+{{- if $branding.logo }}{{ $_ := set $brandingCfg "logo" $branding.logo }}{{ end -}}
 {{- $cfg := dict
       "gatewayUrl"  "/gateway"
       "authEnabled" .Values.cockpit.authEnabled
@@ -332,6 +414,7 @@ cockpit.extraModuleUrls lassen sie sich nachtragen, sobald sie veröffentlicht s
       "tenants"     .Values.cockpit.tenants
       "legal"       $legal
       "analytics"   (dict "headHtml" (trim $headHtml) "includeCockpit" $includeCockpit)
+      "branding"    $brandingCfg
 -}}
 // Von Helm erzeugt (ConfigMap cockpit-config) – NICHT im Container bearbeiten.
 window.UDP_CONFIG = {{ toPrettyJson $cfg | trim }};

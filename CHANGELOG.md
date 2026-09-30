@@ -2,13 +2,15 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht — Webanalyse, Impressum und Datenschutz
+## Unveröffentlicht — Webanalyse, Impressum, Datenschutz und Logo
 
 - Helm: `cockpit.analytics.headHtml` bindet den Einbettungscode einer beliebigen
   Webanalyse auf allen öffentlichen Seiten ein (Cockpit nur mit
   `includeCockpit`), `cockpit.legal.impressumUrl` / `datenschutzUrl` verlinken
   Impressum und Datenschutzerklärung in der Fußzeile. Standard leer; s.
   `docs/betrieb.md`.
+- Helm: `cockpit.branding` liefert Logo (Seitenkopf, Cockpit) und Favicon des
+  Betreibers selbst aus; alle Seiten verweisen dafür auf `/favicon`.
 
 ## 1.3.0 — Ingestion im Konnektordienst
 

@@ -179,7 +179,57 @@ die Reihenfolge nicht auf.
   Browsers. Alternativ den Pfad in `gui/public/sw.js` ausnehmen.
 - Eine künftige Content-Security-Policy muss den Origin des Analyse-Anbieters
   (`script-src`, `connect-src`) und ggf. Inline-Skripte des Einbettungscodes
-  zulassen. Derzeit setzt die Plattform keine CSP.
+  zulassen. Für die Seiten selbst setzt die Plattform derzeit keine CSP.
+
+### Logo und Favicon
+
+Logo und Favicon des Betreibers liefert die Plattform **selbst** aus (kein
+Hotlinking). Der Dateiinhalt steht base64-kodiert in den Helm-Werten:
+
+```yaml
+cockpit:
+  branding:
+    logo:
+      data: "iVBORw0KGgo…"          # base64 -w0 logo.png
+      type: image/png               # image/png | image/svg+xml | image/webp | image/jpeg
+      alt: "Musterstadt"            # leer -> "Logo"
+      href: "https://www.example.org/"   # optional, gleiche Regel wie legal.*
+    favicon:
+      data: "PHN2ZyB4bWxucz0…"      # base64 -w0 favicon.svg
+      type: image/svg+xml           # image/png | image/svg+xml | image/x-icon
+```
+
+- Kodieren: `base64 -w0 logo.png` (macOS: `base64 -i logo.png`).
+  Zeilenumbrüche im Wert sind erlaubt und werden entfernt.
+- Das Chart prüft beim Rendern: Typ aus der Liste, gültiges base64, die
+  Dateisignatur passend zum Typ (PNG, JPEG, WebP, ICO; SVG muss ein
+  `<svg`-Element enthalten) und die Größe: höchstens 128 KiB für das Logo und
+  64 KiB für das Favicon. Grund ist das Release-Secret von Helm (höchstens
+  1 MiB, gzip der Werte und Manifeste, base64-kodiert): Jedes Bild steht darin
+  zweimal – in den Werten und in der ConfigMap – und lässt sich als base64
+  kaum komprimieren. Größere Bilder brächen `helm install`/`upgrade` mit
+  „data: Too long“ ab.
+- Logo: PNG mit etwa 120 px Höhe (Anzeige mit rund 38 px, also scharf auch auf
+  hochauflösenden Displays) oder SVG. Es erscheint am Anfang des Seitenkopfs
+  der öffentlichen Seiten und statt des „UD“-Zeichens in der Seitenleiste des
+  Cockpits. Im dunklen Farbschema liegt es auf einem hellen, abgerundeten
+  Hintergrund, damit dunkle Schrift auf transparentem Grund lesbar bleibt.
+- Favicon: alle Seiten verweisen auf `/favicon`. nginx liefert das Favicon des
+  Betreibers (`favicon.png`, `.svg` oder `.ico`) und sonst das Plattform-Icon
+  `/icon.svg` aus. Das PWA-Manifest behält `/icon.svg` – installierte Apps
+  brauchen ein großes, skalierbares Icon.
+- Die Bilder liegen in der ConfigMap `cockpit-branding` und werden unter
+  `/branding/` ausgeliefert. Dort und unter `/favicon` gilt eine
+  Content-Security-Policy mit `sandbox`: Ein direkt geöffnetes SVG kann so
+  kein Skript auf der Plattform-Domain ausführen.
+- Ohne `branding` wird nichts gerendert oder gemountet; die Seiten sehen aus
+  wie bisher.
+
+Docker Compose: die Dateien vor dem GUI-Build nach `gui/public/branding/`
+legen (`logo.png`, `favicon.png` bzw. `.svg`/`.ico`) und das Logo in
+`gui/public/config.js` eintragen:
+`branding: { logo: { src: "/branding/logo.png", alt: "Musterstadt", href: "" } }`.
+Das Favicon braucht keinen Eintrag.
 
 ## Bekannte Einschränkungen Orion-LD TRoE (1.6.0)
 

@@ -107,6 +107,8 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.legal.impressumUrl` / `datenschutzUrl` | `""` | Impressum/Datenschutzerklärung des Betreibers in der Fußzeile aller Seiten (`https://…`, `http://…` oder `/pfad`; leer = kein Link), s. `docs/betrieb.md` |
 | `cockpit.analytics.headHtml` | `""` | Einbettungscode einer beliebigen Webanalyse, unverändert in den `<head>` aller öffentlichen Seiten eingefügt (leer = keine), s. `docs/betrieb.md` |
 | `cockpit.analytics.includeCockpit` | `false` | Einbettungscode auch im Cockpit ausführen (dort laufen Admin-Sitzungen) |
+| `cockpit.branding.logo` | leer | Logo im Kopf der öffentlichen Seiten und im Cockpit: `data` (base64, ≤ 128 KiB – Release-Secret von Helm fasst 1 MiB), `type` (PNG/SVG/WebP/JPEG), `alt`, `href`; s. `docs/betrieb.md` |
+| `cockpit.branding.favicon` | leer | Favicon aller Seiten (`/favicon`): `data` (base64, ≤ 64 KiB), `type` (PNG/SVG/ICO); leer → Plattform-Icon |
 | `cockpit.gatewayUpstream` | `""` | FQDN von APISIX für den nginx-Proxy im Cockpit (leer → `apisix.<ns>.svc.cluster.local:9080`) |
 | `cockpit.connectorsUpstream` | `""` | wer `/abfahrten` und `/warnungen.ics` beantwortet (leer → `connectors.<ns>.svc.cluster.local:1880`); `cockpit.endpoints` gibt es nicht mehr |
 | `connectors.enabled` | `true` | Konnektordienst: die Ingestion (eine Replik, `Recreate`); `false` nur zusammen mit `connectors.disableIngestion: true` |

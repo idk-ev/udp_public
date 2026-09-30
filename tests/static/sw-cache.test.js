@@ -72,9 +72,19 @@ exports["Jede Datei der Shell existiert"] = () => {
   assert(liste, "SHELL-Liste nicht gefunden");
   const pfade = (liste[1].match(/"([^"]+)"/g) || []).map(s => s.slice(1, -1));
   assert(pfade.length >= 8, `SHELL wirkt unvollständig (${pfade.length} Einträge)`);
-  for (const p of pfade)
+  // Addresses nginx answers without a file of that name: /favicon falls back
+  // to /icon.svg (platform/config/nginx/cockpit.conf.template).
+  const conf = fs.readFileSync(path.join(ROOT, "platform/config/nginx/cockpit.conf.template"), "utf8");
+  const served = { "/favicon": "/icon.svg" };
+  for (const p of pfade) {
+    if (served[p]) {
+      assert(conf.includes(`location = ${p} {`) && conf.includes(` ${served[p]} =404;`),
+        `SHELL verweist auf ${p}, aber nginx liefert die Adresse nicht (mehr) mit Rückfall ${served[p]} aus`);
+      continue;
+    }
     assert(fs.existsSync(path.join(ROOT, "gui/public", p)),
       `SHELL verweist auf gui/public${p} — Datei fehlt, addAll() bricht die Installation ab`);
+  }
 };
 
 exports["Shell-Treffer wird ausgeliefert UND im Hintergrund aufgefrischt"] = async () => {

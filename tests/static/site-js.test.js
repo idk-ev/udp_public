@@ -209,6 +209,71 @@ exports["site.js: legal links only for http(s) and single-slash paths"] = async 
   }
 };
 
+exports["site.js: logo rendered only when configured, link only for a valid href"] = async () => {
+  if (!JSDOM) return;
+  const body = "<header><span data-udp-logo hidden></span></header><div data-udp-logo hidden></div>";
+  const logo = { src: "/branding/logo.png", alt: "Musterstadt", href: "https://www.example.org/" };
+  const w = await page({ branding: { logo } }, { body });
+  for (const box of w.document.querySelectorAll("[data-udp-logo]")) {
+    assert(!box.hidden, "logo placeholder stays hidden although a logo is configured");
+    const a = box.firstElementChild;
+    assert.strictEqual(a.localName, "a");
+    assert.strictEqual(a.getAttribute("href"), "https://www.example.org/");
+    assert.strictEqual(a.getAttribute("target"), null);
+    const img = a.firstElementChild;
+    assert.deepStrictEqual([img.localName, img.getAttribute("src"), img.getAttribute("alt")],
+      ["img", "/branding/logo.png", "Musterstadt"]);
+  }
+  w.UDP_SITE.renderLogo();
+  assert.strictEqual(w.document.querySelectorAll("[data-udp-logo] img").length, 2, "re-render is not idempotent");
+  w.close();
+
+  // No href, an invalid href, no alt: a bare <img> with the default alt text.
+  for (const href of [undefined, "", "javascript:alert(1)", "//evil.example"]) {
+    const v = await page({ branding: { logo: { src: "/branding/logo.svg", href } } }, { body });
+    const box = v.document.querySelector("[data-udp-logo]");
+    assert(!box.hidden);
+    assert.strictEqual(box.children.length, 1);
+    assert.strictEqual(box.firstElementChild.localName, "img", `href ${JSON.stringify(href)} became a link`);
+    assert.strictEqual(box.firstElementChild.getAttribute("alt"), "Logo");
+    v.close();
+  }
+
+  // No logo or an unusable src: placeholders stay hidden and empty.
+  for (const branding of [undefined, {}, { logo: null }, { logo: { src: "javascript:alert(1)" } }, { logo: { src: "" } },
+    { logo: { src: "//evil.example/logo.png" } }]) {
+    const v = await page(branding === undefined ? {} : { branding }, { body });
+    for (const box of v.document.querySelectorAll("[data-udp-logo]")) {
+      assert(box.hidden, `placeholder visible for ${JSON.stringify(branding)}`);
+      assert.strictEqual(box.children.length, 0);
+    }
+    v.close();
+  }
+};
+
+exports["Public pages and the cockpit use /favicon and offer a logo placeholder"] = () => {
+  for (const f of PAGES.concat("../index.html")) {
+    const html = fs.readFileSync(path.join(PUB, f), "utf8");
+    assert(/<link rel="icon" href="\/favicon" ?\/?>/.test(html), `${f}: <link rel="icon" href="/favicon"> missing`);
+    assert(!html.includes('href="/icon.svg"'), `${f}: still links /icon.svg as icon`);
+  }
+  for (const f of PAGES.filter(p => p !== "404.html")) {
+    const html = fs.readFileSync(path.join(PUB, f), "utf8");
+    const header = /<header>([\s\S]*?)<\/header>/.exec(html);
+    assert(header, `${f}: <header> not found`);
+    assert(/^\s*<span class="udp-logo" data-udp-logo hidden><\/span>/.test(header[1]),
+      `${f}: hidden logo placeholder must open the header`);
+  }
+};
+
+exports["Generated city/district stubs use /favicon"] = () => {
+  const dir = path.join(PUB, "g");
+  const stubs = fs.readdirSync(dir);
+  assert(stubs.length > 1000, `only ${stubs.length} stubs`);
+  const stale = stubs.filter(s => !fs.readFileSync(path.join(dir, s, "index.html"), "utf8").includes('<link rel="icon" href="/favicon">'));
+  assert.deepStrictEqual(stale.slice(0, 5), [], `${stale.length} stubs without /favicon – run scripts/generate-city-pages.py`);
+};
+
 exports["URL rule is identical in site.js, config.ts and the Helm chart"] = () => {
   const jsBody = src => {
     const m = /const SAFE_URL =\s*\/(.+)\/iu;/.exec(src);
@@ -218,8 +283,8 @@ exports["URL rule is identical in site.js, config.ts and the Helm chart"] = () =
   const site = jsBody(SITE);
   const ts = jsBody(fs.readFileSync(path.join(ROOT, "gui/src/config.ts"), "utf8"));
   const tpl = fs.readFileSync(path.join(ROOT, "helm/udp/templates/_helpers.tpl"), "utf8");
-  const m = /regexMatch `\(\?i\)([^`]+)` \$url/.exec(tpl);
-  assert(m, "legal URL check not found in _helpers.tpl");
+  const m = /define "udp\.safeUrlRegex" -\}\}\s*\(\?i\)(\S+)\s*\{\{- end/.exec(tpl);
+  assert(m, "udp.safeUrlRegex not found in _helpers.tpl");
   assert(site.includes("\\p{Cf}"), "site.js no longer rejects format characters");
   assert.strictEqual(ts, site, "gui/src/config.ts and gui/public/site.js disagree");
   assert.strictEqual(m[1], site, "helm/udp/templates/_helpers.tpl and gui/public/site.js disagree");

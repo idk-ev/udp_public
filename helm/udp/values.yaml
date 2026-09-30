@@ -1181,6 +1181,24 @@ cockpit:
     # Beispiel (Platzhalter):
     # headHtml: |
     #   <script src="https://analytics.example.org/script.js" data-site-id="…" defer></script>
+  # Logo und Favicon des Betreibers. Die Plattform liefert die Bilder selbst
+  # aus (kein Hotlinking): Dateiinhalt base64-kodiert eintragen
+  # (base64 -w0 logo.png). Höchstens 128 KiB (Logo) bzw. 64 KiB (Favicon):
+  # jedes Bild steht zweimal im Release-Secret von Helm (Werte und
+  # ConfigMap), und das fasst höchstens 1 MiB. Empfehlung: PNG mit etwa
+  # 120 px Höhe oder SVG. Das Chart prüft Typ, base64 und die Dateisignatur.
+  # Das Logo erscheint im Kopf der öffentlichen Seiten und in der
+  # Seitenleiste des Cockpits, das Favicon auf allen Seiten (/favicon).
+  # Leer = bisheriges Aussehen. s. docs/betrieb.md
+  branding:
+    logo:
+      data: ""   # base64 der Bilddatei
+      type: ""   # image/png | image/svg+xml | image/webp | image/jpeg
+      alt: ""    # Alternativtext, leer -> "Logo"
+      href: ""   # optionales Linkziel des Logos, gleiche Regel wie legal.*
+    favicon:
+      data: ""
+      type: ""   # image/png | image/svg+xml | image/x-icon
   resources:
     requests: { cpu: 50m,  memory: 64Mi }
     limits:   { cpu: 250m, memory: 128Mi }

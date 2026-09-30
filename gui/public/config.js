@@ -47,4 +47,12 @@ window.UDP_CONFIG = {
     headHtml: "",
     includeCockpit: false,
   },
+  // Operator logo in the page headers and the cockpit sidebar (null = none).
+  // Compose: put the file into gui/public/branding/ before the build, e.g.
+  //   logo: { src: "/branding/logo.png", alt: "Musterstadt", href: "" },
+  // The favicon needs no entry: nginx serves gui/public/branding/favicon.png
+  // (or .svg/.ico) under /favicon when the file exists.
+  branding: {
+    logo: null,
+  },
 };

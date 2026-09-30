@@ -133,6 +133,11 @@ body {
   color: #fff; font-weight: 700; font-size: 15px;
   letter-spacing: 0.02em;
 }
+/* Operator logo (cockpit.branding.logo); in dark mode on a light chip, so
+   dark lettering on a transparent background stays readable. */
+.brand-img { display: flex; flex-shrink: 0; }
+.brand-img img { display: block; height: 34px; width: auto; max-width: 100px; object-fit: contain; }
+:root[data-theme="dark"] .brand-img img { background: #f4f6f8; padding: 3px 6px; border-radius: 6px; }
 .brand-name { font-weight: 650; font-size: 15px; }
 .brand-sub { font-size: 12px; color: var(--text-muted); }
 

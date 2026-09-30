@@ -38,6 +38,19 @@ const legalLinks = [
   { label: "Datenschutz", href: config.legal.datenschutzUrl },
 ].filter((link) => isSafeUrl(link.href));
 
+// Operator logo (Helm: cockpit.branding.logo) instead of the "UD" badge.
+const brandLogo = (() => {
+  const logo = config.branding.logo;
+  if (!logo || !isSafeUrl(logo.src)) return null;
+  return {
+    src: logo.src,
+    // Compose config.js is hand-written: a non-string alt must not throw at
+    // module load (that would blank the whole cockpit).
+    alt: typeof logo.alt === "string" && logo.alt.trim() ? logo.alt.trim() : "Logo",
+    href: isSafeUrl(logo.href) ? logo.href : "",
+  };
+})();
+
 export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
@@ -62,7 +75,19 @@ export default function App() {
 
       <aside className="sidebar" aria-label="Hauptnavigation">
         <div className="brand">
-          <div className="brand-logo" aria-hidden>UD</div>
+          {brandLogo ? (
+            brandLogo.href ? (
+              <a className="brand-img" href={brandLogo.href}>
+                <img src={brandLogo.src} alt={brandLogo.alt} />
+              </a>
+            ) : (
+              <span className="brand-img">
+                <img src={brandLogo.src} alt={brandLogo.alt} />
+              </span>
+            )
+          ) : (
+            <div className="brand-logo" aria-hidden>UD</div>
+          )}
           <div>
             <div className="brand-name">UDP-Cockpit</div>
             <div className="brand-sub">Urbane Datenplattform</div>

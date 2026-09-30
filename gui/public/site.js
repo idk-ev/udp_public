@@ -5,7 +5,7 @@
 
 /* Operator additions shared by every page (public dashboards, city pages and
    the cockpit SPA), driven by window.UDP_CONFIG (/config.js, rendered by the
-   Helm chart from cockpit.analytics / cockpit.legal):
+   Helm chart from cockpit.analytics / cockpit.legal / cockpit.branding):
 
    - analytics.headHtml: a web-analytics snippet, inserted verbatim into
      <head>. Scripts parsed from markup never run, so every top-level <script>
@@ -23,6 +23,9 @@
      element carrying the attribute data-udp-legal. Only http(s) URLs and
      site-relative paths are accepted (same rule as the chart's render-time
      check), so a stray javascript: or //host value never becomes a link.
+   - branding.logo {src, alt, href}: an <img> rendered into every element
+     carrying data-udp-logo (wrapped in a link when href passes the same URL
+     rule). Without a logo the placeholders stay hidden and empty.
 
    Plain ES2020 without a build step. It must run once per page: city pages
    load it through a bundle loader, a second copy would add the snippet twice.
@@ -118,11 +121,46 @@
   const runAnalytics = context !== "cockpit" || analytics.includeCockpit === true;
   const analyticsDone = runAnalytics ? injectAnalytics(analytics.headHtml) : Promise.resolve(0);
 
-  window.UDP_SITE = Object.freeze({ isSafeUrl, renderLegal, context, analyticsDone });
+  function logoConfig() {
+    const logo = (cfg.branding || {}).logo;
+    if (!logo || !isSafeUrl(logo.src)) return null;
+    const alt = typeof logo.alt === "string" && logo.alt.trim() ? logo.alt.trim() : "Logo";
+    return { src: logo.src, alt, href: isSafeUrl(logo.href) ? logo.href : "" };
+  }
+
+  // Idempotent like renderLegal. Placeholders are only shown with a logo.
+  function renderLogo(root) {
+    const logo = logoConfig();
+    for (const box of Array.from((root || document).querySelectorAll("[data-udp-logo]"))) {
+      if (!logo) {
+        box.replaceChildren();
+        continue;
+      }
+      const img = document.createElement("img");
+      img.setAttribute("src", logo.src);
+      img.setAttribute("alt", logo.alt);
+      let node = img;
+      if (logo.href) {
+        node = document.createElement("a");
+        node.setAttribute("href", logo.href);
+        node.appendChild(img);
+      }
+      box.replaceChildren(node);
+      box.removeAttribute("hidden");
+    }
+    return Boolean(logo);
+  }
+
+  const renderAll = () => {
+    renderLegal();
+    renderLogo();
+  };
+
+  window.UDP_SITE = Object.freeze({ isSafeUrl, renderLegal, renderLogo, context, analyticsDone });
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => renderLegal(), { once: true });
+    document.addEventListener("DOMContentLoaded", renderAll, { once: true });
   } else {
-    renderLegal();
+    renderAll();
   }
 })();
