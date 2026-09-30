@@ -74,8 +74,19 @@
   const RETRY_CAP_MS = 2000;
   const _load = { total: 0, failed: 0 };
   const _failedIds = new Set();
-  const retryable = status => status === 429 || status >= 500;
+  // 504: the gateway already waited for its upstream – asking again only
+  // doubles the wait.
+  const retryable = status => status === 429 || (status >= 500 && status !== 504);
+  const ATTEMPT_MS = 15000;   // per request attempt
+  const BUDGET_MS = 20000;    // both attempts together, pauses included
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const timeoutSignal = ms => {
+    if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) return AbortSignal.timeout(ms);
+    const c = new AbortController();
+    setTimeout(() => c.abort(new DOMException("timeout", "TimeoutError")), ms);
+    return c.signal;
+  };
+  const isTimeout = e => !!e && (e.name === "TimeoutError" || e.name === "AbortError");
   // Pause before the retry: Retry-After (seconds or HTTP date) if the answer
   // has one, capped; otherwise a short jittered pause, so many clients hit by
   // the same limit do not come back in lockstep.
@@ -88,15 +99,21 @@
     }
     return 400 + Math.random() * 400;
   }
-  // fetch with exactly one retry on 429, 5xx (or what retryIf accepts) and
-  // network errors. Resolves to the last Response (possibly not ok); rejects
-  // only if the retry fails on the network as well.
+  // fetch with a timeout per attempt and at most one retry on 429, 5xx except
+  // 504 (or what retryIf accepts) and network errors, within BUDGET_MS. A
+  // timeout is a failure without retry. Resolves to the last Response
+  // (possibly not ok); rejects on a timeout or a network error without retry.
   async function fetchRetry(url, init, retryIf = retryable) {
-    let r;
-    try { r = await fetch(url, init); } catch (e) { r = null; }
+    const t0 = Date.now();
+    const attempt = ms => fetch(url, Object.assign({}, init, { signal: timeoutSignal(ms) }));
+    let r = null, err = null;
+    try { r = await attempt(ATTEMPT_MS); } catch (e) { if (isTimeout(e)) throw e; err = e; }
     if (r && !retryIf(r.status)) return r;
-    await sleep(retryDelay(r));
-    return fetch(url, init);
+    const wait = retryDelay(r);
+    const left = BUDGET_MS - (Date.now() - t0) - wait;
+    if (left < 1000) { if (r) return r; throw err; }
+    await sleep(wait);
+    return attempt(Math.min(ATTEMPT_MS, left));
   }
   async function jget(url) {
     const r = await fetchRetry(url, { headers: { Accept: "application/json" } });

@@ -44,15 +44,18 @@ function libWindow(backend) {
     { url: "https://udp.example/", runScripts: "outside-only" });
   const w = dom.window;
   const calls = [];
-  w.fetch = async url => {
+  const inits = [];
+  w.fetch = async (url, init) => {
     const u = String(url);
     calls.push(u);
-    const r = backend(u, calls.filter(x => x === u).length);
+    inits.push(init);
+    const r = backend(u, calls.filter(x => x === u).length, w);
+    if (r instanceof w.DOMException) throw r;
     if (r instanceof Error) throw new w.TypeError(r.message);
     return r;
   };
   w.eval(LIB);
-  return { w, SC: w.SC, calls };
+  return { w, SC: w.SC, calls, inits };
 }
 
 exports["smartcity-lib: failed query is marked, empty and 404 are no data"] = async () => {
@@ -102,6 +105,22 @@ exports["smartcity-lib: 429, 5xx and network errors are retried exactly once"] =
   const bad = await SC.byAgs("Bad", "1");
   assert.strictEqual(SC.failed(bad), true);
   assert.strictEqual(calls.filter(u => u.includes("type=Bad")).length, 1, "a 400 must not be retried");
+  w.close();
+};
+
+exports["smartcity-lib: 504 and timeouts are failures without retry, each attempt has a timeout"] = async () => {
+  if (!JSDOM) return;
+  const { w, SC, calls, inits } = libWindow((u, n, win) =>
+    u.includes("type=Gw") ? json({}, 504)
+      : u.includes("type=Slow") ? new win.DOMException("signal timed out", "TimeoutError")
+        : json([]));
+  const gw = await SC.byAgs("Gw", "1");
+  assert.strictEqual(SC.failed(gw), true);
+  assert.strictEqual(calls.filter(u => u.includes("type=Gw")).length, 1, "a 504 was retried");
+  const slow = await SC.byAgs("Slow", "1");
+  assert.strictEqual(SC.failed(slow), true, "a timeout is not a failure");
+  assert.strictEqual(calls.filter(u => u.includes("type=Slow")).length, 1, "a timeout was retried");
+  assert(inits.every(i => i && i.signal instanceof w.AbortSignal), "an attempt without timeout signal");
   w.close();
 };
 
@@ -197,6 +216,7 @@ async function renderStadt(opts = {}) {
   w.fetch = async url => {
     const u = decodeURIComponent(String(url));
     calls.push(u);
+    if (opts.delay) await new Promise(r => setTimeout(r, opts.delay));
     if (opts.fail && opts.fail(u)) return json({ title: "Service Unavailable" }, 503, { "Retry-After": "0" });
     if (u === "/connectors-status.json") return json(opts.conn || CONN);
     if (u === "/dashboards.json") return json({ kommunen: opts.kommunen || {} });
@@ -372,5 +392,18 @@ exports["dashboard.html: failed PlatformStatus shows the error state instead of 
   const errs = errorLabels(w.document);
   assert.deepStrictEqual(errs, ["Zeitreihen-DB", "TRoE-Zeilen", "Entitäten", "Datenfluss"]);
   assert(!errs.includes("Serverlast"), "the healthy host status became an error tile");
+  w.close();
+};
+
+exports["stadt.html: a refresh while a render still runs is skipped"] = async () => {
+  if (!JSDOM) return;
+  const opts = { entities: { [WX.id]: WX } };
+  const { w, d, calls } = await renderStadt(opts);
+  const wxCalls = () => calls.filter(u => u.endsWith("/ngsi-ld/v1/entities/" + WX.id)).length;
+  const before = wxCalls();
+  opts.delay = 150;
+  for (let i = 0; i < 3; i++) d.dispatchEvent(new w.CustomEvent("sc-theme-changed"));
+  await new Promise(r => setTimeout(r, 1500));
+  assert.strictEqual(wxCalls() - before, 1, "overlapping renders");
   w.close();
 };

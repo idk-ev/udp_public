@@ -1402,9 +1402,13 @@ async function render() {
     STADT = { ags: row[0], row, website: STADT && STADT.website };
     const cfg0 = (DASH[row[8]] || {});
     SC.themeSelector("#thememount", cfg0.branding && cfg0.branding.theme);
-    document.addEventListener("sc-theme-changed", () => { window._map && render().catch(() => {}); });
-    await render();
-    setInterval(() => { if (!SC.modalOpen()) render().catch(() => {}); }, 120e3);
+    // One render at a time: a refresh while a slow render still runs is
+    // skipped, so requests and the banner's failure count do not mix.
+    let rendering = null;
+    const renderOnce = () => rendering || (rendering = render().finally(() => { rendering = null; }));
+    document.addEventListener("sc-theme-changed", () => { window._map && renderOnce().catch(() => {}); });
+    await renderOnce();
+    setInterval(() => { if (!SC.modalOpen()) renderOnce().catch(() => {}); }, 120e3);
   } catch (e) {
     const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
   }

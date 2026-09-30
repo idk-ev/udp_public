@@ -181,9 +181,13 @@ async function render(krow, members) {
     if (!krow) throw new Error("Kreis nicht gefunden");
     const members = gdata.gemeinden.filter(g => g[4] === krow[0]);
     SC.themeSelector("#thememount");
-    document.addEventListener("sc-theme-changed", () => { window._layers && render(krow, members).catch(() => {}); });
-    await render(krow, members);
-    setInterval(() => render(krow, members).catch(() => {}), 120e3);
+    // One render at a time: a refresh while a slow render still runs is
+    // skipped, so requests and the banner's failure count do not mix.
+    let rendering = null;
+    const renderOnce = () => rendering || (rendering = render(krow, members).finally(() => { rendering = null; }));
+    document.addEventListener("sc-theme-changed", () => { window._layers && renderOnce().catch(() => {}); });
+    await renderOnce();
+    setInterval(() => renderOnce().catch(() => {}), 120e3);
   } catch (e) {
     const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
   }
