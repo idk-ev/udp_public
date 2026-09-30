@@ -38,7 +38,7 @@ helm/udp/
     ├── catalog.yaml            # ckan + solr + redis (ckan.enabled)
     ├── geo.yaml                # geoserver (+ masterportal, optional)
     ├── apps.yaml               # node-red (Upstream-Image) + connectors + cockpit
-    ├── backup.yaml             # logische DB-Dumps (backup.enabled)
+    ├── backup.yaml             # DB-Backup nach S3: ObjectStore + ScheduledBackup (backup.enabled)
     ├── ingress.yaml
     ├── networkpolicy.yaml      # default-deny + segmentierte Freigaben
     ├── pdb.yaml
@@ -86,7 +86,7 @@ Registry-Pfad und wird nicht zusätzlich präfigiert.
 | `ckan.enabled` | `true` | CKAN + Solr + Valkey, Gateway-Route `/catalog`, Ingress-Pfad `/catalog` |
 | `geoserver.enabled` | `true` | GeoServer, Gateway-Route `/geoserver` |
 | `masterportal.enabled` | `false` | Geoportal – braucht ein Image mit fertigem Portal-Build |
-| `backup.enabled` | `true` | tägliche `pg_dump`-Sicherung aller Plattform-DBs |
+| `backup.enabled` | `false` | Datenbank-Backup in S3-kompatiblen Speicher (WAL-Archiv + tägliche Basissicherung, PITR); braucht `backup.destinationPath`/`existingSecret`, s. DEPLOY.md §2 |
 
 Ein `false` entfernt jeweils auch die zugehörige APISIX-Route und den
 Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.

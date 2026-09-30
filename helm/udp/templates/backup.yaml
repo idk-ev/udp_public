@@ -1,72 +1,128 @@
 # SPDX-License-Identifier: EUPL-1.2
 # © 2024–2026 Thomas Kieß and contributors
 
-{{- if .Values.backup.enabled }}
-# =============================================================================
-# Logische Datenbank-Backups (pg_dump) – Gegenstück zum Dienst "backup" in
-# docker-compose.yml. Volume-Snapshots der StorageClass ersetzen das NICHT:
-# ein logischer Dump überlebt auch eine beschädigte Datei-Ebene und lässt sich
-# einzeln zurückspielen.
-# Wiederherstellen:
-#   kubectl -n <ns> exec deploy/db-backup -- ls /backups/daily
-#   kubectl -n <ns> exec -i deploy/db-backup -- \
-#     sh -c 'gunzip -c /backups/daily/<datei>.sql.gz | psql -h timescale -U $POSTGRES_USER -d <db>'
-# =============================================================================
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: db-backup
-  labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "db-backup") | nindent 4 }}
-spec:
-  replicas: 1
-  strategy: { type: Recreate }
-  selector:
-    matchLabels:
-      {{- include "udp.selectorLabels" "db-backup" | nindent 6 }}
-  template:
-    metadata:
-      labels:
-        {{- include "udp.podLabels" (dict "ctx" . "component" "db-backup") | nindent 8 }}
-    spec:
-      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.backup) | nindent 6 }}
-      containers:
-        - name: backup
-          image: {{ include "udp.image" (dict "ctx" . "image" .Values.backup.image) }}
-          securityContext:
-            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.backup.containerSecurityContext) | nindent 12 }}
-          env:
-            - { name: POSTGRES_HOST, value: timescale }
-            - name: POSTGRES_USER
-              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_USER } }
-            - name: POSTGRES_PASSWORD
-              valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
-            - { name: POSTGRES_DB,        value: {{ .Values.backup.databases | quote }} }
-            - { name: SCHEDULE,           value: {{ .Values.backup.schedule | quote }} }
-            - { name: BACKUP_KEEP_DAYS,   value: {{ .Values.backup.keepDays | quote }} }
-            - { name: BACKUP_KEEP_WEEKS,  value: {{ .Values.backup.keepWeeks | quote }} }
-            - { name: BACKUP_KEEP_MONTHS, value: {{ .Values.backup.keepMonths | quote }} }
-          volumeMounts:
-            - { name: backups, mountPath: /backups }
-          resources:
-            {{- toYaml .Values.backup.resources | nindent 12 }}
-          {{- include "udp.probes" .Values.backup.probes | nindent 10 }}
-      volumes:
-        - name: backups
-          persistentVolumeClaim: { claimName: db-backup-data }
+{{- /*
+=============================================================================
+Continuous backup of the CNPG cluster "timescale" to S3-compatible object
+storage through the CloudNativePG Barman Cloud plugin: the sidecar in every
+instance ships each WAL segment as soon as it is complete, the
+ScheduledBackup adds a base backup every day. Together they allow restoring
+any point in time within backup.retentionPolicy.
+
+The ObjectStore is also rendered for a restore alone (timescale.recovery with
+backup.enabled=false) – it is where the archive is read from.
+
+Restore: timescale.recovery (whole cluster, templates/timescale.yaml) or
+scripts/restore-timescale.sh (side cluster, single databases) – DEPLOY.md §10c.
+=============================================================================
+*/}}
+{{- $b := .Values.backup }}
+{{- $rec := .Values.timescale.recovery }}
+{{- /* Up to chart 1.3.0 the backup (pg_dump Deployment "db-backup") was on by
+     default. An upgrade must not drop it without anyone noticing. */}}
+{{- if and (not $b.enabled) (not $b.acknowledgeNoBackup) (lookup "apps/v1" "Deployment" .Release.Namespace "db-backup") }}
+{{- fail "This upgrade removes the pg_dump backup (Deployment db-backup) – its replacement writes to S3-compatible object storage and is off until configured. Configure backup.* (DEPLOY.md §2), or set backup.acknowledgeNoBackup=true to run without a backup." }}
+{{- end }}
+{{- if or $b.enabled $rec.enabled }}
+{{- $what := ternary "backup.enabled" "timescale.recovery.enabled" $b.enabled }}
+{{- if not $b.destinationPath }}
+{{- fail (printf "%s needs backup.destinationPath (e.g. s3://my-bucket/udp) – the backup now goes to object storage (DEPLOY.md §2, CHANGELOG)." $what) }}
+{{- end }}
+{{- if not $b.existingSecret }}
+{{- fail (printf "%s needs backup.existingSecret (keys ACCESS_KEY_ID, ACCESS_SECRET_KEY), see DEPLOY.md §2." $what) }}
+{{- end }}
+{{- if and $b.enabled (not $b.serverName) }}
+{{- fail "backup.serverName must not be empty." }}
+{{- end }}
+{{- if and $rec.enabled (not $rec.serverName) }}
+{{- fail "timescale.recovery.serverName must not be empty – the archive folder to restore from." }}
+{{- end }}
+{{- if and $b.enabled $rec.enabled (eq ($b.serverName | toString) ($rec.serverName | toString)) }}
+{{- fail (printf "backup.serverName must differ from timescale.recovery.serverName (%q): CNPG does not archive into a folder that already holds WAL. Use a new name, e.g. %s-2." $b.serverName $b.serverName) }}
+{{- end }}
+{{- /* CNPG cron has a seconds field – a 5-field schedule from other tools
+     would run at unexpected times or be rejected by the webhook. */}}
+{{- if and $b.enabled (not (hasPrefix "@" $b.schedule)) (ne (len (splitList " " (regexReplaceAll " +" (trim $b.schedule) " "))) 6) }}
+{{- fail (printf "backup.schedule %q needs 6 fields (CNPG cron starts with seconds), e.g. \"0 0 3 * * *\"." $b.schedule) }}
+{{- end }}
+{{- /* Checks against the live cluster – silent without one (helm template, CI). */}}
+{{- if lookup "v1" "Namespace" "" .Release.Namespace }}
+{{- if not (.Capabilities.APIVersions.Has "barmancloud.cnpg.io/v1") }}
+{{- fail "The CloudNativePG Barman Cloud plugin is missing (API barmancloud.cnpg.io/v1). Install it next to the operator first – see DEPLOY.md §2." }}
+{{- end }}
+{{- if not (lookup "v1" "Secret" .Release.Namespace $b.existingSecret) }}
+{{- fail (printf "Secret %s (backup.existingSecret) not found in namespace %s – create it first (keys ACCESS_KEY_ID, ACCESS_SECRET_KEY), see DEPLOY.md §2." $b.existingSecret .Release.Namespace) }}
+{{- end }}
+{{- end }}
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
 metadata:
-  name: db-backup-data
+  name: timescale-backup
   labels:
-    {{- include "udp.labels" (dict "ctx" . "component" "db-backup") | nindent 4 }}
+    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
   annotations:
-    # Dumps überleben ein "helm uninstall" – sonst ist die letzte Kopie mit dem
-    # Release weg.
+    # Kept together with the Cluster (also "keep"): without its object store
+    # the instances could no longer archive WAL, which would then pile up on
+    # their volumes until they are full.
     "helm.sh/resource-policy": keep
 spec:
-  accessModes: [ReadWriteOnce]
-  {{- include "udp.storageClass" (dict "ctx" . "override" .Values.backup.persistence.storageClass) | nindent 2 }}
-  resources: { requests: { storage: {{ .Values.backup.persistence.size }} } }
+  {{- with $b.retentionPolicy }}
+  retentionPolicy: {{ . | quote }}
+  {{- end }}
+  configuration:
+    destinationPath: {{ $b.destinationPath | quote }}
+    {{- with $b.endpointURL }}
+    endpointURL: {{ . | quote }}
+    {{- end }}
+    {{- with $b.endpointCA }}
+    endpointCA:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    s3Credentials:
+      accessKeyId: { name: {{ $b.existingSecret }}, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: {{ $b.existingSecret }}, key: ACCESS_SECRET_KEY }
+    {{- range $part := list "wal" "data" }}
+    {{- if or $b.compression $b.encryption }}
+    {{ $part }}:
+      {{- with $b.compression }}
+      compression: {{ . }}
+      {{- end }}
+      {{- with $b.encryption }}
+      encryption: {{ . | quote }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+  {{- if or $b.sidecar.env $b.sidecar.resources }}
+  instanceSidecarConfiguration:
+    {{- with $b.sidecar.env }}
+    env:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $b.sidecar.resources }}
+    resources:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+{{- if $b.enabled }}
+---
+# Daily base backup. immediate: the first one right after installation – PITR
+# needs a base backup to start from, the WAL archive alone is not enough.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: timescale-daily
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "timescale") | nindent 4 }}
+spec:
+  schedule: {{ $b.schedule | quote }}
+  immediate: true
+  # The Backup objects belong to this ScheduledBackup; the files in the bucket
+  # are pruned by the retention policy of the ObjectStore, not by Kubernetes.
+  backupOwnerReference: self
+  cluster: { name: timescale }
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+{{- end }}
 {{- end }}

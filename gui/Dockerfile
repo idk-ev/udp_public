@@ -10,6 +10,12 @@ COPY gui/package.json gui/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY gui/ .
 RUN npm run build
+# Pre-compressed copies for gzip_static (cockpit.conf.template): nginx serves
+# them as they are instead of compressing the same bytes on every request.
+# config.js is left out – Kubernetes mounts its own over it (ConfigMap), and a
+# config.js.gz from the image would be served in place of the mounted file.
+RUN find dist -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' -o -name '*.json' -o -name '*.svg' \) \
+      ! -path dist/config.js -size +1k -exec gzip -9 -k {} +
 
 # nginx-unprivileged statt nginx: der Master laeuft als 101 statt als Root.
 # Das offizielle nginx-Image chownt beim Start die proxy_cache_path-Verzeichnisse

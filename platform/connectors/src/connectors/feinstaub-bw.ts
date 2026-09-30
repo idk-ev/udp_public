@@ -416,7 +416,11 @@ export async function run(ctx: Ctx): Promise<void> {
   const status = statusText(result);
   ctx.log.status(status);
 
-  await ctx.orion.upsertChanged(GATE_KEY, result.entities, signatureOf, { chunkSize: CHUNK_SIZE });
+  await ctx.orion.upsertChanged(GATE_KEY, result.entities, signatureOf, {
+    chunkSize: CHUNK_SIZE,
+    // Municipal means of particulate matter: most move every run.
+    volatile: true,
+  });
 
   // Hourly (detail run: medians AND single sensors produced): remove own
   // entities not confirmed for 24 h, e.g. sensors outside BW that were counted

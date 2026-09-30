@@ -280,6 +280,12 @@ interface Scenario {
   readonly steps: readonly Step[];
   /** Deletions of the port per run — stated, not only compared. */
   readonly expectDeleted: readonly number[];
+  /**
+   * Deliberate deviation: ids whose signature the port forgets and the old
+   * helper kept — every ATTEMPTED delete loses it, confirmed or not
+   * (src/kernel/prune.ts: a kept one could leave a skeleton entity).
+   */
+  readonly forgottenByThePort?: readonly string[];
 }
 
 const run = (options: PruneOptions, advance = HOUR, before?: (side: Side) => void): Step =>
@@ -378,7 +384,7 @@ const SCENARIOS: readonly Scenario[] = [
     expectDeleted: [0, 0, 0, 0],
   },
   {
-    name: "207: only confirmed deletes count and lose their signature",
+    name: "207: only confirmed deletes count; every attempted one loses its signature",
     steps: [
       run({ ...BASE, keep: keepAllBut(9, 10) }, 0, (side) => {
         side.broker.deleteAnswer = () =>
@@ -387,6 +393,7 @@ const SCENARIOS: readonly Scenario[] = [
       run({ ...BASE, keep: keepAllBut(9, 10) }),
     ],
     expectDeleted: [0, 1],
+    forgottenByThePort: [OWN(10)],
   },
   {
     name: "a refused delete request is a warning, not a deletion",
@@ -397,6 +404,7 @@ const SCENARIOS: readonly Scenario[] = [
       run({ ...BASE, keep: keepAllBut(9) }),
     ],
     expectDeleted: [0, 0],
+    forgottenByThePort: [OWN(9)],
   },
 ];
 
@@ -424,11 +432,11 @@ async function compareScenario(scenario: Scenario): Promise<string[]> {
   assert.ok(ported.broker.entities.has(FOREIGN), `${at} a foreign id was deleted`);
   assert.deepEqual(ported.warnings(), legacy.warnings(), `${at} warnings differ`);
   assert.deepEqual(ported.infos(), legacy.infos(), `${at} info lines differ`);
-  assert.deepEqual(
-    normalize(ported.signatures("rwSig")),
-    normalize(legacy.signatures("rwSig")),
-    `${at} signatures`,
-  );
+  const forgotten = new Set(scenario.forgottenByThePort ?? []);
+  const kept = legacy.signatures("rwSig");
+  for (const id of forgotten) assert.ok(id in kept, `${at} ${id}: the old helper did not keep it either`);
+  const legacySignatures = Object.fromEntries(Object.entries(kept).filter(([id]) => !forgotten.has(id)));
+  assert.deepEqual(normalize(ported.signatures("rwSig")), normalize(legacySignatures), `${at} signatures`);
   return ported.warnings();
 }
 

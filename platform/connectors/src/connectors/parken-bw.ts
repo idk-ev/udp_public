@@ -89,6 +89,7 @@ import {
   optString,
   requireArray,
 } from "../kernel/parse.js";
+import { hash64, propertyValue } from "../kernel/split-gate.js";
 import { persisted, stateKey } from "../kernel/state.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
@@ -108,6 +109,7 @@ import type {
   PendingSignature,
   Property,
   PruneOptions,
+  SeedOptions,
   SignatureValue,
   UpsertPlan,
 } from "../kernel/types.js";
@@ -469,21 +471,12 @@ export function arsToAgs(ars: string): Ags | null {
 }
 
 /**
- * Compact value signature: two FNV-1a runs with different primes give 64 bits,
- * base36 about 13 characters per entry. The flow context was written to disk
- * (contextStorage localfilesystem); raw signatures of ~26,000 sites would have
- * been several MB per write. Kept verbatim so both runtimes agree on a value.
+ * Compact value signature (src/kernel/split-gate.ts, where it moved from
+ * here): the flow context was written to disk; raw signatures of ~26,000
+ * sites would have been several MB per write. Kept verbatim so both runtimes
+ * agree on a value.
  */
-export function hash64(text: string): string {
-  let x = 0x811c9dc5;
-  let y = 0x1000193;
-  for (let i = 0; i < text.length; i += 1) {
-    const c = text.charCodeAt(i);
-    x = Math.imul(x ^ c, 0x01000193) >>> 0;
-    y = Math.imul(y ^ c, 0x85ebca6b) >>> 0;
-  }
-  return x.toString(36) + y.toString(36);
-}
+export { hash64 };
 
 export type SiteType = "ParkingSite" | "BikeParking";
 
@@ -807,6 +800,94 @@ export function planWrite(
   return { upsert: mergePlans({ entities: sites.entities, pending: sites.pending }, sums), sites };
 }
 
+/* ------------------------------------------------------------------ Seeding */
+
+/**
+ * `parkStatik` of a site as the broker holds it — the formula of
+ * {@link planSites} over the entity's attributes; `null` when one is missing.
+ * The name is the one written: a site whose source name was empty stands as
+ * "Parkplatz"/"Radabstellanlage" and so differs once — a full write, never a
+ * wrong match.
+ */
+export function brokerSiteStatic(entity: Readonly<Record<string, unknown>>): string | null {
+  const purpose = entity.type === "ParkingSite" ? "CAR" : entity.type === "BikeParking" ? "BIKE" : null;
+  const ags = propertyValue(entity, "ags");
+  const name = propertyValue(entity, "name");
+  const capacity = propertyValue(entity, "totalSpotNumber");
+  const location = propertyValue(entity, "location");
+  const coordinates = isRecord(location) ? location.coordinates : undefined;
+  const [lon, lat]: readonly unknown[] = isArray(coordinates) ? coordinates : [];
+  const sourceId = propertyValue(entity, "sourceId") ?? "";
+  const originalUid = propertyValue(entity, "originalUid") ?? "";
+  if (
+    purpose === null ||
+    !isString(ags) ||
+    !isString(name) ||
+    !isFiniteNumber(capacity) ||
+    !isFiniteNumber(lat) ||
+    !isFiniteNumber(lon) ||
+    !(isString(sourceId) || isFiniteNumber(sourceId)) ||
+    !isString(originalUid)
+  ) {
+    return null;
+  }
+  return hash64(
+    [ags, name, capacity, lat.toFixed(5), lon.toFixed(5), sourceId, originalUid, purpose].join("|"),
+  );
+}
+
+/** {@link summarySignature} of a sum as the broker holds it; `null` without its counts. */
+export function brokerSummarySignature(entity: Readonly<Record<string, unknown>>): string | null {
+  const sites = propertyValue(entity, "siteCount");
+  const capacity = propertyValue(entity, "totalCapacity");
+  const free = propertyValue(entity, "realtimeFree");
+  const realtime = propertyValue(entity, "realtimeSites");
+  if (!isFiniteNumber(sites) || !isFiniteNumber(capacity)) return null;
+  if (
+    !(free === undefined || isFiniteNumber(free)) ||
+    !(realtime === undefined || isFiniteNumber(realtime))
+  ) {
+    return null;
+  }
+  return [sites, capacity, free ?? "", realtime ?? ""].join("|");
+}
+
+/** Empty tables (fresh install, lost state) are seeded from the broker instead of rewriting ~25,000 sites. */
+export const SEED: SeedOptions = {
+  label: "Parken-BW",
+  queries: [
+    { type: "ParkingSite", pattern: "^urn:ngsi-ld:ParkingSite:parkapi-[^:]+$" },
+    { type: "BikeParking", pattern: "^urn:ngsi-ld:BikeParking:parkapi-[^:]+$" },
+    { type: "ParkingSummary", pattern: "^urn:ngsi-ld:ParkingSummary:bw-[0-9]{8}$" },
+  ],
+  attrs: [
+    "ags",
+    "name",
+    "totalSpotNumber",
+    "location",
+    "sourceId",
+    "originalUid",
+    "availableSpotNumber",
+    "dataProvider",
+    "siteCount",
+    "totalCapacity",
+    "realtimeFree",
+    "realtimeSites",
+  ],
+  // Sites carry this connector's provider; the sums carry none.
+  accept: (_id, entity) =>
+    entity.type === "ParkingSummary" || propertyValue(entity, "dataProvider") === PROVIDER,
+  tables: {
+    [STATIC_TABLE]: (entity) => (entity.type === "ParkingSummary" ? null : brokerSiteStatic(entity)),
+    [OCCUPANCY_TABLE]: (entity) => {
+      if (entity.type === "ParkingSummary" || brokerSiteStatic(entity) === null) return null;
+      const free = propertyValue(entity, "availableSpotNumber");
+      return isFiniteNumber(free) ? free : null;
+    },
+    [SUMMARY_GATE]: (entity) => (entity.type === "ParkingSummary" ? brokerSummarySignature(entity) : null),
+  },
+};
+
 /* ------------------------------------------------------------------ Legacy cleanup */
 
 /**
@@ -965,7 +1046,18 @@ export async function run(ctx: Ctx): Promise<void> {
   // One timestamp per run, as NOW of the old node.
   const now = ctx.now();
   const built = build(inventory, geo, now);
+  await ctx.orion.seedSignatures(SEED);
+  const stored = ctx.gate.table(STATIC_TABLE).size;
   const { upsert, sites: plan } = planWrite(ctx.gate, built, now);
+  // Master data do not change wholesale; a mass of full writes on stored
+  // signatures is lost change state.
+  const sites = built.sites.length;
+  if (stored * 2 >= sites && sites >= 20 && plan.full / sites > 0.5) {
+    ctx.log.warn(
+      `Parken-BW: ${String(plan.full)} of ${String(built.sites.length)} sites written in full although ` +
+        "signatures were stored — change state lost?",
+    );
+  }
 
   // Cardinality invariant: if clearly fewer than n entity ids come out of n
   // source records, ids collide — exactly the error slugged names caused here

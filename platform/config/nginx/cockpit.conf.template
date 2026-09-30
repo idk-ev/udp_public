@@ -66,6 +66,20 @@ server {
 
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml;
+    # The image ships a .gz next to every larger static file (gui/Dockerfile);
+    # serving those instead of compressing per request is most of the
+    # cockpit's CPU saved. Without a .gz (Compose mounts a plain gui/dist) nginx
+    # falls back to compressing on the fly.
+    gzip_static on;
+    gzip_vary on;
+    # Keep descriptors and metadata of the static files open between requests.
+    open_file_cache max=2000 inactive=60s;
+    open_file_cache_valid 30s;
+    # Buffer the access log: one write to the container's log pipe per request
+    # is a noticeable share of the CPU at a few hundred requests/s. Lines reach
+    # the log at the latest after 5 s. 4k = PIPE_BUF: each flush is one atomic
+    # write, so lines of different workers never interleave in the pipe.
+    access_log /var/log/nginx/access.log main buffer=4k flush=5s;
 
     # Sicherheits-Header (BSI-Grundschutz-orientiert)
     add_header X-Content-Type-Options nosniff always;
@@ -209,9 +223,18 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Orion-LD also takes the tenant from the legacy Fiware-Service header,
+        # which is not part of the cache key: one request with it would put a
+        # tenant's answer (or its "No such tenant" 404) under the public key.
+        # The tenant is chosen with NGSILD-Tenant only.
+        proxy_set_header Fiware-Service "";
+        proxy_set_header Fiware-ServicePath "";
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 60s;
+        # "No such entity" briefly too: otherwise every page view asking for a
+        # missing entity reaches Orion-LD. A new entity shows up within 10 s.
+        proxy_cache_valid 404 10s;
         # The tenant header selects a different database in Orion-LD; Accept
         # (json / ld+json / geo+json) and Link (@context) change the rendering.
         # Without them in the key, one client's variant is served to everyone.
@@ -275,6 +298,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Tenant only via NGSILD-Tenant (in the key) – s. /gateway/ngsi-ld/.
+        proxy_set_header Fiware-Service "";
+        proxy_set_header Fiware-ServicePath "";
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 300s;

@@ -4,7 +4,8 @@
  */
 
 /**
- * The admin port: `GET /healthz` and `POST /trigger/:id`, and nothing else.
+ * The admin port: `GET /healthz`, `POST /trigger/:id` and `POST /release-prunes/:id`,
+ * and nothing else.
  *
  * ## Why a port of its own
  *
@@ -83,8 +84,10 @@ export interface AdminOptions {
 /**
  * `GET /healthz` — liveness plus what is actually scheduled, the state
  * store (`stateStore.healthy`: writer lock held, no load or write failing,
- * every connector loaded or queued in the running reload; `reason` when not)
- * and the geo context (`geo`: municipality rows, polygons,
+ * every connector loaded or queued in the running reload; `reason` when not;
+ * `blockedPrunes`: prunes their share cap skips or that hold a loss back —
+ * `connector`, `prune`, `consecutiveSkips`, `blockedSince`, `heldBack`;
+ * released through `POST /release-prunes/:id`) and the geo context (`geo`: municipality rows, polygons,
  * degraded, and per file the geo bootstrap's last load and error). Neither
  * turns the answer into an error: restarting the process would not fix the
  * database or the cockpit, only repeat the load.
@@ -166,6 +169,46 @@ function triggerRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
   };
 }
 
+/**
+ * `POST /release-prunes/:id` — what `scripts/release-prunes.sh` calls after
+ * an operator checked the source: the losses that blocked the connector's
+ * prunes (`stateStore.blockedPrunes`, src/kernel/prune.ts "Blocked losses")
+ * are released, and their entities are deleted under the ordinary rules
+ * from the next run on. Loopback peers only, as `/trigger`.
+ */
+function releaseRoute(kernel: Kernel): RouteDefinition {
+  return {
+    method: "POST",
+    path: "/release-prunes/:id",
+    handle(request): Promise<RouteResponse> {
+      const id = request.params.id ?? "";
+      if (!isLoopback(request.remoteAddress)) {
+        kernel.log.info(
+          `${id}: prune release refused, peer ${request.remoteAddress ?? "unknown"} is not loopback`,
+        );
+        return Promise.resolve(
+          textResponse(403, "release only from loopback (docker exec / kubectl exec)\n"),
+        );
+      }
+      const released = kernel.persistence?.releasePrunes(id) ?? null;
+      if (released === null) return Promise.resolve(textResponse(404, `no persisted state for "${id}"\n`));
+      if (released === "unusable") {
+        return Promise.resolve(textResponse(503, `state of "${id}" not loaded right now, try again\n`));
+      }
+      if (released === "over-cap") {
+        return Promise.resolve(
+          textResponse(
+            409,
+            `a blocked prune of "${id}" is still over its share cap; release after the loss has aged ` +
+              "into backlog (7 days) and the cap passes again\n",
+          ),
+        );
+      }
+      return Promise.resolve(jsonResponse(200, { id, released }));
+    },
+  };
+}
+
 export function adminRoutes(kernel: Kernel, options: AdminOptions): readonly RouteDefinition[] {
-  return [healthRoute(kernel, options), triggerRoute(kernel, options)];
+  return [healthRoute(kernel, options), triggerRoute(kernel, options), releaseRoute(kernel)];
 }

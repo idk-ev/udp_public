@@ -420,9 +420,9 @@ async function render() {
   // einen alten Wert als heutige Luftqualität auszugeben.
   const dObs = e => { const v = e && e.dateObserved && e.dateObserved.value; return v ? (v["@value"] || v) : null; };
   // "Echtzeit" only while the value is current: twice the refresh period of the
-  // connector (parken-bw every 3 h; carsharing and charge point stations refresh
-  // unchanged values every 3 h; the charging sums are written hourly).
-  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 2 * 3600e3 };
+  // connector (parken-bw every 3 h; carsharing and charge point stations as
+  // well as the charging sums refresh unchanged values every 3 h).
+  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 6 * 3600e3 };
   const scAlle = luft.find(e => e.id.includes("bw-sc-"));
   const scZeit = Date.parse(dObs(scAlle) || "");
   const sc = (scAlle && scZeit && Date.now() - scZeit < 2 * 3600e3) ? scAlle : null;

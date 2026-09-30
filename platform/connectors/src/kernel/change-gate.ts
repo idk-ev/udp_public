@@ -85,6 +85,11 @@ import type {
 /** Default of `opts.periodMs` in CHUNK_HELPER. */
 export const DEFAULT_FRESH_PERIOD_MS = 3_600_000;
 
+/** A non-first run with more than this share changed warns (see `MemoryChangeGate#report`). */
+export const CHANGED_SHARE_WARNING = 0.5;
+/** Below this many entities a share says nothing. */
+export const MIN_ENTITIES_FOR_WARNING = 20;
+
 /**
  * Stable per-entity rotation for freshness-only writes: with `every = k`, an
  * unchanged entity refreshes its `dateObserved` in one of k consecutive runs
@@ -181,6 +186,23 @@ export class SignatureScope {
     return new Map(this.#tables.get(this.#prefix + key));
   }
 
+  /** Entries of a table; 0 when it does not exist. */
+  size(key: string): number {
+    return this.#tables.get(this.#prefix + key)?.size ?? 0;
+  }
+
+  /**
+   * Fills an EMPTY table with signatures derived from what the broker holds
+   * (`Orion.seedSignatures`, the only caller). A table that holds anything
+   * is left alone. Reported as a change, so the store gets them too.
+   */
+  seed(key: string, table: ReadonlyMap<string, SignatureValue>): number {
+    if (this.size(key) > 0 || table.size === 0) return 0;
+    this.#tables.set(this.#prefix + key, new Map(table));
+    this.changed(key, table.keys());
+    return table.size;
+  }
+
   /** The stored value of one field, for the persistence. */
   valueOf(key: string, field: string): SignatureValue | undefined {
     return this.#tables.get(this.#prefix + key)?.get(field);
@@ -237,6 +259,39 @@ export class SignatureScope {
   load(tables: ReadonlyMap<string, ReadonlyMap<string, SignatureValue>>): void {
     for (const key of this.keys()) this.#tables.delete(this.#prefix + key);
     for (const [key, table] of tables) this.#tables.set(this.#prefix + key, new Map(table));
+  }
+
+  /**
+   * After another writer may have held the lock: keeps only the signatures
+   * on which memory and `stored` agree and removes every other one from
+   * memory. Returns, per table, every field that differed (in memory, in the
+   * store, or both) — the store must lose them too. Not reported as a change;
+   * the persistence marks what it returns.
+   */
+  reconcile(stored: ReadonlyMap<string, ReadonlyMap<string, SignatureValue>>): Map<string, Set<string>> {
+    const differing = new Map<string, Set<string>>();
+    const mark = (key: string, field: string): void => {
+      let fields = differing.get(key);
+      if (fields === undefined) {
+        fields = new Set();
+        differing.set(key, fields);
+      }
+      fields.add(field);
+    };
+    for (const key of new Set([...this.keys(), ...stored.keys()])) {
+      const table = this.#tables.get(this.#prefix + key);
+      const other = stored.get(key);
+      for (const [field, value] of table ?? []) {
+        if (other?.get(field) !== value) mark(key, field);
+      }
+      for (const [field, value] of other ?? []) {
+        if (table?.get(field) !== value) mark(key, field);
+      }
+      if (table === undefined) continue;
+      for (const field of differing.get(key) ?? []) table.delete(field);
+      if (table.size === 0) this.#tables.delete(this.#prefix + key);
+    }
+    return differing;
   }
 
   /**
@@ -308,11 +363,16 @@ class MemoryChangeGate implements ChangeGate {
     const out: NgsiEntity[] = [];
     const pending: PendingSignature[] = [];
     const dropped: string[] = [];
+    // Not a first run, nor a new kind of entity in an old table (see #report).
+    const known = previous.size > 0 && previous.size * 2 >= entities.length;
     let changed = 0;
+    let missing = 0;
 
     for (const entity of entities) {
       const signature = sigOf(entity);
-      if (previous.get(entity.id) !== signature) {
+      const stored = previous.get(entity.id);
+      if (stored !== signature) {
+        if (stored === undefined) missing += 1;
         if (table.delete(entity.id)) dropped.push(entity.id);
         pending.push([key, entity.id, signature, entity.id]);
         out.push(entity);
@@ -337,7 +397,38 @@ class MemoryChangeGate implements ChangeGate {
     if (replace) this.#store.replace(key, table);
     else if (dropped.length > 0) this.#store.changed(key, dropped);
     this.#log.status(`${String(changed)}/${String(entities.length)} changed (rest: freshness only)`);
+    this.#report(key, entities.length, changed, missing, known, options?.volatile === true);
     return { entities: out, pending };
+  }
+
+  /**
+   * One info line per gated write, and a `[warn]` when a run that HAD
+   * signatures (`known`: for at least half as many entities as it writes —
+   * a first run or a new kind of entity in an old table is no alarm) finds
+   * most entities changed: the signature of lost change state, a full
+   * rewrite of everything. For a volatile source only the entities without
+   * any stored signature count.
+   */
+  #report(
+    key: string,
+    total: number,
+    changed: number,
+    missing: number,
+    known: boolean,
+    volatile: boolean,
+  ): void {
+    if (total === 0) return;
+    this.#log.info(
+      `gate ${key}: ${String(changed)}/${String(total)} changed` +
+        (missing > 0 ? ` (${String(missing)} without a stored signature)` : ""),
+    );
+    if (!known || total < MIN_ENTITIES_FOR_WARNING) return;
+    const suspicious = volatile ? missing : changed;
+    if (suspicious / total <= CHANGED_SHARE_WARNING) return;
+    this.#log.warn(
+      `gate ${key}: ${String(changed)} of ${String(total)} entities changed (${String(missing)} without a ` +
+        "stored signature) although signatures were stored — change state lost?",
+    );
   }
 
   table(key: string): Map<string, SignatureValue> {

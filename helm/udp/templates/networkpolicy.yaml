@@ -49,7 +49,12 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- $cockpitClients = append $cockpitClients "connectors" }}
 {{- end }}
 {{- if .Values.ckan.enabled }}{{ $timescaleClients = append $timescaleClients "ckan" }}{{ end }}
-{{- if .Values.backup.enabled }}{{ $timescaleClients = append $timescaleClients "db-backup" }}{{ end }}
+{{- /* Object store configured (templates/backup.yaml): the instances – and the
+     side cluster "timescale-restore" of scripts/restore-timescale.sh – talk
+     to it. */}}
+{{- $objectStore := or .Values.backup.enabled .Values.timescale.recovery.enabled }}
+{{- $cnpgClusters := list "timescale" }}
+{{- if $objectStore }}{{ $cnpgClusters = append $cnpgClusters "timescale-restore" }}{{ end }}
 {{- $legacyTimescale := ne (.Values.timescale.migration.phase | default "") "" }}
 {{- /* Copy job of scripts/migrate-timescale-cnpg.sh – only during the migration. */}}
 {{- if $legacyTimescale }}{{ $timescaleClients = append $timescaleClients "timescale-migrate" }}{{ end }}
@@ -200,6 +205,45 @@ spec:
       ports:
         - { protocol: TCP, port: 5432 }
         - { protocol: TCP, port: 8000 }
+    {{- with $np.monitoringNamespaceLabel }}
+    # Prometheus exporter of the instances (incl. the backup metrics of the
+    # Barman Cloud plugin) – metrics only, not the database port.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 9187 }
+    {{- end }}
+{{- if $objectStore }}
+---
+# 2c. Side cluster of scripts/restore-timescale.sh (restore next to the live
+#     database): only the CNPG operator and its own instances. The platform
+#     components never connect to it – the script reads it via kubectl exec.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-timescale-restore-cnpg
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { cnpg.io/cluster: timescale-restore }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { cnpg.io/cluster: timescale-restore }
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml $np.cnpgOperator.namespaceLabel | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.cnpgOperator.podLabels | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 8000 }
+{{- end }}
 {{- with $np.monitoringNamespaceLabel }}
 ---
 # 3. Prometheus metrics of APISIX for the monitoring namespace only.
@@ -313,7 +357,8 @@ metadata:
     {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
 spec:
   podSelector:
-    matchLabels: { cnpg.io/cluster: timescale }
+    matchExpressions:
+      - { key: cnpg.io/cluster, operator: In, values: {{ toJson $cnpgClusters }} }
   policyTypes: [Egress]
   egress:
     - to:
@@ -322,6 +367,37 @@ spec:
         {{- range $np.apiServerEgress.ports }}
         - { protocol: TCP, port: {{ . }} }
         {{- end }}
+{{- if $objectStore }}
+---
+# The CNPG instances (Barman Cloud sidecar) reach the object storage of
+# backup.destinationPath: WAL upload, base backups, restore.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-timescale-backup-egress
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: cnpg.io/cluster, operator: In, values: {{ toJson $cnpgClusters }} }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- if $np.backupEgress.to }}
+        {{- toYaml $np.backupEgress.to | nindent 8 }}
+        {{- else }}
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $np.internetEgress.exceptCidrs }}
+            except: {{ toJson . }}
+            {{- end }}
+        {{- end }}
+      ports:
+        {{- range $np.backupEgress.ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}
 {{- with $np.internetEgress.components }}
 ---
 # Internet access (HTTP/HTTPS) for components that fetch external data:
