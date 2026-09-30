@@ -1,5 +1,5 @@
 {
- "_doc": "Kommunen-Konfiguration für das Dashboard-Framework. Konvention: Kommunen OHNE Eintrag laufen mit Standard-Theme und Disclaimer. Gepflegt werden nur Abweichungen — per scripts/onboard-kommune.py. Felder je Slug: adoptiert (true, wenn die Kommune das Dashboard offiziell übernommen hat), branding {primary, accent, theme, logoUrl}, kuration [Kachel-Reihenfolge], officialUrl, kontakt, gtmPriority.",
+ "_doc": "Kommunen-Konfiguration für das Dashboard-Framework. Konvention: Kommunen OHNE Eintrag laufen mit Standard-Theme und Disclaimer. Gepflegt werden nur Abweichungen — per scripts/onboard-kommune.py. Felder je Slug: adoptiert (true, wenn die Kommune das Dashboard offiziell übernommen hat), branding {primary, accent, theme, logoUrl}, kuration [Kachel-Reihenfolge], officialUrl, kontakt, gtmPriority, fuellstand (true: Container-Füllstände aus WasteContainer zeigen, z. B. bei eigenem Sensor-Feed ohne Konnektor).",
  "kommunen": {
   "reutlingen": {
    "gtmPriority": 1,

@@ -76,6 +76,7 @@
   <span id="thememount"></span>
 </header>
 <div id="err"></div>
+<div class="loadwarn" id="loadwarn" role="status"></div>
 <div class="disclaimer" id="disclaimer"></div>
 <div class="wbanner" id="wbanner"></div>
 <div id="dq" style="display:none"></div>
@@ -130,7 +131,7 @@
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";
-const { $, css, esc, safeUrl, val, obsTime, staleStand, asArray, asRows, jget, entity, byAgs, tile, grade, fmtN, fmtDay, pos, popupHtml, groupColor, hist, series, chart, barSvg } = SC;
+const { $, css, esc, safeUrl, val, obsTime, staleStand, asArray, asRows, jget, jlist, entity, byAgs, tile, errorTile, failed, grade, fmtN, fmtDay, pos, popupHtml, groupColor, hist, series, chart, barSvg } = SC;
 
 let GEM = [], BY_AGS = {}, BY_SLUG = {}, CONN = [], DASH = {}, SERVICES = {}, STADT = window.STADT || null;
 
@@ -360,53 +361,70 @@ async function render() {
   // serverseitig auf die benötigten Attribute projizieren (spart je Aufruf
   // hunderte KB — Pegel 198 KB → 1,7 KB, DWD 145 KB → 1,5 KB).
   const near = (type, radiusM, attrs) =>
-    jget(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&georel=near%3BmaxDistance%3D%3D${radiusM}` +
-         `&geometry=Point&coordinates=%5B${lon}%2C${lat}%5D&limit=200&attrs=${attrs}`).catch(() => []);
+    jlist(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&georel=near%3BmaxDistance%3D%3D${radiusM}` +
+          `&geometry=Point&coordinates=%5B${lon}%2C${lat}%5D&limit=200&attrs=${attrs}`);
+  // Entity ids, also for SC.failed(id): a failed query is not "no data".
+  const ID = { wx: "urn:ngsi-ld:WeatherObserved:bw-" + ags, dwd: "urn:ngsi-ld:Alert:bw-kreis-" + krs + "-dwd",
+    nina: "urn:ngsi-ld:Alert:bw-kreis-" + krs + "-nina", pv: "urn:ngsi-ld:EnergyMonitor:bw-" + ags,
+    pulse: "urn:ngsi-ld:CityPulse:bw-" + ags, rathaus: "urn:ngsi-ld:CivicStructure:bw-" + ags + "-rathaus",
+    ausflug: "urn:ngsi-ld:TouristDestination:bw-" + ags, fc: "urn:ngsi-ld:WeatherForecast:bw-" + ags,
+    versorgung: "urn:ngsi-ld:PublicAmenity:bw-" + ags,
+    passant: passantenC && passantenC.sampleEntity ? passantenC.sampleEntity : null };
+  const mark = SC.loadMark();
 
   const [wx, alertDwd, alertNina, luft, parken, sharing, laden, rad, pv, pulse, ptStops, abfahrten, bikeP, kreisRw, allePegel, pollenAll, rathaus, ausflug,
          dwdSt, flotten, passant, chStations, fcEnt, csStations, hitzeAll, versorgung, wasteC, parkSites] = await Promise.all([
-    entity("urn:ngsi-ld:WeatherObserved:bw-" + ags),
-    entity("urn:ngsi-ld:Alert:bw-kreis-" + krs + "-dwd"),
-    entity("urn:ngsi-ld:Alert:bw-kreis-" + krs + "-nina"),
+    entity(ID.wx), entity(ID.dwd), entity(ID.nina),
     byAgs("AirQualityObserved", ags), byAgs("ParkingSummary", ags),
     byAgs("SharingSummary", ags), byAgs("ChargingSummary", ags), byAgs("TrafficFlowObserved", ags),
-    entity("urn:ngsi-ld:EnergyMonitor:bw-" + ags),
-    entity("urn:ngsi-ld:CityPulse:bw-" + ags),
+    entity(ID.pv), entity(ID.pulse),
     provides.has("departures") ? byAgs("PublicTransportStop", ags) : [],
     // Abfahrten auf Anfrage: liefert für JEDE Gemeinde eine sekundenaktuelle Liste.
-    fetch("/abfahrten?ags=" + ags).then(r => r.ok ? r.json() : null).catch(() => null),
+    // 404 = no stop for this municipality (no card); any other failure (502
+    // upstream error, 503 busy, 429) is marked { gestoert } instead of dropped.
+    // Retried on 429 and network errors only: the service keeps an EFA
+    // failure for 30 s anyway.
+    SC.fetchRetry("/abfahrten?ags=" + ags, undefined, s => s === 429)
+      .then(r => r.status === 404 ? null : r.ok ? r.json()
+        : r.json().then(j => ({ gestoert: true, halt: j && typeof j.halt === "string" ? j.halt : "" })))
+      .catch(() => ({ gestoert: true })),
     provides.has("br") ? byAgs("BikeParking", ags) : [],
     // Baustellen im ganzen Kreis (enthält die eigenen bereits) — die separate
     // ags-Abfrage entfällt, rw/rwUmland werden daraus abgeleitet.
-    jget(`${SC.GW}/ngsi-ld/v1/entities?type=RoadWork&q=ags~%3D%5E${krs}&limit=1000` +
-         `&attrs=name,ags,gemeindeName,endDate,description,location`).catch(() => []),
+    jlist(`${SC.GW}/ngsi-ld/v1/entities?type=RoadWork&q=ags~%3D%5E${krs}&limit=1000` +
+          `&attrs=name,ags,gemeindeName,endDate,description,location`),
     // Pegel im 20-km-Umkreis (Gewässer enden nicht an Gemeindegrenzen); der eigene
     // Pegel wird per ags aus dieser Liste abgeleitet, keine zweite Abfrage.
     near("WaterLevelObserved", 20000, "name,water,level,levelState,floodLevels,measuredAt,dataProvider,ags,location"),
-    jget(`${SC.GW}/ngsi-ld/v1/entities?type=PollenForecast&limit=5`).catch(() => []),
-    entity("urn:ngsi-ld:CivicStructure:bw-" + ags + "-rathaus"),
-    entity("urn:ngsi-ld:TouristDestination:bw-" + ags),
+    jlist(`${SC.GW}/ngsi-ld/v1/entities?type=PollenForecast&limit=5`),
+    entity(ID.rathaus), entity(ID.ausflug),
     // Amtliche DWD-Stationen im 30-km-Umkreis (statt aller ~183 landesweit).
     amtlC ? near("WeatherObserved", 30000, "stationName,temperature,relativeHumidity,dwdStationId,location") : [],
-    carsharingC ? byAgs("FleetStatus", ags).catch(() => []) : [],
-    passantenC && passantenC.sampleEntity ? entity(passantenC.sampleEntity) : null,
+    carsharingC ? byAgs("FleetStatus", ags) : [],
+    // Also asked for while the connector is "pending": that flag is fixed in the
+    // image, the token arrives at runtime – skipping it would hide the tile
+    // although data exists. Its 404 is "no data" (no error tile) and briefly
+    // cached by the cockpit nginx.
+    ID.passant ? entity(ID.passant) : null,
     // Ladestandorte der Gemeinde, auf Kartenattribute projiziert (statt vollem NGSI-LD).
-    ladenDetailC ? byAgs("EVChargingStation", ags, "name,operator,socketNumber,availableEvse,chargingEvse,defectEvse,liveEvse,ags,location,dateObserved").catch(() => []) : [],
-    entity("urn:ngsi-ld:WeatherForecast:bw-" + ags),
-    carsharingC ? byAgs("CarSharingStation", ags, "name,operator,availableVehicles,capacity,ags,location,dateObserved").catch(() => []) : [],
+    ladenDetailC ? byAgs("EVChargingStation", ags, "name,operator,socketNumber,availableEvse,chargingEvse,defectEvse,liveEvse,ags,location,dateObserved") : [],
+    entity(ID.fc),
+    carsharingC ? byAgs("CarSharingStation", ags, "name,operator,availableVehicles,capacity,ags,location,dateObserved") : [],
     // Hitzebelastung: 5 DWD-Vertreterstädte, nächstgelegene wird gewählt.
-    jget(`${SC.GW}/ngsi-ld/v1/entities?type=HeatHealthWarning&limit=10&options=keyValues`).catch(() => []),
+    jlist(`${SC.GW}/ngsi-ld/v1/entities?type=HeatHealthWarning&limit=10&options=keyValues`),
     // Familie & Versorgung (OSM): Apotheke, Arzt, Kita, Spielplatz, AED, Trinkwasser.
-    entity("urn:ngsi-ld:PublicAmenity:bw-" + ags),
-    // Container-/Behälter-Füllstände (FIWARE WasteContainer). Es gibt dafür derzeit
-    // keine offenen Landesdaten — die Ebene aktiviert sich automatisch, sobald eine
-    // Kommune ihren LoRaWAN-Sensor-Feed anbindet (kommunenspezifischer Baustein).
-    byAgs("WasteContainer", ags).catch(() => []),
+    entity(ID.versorgung),
+    // Container fill levels (FIWARE WasteContainer). There is no open state-wide
+    // source: asked only where a registry connector provides "fuellstand" or
+    // dashboards.json enables it for the municipality (own sensor feed), see
+    // docs/staedte-hinzufuegen.md.
+    provides.has("fuellstand") || cfg.fuellstand === true ? byAgs("WasteContainer", ags) : [],
     // Parkanlagen je Standort mit Koordinaten (MobiData BW ParkAPI, kommunenspezifischer Baustein)
     // für die Parken-Detailkarte und die Parken-Kartenebene. Die ParkingSummary oben
     // bleibt der aggregierte Kachelwert.
-    byAgs("ParkingSite", ags, "name,totalSpotNumber,availableSpotNumber,category,ags,location,dateObserved").catch(() => []),
+    byAgs("ParkingSite", ags, "name,totalSpotNumber,availableSpotNumber,category,ags,location,dateObserved"),
   ]);
+  SC.loadBanner("#loadwarn", mark);
   // Baustellen: eigene Gemeinde vs. Umland aus der einen Kreis-Abfrage ableiten.
   const rw = kreisRw.filter(e => !e.id.endsWith("summary") && val(e, "ags") === ags);
   const rwUmland = kreisRw.filter(e => !e.id.endsWith("summary") && val(e, "ags") !== ags && pos(e));
@@ -529,7 +547,9 @@ async function render() {
     if (wdir != null) D.wetter.head = { type: "compass", deg: wdir, speed: Math.round(val(wx, "windSpeed") || 0), unit: "km/h" };
   }
   if (wx && D.temperatur) D.temperatur.noSpark = true;   // Thermometer statt Sparkline
-  tiles +=
+  // Temperatur, Wind, Warnungen, Baustellen stand on every page: a failed
+  // query shows the error state instead of "–" / "keine" / 0.
+  tiles += failed(ID.wx) ? errorTile("Temperatur", { topic: "wetter" }) + errorTile("Wind", { topic: "wetter" }) :
     tile("Temperatur", val(wx, "temperature"), "°C", { topic: "wetter", detail: wx ? "temperatur" : null,
       status: wxStand ? css("--text-muted") : null,
       thermo: wx ? { v: val(wx, "temperature"), feels: feelsV, min: -10, max: 40 } : null,
@@ -584,7 +604,7 @@ async function render() {
         note: warnCount > 0
           ? "Für den Landkreis liegen " + warnCount + " amtliche Warnungen vor; Kurztexte sind derzeit nicht abrufbar."
           : "Zurzeit liegen keine amtlichen Warnungen (DWD/NINA) für den Landkreis vor." };
-  tiles += tile("Warnungen", warnCount === 0 ? "keine" : warnCount, "", { detail: "warnungen",
+  tiles += failed(ID.dwd) || failed(ID.nina) ? errorTile("Warnungen") : tile("Warnungen", warnCount === 0 ? "keine" : warnCount, "", { detail: "warnungen",
     status: warnCount === 0 ? css("--status-good") : maxSev >= 3 ? css("--status-serious") : css("--status-warn"),
     hint: "DWD + NINA, Kreis " + krs, explain: "Amtliche Warnungen gelten auf Kreisebene. Klick: aktuelle Warnungen." });
   if (rw.length || rwUmland.length) D.baustellen = { kind: "stations", title: "Baustellen", explain: "Baustellen im Gemeindegebiet und im übrigen Kreis (SVZ-BW, Punkt-in-Polygon).", center: [lat, lon],
@@ -592,7 +612,7 @@ async function render() {
       { name: "Baustellen", color: MAP_C.baustellen, detail: D.baustellen ? "baustellen" : null, items: rw.map(e => ({ ...pos(e), name: val(e, "name"), extra: val(e, "endDate") ? "bis " + String(val(e, "endDate")).slice(0, 10) : "" })).filter(i => i.lat) },
       { name: "Baustellen Umland (Kreis)", color: MAP_C.umland, items: rwUmland.map(e => ({ ...pos(e), name: val(e, "name"), extra: (val(e, "gemeindeName") || "") + (val(e, "endDate") ? " · bis " + String(val(e, "endDate")).slice(0, 10) : "") })).filter(i => i.lat) },
     ] };
-  tiles += tile("Baustellen", rw.length, "", { topic: "mobilitaet", detail: (rw.length || rwUmland.length) ? "baustellen" : null,
+  tiles += failed(kreisRw) ? errorTile("Baustellen", { topic: "mobilitaet" }) : tile("Baustellen", rw.length, "", { topic: "mobilitaet", detail: (rw.length || rwUmland.length) ? "baustellen" : null,
     hint: "im Gemeindegebiet · " + rwUmland.length + " im Umland (Kreis)",
     explain: "Baustellen mit Punkt-in-Polygon-Zuordnung zum Gemeindegebiet; das Umland (übriger Kreis) erscheint auf der Karte als eigene Ebene." });
   if (sc) {
@@ -749,6 +769,8 @@ async function render() {
         explain: "Öffnungszeiten laut OpenStreetMap — ohne Gewähr. Klick: Details und Kontakt." });
   } else if (amtWeb) {
     tiles += linkTile("Rathaus & Bürgerbüro", amtWeb, "Amtliche Website: Öffnungszeiten, Kontakt, Formulare");
+  } else if (failed(ID.rathaus)) {
+    tiles += errorTile("Rathaus & Bürgerbüro", { topic: "service" });
   } else {
     tiles += emptyTile("Rathaus & Bürgerbüro", "Öffnungszeiten & Kontakt");
   }
@@ -983,6 +1005,9 @@ async function render() {
   }
   const deps0 = asArray(val(ptStops[0], "departures"));
   const abfList = (abfahrten && Array.isArray(abfahrten.abfahrten)) ? abfahrten.abfahrten : [];
+  // Departure board states besides a list: EFA disturbed vs. simply no departures.
+  const abfGestoert = !!(abfahrten && abfahrten.gestoert);
+  const abfLeer = !!(abfahrten && Array.isArray(abfahrten.abfahrten) && !abfahrten.abfahrten.length);
   const medDelay = abfahrten && abfahrten.medianVerspaetung != null
     ? abfahrten.medianVerspaetung : val(ptStops[0], "avgDelayMinutes");
   const haltName = (abfahrten && abfahrten.halt) || val(ptStops[0], "name") || "";
@@ -1018,6 +1043,32 @@ async function render() {
       explain: "Nächste Abfahrten am zentralen Halt (EFA-BW), beim Seitenaufruf abgerufen. Klick: Fahrplan." });
   }
   $("#tiles").innerHTML = tiles;
+  // Optional tiles whose query failed: error state where this municipality
+  // normally has the tile (remembered from earlier views), nothing otherwise.
+  const tileMem = window._tileMem || (window._tileMem = SC.tileMemory("stadt:" + ags));
+  SC.errorTiles("#tiles", [
+    ["puls", ["Puls"], failed(ID.pulse)],
+    ["luftfeuchte", ["Luftfeuchte"], failed(dwdSt), "wetter"],
+    ["uv", ["UV-Index"], failed(ID.fc), "wetter"],
+    ["feinstaub", ["Feinstaub PM2.5"], failed(luft), "umwelt"],
+    ["luft", ["Luftqualität"], failed(luft), "umwelt"],
+    ["no2", ["NO₂"], failed(luft), "umwelt"],
+    ["hitze", ["Hitzebelastung"], failed(hitzeAll), "umwelt"],
+    ["pollen", ["Pollenflug"], failed(pollenAll), "umwelt"],
+    ["fuellstand", ["Container-Füllstände"], failed(wasteC), "umwelt"],
+    ["versorgung", ["Familie & Versorgung"], failed(ID.versorgung), "service"],
+    ["ausflug", ["Ausflugsziele"], failed(ID.ausflug), "freizeit"],
+    ["parken", ["Parken"], failed(parken), "mobilitaet"],
+    ["sharing", ["E-Scooter"], failed(sharing), "mobilitaet"],
+    ["rad", ["Radverkehr"], failed(rad), "mobilitaet"],
+    ["br", ["B+R Fahrradparken"], failed(bikeP), "mobilitaet"],
+    ["carsharing", ["Carsharing"], failed(flotten), "mobilitaet"],
+    ["leihrad", ["Leihräder"], failed(flotten), "mobilitaet"],
+    ["passanten", ["Passanten"], !!ID.passant && failed(ID.passant), "mobilitaet"],
+    ["oepnv", ["ÖPNV-Verspätung", "ÖPNV"], (abfGestoert || failed(ptStops)) && !zeilen.length, "mobilitaet"],
+    ["laden", ["Ladepunkte"], failed(laden), "energie"],
+    ["pv", ["PV installiert", "CO₂ vermieden"], failed(ID.pv), "energie"],
+  ].map(([key, labels, isFailed, topic]) => ({ key, labels, failed: isFailed, topic })), tileMem);
   // Kacheln nach Relevanz für Bürgerinnen und Bürger ordnen („Sicherheit & Alltag
   // zuerst"): Warnungen und Gesamt-Puls führen als Überblick, dann der tägliche
   // Weg (ÖPNV, Baustellen, Parken), Bürgerservice (Müll, Mängel, Rathaus), Wetter,
@@ -1112,9 +1163,11 @@ async function render() {
       return;
     }
     const ts = await Promise.all(def.series.map(s => hist(s.id, s.attr, 24)));
+    if (ts.some(failed)) { $("#ch-" + k).innerHTML = `<div class="desc">${SC.LOAD_ERR_TXT}</div>`; return; }
     chart("#ch-" + k, def.series.map((s, i) => ({ name: s.name, color: slot[i % slot.length], data: series(ts[i], s.attr) })),
       { unit: def.unit, hours: 24, zero: def.zero });
   }));
+  SC.loadBanner("#loadwarn", mark);
 
   // (Der gestapelte »Ladepunkte-Status (live)«-Balken wurde auf Wunsch von der
   //  Seite genommen; die Frei/Belegt/Defekt-Aufteilung steht weiter im Popup der
@@ -1167,10 +1220,21 @@ async function render() {
       const cls = dm == null ? "delay-0" : dm >= 5 ? "delay-s" : dm >= 1 ? "delay-w" : "delay-0";
       return `<tr><td><span class="line-badge">${esc(d.linie)}</span></td><td>${esc(d.ziel)}</td><td>${esc(d.zeit)}</td><td class="num ${cls}" ${dm == null ? 'title="Echtzeitmeldung unplausibel — als unbekannt geführt"' : ""}>${dm == null ? "?" : Number(dm) > 0 ? "+" + Number(dm) : "±0"}</td></tr>`;
     }).join("");
+  } else if (abfLeer || (abfGestoert && (abfahrten.halt || tileMem.has("oepnv")))) {
+    // "Disturbed" only where a stop is known: the answer names it (502 of the
+    // service), or the municipality normally has the ÖPNV tile. A 503 before
+    // the stop directory is loaded, or a 429, says nothing about a stop.
+    // The stop exists, but there is nothing to list: say why instead of hiding the board.
+    $("#dep-card").style.display = "block";
+    $("#dep-title").textContent = "Abfahrten" + (haltName ? " " + haltName : "");
+    $("#dep-desc").textContent = "Echtzeit (EFA-BW)";
+    $("#deps tbody").innerHTML = `<tr><td colspan="4" class="dep-state" style="color:var(--text-secondary)">${abfGestoert ? "Fahrplanauskunft derzeit gestört" : "Derzeit keine Abfahrten"}</td></tr>`;
+  } else {
+    $("#dep-card").style.display = "none";
   }
 
   // Baustellen-Liste + Karte
-  $("#rw-desc").textContent = rw.length ? "SVZ-BW, Punkt-in-Polygon" : "Keine Baustellen im Gemeindegebiet.";
+  $("#rw-desc").textContent = failed(kreisRw) ? SC.LOAD_ERR_TXT : rw.length ? "SVZ-BW, Punkt-in-Polygon" : "Keine Baustellen im Gemeindegebiet.";
   $("#rwtable tbody").innerHTML = rw.slice(0, 25).map(e =>
     `<tr><td>${esc(val(e, "name"))}</td><td style="color:var(--text-muted)">${val(e, "endDate") ? "bis " + esc(String(val(e, "endDate")).slice(0, 10)) : ""}</td></tr>`).join("");
 
@@ -1338,9 +1402,13 @@ async function render() {
     STADT = { ags: row[0], row, website: STADT && STADT.website };
     const cfg0 = (DASH[row[8]] || {});
     SC.themeSelector("#thememount", cfg0.branding && cfg0.branding.theme);
-    document.addEventListener("sc-theme-changed", () => { window._map && render().catch(() => {}); });
-    await render();
-    setInterval(() => { if (!SC.modalOpen()) render().catch(() => {}); }, 120e3);
+    // One render at a time: a refresh while a slow render still runs is
+    // skipped, so requests and the banner's failure count do not mix.
+    let rendering = null;
+    const renderOnce = () => rendering || (rendering = render().finally(() => { rendering = null; }));
+    document.addEventListener("sc-theme-changed", () => { window._map && renderOnce().catch(() => {}); });
+    await renderOnce();
+    setInterval(() => { if (!SC.modalOpen()) renderOnce().catch(() => {}); }, 120e3);
   } catch (e) {
     const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
   }

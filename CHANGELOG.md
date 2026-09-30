@@ -2,6 +2,23 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Fehler sichtbar statt stiller Lücken
+
+- Dashboards: fehlgeschlagene Abfragen (5xx, Netzfehler, 429) werden einmal
+  wiederholt (`Retry-After` beachtet; nicht bei 504 und Zeitüberschreitung,
+  15 s je Versuch) und von „keine Daten“ unterschieden.
+  Kacheln, die die Kommune sonst hat, zeigen dann „Daten derzeit nicht
+  abrufbar“; bei mehreren Fehlern erscheint ein Hinweis oben.
+- `/abfahrten`: EFA-Antwort ohne Abfahrten für den angefragten Halt ist 200
+  mit leerer Liste statt 502 (unbekannte Halte und andere EFA-Fehler bleiben
+  502); die Stadtseite zeigt „Derzeit keine Abfahrten“ bzw.
+  „Fahrplanauskunft derzeit gestört“.
+- Cockpit-nginx: leere Antworten der Kontext-API nur noch 10 s im Cache
+  (Loopback-Hop, s. `docs/betrieb.md`); `worker_connections` 4096.
+- Stadtseite fragt `WasteContainer` nur ab, wo ein Konnektor `fuellstand`
+  liefert oder `dashboards.json` es für die Kommune freischaltet
+  (`"fuellstand": true`).
+
 ## Unveröffentlicht — Wetter: Open-Meteo-Kontingent
 
 - Wetter und Vorhersage laufen auf festen Slots (Registry

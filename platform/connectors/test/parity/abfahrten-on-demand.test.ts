@@ -26,7 +26,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIRECTORY_URL, ROUTE_PATH, run, routes } from "../../src/connectors/abfahrten-on-demand.js";
-import { EFA_MIN_INTERVAL_MS } from "../../src/connectors/efa.js";
+import { EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor } from "../../src/connectors/efa.js";
 import { isArray } from "../../src/kernel/parse.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
 import { readFixture, repositoryRoot } from "../harness/fixtures.js";
@@ -47,7 +47,10 @@ import { runFunctionNode } from "../harness/vm-runner.js";
 
 const FIXTURE = "abfahrten-on-demand-08115003";
 
-/** Real entries of the committed directory, plus one without a stop id (test input). */
+/** Directory entry for the recorded no-departures stop (test input, not in oepnv-halte.json). */
+const GSCHWEND = { ags: "08136025", stopId: "de:08136:2700", stopName: "Gschwend, L1150" };
+
+/** Real entries of the committed directory, plus one without a stop id and Gschwend (test input). */
 function directory(): Record<string, unknown> {
   const file: unknown = JSON.parse(
     readFileSync(join(repositoryRoot(), "gui", "public", "oepnv-halte.json"), "utf8"),
@@ -59,6 +62,7 @@ function directory(): Record<string, unknown> {
     "08111000": halte["08111000"],
     "08415061": halte["08415061"],
     "08999999": { stopName: "ohne Halt", qualitaet: 0, art: "ort" },
+    [GSCHWEND.ags]: { stopId: GSCHWEND.stopId, stopName: GSCHWEND.stopName, qualitaet: 1000, art: "ort" },
   };
 }
 
@@ -281,7 +285,117 @@ async function failedDirectoryLoadKeepsThePreviousOne(): Promise<void> {
   assert.equal(response.status, 404, "the directory of the first run still answers");
 }
 
+/** A recorded EFA-BW answer as the fetcher returns it. */
+function recorded(name: string): Efa {
+  const fixture = readFixture(name);
+  return jsonHttp(fixture.statusCode, fixture.payload);
+}
+
+/** The recorded payload of a fixture, for the unit checks. */
+function recordedPayload(name: string): unknown {
+  return readFixture(name).payload;
+}
+
+/**
+ * Deliberate deviation: the old node answered 502 "Auskunft nicht erreichbar"
+ * for a stop without departures; the port answers 200 with an empty list.
+ * Real answer: Gschwend, Saturday 01:00 – no stopEvents, error -4050
+ * "no serving lines found", the stop itself with isBest.
+ */
+async function noDeparturesIsAnEmptyList(): Promise<void> {
+  const scenario: Scenario = {
+    name: "EFA 200 valid, no departures",
+    query: `ags=${GSCHWEND.ags}`,
+    expressQuery: { ags: GSCHWEND.ags },
+    efa: recorded("abfahrten-on-demand-keine-abfahrten"),
+  };
+  const old = await legacy(scenario);
+  assert.equal(old.response.status, 502, "the old node's answer changed – revisit the deviation");
+  const now = await ported(scenario);
+  assert.equal(now.response.status, 200);
+  const body: unknown = JSON.parse(now.response.body);
+  assert.ok(isRecord(body));
+  assert.deepEqual(
+    { ...body, stand: "<timestamp>" },
+    {
+      halt: GSCHWEND.stopName,
+      stopId: GSCHWEND.stopId,
+      stand: "<timestamp>",
+      medianVerspaetung: null,
+      echtzeitAbfahrten: 0,
+      quelle: "EFA-BW (naldo/bwegt)",
+      abfahrten: [],
+    },
+  );
+  assert.equal(now.warnings, 0);
+}
+
+/** Only the requested stop, resolved, without other errors is "no departures"; the rest stays 502. */
+async function realErrorsStay502(): Promise<void> {
+  const night = recordedPayload("abfahrten-on-demand-keine-abfahrten");
+  assert.equal(isEmptyDepartureMonitor(night, GSCHWEND.stopId), true);
+  assert.ok(isRecord(night));
+  const stop = { id: GSCHWEND.stopId, name: GSCHWEND.stopName, type: "stop", isBest: true };
+  assert.equal(
+    isEmptyDepartureMonitor(
+      { ...night, locations: [{ ...stop, id: `${GSCHWEND.stopId}:1:1` }] },
+      GSCHWEND.stopId,
+    ),
+    true,
+    "a platform of the requested stop",
+  );
+  for (const [what, payload] of [
+    // Recorded: an unknown stop id gets fuzzy candidates – another stop, isBest false.
+    ["unknown stop (recorded)", recordedPayload("abfahrten-on-demand-unbekannter-halt")],
+    // Recorded: "invalid date" (code -1) with the stop resolved.
+    ["invalid date (recorded)", recordedPayload("abfahrten-on-demand-ungueltiges-datum")],
+    [
+      "error -4001",
+      { ...night, systemMessages: [{ type: "error", module: "BROKER", code: -4001, text: "invalid date" }] },
+    ],
+    [
+      "-4050 plus another error",
+      {
+        ...night,
+        systemMessages: [
+          { type: "error", code: -4050 },
+          { type: "error", code: -2000 },
+        ],
+      },
+    ],
+    ["systemMessages not an array", { ...night, systemMessages: "error" }],
+    ["stop not best match", { ...night, locations: [{ ...stop, isBest: false }] }],
+    ["another stop", { ...night, locations: [{ ...stop, id: "de:08136:27001" }] }],
+    ["location is no stop", { ...night, locations: [{ ...stop, type: "poi" }] }],
+    ["no version", { locations: [stop] }],
+    ["no locations", { version: "11" }],
+    ["empty locations", { version: "11", locations: [] }],
+    ["stopEvents not an array", { ...night, stopEvents: null }],
+    ["stop not found", { systemMessages: [{ text: "stop not found" }] }],
+    ["not an object", "<html>maintenance</html>"],
+    ["nothing", null],
+  ] as const) {
+    assert.equal(isEmptyDepartureMonitor(payload, GSCHWEND.stopId), false, what);
+  }
+  for (const efa of [
+    recorded("abfahrten-on-demand-unbekannter-halt"),
+    recorded("abfahrten-on-demand-ungueltiges-datum"),
+    jsonHttp(200, { version: "11", systemMessages: [{ type: "error", code: -2000 }] }),
+    jsonHttp(503, night),
+    new Error("socket hang up"),
+  ]) {
+    const now = await ported({ name: "error", query: `ags=${GSCHWEND.ags}`, expressQuery: {}, efa });
+    assert.equal(now.response.status, 502);
+    assert.deepEqual(JSON.parse(now.response.body), {
+      fehler: "Auskunft nicht erreichbar",
+      halt: GSCHWEND.stopName,
+    });
+  }
+}
+
 export {
+  noDeparturesIsAnEmptyList as "abfahrten-on-demand: a valid EFA answer without departures is 200 with an empty list (deviation)",
+  realErrorsStay502 as "abfahrten-on-demand: network, HTTP and malformed EFA answers stay 502",
   everyAnswerMatches as "abfahrten-on-demand: /abfahrten status, headers and body match the old http-in/response path in every scenario",
   validAnswerHasTheDashboardShape as "abfahrten-on-demand: the 200 answer keeps the shape stadt.html reads",
   failedDirectoryLoadKeepsThePreviousOne as "abfahrten-on-demand: a failed directory load warns and keeps the previous directory",

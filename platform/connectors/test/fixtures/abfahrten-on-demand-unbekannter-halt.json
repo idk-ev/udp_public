@@ -1,0 +1,40 @@
+{
+  "source": "https://www.efa-bw.de/nvbw/XML_DM_REQUEST?outputFormat=rapidJSON&type_dm=any&mode=direct&useRealtime=1&limit=12&name_dm=de%3A08115%3A7199",
+  "recordedAt": "2026-09-30T12:59:30.515Z",
+  "note": "Recorded from EFA-BW: unknown stop id: fuzzy candidates, isBest false. Trimmed by hand: serverInfo removed, at most 4 locations with id, name, type and isBest only.",
+  "statusCode": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "format": "json",
+  "payload": {
+    "version": "11.0.6.72",
+    "systemMessages": [],
+    "locations": [
+      {
+        "id": "de:08136:2700",
+        "name": "Gschwend, L1150",
+        "type": "stop",
+        "isBest": false
+      },
+      {
+        "id": "poiID:1537170:8435016:-1:Br1150 Breguet Atlantic:Friedrichshafen:Br1150 Breguet Atlantic:ANY:POI:1059538:5947725:MRCV:b_w",
+        "name": "Friedrichshafen, Br1150 Breguet Atlantic",
+        "type": "poi",
+        "isBest": false
+      },
+      {
+        "id": "at:45:50078",
+        "name": "Zehmemoos, S-Bahn (L115)",
+        "type": "stop",
+        "isBest": false
+      },
+      {
+        "id": "de:13075:2006",
+        "name": "Albinshof, B199",
+        "type": "stop",
+        "isBest": false
+      }
+    ]
+  }
+}

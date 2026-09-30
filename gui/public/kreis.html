@@ -31,6 +31,7 @@
   <span id="thememount"></span>
 </header>
 <div id="err"></div>
+<div class="loadwarn" id="loadwarn" role="status"></div>
 <div class="disclaimer">Kreissicht aus offenen Daten — aggregiert über alle Gemeinden des Kreises. Jede Gemeinde hat ein eigenes Dashboard.</div>
 <div class="wbanner" id="wbanner"></div>
 
@@ -60,13 +61,13 @@
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";
-const { $, css, esc, val, asArray, jget, entity, tile, fmtN } = SC;
+const { $, css, esc, val, asArray, jget, jlist, entity, tile, errorTile, failed, fmtN } = SC;
 
 let KREIS = window.KREIS || null;
 
 // Regex-Query: alle Entitäten eines Typs, deren ags mit dem Kreisschlüssel beginnt
 const byKreis = (type, krs) =>
-  jget(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&q=ags~%3D%5E${krs}&limit=200&options=keyValues`).catch(() => []);
+  jlist(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&q=ags~%3D%5E${krs}&limit=200&options=keyValues`);
 const sum = (list, attr) => list.reduce((s, e) => s + (e[attr] || 0), 0);
 
 async function render(krow, members) {
@@ -77,10 +78,12 @@ async function render(krow, members) {
   $("#subtitle").textContent = `${gemCount} ${gemCount === 1 ? "Gemeinde" : "Gemeinden"} · ${fmtN(ew)} Einwohner`;
   $("#gem-title").textContent = gemCount === 1 ? "Gemeinde" : `Gemeinden (${gemCount})`;
 
+  // Entity ids, also for SC.failed(id): a failed query is not "no data".
+  const ID = { dwd: "urn:ngsi-ld:Alert:bw-kreis-" + krs + "-dwd", nina: "urn:ngsi-ld:Alert:bw-kreis-" + krs + "-nina",
+    rw: "urn:ngsi-ld:RoadWork:bw-kreis-" + krs + "-summary" };
+  const mark = SC.loadMark();
   const [alertDwd, alertNina, rwSum, pulse, pv, laden, parken, sharing, rad] = await Promise.all([
-    entity("urn:ngsi-ld:Alert:bw-kreis-" + krs + "-dwd"),
-    entity("urn:ngsi-ld:Alert:bw-kreis-" + krs + "-nina"),
-    entity("urn:ngsi-ld:RoadWork:bw-kreis-" + krs + "-summary"),
+    entity(ID.dwd), entity(ID.nina), entity(ID.rw),
     byKreis("CityPulse", krs), byKreis("EnergyMonitor", krs), byKreis("ChargingSummary", krs),
     byKreis("ParkingSummary", krs), byKreis("SharingSummary", krs), byKreis("TrafficFlowObserved", krs),
   ]);
@@ -104,7 +107,8 @@ async function render(krow, members) {
     tiles += tile("Puls Ø", pulsAvg, "/100", { status: pulsAvg >= 75 ? css("--status-good") : pulsAvg >= 50 ? css("--status-warn") : css("--status-serious"),
       mini: { v: pulsAvg, min: 0, max: 100, stops: PULS_STOPS, flip: true },
       hint: pulsVals.length + " Gemeinden", explain: "Mittelwert des Zustandsindex (0–100, höher = besser) über alle Gemeinden mit Puls-Daten." });
-  tiles += tile("Warnungen", warnCount, "", { status: warnCount === 0 ? css("--status-good") : maxSev >= 3 ? css("--status-serious") : css("--status-warn"),
+  // Warnungen stand on every page: a failed query shows the error state, not 0.
+  tiles += failed(ID.dwd) || failed(ID.nina) ? errorTile("Warnungen") : tile("Warnungen", warnCount, "", { status: warnCount === 0 ? css("--status-good") : maxSev >= 3 ? css("--status-serious") : css("--status-warn"),
     hint: "DWD + NINA, kreisweit", explain: "Amtliche Warnungen gelten auf Kreisebene (DWD-Wetterwarnungen und NINA-Bevölkerungsschutz)." });
   if (val(rwSum, "activeCount") != null)
     tiles += tile("Baustellen", val(rwSum, "activeCount"), "", { hint: "im Kreisgebiet (SVZ-BW)",
@@ -125,6 +129,16 @@ async function render(krow, members) {
     tiles += tile("Radverkehr", fmtN(sum(radSums, "dailyTotal")), "", { hint: fmtN(sum(radSums, "siteCount")) + " Zählstellen",
       explain: "Radfahrten am letzten verfügbaren Tag über alle Zählstellen im Kreis (Eco-Counter)." });
   $("#tiles").innerHTML = tiles;
+  // Optional tiles whose query failed: error state where this district
+  // normally has the tile (remembered from earlier views), nothing otherwise.
+  const tileMem = window._tileMem || (window._tileMem = SC.tileMemory("kreis:" + krs));
+  SC.errorTiles("#tiles", [
+    ["puls", ["Puls Ø"], failed(pulse)], ["baustellen", ["Baustellen"], failed(ID.rw)],
+    ["pv", ["PV installiert"], failed(pv)], ["laden", ["Ladepunkte"], failed(laden)],
+    ["parken", ["Parken"], failed(parken)], ["sharing", ["Sharing"], failed(sharing)],
+    ["rad", ["Radverkehr"], failed(rad)],
+  ].map(([key, labels, isFailed]) => ({ key, labels, failed: isFailed })), tileMem);
+  SC.loadBanner("#loadwarn", mark);
 
   // Warn-Banner
   const heads = [];
@@ -167,9 +181,13 @@ async function render(krow, members) {
     if (!krow) throw new Error("Kreis nicht gefunden");
     const members = gdata.gemeinden.filter(g => g[4] === krow[0]);
     SC.themeSelector("#thememount");
-    document.addEventListener("sc-theme-changed", () => { window._layers && render(krow, members).catch(() => {}); });
-    await render(krow, members);
-    setInterval(() => render(krow, members).catch(() => {}), 120e3);
+    // One render at a time: a refresh while a slow render still runs is
+    // skipped, so requests and the banner's failure count do not mix.
+    let rendering = null;
+    const renderOnce = () => rendering || (rendering = render(krow, members).finally(() => { rendering = null; }));
+    document.addEventListener("sc-theme-changed", () => { window._layers && renderOnce().catch(() => {}); });
+    await renderOnce();
+    setInterval(() => renderOnce().catch(() => {}), 120e3);
   } catch (e) {
     const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
   }

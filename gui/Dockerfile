@@ -28,6 +28,12 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # /etc/nginx/templates: der Entrypoint (20-envsubst-on-templates.sh) ersetzt die
 # Platzhalter und legt das Ergebnis unter /etc/nginx/conf.d/default.conf ab.
 COPY platform/config/nginx/cockpit.conf.template /etc/nginx/templates/default.conf.template
+# worker_connections: the image default of 1024 per worker is tight – a
+# cache miss on /gateway/ngsi-ld/ holds four connections (client, loopback
+# hop in and out, gateway). 4096 per worker; the container's open-file limit
+# is far above that. Fails the build if the image's line ever changes.
+RUN sed -i 's/^\(\s*worker_connections\s*\)1024;/\14096;/' /etc/nginx/nginx.conf \
+ && grep -q 'worker_connections *4096;' /etc/nginx/nginx.conf
 # Trusted proxy networks for the client address (UDP_TRUSTED_PROXIES).
 COPY --chmod=755 gui/docker/16-udp-realip.envsh /docker-entrypoint.d/16-udp-realip.envsh
 # Upstream of /abfahrten and /warnungen.ics (the connector service), checked.

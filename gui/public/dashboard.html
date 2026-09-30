@@ -45,6 +45,7 @@
   <span id="thememount"></span>
 </header>
 <div id="err"></div>
+<div class="loadwarn" id="loadwarn" role="status"></div>
 
 <div class="grid" style="margin-bottom:14px">
   <div class="card span-12">
@@ -108,9 +109,10 @@
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";
-const { $, css, esc, jget, tile, grade, barSvg, fmtN, fmtT, asRows } = SC;
+const { $, css, esc, jget, jlist, entity, failed, tile, errorTile, grade, barSvg, fmtN, fmtT, asRows } = SC;
 SC.themeSelector("#thememount");
 const GW = SC.GW;
+const PLAT_ID = "urn:ngsi-ld:PlatformStatus:udp", TROE_ID = "urn:ngsi-ld:PlatformStatus:udp-troe";
 const fmtDate = iso => { const d = new Date(iso); return isNaN(d) ? "–" : d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + " Uhr"; };
 const fmtBytes = b => b == null ? "–" : b > 1073741824 ? (b / 1073741824).toFixed(1).replace(".", ",") + " GB" : Math.round(b / 1048576) + " MB";
 
@@ -253,12 +255,17 @@ async function load() {
   const withSample = CONNECTORS.filter(c => c.sampleEntity);
   // 1) Dienste-Probes + Konnektoren + Host-Status + TRoE-Statistik parallel
   // (DB-Kennzahlen kommen als PlatformStatus:udp-troe aus dem Konnektordienst — kein SQL im Browser)
+  const mark = SC.loadMark();
   const [probes, sysList, platRes, troe] = await Promise.all([
     Promise.all(SERVICES.map(probe)),
-    jget(GW + "/ngsi-ld/v1/entities?id=" + withSample.map(c => c.sampleEntity).join(",") + "&options=sysAttrs&limit=50").catch(() => []),
-    jget(GW + "/ngsi-ld/v1/entities/urn:ngsi-ld:PlatformStatus:udp").catch(() => null),
-    jget(GW + "/ngsi-ld/v1/entities/urn:ngsi-ld:PlatformStatus:udp-troe").catch(() => null),
+    jlist(GW + "/ngsi-ld/v1/entities?id=" + withSample.map(c => c.sampleEntity).join(",") + "&options=sysAttrs&limit=50"),
+    entity(PLAT_ID),
+    entity(TROE_ID),
   ]);
+  SC.loadBanner("#loadwarn", mark);
+  // A failed query shows the error state instead of "–" or a red 0.
+  const platErr = failed(PLAT_ID), troeErr = failed(TROE_ID), sysErr = failed(sysList);
+  const orErr = (isErr, label, html) => isErr ? errorTile(label) : html;
   const ok = probes.filter(p => p.ok).length;
   const v = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
   // Numbers are coerced before they reach innerHTML (fmtN passes strings through).
@@ -271,33 +278,33 @@ async function load() {
     tile("Plattform-Status", ok + "/" + probes.length, "", {
       status: ok === probes.length ? css("--status-good") : ok >= probes.length - 1 ? css("--status-warn") : css("--status-serious"),
       hint: "Dienste erreichbar", explain: "Live-Erreichbarkeitstest aller Kernkomponenten über das API-Gateway — Details in der Schnittstellen-Liste." }) +
-    tile("Serverlast", v(platRes, "cpuLoadPct"), "%", {
+    orErr(platErr, "Serverlast", tile("Serverlast", v(platRes, "cpuLoadPct"), "%", {
       status: grade(v(platRes, "cpuLoadPct"), 70, 90),
       hint: "load1 " + (v(platRes, "cpuLoad1") ?? "?") + " · " + (v(platRes, "cpuCores") ?? "?") + " Kerne",
-      explain: "CPU-Auslastung des Hosts: 1-Minuten-Load geteilt durch Kernzahl. Über 100 % heißt: Prozesse warten auf CPU." }) +
-    tile("Arbeitsspeicher", v(platRes, "memUsedPct"), "%", {
+      explain: "CPU-Auslastung des Hosts: 1-Minuten-Load geteilt durch Kernzahl. Über 100 % heißt: Prozesse warten auf CPU." })) +
+    orErr(platErr, "Arbeitsspeicher", tile("Arbeitsspeicher", v(platRes, "memUsedPct"), "%", {
       status: grade(v(platRes, "memUsedPct"), 80, 92),
       hint: (v(platRes, "memTotalMb") ? Math.round(v(platRes, "memTotalMb") / 1024) + " GB gesamt" : ""),
-      explain: "Belegter Arbeitsspeicher des Hosts (ohne Cache/Buffer — die sind jederzeit freigebbar)." }) +
-    tile("Festplatte", v(platRes, "diskUsedPct"), "%", {
+      explain: "Belegter Arbeitsspeicher des Hosts (ohne Cache/Buffer — die sind jederzeit freigebbar)." })) +
+    orErr(platErr, "Festplatte", tile("Festplatte", v(platRes, "diskUsedPct"), "%", {
       status: grade(v(platRes, "diskUsedPct"), 75, 90),
       hint: (v(platRes, "diskTotalGb") ? fmtN(v(platRes, "diskTotalGb")) + " GB gesamt" : ""),
-      explain: "Belegung des Datenträgers, auf dem die Plattformdaten (Docker-Volumes) liegen." }) +
-    tile("Zeitreihen-DB", fmtBytes(dbB), "", {
+      explain: "Belegung des Datenträgers, auf dem die Plattformdaten (Docker-Volumes) liegen." })) +
+    orErr(troeErr, "Zeitreihen-DB", tile("Zeitreihen-DB", fmtBytes(dbB), "", {
       hint: "TimescaleDB „orion“ (TRoE)",
-      explain: "Größe der Zeitreihendatenbank, in der jede Messwert-Änderung historisiert wird (Temporal Representation of Entities)." }) +
-    tile("TRoE-Zeilen", rows == null ? "–" : "≈ " + fmtN(rows), "", {
+      explain: "Größe der Zeitreihendatenbank, in der jede Messwert-Änderung historisiert wird (Temporal Representation of Entities)." })) +
+    orErr(troeErr, "TRoE-Zeilen", tile("TRoE-Zeilen", rows == null ? "–" : "≈ " + fmtN(rows), "", {
       hint: "+" + fmtN(r24) + " in 24 h",
-      explain: "Gesamtzahl der historisierten Attributwerte (Schätzwert der Datenbankstatistik). Die 24-h-Zahl ist exakt und zeigt die aktuelle Schreiblast aller Konnektoren." }) +
-    tile("Entitäten", fmtN(ents), "", {
+      explain: "Gesamtzahl der historisierten Attributwerte (Schätzwert der Datenbankstatistik). Die 24-h-Zahl ist exakt und zeigt die aktuelle Schreiblast aller Konnektoren." })) +
+    orErr(troeErr, "Entitäten", tile("Entitäten", fmtN(ents), "", {
       hint: asOf ? "mit Historie · Stand " + fmtDate(asOf) : "mit Zeitreihen-Historie",
-      explain: "Anzahl unterschiedlicher NGSI-LD-Objekte (Sensoren, Stationen, Aggregate), zu denen Historie vorliegt. Wird einmal nächtlich gezählt." }) +
-    tile("Datenfluss", fmtN(r1), "/h", {
+      explain: "Anzahl unterschiedlicher NGSI-LD-Objekte (Sensoren, Stationen, Aggregate), zu denen Historie vorliegt. Wird einmal nächtlich gezählt." })) +
+    orErr(troeErr, "Datenfluss", tile("Datenfluss", fmtN(r1), "/h", {
       status: r1 > 0 ? css("--status-good") : css("--status-serious"),
       hint: "neue Werte letzte Stunde",
-      explain: "Ingestion-Rate: so viele neue Zeitreihenwerte kamen in der letzten Stunde über alle Schnittstellen herein. 0 = Alarmzeichen." }) +
-    tile("Host-Uptime", v(platRes, "uptimeDays"), "Tage", {
-      explain: "Zeit seit dem letzten Neustart des Servers." }) +
+      explain: "Ingestion-Rate: so viele neue Zeitreihenwerte kamen in der letzten Stunde über alle Schnittstellen herein. 0 = Alarmzeichen." })) +
+    orErr(platErr, "Host-Uptime", tile("Host-Uptime", v(platRes, "uptimeDays"), "Tage", {
+      explain: "Zeit seit dem letzten Neustart des Servers." })) +
     `<a class="tile" href="/reutlingen" target="_blank" rel="noopener" data-explain="Das Reutlinger Dashboard ist die Vorlage: ein Template für alle Städte — jede Kommune zeigt automatisch, was ihre Datenlage hergibt, Reutlingen den vollen Ausbau.">
        <div class="label">Template-Dashboard</div>
        <div class="value">Smart City Reutlingen →</div>
@@ -319,6 +326,7 @@ async function load() {
     if (c.active === false) { color = css("--text-muted"); alter = "deaktiviert"; }
     else if (c.pending) { color = css("--text-muted"); alter = "wartet auf Freischaltung"; }
     else if (!c.sampleEntity) { color = css("--text-muted"); alter = "—"; }
+    else if (sysErr) { color = css("--text-muted"); alter = "nicht abrufbar"; }
     else {
       color = age == null ? css("--status-serious")
         : age <= soll * 1.5 ? css("--status-good") : age <= soll * 3 ? css("--status-warn") : css("--status-serious");
@@ -328,7 +336,7 @@ async function load() {
       <td>${esc(c.name)}${c.supersededBy ? " ⤳" : ""}</td>
       <td style="color:var(--text-muted)">${esc(geltung(c))}</td>
       <td>${c.sampleEntity ? (soll >= 1440 ? "täglich" : soll >= 60 ? soll / 60 + " h" : soll + " min") : "—"}</td>
-      <td>${mod ? new Date(mod).toLocaleString("de-DE", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : c.pending ? "–" : c.sampleEntity ? "nie" : "–"}</td>
+      <td>${mod ? new Date(mod).toLocaleString("de-DE", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : c.pending || sysErr ? "–" : c.sampleEntity ? "nie" : "–"}</td>
       <td class="num">${alter}</td></tr>`;
   }).join("");
 
@@ -338,12 +346,13 @@ async function load() {
 async function loadCharts() {
   // Ingestion + Typen aus PlatformStatus:udp-troe (Konnektordienst), Lastverlauf via Mintaka (TRoE)
   const [troe, loadHist] = await Promise.all([
-    jget(GW + "/ngsi-ld/v1/entities/urn:ngsi-ld:PlatformStatus:udp-troe").catch(() => null),
-    SC.hist("urn:ngsi-ld:PlatformStatus:udp", "cpuLoadPct", 24),
+    entity(TROE_ID),
+    SC.hist(PLAT_ID, "cpuLoadPct", 24),
   ]);
   const v = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
   barSvg("#bars-ingest", asRows(v(troe, "ingestByHour")).map(([h, n]) => [h + " Uhr", n]));
-  lineSvg("#ch-load", SC.series(loadHist, "cpuLoadPct"), "%");
+  if (failed(loadHist)) $("#ch-load").innerHTML = `<div class="desc">${SC.LOAD_ERR_TXT}</div>`;
+  else lineSvg("#ch-load", SC.series(loadHist, "cpuLoadPct"), "%");
   // Totals and entity counts are computed nightly (-1 = not counted yet),
   // the 24 h column is live.
   const nightly = n => (n == null || Number(n) < 0) ? "–" : fmtN(Number(n)), asOf = v(troe, "rowsByTypeAsOf");

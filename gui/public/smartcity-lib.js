@@ -61,24 +61,164 @@
   // [a,b,c] — dann wieder in eine Zeilenliste einbetten.
   const asRows = v => { const a = asArray(v); return a.length && !Array.isArray(a[0]) ? [a] : a; };
 
+  /* ---------- Queries: one retry, failures distinguishable from "no data" ----------
+     A failed query (5xx, network error, or 429 from the gateway's per-client
+     rate limit) must not look like "this municipality has no such data".
+     The soft helpers (entity, byAgs, jlist, hist) still resolve to the neutral
+     fallback (null / [] / {}), but a failure is marked and counted:
+       SC.failed(value)   true for a fallback that stands for a failed query
+       SC.failed(id)      true if the last entity(id) failed
+       SC.loadMark() / SC.loadSince(mark)   queries and failures since a mark
+     A 404 means "does not exist" – no data, not a failure. */
+  const FAILED = Symbol("sc-failed");
+  const RETRY_CAP_MS = 2000;
+  const _load = { total: 0, failed: 0 };
+  const _failedIds = new Set();
+  // 504: the gateway already waited for its upstream – asking again only
+  // doubles the wait.
+  const retryable = status => status === 429 || (status >= 500 && status !== 504);
+  const ATTEMPT_MS = 15000;   // per request attempt
+  const BUDGET_MS = 20000;    // both attempts together, pauses included
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const timeoutSignal = ms => {
+    if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) return AbortSignal.timeout(ms);
+    const c = new AbortController();
+    setTimeout(() => c.abort(new DOMException("timeout", "TimeoutError")), ms);
+    return c.signal;
+  };
+  const isTimeout = e => !!e && (e.name === "TimeoutError" || e.name === "AbortError");
+  // Pause before the retry: Retry-After (seconds or HTTP date) if the answer
+  // has one, capped; otherwise a short jittered pause, so many clients hit by
+  // the same limit do not come back in lockstep.
+  function retryDelay(r) {
+    const h = r && r.headers ? r.headers.get("Retry-After") : null;
+    if (h != null && String(h).trim() !== "") {
+      const s = Number(h);
+      const ms = Number.isFinite(s) ? s * 1000 : Date.parse(h) - Date.now();
+      if (Number.isFinite(ms)) return Math.max(0, Math.min(RETRY_CAP_MS, ms));
+    }
+    return 400 + Math.random() * 400;
+  }
+  // fetch with a timeout per attempt and at most one retry on 429, 5xx except
+  // 504 (or what retryIf accepts) and network errors, within BUDGET_MS. A
+  // timeout is a failure without retry. Resolves to the last Response
+  // (possibly not ok); rejects on a timeout or a network error without retry.
+  async function fetchRetry(url, init, retryIf = retryable) {
+    const t0 = Date.now();
+    const attempt = ms => fetch(url, Object.assign({}, init, { signal: timeoutSignal(ms) }));
+    let r = null, err = null;
+    try { r = await attempt(ATTEMPT_MS); } catch (e) { if (isTimeout(e)) throw e; err = e; }
+    if (r && !retryIf(r.status)) return r;
+    const wait = retryDelay(r);
+    const left = BUDGET_MS - (Date.now() - t0) - wait;
+    if (left < 1000) { if (r) return r; throw err; }
+    await sleep(wait);
+    return attempt(Math.min(ATTEMPT_MS, left));
+  }
   async function jget(url) {
-    const r = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!r.ok) throw new Error(url.split("?")[0] + " → HTTP " + r.status);
+    const r = await fetchRetry(url, { headers: { Accept: "application/json" } });
+    if (!r.ok) {
+      const e = new Error(url.split("?")[0] + " → HTTP " + r.status);
+      e.status = r.status;
+      throw e;
+    }
     return r.json();
   }
+  const markFailed = v => {
+    if (v && typeof v === "object") Object.defineProperty(v, FAILED, { value: true });
+    return v;
+  };
+  // One soft query: the answer, `empty()` for 404, or `empty()` marked as
+  // failed. `id` tracks entity queries (null cannot carry a mark); `quiet`
+  // queries (sparklines) are not counted.
+  async function soft(url, empty, id, quiet) {
+    if (!quiet) _load.total++;
+    try {
+      const v = await jget(url);
+      if (id) _failedIds.delete(id);
+      return v;
+    } catch (e) {
+      if (e && e.status === 404) { if (id) _failedIds.delete(id); return empty(); }
+      if (!quiet) _load.failed++;
+      if (id) _failedIds.add(id);
+      return markFailed(empty());
+    }
+  }
+  const failed = x => typeof x === "string" ? _failedIds.has(x) : !!(x && x[FAILED]);
+  const loadMark = () => ({ total: _load.total, failed: _load.failed });
+  const loadSince = m => ({ total: _load.total - m.total, failed: _load.failed - m.failed });
   const entities = (type, extra) => jget(`${GW}/ngsi-ld/v1/entities?type=${type}&limit=1000${extra || ""}`);
-  const entity = id => jget(`${GW}/ngsi-ld/v1/entities/${encodeURIComponent(id)}`).catch(() => null);
+  const entity = id => soft(`${GW}/ngsi-ld/v1/entities/${encodeURIComponent(id)}`, () => null, id);
+  // Any list query (NGSI-LD query URL): [] for no data, a marked [] on failure.
+  const jlist = url => soft(url, () => []);
   // limit 1000: Großstädte haben mehrere hundert Ladestandorte je Gemeinde.
   // Optionale attrs-Projektion: nur die gebrauchten Felder holen (spart bei
   // dichten Stations-Listen hunderte KB je Seitenaufruf).
   const byAgs = (type, ags, attrs) =>
-    jget(`${GW}/ngsi-ld/v1/entities?type=${type}&q=ags%3D%3D%22${ags}%22&limit=1000` +
-         (attrs ? `&attrs=${attrs}` : "")).catch(() => []);
-  const hist = (id, attrs, hours = 24) => {
+    jlist(`${GW}/ngsi-ld/v1/entities?type=${type}&q=ags%3D%3D%22${ags}%22&limit=1000` +
+          (attrs ? `&attrs=${attrs}` : ""));
+  const histUrl = (id, attrs, hours) => {
     const t = new Date(Date.now() - hours * 3600e3).toISOString();
-    return jget(`${GW}/temporal/temporal/entities/${encodeURIComponent(id)}?attrs=${attrs}&timerel=after&timeAt=${t}&options=temporalValues`)
-      .catch(() => ({}));
+    return `${GW}/temporal/temporal/entities/${encodeURIComponent(id)}?attrs=${attrs}&timerel=after&timeAt=${t}&options=temporalValues`;
   };
+  const hist = (id, attrs, hours = 24) => soft(histUrl(id, attrs, hours), () => ({}));
+
+  /* ---------- Failed queries on the page ---------- */
+  const LOAD_ERR_TXT = "Daten derzeit nicht abrufbar";
+  const LOAD_BANNER_TXT = "Einige Daten konnten nicht geladen werden – bitte später neu laden.";
+  // Page banner once several queries failed: at least 3, or at least 2 that
+  // make up 20 % of the page's queries.
+  const bannerDue = (nFailed, nTotal) => nFailed >= 3 || (nFailed >= 2 && nTotal > 0 && nFailed / nTotal >= 0.2);
+  // Fills the banner element (role="status", stays in the DOM so screen
+  // readers announce the change) for the queries since `mark`.
+  function loadBanner(sel, mark) {
+    const el = typeof sel === "string" ? $(sel) : sel;
+    if (!el) return false;
+    const s = loadSince(mark);
+    const due = bannerDue(s.failed, s.total);
+    const text = due ? LOAD_BANNER_TXT : "";
+    // Unchanged text is not rewritten: a live region would announce it again.
+    if (el.textContent !== text) el.textContent = text;
+    return due;
+  }
+  // Neutral tile for data that normally exists but could not be fetched now.
+  function errorTile(label, opts = {}) {
+    const topic = opts.topic ? ` data-topic="${esc(opts.topic)}"` : "";
+    return `<div class="tile tile-error"${topic} data-explain="Die Abfrage ist gerade fehlgeschlagen. Beim nächsten Aktualisieren wird es erneut versucht.">` +
+      `<div class="label">${esc(label)}</div><div class="value">${LOAD_ERR_TXT}</div></div>`;
+  }
+  // Which tiles a page normally shows (per municipality/district), so a failed
+  // query only turns into an error tile where data usually exists – never for
+  // data a municipality simply does not have. Kept in localStorage, else for
+  // the lifetime of the page.
+  function tileMemory(scope) {
+    const key = "sc-tiles:" + scope;
+    let seen = new Set();
+    try { seen = new Set(JSON.parse(localStorage.getItem(key) || "[]")); } catch (e) { /* no storage */ }
+    return {
+      has: k => seen.has(k),
+      // shown: keys rendered with data now; a failed key keeps its old state.
+      save(shown, failedKeys) {
+        const next = new Set(shown);
+        for (const k of failedKeys) if (seen.has(k)) next.add(k);
+        seen = next;
+        try { localStorage.setItem(key, JSON.stringify([...next])); } catch (e) { /* no storage */ }
+      },
+    };
+  }
+  // Appends error tiles to `host` for failed optional tiles.
+  // specs: [{ key, labels: [tile labels], failed: bool, topic? }]. A spec
+  // counts as shown if one of its labels is on the page; a failed spec that
+  // is not shown gets an error tile if memory says it normally is.
+  function errorTiles(host, specs, mem) {
+    const el = typeof host === "string" ? $(host) : host;
+    const present = new Set([...el.querySelectorAll(".tile:not(.tile-error) .label")].map(l => l.textContent.trim()));
+    const shown = specs.filter(s => s.labels.some(l => present.has(l))).map(s => s.key);
+    const add = specs.filter(s => s.failed && !shown.includes(s.key) && mem.has(s.key));
+    mem.save(shown, specs.filter(s => s.failed).map(s => s.key));
+    if (add.length) el.insertAdjacentHTML("beforeend", add.map(s => errorTile(s.labels[0], { topic: s.topic })).join(""));
+    return add.map(s => s.key);
+  }
   const series = (t, a) => (t && t[a] && t[a].values ? t[a].values.map(([v, ts]) => [new Date(ts).getTime(), v]) : []);
 
   /* ---------- KPI-Kachel ---------- */
@@ -495,7 +635,9 @@
     const wrap = $("#sc-modal-body").querySelector(".m-chartwrap");
     wrap.innerHTML = `<div class="desc">lädt…</div>`;
     const slot = SLOT();
-    const ts = await Promise.all(def.series.map(s => hist(s.id, s.attr, hours)));
+    // quiet: a detail view opened later does not count for the page banner
+    const ts = await Promise.all(def.series.map(s => soft(histUrl(s.id, s.attr, hours), () => ({}), null, true)));
+    if (ts.some(failed)) { wrap.innerHTML = `<div class="desc">${LOAD_ERR_TXT}</div>`; _lastSeries = null; return; }
     const seriesList = def.series.map((s, i) => {
       let data = series(ts[i], s.attr);
       if (s.factor) data = data.map(([x, v]) => [x, v * s.factor]);
@@ -837,7 +979,8 @@
       // oder schon eine Sparkline hat.
       if (!tileEl.classList.contains("tile") || tileEl.querySelector(".spark, .tile-mini, .mini-band, .mini-steps")) return;
       const s = def.series[0];
-      jobs.push(hist(s.id, s.attr, 24).then(ts => {
+      // quiet: sparklines are an enhancement and do not count for the banner
+      jobs.push(soft(histUrl(s.id, s.attr, 24), () => ({}), null, true).then(ts => {
         let data = series(ts, s.attr).map(p => p[1]).filter(v => v != null);
         if (s.factor) data = data.map(v => v * s.factor);
         const svg = sparklineSvg(data, "rgba(255,255,255,.92)");
@@ -855,7 +998,8 @@
   // Nur die von den Seiten genutzte Oberfläche exportieren; Interna (SLOT, Themes,
   // Modal-Innereien, navLinks) bleiben privat.
   w.SC = { GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
-           jget, entities, entity, byAgs, hist, series, asRows,
+           jget, fetchRetry, entities, entity, byAgs, jlist, hist, series, asRows,
+           failed, loadMark, loadSince, bannerDue, loadBanner, errorTile, tileMemory, errorTiles, LOAD_ERR_TXT,
            tile, grade, chart, barSvg, stackBar, popupHtml, groupColor, pos, baseLayer,
            themeSelector, modalOpen, wireTileDetails, openDetailByKey, markerIcon,
            gaugeSvg, compassSvg, thresholdBar, thermoSvg, miniRadialSvg, miniGaugeSvg, miniCompassSvg, sparklineSvg,

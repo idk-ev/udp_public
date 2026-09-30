@@ -33,15 +33,18 @@ async function renderCity(slug, stadt) {
   return w.document;
 }
 
-exports["Reutlingen: volle Detailtiefe (≥20 Kacheln, ≥7 Charts, Fehlerbox leer)"] = async () => {
+exports["Reutlingen: volle Detailtiefe (≥20 Kacheln, ≥15 mit Detailansicht, Fehlerbox leer)"] = async () => {
   const d = await renderCity("reutlingen", { ags: "08415061", slug: "reutlingen", name: "Reutlingen" });
   assert.strictEqual(d.querySelector("#err").textContent, "", "Fehlerbox belegt");
   assert(d.querySelectorAll("#tiles .tile").length >= 20, "zu wenige Kacheln");
-  assert(d.querySelectorAll("#charts .card").length >= 7, "zu wenige Chart-Karten");
+  // Detail depth sits behind the tiles (charts/maps in the modal): the inline
+  // chart row only knows br/carsharing/passanten/parken (CHART_ORDER) and
+  // shows none of them for Reutlingen, so "≥ 7 chart cards" could never hold.
+  assert(d.querySelectorAll("#tiles .tile[data-detail]").length >= 15, "zu wenige Kacheln mit Detailansicht");
 };
 
 exports["Datenarme Gemeinde rendert fehlerfrei (Böllen)"] = async () => {
-  const d = await renderCity("boellen", { ags: "08336015", slug: "boellen", name: "Böllen" });
+  const d = await renderCity("boellen", { ags: "08336010", slug: "boellen", name: "Böllen" });
   assert.strictEqual(d.querySelector("#err").textContent, "");
   assert(d.querySelectorAll("#tiles .tile").length >= 5);
 };
@@ -163,11 +166,15 @@ exports["Jede Gemeinde hat die vier Bürgerservice-Kacheln + saubere Themen-Grup
   // Nicht bereitgestellte Dienste erscheinen als Potenzial-Kachel, nicht als Lücke
   assert(d.querySelectorAll('#tiles a.tile.tile-empty').length >= 1, "keine Potenzial-Kachel bei datenarmer Gemeinde");
 
-  // Themen-Gruppierung: Kacheln stehen nach Thema sortiert (nicht gemischt)
-  const order = { "": 0, wetter: 1, umwelt: 2, mobilitaet: 3, energie: 4, service: 5, freizeit: 6 };
-  const seq = [...d.querySelectorAll('#tiles .tile')].map(t => order[t.dataset.topic || ""] ?? 9);
+  // Tile order follows REL_ORDER in stadt.html (relevance, not topic);
+  // unknown labels come last in code order.
+  const src = await (await fetch(BASE + "/stadt.html")).text();
+  // Evaluated, not JSON-parsed: the array literal may use JS syntax.
+  const rel = new Function(`return ${src.match(/const REL_ORDER = (\[[\s\S]*?\]);/)[1]}`)();
+  const rank = t => { const i = rel.indexOf(t.querySelector(".label").textContent.trim()); return i === -1 ? rel.length : i; };
+  const seq = [...d.querySelectorAll("#tiles .tile")].map(rank);
   for (let i = 1; i < seq.length; i++) {
-    assert(seq[i] >= seq[i - 1], `Kacheln nicht themengruppiert an Position ${i} (${seq.join(",")})`);
+    assert(seq[i] >= seq[i - 1], `Kacheln nicht nach REL_ORDER sortiert an Position ${i} (${seq.join(",")})`);
   }
 };
 

@@ -116,6 +116,15 @@ a.tile { display: block; text-decoration: none; background: linear-gradient(135d
          cursor: pointer; }
 a.tile:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(18,40,58,.25); }
 a.tile .value { font-size: 1.12rem; line-height: 1.3; padding-top: 4px; }
+/* Query failed (SC.errorTile): neutral, not alarming – the data is only
+   unavailable right now. */
+.tile.tile-error { background: var(--surface-1); border: 1px dashed var(--border); color: var(--text-secondary); box-shadow: none; }
+.tile.tile-error .label { color: var(--text-secondary); }
+.tile.tile-error .value { font-size: .95rem; font-weight: 600; line-height: 1.3; color: var(--text-secondary); }
+/* Page banner when several queries failed (SC.loadBanner, role="status"). */
+.loadwarn { border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; color: var(--text-secondary);
+            background: var(--surface-1); border: 1px solid var(--status-warn); }
+.loadwarn:empty { padding: 0; margin: 0; border: 0; }
 /* Sparkline (24-h-Trend) am Fuß der Messwert-Kachel — helle Linie auf farbiger Kachel */
 .tile .spark { display: block; width: 100%; height: 26px; margin-top: 6px; opacity: .95; }
 .tile[data-detail]::before { z-index: 1; }
