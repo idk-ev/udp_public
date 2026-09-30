@@ -27,7 +27,7 @@ einen Kubernetes-Cluster zu bringen. Das Chart liegt in `helm/udp/`.
 | Open Data       | CKAN (DCAT-AP.de) + Solr + Valkey *(`ckan.enabled`)*     |
 | Geo             | GeoServer *(`geoserver.enabled`)*, Masterportal *(aus)*  |
 | Anwendungen     | Konnektordienst *(`connectors.enabled`)*, Node-RED (Low-Code, Beispielfluss), Cockpit |
-| Betrieb         | DB-Backup (pg_dump) *(`backup.enabled`)*                 |
+| Betrieb         | DB-Backup nach S3 (WAL-Archiv + PITR) *(`backup.enabled`)* |
 | Netzwerk        | Ingress, NetworkPolicies, PodDisruptionBudgets           |
 
 Damit deckt das Chart denselben Funktionsumfang ab wie
@@ -80,8 +80,9 @@ Ingress-Pfade entsprechen dann wieder exakt den APISIX-Routen (kein Rewrite).
 | Ingress-Controller        | z. B. ingress-nginx – externer Zugriff         |
 | **CNI mit NetworkPolicy** | Calico / Cilium – sonst greifen die Policies nicht |
 | Default StorageClass      | für die PVCs (oder in Values gesetzt)          |
-| cert-manager *(optional)* | automatisches TLS-Zertifikat                   |
+| cert-manager *(optional)* | automatisches TLS-Zertifikat; **Pflicht für Backups** (Barman-Cloud-Plugin) |
 | **CloudNativePG-Operator ≥ 1.26** | betreibt die PostgreSQL-Datenbank `timescale` (Primary + Standby) |
+| Barman-Cloud-Plugin *(für Backups)* | sichert `timescale` in S3-kompatiblen Objektspeicher |
 
 Prüfen:
 ```bash
@@ -141,6 +142,84 @@ required`).
 > **Wichtig:** Ohne policy-fähiges CNI (z. B. bei reinem Flannel) werden die
 > NetworkPolicies stillschweigend ignoriert – die Segmentierung greift dann
 > nicht. In dem Fall Calico/Cilium nachrüsten oder das Risiko akzeptieren.
+
+### Backup in S3-kompatiblen Objektspeicher
+
+Die Datenbank wird fortlaufend in einen Bucket gesichert: jedes WAL-Segment,
+sobald es voll ist, dazu täglich eine Basissicherung. Damit lässt sich jeder
+Zeitpunkt im Aufbewahrungsfenster (`backup.retentionPolicy`, Standard 30 Tage)
+wiederherstellen – auch nach Verlust des ganzen Clusters. Geht an jeden
+S3-kompatiblen Anbieter (AWS, MinIO, Ceph RGW, die Objektspeicher der
+Cloud-Anbieter …). Ohne Konfiguration ist das Backup **aus**
+(`backup.enabled: false`).
+
+Die Sicherung übernimmt das Barman-Cloud-Plugin von CloudNativePG. Es wird wie
+der Operator einmal clusterweit installiert, in **denselben Namespace**, und
+braucht cert-manager:
+
+```bash
+helm upgrade --install plugin-barman-cloud cnpg/plugin-barman-cloud \
+  -n cnpg-system --kube-context "$KUBE_CONTEXT"
+kubectl --context "$KUBE_CONTEXT" -n cnpg-system rollout status deploy/plugin-barman-cloud
+```
+
+Bucket und Zugangsschlüssel beim Anbieter anlegen. Der Schlüssel braucht
+Lesen, Schreiben, Auflisten und Löschen (Aufräumen nach `retentionPolicy`),
+am besten beschränkt auf diesen Bucket. Dann das Secret – bewusst **nicht**
+über Values, sonst stünde der Schlüssel im Helm-Release:
+
+```bash
+kubectl --context "$KUBE_CONTEXT" -n udp create secret generic udp-backup-s3 \
+  --from-literal=ACCESS_KEY_ID='…' --from-literal=ACCESS_SECRET_KEY='…'
+```
+
+In `values-prod.yaml`:
+
+```yaml
+backup:
+  enabled: true
+  destinationPath: s3://mein-bucket/udp
+  endpointURL: https://s3.example.org     # leer bei AWS S3
+  existingSecret: udp-backup-s3
+```
+
+Nach dem `helm upgrade` fügt der Operator jeder Instanz einen Sidecar hinzu:
+erst dem Standby, dann startet er den **Primary an Ort und Stelle** neu – ohne
+Switchover, weil der Standby noch keinen WAL-Archivierer hat. Das heißt einige
+Minuten ohne Schreibzugriff (Smart-Shutdown wartet bis zu 180 s auf die
+Clients); das Upgrade entsprechend einplanen. Die sofortige erste
+Basissicherung läuft dabei meist ins Leere („plugin is not available“) – dann,
+sobald der Cluster wieder gesund ist, eine von Hand anstoßen:
+
+```bash
+kubectl -n udp create -f - <<'EOF'
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata: { generateName: timescale-manual- }
+spec:
+  cluster: { name: timescale }
+  method: plugin
+  pluginConfiguration: { name: barman-cloud.cloudnative-pg.io }
+EOF
+scripts/restore-timescale.sh status
+```
+
+`ContinuousArchiving: True` und eine `completed`-Sicherung = alles in Ordnung.
+Meldet das Archiv Fehler zu Prüfsummen (`x-amz-content-sha256`,
+`MissingContentLength`), unterstützt der Anbieter die Prüfsummen neuerer
+boto3-Versionen nicht – dann `backup.sidecar.env` wie in `values.yaml`
+beschrieben setzen. Mit `strictEgress` gibt das Chart den Datenbank-Pods
+Port 443 ins Internet frei – besser auf die Adressen des Endpunkts
+eingrenzen (`networkPolicies.backupEgress.to`); ein Endpunkt im privaten Netz
+braucht diesen Wert ohnehin.
+
+Gesichert werden alle PostgreSQL-Datenbanken. **Nicht** enthalten: MongoDB
+und das Volume `ckan-data` (eigene Sicherung, z. B. Volume-Snapshots).
+Überwachung: Die Instanzen exportieren
+`barman_cloud_cloudnative_pg_io_last_available_backup_timestamp` (Port 9187,
+für den Namespace aus `networkPolicies.monitoringNamespaceLabel` freigegeben) –
+ein Alarm, wenn sie älter als 26 h ist, fängt ausgefallene Sicherungen ab.
+Wiederherstellen: Abschnitt 10c.
 
 ### Zielcluster explizit wählen (Mehrere kubeconfigs/Contexts)
 
@@ -647,7 +726,7 @@ Orion-LD), gleicher Hostname `timescale`, Sortierung `en_US.UTF-8` wie bisher;
 PostGIS 3.5 → 3.6, TimescaleDB 2.26 → aktuelle 2.x (Apache-Edition),
 Datenprüfsummen an. Die Kopie überträgt keine Hypertables – das Skript bricht
 dann ab. Reihenfolge deshalb: erst dieser Umzug, danach die Umstellung von
-TRoE auf die Hypertable (§10c).
+TRoE auf die Hypertable (§10d).
 
 ### 10b. Hochverfügbarkeit: Verteilung und MongoDB-Replica-Set
 
@@ -866,7 +945,64 @@ Set neu befüllt. Sind dagegen **alle** Mitglieder gleichzeitig weg und
 `mongo-0` startet mit leerem Volume, legt es ein neues, leeres Set an – dann
 aus dem Backup bzw. den Volumes der anderen Mitglieder wiederherstellen.
 
-### 10c. TRoE-Tabelle `attributes` auf Hypertable umstellen
+### 10c. Wiederherstellen aus dem Backup
+
+Voraussetzung: Backup nach Abschnitt 2 eingerichtet. Alles Weitere erledigt
+`scripts/restore-timescale.sh` (Namespace per `NAMESPACE=…`, Standard `udp`).
+Zeitpunkte im Format RFC 3339, z. B. `2026-09-28T10:15:00Z`; ohne Zeitpunkt
+gilt der letzte archivierte Stand. Welcher Bereich möglich ist, zeigt
+`restore-timescale.sh status` („restorable from …“).
+
+**Einzelne Datenbank** (versehentlich gelöschte Daten, missglückte
+Migration) – der Live-Cluster läuft weiter:
+
+```bash
+S=scripts/restore-timescale.sh
+$S side 2026-09-28T10:15:00Z   # Zweitcluster "timescale-restore" aus dem Archiv
+kubectl -n udp exec -it timescale-restore-1 -c postgres -- psql -d frost   # nachsehen
+$S copy-db frost               # AUSFALL: frost im Live-Cluster durch diesen Stand ersetzen
+$S drop-side                   # Zweitcluster löschen
+```
+
+Der Zweitcluster bekommt ein Volume in der Größe des Live-Clusters und
+schreibt nie ins Archiv. `copy-db` stoppt die Clients, benennt die bisherige
+Datenbank in `<db>_before_restore_<zeitstempel>` um (also doppelter
+Platzbedarf), spielt den Stand ein und startet die Clients wieder. Die Kopie
+läuft über den eigenen Rechner (`kubectl exec`). Die umbenannte Datenbank
+nach der Prüfung löschen – der Befehl steht in der Ausgabe.
+
+**Ganzer Cluster** (Daten verloren oder beschädigt):
+
+```bash
+$S full [ZEITPUNKT]   # AUSFALL: stoppt die Clients, LÖSCHT den Cluster samt Volumes
+# Werte aus der Ausgabe in values-prod.yaml übernehmen:
+#   backup.serverName:            neuer Archivordner, z. B. timescale-r202609281015
+#   timescale.recovery.enabled:   true
+#   timescale.recovery.serverName: bisheriger Ordner
+#   timescale.recovery.targetTime: Zeitpunkt oder ""
+helm upgrade udp . -n udp --kube-context "$KUBE_CONTEXT" -f values-prod.yaml
+$S finish             # wartet auf den Cluster, erste Basissicherung, Clients hoch
+```
+
+Danach `timescale.recovery.enabled` wieder auf `false` setzen; der neue
+`backup.serverName` **bleibt** – CNPG schreibt nie in einen Archivordner, der
+schon WAL enthält, und der alte gehört zur verworfenen Zeitlinie. Der alte
+Ordner wird nicht mehr automatisch aufgeräumt; nach einer Karenzzeit im
+Bucket löschen.
+
+Ein neuer Cluster (anderer Kubernetes-Cluster, Namespace neu) wird genauso
+aufgebaut: Plugin und Secret wie in Abschnitt 2, dann direkt mit den
+`recovery`-Werten installieren.
+
+**Umstieg vom pg_dump-Backup (bis Chart 1.3.0):** Das Deployment `db-backup`
+entfällt. Das Upgrade bricht ab, solange es noch läuft und kein S3-Backup
+konfiguriert ist – entweder `backup.*` einrichten (Abschnitt 2) oder
+bewusst `backup.acknowledgeNoBackup: true` setzen. Das PVC `db-backup-data`
+mit den letzten Dumps bleibt stehen (`resource-policy: keep`) – löschen,
+sobald die erste S3-Sicherung `completed` ist:
+`kubectl -n udp delete pvc db-backup-data`.
+
+### 10d. TRoE-Tabelle `attributes` auf Hypertable umstellen
 
 Neue Installationen legen `attributes` als TimescaleDB-Hypertable ohne
 Primärschlüssel an (initContainer `troe-schema` von `orion-ld`, Hintergrund:
@@ -895,8 +1031,10 @@ Vorher:
 - Die Temporal-API liefert danach für unveränderte Werte weniger Stützstellen;
   Zeitfenster mitten am Tag, `lastN` und Aggregationen können andere
   Ergebnisse geben (`docs/betrieb.md`, „Speicherlayout“) – vorher klären.
-- Keine laufende Sicherung (`db-backup`) und keine Retention zum Zeitpunkt des
-  `cutover` (bzw. `swap-lowdisk`): Das Skript bricht sonst vor dem Tausch ab.
+- Kein `pg_dump` und keine Retention zum Zeitpunkt des `cutover` (bzw.
+  `swap-lowdisk`): Das Skript bricht sonst vor dem Tausch ab. Das S3-Backup
+  (Basissicherung, WAL-Archiv) stört nicht; es archiviert das WAL der Kopie
+  mit.
 - **Platz:** `preflight` schätzt den Bedarf (alte Tabelle ohne Schlüssel × 1,3)
   und bricht ab, wenn er auf dem Volume der vollsten Instanz nicht frei ist.
   Dann **zuerst das Volume vergrößern** – oder die Low-Disk-Variante (unten)
@@ -1050,7 +1188,9 @@ Bleibt erhalten (bewusst, gegen Datenverlust):
   `timescale-2` (`resource-policy: keep`; die Instanzen laufen weiter; ein erneutes `helm install` desselben Releases
   übernimmt ihn wieder, Daten bleiben erhalten. Entfernen:
   `kubectl -n udp delete cluster timescale` – **löscht die Daten**)
-- PVC `db-backup-data` mit den letzten Dumps (`resource-policy: keep`)
+- das ObjectStore `timescale-backup` (`resource-policy: keep`, damit der
+  weiterlaufende Cluster sein WAL weiter archivieren kann) – und natürlich
+  das Archiv im Bucket
 
 Wird mit entfernt: PVC `ckan-data` – vorher sichern. Node-RED hat kein PVC
 (Beispielfluss aus der ConfigMap), es geht dort also nichts verloren.
@@ -1093,7 +1233,9 @@ Das Monitoring hat ein eigenes Release und wird separat entfernt
       eigene Flüsse externe Quellen abrufen).
 - [ ] **Monitoring:** `networkPolicies.monitoringNamespaceLabel` setzen – öffnet
       die HTTP-Dienste und APISIX-Metrics `:9091` für diesen Namespace.
-- [ ] **Backups** für mongo/timescale-Volumes einrichten (Velero/Snapshots).
+- [ ] **Backup** der Datenbank in S3 einrichten (`backup.enabled`, Abschnitt 2)
+      und die Wiederherstellung einmal mit `restore-timescale.sh side` proben.
+      MongoDB und `ckan-data` separat sichern (Velero/Snapshots).
 - [ ] **Ressourcen/HPA** nach Last justieren; PDBs sind für die replizierten
       Dienste gesetzt (nur bei `replicas > 1`).
 - [x] **Probes:** jeder Dienst hat Readiness- und Liveness-Probe, langsam

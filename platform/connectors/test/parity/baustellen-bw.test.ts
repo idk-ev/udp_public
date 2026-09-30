@@ -257,7 +257,11 @@ class Broker {
   readonly deleted: string[] = [];
 
   constructor() {
-    const old = { type: "Property", value: { "@type": "DateTime", "@value": "2020-01-01T00:00:00.000Z" } };
+    // Three days: past the grace, but RECENT — a backlog (older than 7 days)
+    // is drained only from the run after the fresh stock was first recorded
+    // (src/kernel/prune.ts; test/parity/prune-backlog.test.ts).
+    const threeDaysAgo = new Date(Date.now() - 72 * HOUR).toISOString();
+    const old = { type: "Property", value: { "@type": "DateTime", "@value": threeDaysAgo } };
     const stale = (id: string): Record<string, unknown> => ({ id, type: "RoadWork", dateObserved: old });
     for (const id of [
       "urn:ngsi-ld:RoadWork:bw-svz-left-the-feed-001",

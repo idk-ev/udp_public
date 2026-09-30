@@ -80,6 +80,28 @@
    ignoriert sie (kein Schutz, aber auch keine Blockade).
 {{- end }}
 
+{{- if and ((.Values.cockpit.analytics | default dict).headHtml | default "" | toString | trim) (not (.Values.cockpit.legal | default dict).datenschutzUrl) }}
+
+WARNUNG: Webanalyse ist aktiv (cockpit.analytics.headHtml), aber es ist keine
+   Datenschutzerklärung verlinkt (cockpit.legal.datenschutzUrl ist leer).
+   Die Datenschutzerklärung muss das Analysewerkzeug nennen – s. docs/betrieb.md.
+{{- end }}
+{{- if .Values.backup.enabled }}
+
+Backup: WAL-Archiv + tägliche Basissicherung nach {{ .Values.backup.destinationPath }}/{{ .Values.backup.serverName }}
+   Status:  scripts/restore-timescale.sh status
+{{- else }}
+
+!! KEIN BACKUP der Datenbank konfiguriert (backup.enabled=false).
+   Für Produktion S3-kompatiblen Speicher einrichten – DEPLOY.md §2.
+{{- end }}
+{{- if .Values.timescale.recovery.enabled }}
+
+timescale.recovery ist aktiv: wirkt nur beim NEUANLEGEN des Clusters
+   (Quelle: {{ .Values.timescale.recovery.serverName }}{{ with .Values.timescale.recovery.targetTime }}, Zeitpunkt {{ . }}{{ end }}).
+   Fortschritt: kubectl -n {{ .Release.Namespace }} get cluster timescale -w
+{{- end }}
+
 5) Sicherheits-Checkliste vor Produktivbetrieb:
    [x] Interne Zugangsdaten sind starke Zufallspasswörter (automatisch, stabil)
    [ ] Eigene values-prod.yaml mit echtem Host, StorageClass, Registry

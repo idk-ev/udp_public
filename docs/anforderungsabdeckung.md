@@ -54,7 +54,7 @@ aufgesetzt werden kann.
 | Managed-Kubernetes-Umgebung | kubernetes/README.md (Anbieteranforderungen) |
 | ISO-27001-Rechenzentrum + ISMS (BSI-Grundschutz) | Betreiberauswahlkriterium; Nachweis dem Angebot beizufügen (docs/betrieb.md, Kap. Hosting) |
 | Monatliche Verfügbarkeit ≥ 99,5 %, dokumentiert | Uptime-Kuma-Monitore + monatlicher Report (docs/betrieb.md) |
-| Tägliche Backups, Disaster Recovery | Backup-Dienst (täglich, 14 T/8 W/12 M Aufbewahrung), WAL-Archivierung + Volume-Snapshots in K8s, dokumentierte Wiederherstellung |
+| Tägliche Backups, Disaster Recovery | K8s: WAL-Archiv + tägliche Basissicherung in S3 (PITR, 30 Tage), Wiederherstellungsskript; Compose: tägliche Dumps; dokumentierte Wiederherstellung |
 | Uptime-Monitoring (z. B. **Uptime Kuma**) mit Alarmierung, Service-Desk-Integration | Uptime Kuma: Statusseiten, Benachrichtigungen (E-Mail/Webhook/Teams etc.), Webhooks an Ticketsysteme; eigenständiges Deployment (`monitoring/`, Compose + Helm) außerhalb des Plattform-Lebenszyklus |
 | Incident Management | Prozessbeschreibung in docs/betrieb.md |
 | Pflege/Wartung über Projektlaufzeit, Updates/Upgrades | Versionierte Images, Rolling Updates, Update-Prozess dokumentiert |

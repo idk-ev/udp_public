@@ -23,20 +23,29 @@
  * `total_count` announced (2 % tolerance — the stock can move between the
  * page requests). Only a complete run
  *
- *  * replaces the signature tables (`replace: complete` — an incomplete run
- *    merges, so the signatures of stations on a missing page survive), and
+ *  * replaces the signature tables (`replace: built.complete` — an incomplete
+ *    run merges, so the signatures of stations on a missing page survive), and
  *  * prunes stations and sums it no longer contains; an incomplete one clears
  *    the confirmation tables instead ("consecutive" means consecutive).
  *
- * ## Freshness and row budget
+ * ## Master data apart from live counters, freshness and row budget
  *
- * Stations with live status (about 6,100) carry `dateObserved`; an unchanged
- * one refreshes it every third run (`freshEvery: 3`), ~49,000 rows/day
- * instead of ~147,000. Register entries without live status have no
- * observation and get no `dateObserved`: a pure register entry must not show
- * as "0 free" but as "no live data". Municipal sums are gated as well (before:
- * every sum, every hour). Registry budget: EVChargingStation 170,000,
- * ChargingSummary 80,000 rows/day.
+ * Stations and municipal sums are written through the split gate
+ * (src/kernel/split-gate.ts): master data (name, operator, address,
+ * location, socket count, AGS; for a sum AGS and the two counts) in one
+ * signature, the four live counters in another. A station whose status moved
+ * — about 46 % of the ~6,100 live stations per hour — sends only the changed
+ * counters and `dateObserved`, not all twelve attributes; only new stations
+ * and changed master data go out in full.
+ *
+ * Stations with live status carry `dateObserved`; an unchanged one refreshes
+ * it every third run (`freshEvery: 3`), and so do the sums. Register entries
+ * without live status have no observation and get no `dateObserved`: a pure
+ * register entry must not show as "0 free" but as "no live data".
+ *
+ * Empty tables (fresh install, lost state, the switch from the former single
+ * tables `ocSig`/`ocSumSig`) are seeded from the broker ({@link SEED}).
+ * Estimate and budget: docs/betrieb.md, "Zeilenbudget".
  *
  * Station ids carry the municipality slug `g[8]` (official, stable — a field,
  * not slugged free text) and the OCPDB location id.
@@ -64,6 +73,16 @@
 import { mergePlans } from "../kernel/change-gate.js";
 import { cleanText, dateObserved, observed } from "../kernel/ngsi.js";
 import {
+  applySplit,
+  dynamicSignature,
+  pointOf,
+  propertyValue,
+  reportSplit,
+  staticSignatureOf,
+  totalsOf,
+} from "../kernel/split-gate.js";
+import type { SplitResult } from "../kernel/split-gate.js";
+import {
   isArray,
   isBoolean,
   isFiniteNumber,
@@ -78,6 +97,7 @@ import {
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   Ags,
+  ChangeGate,
   ConnectorModule,
   Ctx,
   EntityId,
@@ -87,6 +107,8 @@ import type {
   NgsiDateTime,
   NgsiEntity,
   Property,
+  SeedOptions,
+  UpsertPlan,
 } from "../kernel/types.js";
 
 export const ID = "ladesaeulen-bw";
@@ -109,10 +131,17 @@ export const PAGE_INTERVAL_MS = 3000;
 const CHUNK_SIZE = 100;
 const HOUR_MS = 3_600_000;
 
-export const SUMMARY_GATE = "ocSumSig";
-export const STATION_GATE = "ocSig";
+/** Master data and live counters of the stations and sums, each in a table of its own. */
+export const STATION_STATIC = "ocStatic";
+export const STATION_LIVE = "ocLive";
+export const SUMMARY_STATIC = "ocSumStatic";
+export const SUMMARY_LIVE = "ocSumLive";
+/** The single tables of the plain gate before the split; dropped by every run. */
+export const LEGACY_GATES = ["ocSig", "ocSumSig"] as const;
 export const CONFIRM_KEYS = ["ocPruneStation", "ocPruneSummary"] as const;
-const PROVIDER = "MobiData BW OCPDB / Bundesnetzagentur";
+export const PROVIDER = "MobiData BW OCPDB / Bundesnetzagentur";
+const STATION_PATTERN = "^urn:ngsi-ld:EVChargingStation:[a-z0-9-]+-ocpdb-[A-Za-z0-9_-]+$";
+const SUMMARY_PATTERN = "^urn:ngsi-ld:ChargingSummary:bw-[0-9]{8}$";
 
 export function pageUrl(page: number): string {
   return `${QUERY}&limit=${String(PAGE_SIZE)}&offset=${String(page * PAGE_SIZE)}`;
@@ -425,25 +454,122 @@ export function build(run: OcpdbRun, geo: GeoIndex | null, now: IsoTime): Chargi
   return { summaries, stations, complete, okPages, items, locations: seen.size };
 }
 
-export function summarySignature(entity: ChargingSummaryEntity): string {
-  return [
-    entity.locationCount.value,
-    entity.evseCount.value,
-    entity.liveEvse?.value ?? "",
-    entity.availableEvse?.value ?? "",
-    entity.chargingEvse?.value ?? "",
-    entity.defectEvse?.value ?? "",
-  ].join("|");
+/** The measured attributes of stations and sums, in the order of their dynamic signature. */
+export const LIVE_ATTRIBUTES = ["liveEvse", "availableEvse", "chargingEvse", "defectEvse"] as const;
+
+/**
+ * Master data of a station — also of one as the broker returns it (seeding),
+ * hence over a plain record; `null` when an attribute is missing there.
+ */
+export function stationStatic(entity: Readonly<Record<string, unknown>>): string | null {
+  return staticSignatureOf([
+    propertyValue(entity, "ags"),
+    propertyValue(entity, "name"),
+    propertyValue(entity, "operator"),
+    propertyValue(entity, "address"),
+    propertyValue(entity, "socketNumber"),
+    propertyValue(entity, "dataProvider"),
+    pointOf(entity),
+  ]);
 }
 
-export function stationSignature(entity: ChargingStationEntity): string {
-  return [
-    entity.socketNumber.value,
-    entity.liveEvse?.value ?? 0,
-    entity.availableEvse?.value ?? 0,
-    entity.chargingEvse?.value ?? 0,
-    entity.defectEvse?.value ?? 0,
-  ].join("|");
+/** Master data of a municipal sum; `null` as {@link stationStatic}. */
+export function summaryStatic(entity: Readonly<Record<string, unknown>>): string | null {
+  return staticSignatureOf([
+    propertyValue(entity, "ags"),
+    propertyValue(entity, "locationCount"),
+    propertyValue(entity, "evseCount"),
+  ]);
+}
+
+/** A built entity always has its master data. */
+function builtStatic(signature: string | null): string {
+  return signature ?? "";
+}
+
+/**
+ * Seeds the four tables from the broker when they are empty (fresh install,
+ * lost state, and the switch from the former single tables): the next run
+ * then writes what changed, not all ~13,000 entities in full.
+ */
+export const SEED: SeedOptions = {
+  label: "OCPDB",
+  queries: [
+    { type: "EVChargingStation", pattern: STATION_PATTERN },
+    { type: "ChargingSummary", pattern: SUMMARY_PATTERN },
+  ],
+  attrs: [
+    "ags",
+    "name",
+    "operator",
+    "address",
+    "socketNumber",
+    "dataProvider",
+    "location",
+    "locationCount",
+    "evseCount",
+    ...LIVE_ATTRIBUTES,
+  ],
+  // Stations carry this connector's provider; sums carry none.
+  accept: (_id, entity) =>
+    entity.type === "ChargingSummary" || propertyValue(entity, "dataProvider") === PROVIDER,
+  tables: {
+    [STATION_STATIC]: (entity) => (entity.type === "EVChargingStation" ? stationStatic(entity) : null),
+    [STATION_LIVE]: (entity) =>
+      entity.type === "EVChargingStation" && stationStatic(entity) !== null
+        ? dynamicSignature(entity, LIVE_ATTRIBUTES)
+        : null,
+    [SUMMARY_STATIC]: (entity) => (entity.type === "ChargingSummary" ? summaryStatic(entity) : null),
+    [SUMMARY_LIVE]: (entity) =>
+      entity.type === "ChargingSummary" && summaryStatic(entity) !== null
+        ? dynamicSignature(entity, LIVE_ATTRIBUTES)
+        : null,
+  },
+};
+
+/**
+ * The write of one run: master data and live counters apart
+ * (src/kernel/split-gate.ts). A station whose status moved sends the changed
+ * counters and `dateObserved`, not all twelve attributes. Replace mode only
+ * after a complete run; an incomplete one merges, so the signatures of
+ * stations on a missing page survive.
+ */
+export function planWrite(
+  gate: ChangeGate,
+  built: ChargingBuild,
+  nowMs: number,
+): { readonly plan: UpsertPlan; readonly stations: SplitResult; readonly summaries: SplitResult } {
+  // The single tables before the split: gone, their entries are covered by the seeding.
+  for (const key of LEGACY_GATES) gate.retain(key, () => false);
+  const summaries = applySplit(
+    gate,
+    built.summaries,
+    {
+      staticKey: SUMMARY_STATIC,
+      dynamicKey: SUMMARY_LIVE,
+      staticSignature: (entity) => builtStatic(summaryStatic(entity)),
+      dynamic: LIVE_ATTRIBUTES,
+      replace: built.complete,
+      freshEvery: 3,
+      periodMs: HOUR_MS,
+    },
+    nowMs,
+  );
+  const stations = applySplit(
+    gate,
+    built.stations,
+    {
+      staticKey: STATION_STATIC,
+      dynamicKey: STATION_LIVE,
+      staticSignature: (entity) => builtStatic(stationStatic(entity)),
+      dynamic: LIVE_ATTRIBUTES,
+      replace: built.complete,
+      freshEvery: 3,
+      periodMs: HOUR_MS,
+    },
+    nowMs,
+  );
+  return { plan: mergePlans(summaries, stations), stations, summaries };
 }
 
 /* ------------------------------------------------------------------ run */
@@ -506,17 +632,10 @@ export async function run(ctx: Ctx): Promise<void> {
     );
   }
 
-  // Municipal sums: written only on change. Replace mode only after a
-  // complete run; an incomplete one merges, so the signatures of stations on
-  // a missing page survive.
-  const plan = mergePlans(
-    ctx.gate.check(SUMMARY_GATE, built.summaries, summarySignature, { replace: built.complete }),
-    ctx.gate.check(STATION_GATE, built.stations, stationSignature, {
-      replace: built.complete,
-      freshEvery: 3,
-      periodMs: HOUR_MS,
-    }),
-  );
+  await ctx.orion.seedSignatures(SEED);
+  const { plan, stations, summaries } = planWrite(ctx.gate, built, Date.parse(now));
+  reportSplit(ctx.log, "OCPDB ChargingSummary", totalsOf(summaries));
+  reportSplit(ctx.log, "OCPDB EVChargingStation", totalsOf(stations));
   const status =
     `${String(built.locations)} locations → ${String(built.summaries.length)} municipalities · ` +
     `${String(built.stations.length)} stations`;
@@ -536,7 +655,8 @@ export async function run(ctx: Ctx): Promise<void> {
       keep: new Set(built.stations.map((entity) => entity.id)),
       confirmKey: stationKey,
       confirmMs: 24 * HOUR_MS,
-      signatureKey: STATION_GATE,
+      signatureKey: STATION_STATIC,
+      signatureKeys: [STATION_LIVE],
       intervalMs: ctx.intervalMs(),
       status,
     });

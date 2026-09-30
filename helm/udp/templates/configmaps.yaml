@@ -46,6 +46,23 @@ data:
   config.js: |
 {{ include "udp.cockpitConfigJs" . | indent 4 }}
 ---
+{{- $branding := include "udp.branding" . | fromJson }}
+{{- if $branding.files }}
+# Logo und Favicon des Betreibers (cockpit.branding), geprüft in
+# udp.branding. Als Verzeichnis unter /usr/share/nginx/html/branding
+# gemountet; nginx liefert sie unter /branding/ und /favicon aus.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cockpit-branding
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "cockpit") | nindent 4 }}
+binaryData:
+  {{- range $file, $data := $branding.files }}
+  {{ $file }}: {{ $data }}
+  {{- end }}
+---
+{{- end }}
 # Node-RED (Upstream-Image): Beispielfluss und settings.js. Kopien von
 # platform/config/nodered/ (Compose mountet die Originale); ein statischer Test
 # hält beide Stände gleich. Der initContainer kopiert sie nach /data, damit

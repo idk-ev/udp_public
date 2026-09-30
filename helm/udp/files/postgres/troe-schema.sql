@@ -27,7 +27,7 @@
 -- table lock before noticing the index exists and hold up the running
 -- broker's inserts). An existing, POPULATED plain attributes table is left
 -- alone with a WARNING: converting it is the job of
--- scripts/migrate-troe-hypertable.sh (helm/udp/DEPLOY.md §10c).
+-- scripts/migrate-troe-hypertable.sh (helm/udp/DEPLOY.md §10d).
 --
 -- Tenant databases (orion_<tenant>) are created by Orion-LD itself and keep
 -- its original schema.
@@ -148,7 +148,7 @@ BEGIN
     -- convert it. Anything with rows needs the migration script (copy with
     -- dedup, per day, while the platform keeps running).
     IF EXISTS (SELECT 1 FROM attributes LIMIT 1) THEN
-      RAISE WARNING 'attributes is a populated plain table – left as it is. Kubernetes: convert it with scripts/migrate-troe-hypertable.sh (helm/udp/DEPLOY.md §10c).';
+      RAISE WARNING 'attributes is a populated plain table – left as it is. Kubernetes: convert it with scripts/migrate-troe-hypertable.sh (helm/udp/DEPLOY.md §10d).';
       RETURN;
     END IF;
     LOCK TABLE attributes IN ACCESS EXCLUSIVE MODE;

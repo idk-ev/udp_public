@@ -48,7 +48,8 @@ export interface PruneSetting {
   readonly liveMs: number | null;
   readonly maxFraction: number;
   readonly intervalMs: number;
-  readonly signatureKey: string | null;
+  /** Forgets the change signatures of what it deletes. (Which tables is the port's business: a split gate keeps two.) */
+  readonly forgetsSignatures: boolean;
   readonly keep: boolean;
   readonly accept: boolean;
 }
@@ -84,7 +85,7 @@ export function legacySetting(raw: unknown): PruneSetting {
     liveMs: positive(raw.liveMs),
     maxFraction: positive(raw.maxFraction) ?? DEFAULT_MAX_FRACTION,
     intervalMs,
-    signatureKey: text(raw.sigKey),
+    forgetsSignatures: text(raw.sigKey) !== null,
     keep: raw.keep !== undefined,
     accept: typeof raw.accept === "function",
   };
@@ -105,7 +106,7 @@ export function portSetting(options: PruneOptions, ctx: Ctx): PruneSetting {
     liveMs: positive(options.liveMs),
     maxFraction: fraction === undefined || !(fraction > 0) ? DEFAULT_MAX_FRACTION : Math.min(fraction, 1),
     intervalMs: positive(options.intervalMs) ?? ctx.intervalMs(),
-    signatureKey: options.signatureKey ?? null,
+    forgetsSignatures: options.signatureKey !== undefined || (options.signatureKeys ?? []).length > 0,
     keep: options.keep !== undefined,
     accept: options.accept !== undefined,
   };
@@ -187,6 +188,7 @@ export function recordingPruner(inner: Pruner, calls: PruneOptions[]): Pruner {
     resetConfirmations: (key) => {
       inner.resetConfirmations(key);
     },
+    remove: (options) => inner.remove(options),
   };
 }
 

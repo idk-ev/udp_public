@@ -161,9 +161,33 @@ interface Ported {
   readonly failure: string | null;
 }
 
+/** The budget object the generator baked into the old node. */
+function bakedBudget(): RowBudget {
+  const baked = /const BUDGET = (\{[^\n]*\});/.exec(loadFunctionNode(NODE_ID).func);
+  assert.ok(baked?.[1] !== undefined, "no BUDGET object in the old node");
+  const parsed: unknown = JSON.parse(baked[1]);
+  assert.ok(isRecord(parsed));
+  const budget: Record<string, number> = {};
+  for (const [type, rows] of Object.entries(parsed)) if (typeof rows === "number") budget[type] = rows;
+  return budget;
+}
+
+/**
+ * Budgets deliberately changed since the generator baked its object: the
+ * charging and car sharing stations write partial updates now, and the
+ * budgets follow the new estimate (docs/betrieb.md, "Zeilenbudget").
+ */
+const CHANGED_BUDGETS: RowBudget = {
+  EVChargingStation: 460_000,
+  ChargingSummary: 95_000,
+  CarSharingStation: 180_000,
+};
+
 async function runPorted(s: Scenario): Promise<Ported> {
   const db = scriptedDb(responder(s));
-  const t = testCtx({ id: "troe-stats", db: db.db });
+  const created = testCtx({ id: "troe-stats", db: db.db });
+  // Same budget on both sides: the check is compared, not the registry's numbers.
+  const t = { ...created, ctx: { ...created.ctx, rowBudget: bakedBudget() } };
   try {
     await run(t.ctx);
     return { db, t, failure: null };
@@ -242,9 +266,7 @@ async function fixtureRunIsIdentical(): Promise<void> {
 }
 
 function budgetIsTheRegistrySum(): void {
-  const baked = /const BUDGET = (\{[^\n]*\});/.exec(loadFunctionNode(NODE_ID).func);
-  assert.ok(baked?.[1] !== undefined, "no BUDGET object in the old node");
-  const old: unknown = JSON.parse(baked[1]);
+  const old = { ...bakedBudget(), ...CHANGED_BUDGETS };
   const registry = loadRegistry(resolveRegistryPath());
   assert.deepEqual(
     normalize(sumRowBudgets(registry.entries)),

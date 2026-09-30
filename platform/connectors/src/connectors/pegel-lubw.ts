@@ -306,7 +306,11 @@ export async function run(ctx: Ctx): Promise<void> {
     `${String(entities.length)} state gauges (${String(outsidePolygons)} outside BW municipality polygons)`,
   );
 
-  const result = await ctx.orion.upsertChanged(GATE_KEY, entities, signatureOf, { chunkSize: CHUNK_SIZE });
+  const result = await ctx.orion.upsertChanged(GATE_KEY, entities, signatureOf, {
+    chunkSize: CHUNK_SIZE,
+    // Water levels in cm: most gauges move between two runs.
+    volatile: true,
+  });
   if (result.entities > 0) {
     ctx.log.info(
       `${String(result.entities)} of ${String(entities.length)} state gauges upserted in ` +

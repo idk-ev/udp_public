@@ -10,7 +10,7 @@
 # existing installation whose attributes is still Orion-LD's plain table: it
 # copies the history day by day into a new hypertable while the platform keeps
 # running, drops unchanged repetitions on the way, and swaps the tables in a
-# short downtime. Full runbook: helm/udp/DEPLOY.md §10c.
+# short downtime. Full runbook: helm/udp/DEPLOY.md §10d.
 #
 #   0. Grow the database volume first if preflight says so
 #      (timescale.persistence.size; the copy needs room next to the old table)
@@ -84,7 +84,7 @@
 # max_wal_size), TROE_SCHEMA (default: the chart's troe-schema.sql next to
 # this script).
 # Limits per session: STATEMENT_TIMEOUT (default 30min – swap-lowdisk counts
-# every day of attributes in it, see DEPLOY.md §10c), TEMP_FILE_LIMIT
+# every day of attributes in it, see DEPLOY.md §10d), TEMP_FILE_LIMIT
 # (default 4GB), WORK_MEM (default 64MB).
 # =============================================================================
 set -euo pipefail
@@ -529,7 +529,7 @@ preflight() {
     min_free=$MIN_FREE
     rows=$(q "SELECT greatest(reltuples, 0)::bigint FROM pg_class WHERE oid = 'attributes'::regclass")
     if [ "$min_free" -lt "$need" ]; then
-        die "Not enough free space on the database volume for the copy next to the old table: $(q "SELECT pg_size_pretty($need::bigint)") needed, $(q "SELECT pg_size_pretty($min_free::bigint)") free on the fullest instance. Either grow the volume first (timescale.persistence.size) – the old table stays until finalize – or use the low-disk mode (export, swap-lowdisk, import): it needs no room next to the old table, but about $(q "SELECT pg_size_pretty($rows::bigint * $EXPORT_BYTES_PER_ROW)") of local disk for the export files ($rows rows × ~$EXPORT_BYTES_PER_ROW bytes; export projects it from the days already written). helm/udp/DEPLOY.md §10c."
+        die "Not enough free space on the database volume for the copy next to the old table: $(q "SELECT pg_size_pretty($need::bigint)") needed, $(q "SELECT pg_size_pretty($min_free::bigint)") free on the fullest instance. Either grow the volume first (timescale.persistence.size) – the old table stays until finalize – or use the low-disk mode (export, swap-lowdisk, import): it needs no room next to the old table, but about $(q "SELECT pg_size_pretty($rows::bigint * $EXPORT_BYTES_PER_ROW)") of local disk for the export files ($rows rows × ~$EXPORT_BYTES_PER_ROW bytes; export projects it from the days already written). helm/udp/DEPLOY.md §10d."
     fi
     echo "  space: ok (low-disk mode instead: about $(q "SELECT pg_size_pretty($rows::bigint * $EXPORT_BYTES_PER_ROW)") of local disk for the export files)"
 
@@ -651,7 +651,7 @@ EOT
 }
 
 rollback() {
-    lowdisk && die "attributes was swapped in low-disk mode – there is no old table to go back to. The export files are the full raw history: import --dir DIR --no-dedup loads the days not imported yet without dropping repetitions (helm/udp/DEPLOY.md §10c)."
+    lowdisk && die "attributes was swapped in low-disk mode – there is no old table to go back to. The export files are the full raw history: import --dir DIR --no-dedup loads the days not imported yet without dropping repetitions (helm/udp/DEPLOY.md §10d)."
     exists attributes_old || die "attributes_old is missing – nothing to roll back (finalized, or never cut over)."
     is_hypertable attributes || die "attributes is not the hypertable – already rolled back?"
     exists attributes_old_pkey \
@@ -1141,7 +1141,7 @@ swap_lowdisk() {
     log "Verifying every day against the manifest, swapping (one transaction)"
     # SHARE mode holds off every write but lets Mintaka read until the DROP.
     # Each day is counted through attributes_ts_idx – within the
-    # statement_timeout of the session (DEPLOY.md §10c).
+    # statement_timeout of the session (DEPLOY.md §10d).
     err=$(mktemp)
     if ! { printf '%s\n' "$SQL_BOOKKEEPING"
       cat <<'EOS'

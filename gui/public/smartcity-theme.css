@@ -65,10 +65,26 @@ header h1 { font-size: 1.45rem; font-weight: 650; letter-spacing: -.01em;
             border-left: 5px solid var(--accent); padding-left: 12px; }
 header .sub { color: var(--text-secondary); font-size: .92rem; }
 header .stand { margin-left: auto; color: var(--text-muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+/* Operator logo (cockpit.branding.logo), filled by /site.js. Capped width so it
+   never pushes the header wider than a phone; in dark mode on a light chip,
+   so dark lettering on a transparent background stays readable. */
+.udp-logo { align-self: center; display: flex; flex-shrink: 0; }
+.udp-logo[hidden] { display: none; }
+.udp-logo a { display: flex; }
+.udp-logo img { display: block; height: 38px; width: auto; max-width: min(200px, 45vw); object-fit: contain; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode="light"]) .udp-logo img { background: #f4f6f8; padding: 4px 8px; border-radius: 8px; }
+}
+:root[data-mode="dark"] .udp-logo img { background: #f4f6f8; padding: 4px 8px; border-radius: 8px; }
 #err { display: none; background: color-mix(in srgb, var(--status-serious) 14%, var(--surface-1));
        border: 1px solid var(--status-serious); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; }
 footer { margin-top: 22px; color: var(--text-muted); font-size: .76rem; line-height: 1.7; }
 footer a { color: var(--text-secondary); }
+/* Impressum/Datenschutz of the operator, filled by /site.js (cockpit.legal) */
+.legal-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px;
+               color: var(--text-muted); font-size: .76rem; line-height: 1.7; }
+.legal-links[hidden] { display: none; }
+.legal-links a { color: var(--text-secondary); }
 
 /* ---------- KPI-Kacheln ---------- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }

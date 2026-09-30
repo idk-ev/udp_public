@@ -38,7 +38,7 @@ helm/udp/
     ├── catalog.yaml            # ckan + solr + redis (ckan.enabled)
     ├── geo.yaml                # geoserver (+ masterportal, optional)
     ├── apps.yaml               # node-red (Upstream-Image) + connectors + cockpit
-    ├── backup.yaml             # logische DB-Dumps (backup.enabled)
+    ├── backup.yaml             # DB-Backup nach S3: ObjectStore + ScheduledBackup (backup.enabled)
     ├── ingress.yaml
     ├── networkpolicy.yaml      # default-deny + segmentierte Freigaben
     ├── pdb.yaml
@@ -86,7 +86,7 @@ Registry-Pfad und wird nicht zusätzlich präfigiert.
 | `ckan.enabled` | `true` | CKAN + Solr + Valkey, Gateway-Route `/catalog`, Ingress-Pfad `/catalog` |
 | `geoserver.enabled` | `true` | GeoServer, Gateway-Route `/geoserver` |
 | `masterportal.enabled` | `false` | Geoportal – braucht ein Image mit fertigem Portal-Build |
-| `backup.enabled` | `true` | tägliche `pg_dump`-Sicherung aller Plattform-DBs |
+| `backup.enabled` | `false` | Datenbank-Backup in S3-kompatiblen Speicher (WAL-Archiv + tägliche Basissicherung, PITR); braucht `backup.destinationPath`/`existingSecret`, s. DEPLOY.md §2 |
 
 Ein `false` entfernt jeweils auch die zugehörige APISIX-Route und den
 Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
@@ -104,6 +104,11 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.publicUrl` | `""` | öffentliche Basis-URL für SPA-Konfiguration und Redirect-URIs (leer → aus `ingress.host`) |
 | `cockpit.extraModuleUrls` | `{}` | zusätzliche Ziele der Modul-Kacheln (z. B. Node-RED, Uptime Kuma aus `monitoring/`) |
 | `cockpit.tenants` | Standard/lkrt/lktue | Mandanten-Auswahl im Cockpit |
+| `cockpit.legal.impressumUrl` / `datenschutzUrl` | `""` | Impressum/Datenschutzerklärung des Betreibers in der Fußzeile aller Seiten (`https://…`, `http://…` oder `/pfad`; leer = kein Link), s. `docs/betrieb.md` |
+| `cockpit.analytics.headHtml` | `""` | Einbettungscode einer beliebigen Webanalyse, unverändert in den `<head>` aller öffentlichen Seiten eingefügt (leer = keine), s. `docs/betrieb.md` |
+| `cockpit.analytics.includeCockpit` | `false` | Einbettungscode auch im Cockpit ausführen (dort laufen Admin-Sitzungen) |
+| `cockpit.branding.logo` | leer | Logo im Kopf der öffentlichen Seiten und im Cockpit: `data` (base64, ≤ 128 KiB – Release-Secret von Helm fasst 1 MiB), `type` (PNG/SVG/WebP/JPEG), `alt`, `href`; s. `docs/betrieb.md` |
+| `cockpit.branding.favicon` | leer | Favicon aller Seiten (`/favicon`): `data` (base64, ≤ 64 KiB), `type` (PNG/SVG/ICO); leer → Plattform-Icon |
 | `cockpit.gatewayUpstream` | `""` | FQDN von APISIX für den nginx-Proxy im Cockpit (leer → `apisix.<ns>.svc.cluster.local:9080`) |
 | `cockpit.connectorsUpstream` | `""` | wer `/abfahrten` und `/warnungen.ics` beantwortet (leer → `connectors.<ns>.svc.cluster.local:1880`); `cockpit.endpoints` gibt es nicht mehr |
 | `connectors.enabled` | `true` | Konnektordienst: die Ingestion (eine Replik, `Recreate`); `false` nur zusammen mit `connectors.disableIngestion: true` |

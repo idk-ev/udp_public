@@ -33,7 +33,7 @@
                 border: 1px solid color-mix(in srgb, var(--series-1) 40%, var(--surface-1)); font-weight: 600; font-size: .8rem; }
   .delay-0 { color: var(--text-muted); } .delay-w { color: var(--status-warn); font-weight: 600; }
   .delay-s { color: var(--status-serious); font-weight: 600; }
-  body.embed header, body.embed footer, body.embed .searchlink { display: none; }
+  body.embed header, body.embed footer, body.embed .legal-links, body.embed .searchlink { display: none; }
   body.embed { padding: 8px; }
   /* Service-Link-Kacheln: dezente, klar als „führt zu externem Angebot“ lesbare Optik */
   a.tile.tile-link { background: color-mix(in srgb, var(--accent) 14%, var(--surface-1));
@@ -65,10 +65,11 @@
 </style>
 <meta name="theme-color" content="#0074e8">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon">
 </head>
 <body>
 <header>
+  <span class="udp-logo" data-udp-logo hidden></span>
   <h1 id="title">Smart City</h1>
   <span class="sub" id="subtitle"></span>
   <span class="stand" id="stand">lädt…</span>
@@ -121,7 +122,10 @@
 </div>
 
 <footer id="footer"></footer>
+<nav class="legal-links" data-udp-legal aria-label="Rechtliches" hidden></nav>
 
+<script src="/config.js"></script>
+<script src="/site.js"></script>
 <script src="/vendor/leaflet.js"></script>
 <script src="/smartcity-lib.js"></script>
 <script>
@@ -416,9 +420,9 @@ async function render() {
   // einen alten Wert als heutige Luftqualität auszugeben.
   const dObs = e => { const v = e && e.dateObserved && e.dateObserved.value; return v ? (v["@value"] || v) : null; };
   // "Echtzeit" only while the value is current: twice the refresh period of the
-  // connector (parken-bw every 3 h; carsharing and charge point stations refresh
-  // unchanged values every 3 h; the charging sums are written hourly).
-  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 2 * 3600e3 };
+  // connector (parken-bw every 3 h; carsharing and charge point stations as
+  // well as the charging sums refresh unchanged values every 3 h).
+  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 6 * 3600e3 };
   const scAlle = luft.find(e => e.id.includes("bw-sc-"));
   const scZeit = Date.parse(dObs(scAlle) || "");
   const sc = (scAlle && scZeit && Date.now() - scZeit < 2 * 3600e3) ? scAlle : null;

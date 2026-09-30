@@ -34,10 +34,11 @@
 </style>
 <meta name="theme-color" content="#0074e8">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon">
 </head>
 <body>
 <header>
+  <span class="udp-logo" data-udp-logo hidden></span>
   <h1>UDP-Hauptdashboard</h1>
   <span class="sub">Kommunen-Suche & Betriebsübersicht der Urbanen Datenplattform</span>
   <span class="stand" id="stand">lädt…</span>
@@ -100,7 +101,10 @@
   <a href="/reutlingen" target="_blank" rel="noopener">Smart City Reutlingen (Referenz)</a> ·
   <a href="/mitmachen.html">Mitmachen →</a> · <a href="/cockpit">UDP-Cockpit</a>
 </footer>
+<nav class="legal-links" data-udp-legal aria-label="Rechtliches" hidden></nav>
 
+<script src="/config.js"></script>
+<script src="/site.js"></script>
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";

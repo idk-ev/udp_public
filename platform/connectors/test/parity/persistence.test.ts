@@ -17,6 +17,7 @@
 
 import assert from "node:assert/strict";
 
+import { adminRoutes } from "../../src/kernel/admin.js";
 import { SignatureStore } from "../../src/kernel/change-gate.js";
 import { createCtx, runConnector } from "../../src/kernel/context.js";
 import type { Kernel } from "../../src/kernel/context.js";
@@ -41,6 +42,7 @@ import type {
   MunicipalityRow,
   NgsiEntity,
   RegistryEntry,
+  RouteResponse,
 } from "../../src/kernel/types.js";
 import { httpResponse, recordingLog, scriptedFetcher } from "../harness/kernel.js";
 import type { RecordedLog, SeenRequest } from "../harness/kernel.js";
@@ -66,6 +68,8 @@ class FakeDatabase {
   readonly loads: string[] = [];
   readonly #waiting: (() => void)[] = [];
   lockHolder: FakeBackend | null = null;
+  /** The writer generation: bumped by every tenure, as `udp_connectors.writer`. */
+  generation = 0;
   readonly signatures = new Map<string, string>();
   readonly prune = new Map<string, string>();
   readonly state = new Map<string, string>();
@@ -112,6 +116,7 @@ class FakeBackend implements StateBackend {
   readonly description = "fake database";
   readonly #db: FakeDatabase;
   #locked = false;
+  #generation: number | null = null;
 
   constructor(db: FakeDatabase) {
     this.#db = db;
@@ -121,9 +126,17 @@ class FakeBackend implements StateBackend {
     return this.#locked && this.#db.lockHolder === this;
   }
 
+  get generation(): number | null {
+    return this.#generation;
+  }
+
   acquire(): Promise<boolean> {
     if (!this.#db.reachable) return Promise.reject(refused());
     if (this.#db.lockHolder !== null && this.#db.lockHolder !== this) return Promise.resolve(false);
+    if (!this.locked) {
+      this.#db.generation += 1;
+      this.#generation = this.#db.generation;
+    }
     this.#db.lockHolder = this;
     this.#locked = true;
     return Promise.resolve(true);
@@ -160,6 +173,7 @@ class FakeBackend implements StateBackend {
   write(connector: string, batch: StateWrite): Promise<void> {
     if (!this.#db.reachable) return Promise.reject(refused());
     if (!this.locked) return Promise.reject(new Error("writer lock not held"));
+    if (this.#takenOver()) return Promise.reject(new Error("writer lock taken over by another instance"));
     if (this.#db.failWrite(batch)) return Promise.reject(new Error("write failed (injected)"));
     for (const { table, field, value } of batch.signatures) {
       const key = [connector, table, field].join(SEP);
@@ -176,10 +190,22 @@ class FakeBackend implements StateBackend {
   deleteSignatures(connector: string, table: string, fields: readonly string[]): Promise<void> {
     if (!this.#db.reachable) return Promise.reject(refused());
     if (!this.locked) return Promise.reject(new Error("writer lock not held"));
+    if (this.#takenOver()) return Promise.reject(new Error("writer lock taken over by another instance"));
     for (const field of fields) {
       this.#db.signatures.delete([connector, table, field].join(SEP));
       this.#db.events.push(`db delete ${field}`);
     }
+    return Promise.resolve();
+  }
+
+  /** Counted: every gated upsert proves the writer before it goes out. */
+  fences = 0;
+
+  fence(): Promise<void> {
+    this.fences += 1;
+    if (!this.#db.reachable) return Promise.reject(refused());
+    if (!this.locked) return Promise.reject(new Error("writer lock not held"));
+    if (this.#takenOver()) return Promise.reject(new Error("writer lock taken over by another instance"));
     return Promise.resolve();
   }
 
@@ -200,6 +226,23 @@ class FakeBackend implements StateBackend {
    */
   switchover(): void {
     this.crash();
+  }
+
+  /**
+   * The fence of every write (as the PostgreSQL backend's): another instance
+   * bumped the generation — this one lost the lock, whatever its own
+   * connection still looks like.
+   */
+  #takenOver(): boolean {
+    if (this.#generation === null || this.#db.generation === this.#generation) return false;
+    this.#locked = false;
+    return true;
+  }
+
+  /** The lock drops and ANOTHER instance holds it for a while (a generation of its own) before this one gets it back. */
+  lostToAnotherInstance(): void {
+    this.crash();
+    this.#db.generation += 1;
   }
 }
 
@@ -763,11 +806,11 @@ async function afterOneGatedRun(): Promise<{
 
 /**
  * A database switchover takes the writer lock; the next run of ANY connector
- * takes it back, and every connector is reloaded at once — not each before
- * its own next run, which for some is twelve hours away (`healthy: false`
- * for hours after every release).
+ * takes it back. Nobody else held it in between (the generation is the next
+ * one), so memory is the truth: nothing is reloaded over it, and the store
+ * is healthy again at once — not only after each connector's next run.
  */
-export async function lockRegainedReloadsEveryConnector(): Promise<void> {
+export async function lockRegainedAloneKeepsMemory(): Promise<void> {
   const { db, broker, service, values } = await afterOneGatedRun();
   const persistence = service.kernel.persistence;
   assert.ok(persistence !== undefined);
@@ -781,8 +824,9 @@ export async function lockRegainedReloadsEveryConnector(): Promise<void> {
   // Only the ungated connector runs; it notices the loss and takes the lock back.
   await runConnector(service.kernel, service.plain, plainConnector);
   await settle();
-  assert.equal(warned(service.log, "writer lock lost — every connector's state is reloaded"), 1);
-  assert.deepEqual([...db.loads].sort(), ["gated", "plain"], "both loaded, the gated one without a run");
+  assert.equal(warned(service.log, "writer lock lost — nothing is written until it is back"), 1);
+  assert.ok(service.log.lines.some((line) => line.text.includes("nobody held it in between")));
+  assert.deepEqual(db.loads, [], "memory kept: nothing loaded over it");
   assert.equal(broker.upserts.length, 2, "the gated connector did not run");
   const health = persistence.health();
   assert.deepEqual(
@@ -795,7 +839,148 @@ export async function lockRegainedReloadsEveryConnector(): Promise<void> {
   await runConnector(service.kernel, service.gated, gatedConnector(values));
   assert.deepEqual(broker.lastFull(), []);
   assert.equal(service.gated.state.slot(RUNS).get(), 2);
-  assert.equal(db.loads.filter((id) => id === "gated").length, 1, "loaded once, not again before the run");
+  assert.equal(db.stateValue("gated", "runs"), 2);
+}
+
+/**
+ * Writes `count` Things one per chunk; `during(chunk)` runs as the broker
+ * answers each upsert request — the moment to pull the lock away.
+ */
+function chunkedConnector(values: Map<string, number>): ConnectorRunner {
+  return {
+    id: "gated",
+    run: async (ctx) => {
+      const now = ctx.now();
+      const entities = [...values.keys()].map((id) => thing(id, now));
+      const signatureOf = (entity: NgsiEntity): number =>
+        values.get(entity.id.slice("urn:ngsi-ld:Thing:".length)) ?? -1;
+      await ctx.orion.upsertChanged("thingSig", entities, signatureOf, { chunkSize: 1 });
+    },
+  };
+}
+
+/**
+ * The regression: the writer lock goes in the MIDDLE of a run. The chunks
+ * already under way are still confirmed by the broker; their signatures used
+ * to be discarded (marks cleared, commits ignored while "unloaded", and the
+ * older store loaded over memory when the run ended), so the next run sent
+ * everything again. Now they are kept, written once the lock is back, and
+ * the next run writes only what changed.
+ */
+export async function lockLostDuringARunKeepsItsSignatures(): Promise<void> {
+  const events: string[] = [];
+  const db = new FakeDatabase(events);
+  const broker = new Broker(events);
+  const clock = { now: T0 };
+  const values = new Map([
+    ["t-0", 1],
+    ["t-1", 2],
+    ["t-2", 3],
+    ["t-3", 4],
+  ]);
+  const service = start(db, broker, clock);
+  await service.kernel.persistence?.prepareAll();
+
+  // The lock drops while the second chunk is on its way.
+  let requests = 0;
+  const answer = broker.respond;
+  const fetcher = scriptedFetcher((request) => {
+    if (request.url.pathname.endsWith("/entityOperations/upsert")) {
+      requests += 1;
+      if (requests === 2) service.backend.switchover();
+    }
+    return answer(request);
+  }).fetcher;
+  const kernel: Kernel = { ...service.kernel, fetch: fetcher };
+  const gated = createCtx(kernel, entry("gated"));
+  await runConnector(kernel, gated, chunkedConnector(values));
+  assert.equal(broker.upserts.length, 4, "the plan built before the loss went out completely");
+  assert.equal(db.signature("gated", "thingSig", ID("t-3")), undefined, "not written without the lock");
+  assert.equal(service.kernel.persistence?.health().loaded.includes("gated"), true, "memory not discarded");
+
+  // Any run takes the lock back; nobody was in between: memory is written.
+  await runConnector(kernel, service.plain, plainConnector);
+  await settle();
+  for (const [id, value] of values) {
+    assert.equal(db.signature("gated", "thingSig", ID(id)), value, `${id}: committed signature lost`);
+  }
+
+  // The next run sends only what changed.
+  values.set("t-2", 30);
+  clock.now += HOUR;
+  await runConnector(kernel, gated, chunkedConnector(values));
+  const full = broker.upserts
+    .slice(5)
+    .flat()
+    .filter((entity) => fullOrFresh(entity) === "full");
+  assert.deepEqual(full.map(idOf), [ID("t-2")], "only the changed entity in full");
+  assert.equal(db.signature("gated", "thingSig", ID("t-2")), 30);
+}
+
+/**
+ * The fence: another instance took the lock (its generation) while this one's
+ * lock connection still looks alive (half-open after a switchover). Nothing
+ * of this instance reaches the store any more, and no gated upsert goes out.
+ */
+export async function writesAreFencedAfterATakeover(): Promise<void> {
+  const { db, broker, service, values } = await afterOneGatedRun();
+  db.generation += 1;
+  db.signatures.set(["gated", "thingSig", ID("t-0")].join(SEP), "5");
+  values.set("t-0", 10);
+  const sent = broker.upserts.length;
+  await runConnector(service.kernel, service.gated, gatedConnector(values));
+  assert.equal(broker.upserts.length, sent, "a gated upsert went out after the takeover");
+  assert.ok(warned(service.log, "Upsert not sent") + warned(service.log, "run skipped") >= 1);
+  assert.equal(
+    db.signature("gated", "thingSig", ID("t-0")),
+    5,
+    "the other instance's signature was overwritten",
+  );
+  assert.equal(db.stateValue("gated", "runs"), 1, "state of the old writer reached the store");
+  assert.ok(service.log.warnings().some((line) => line.includes("taken over by another instance")));
+}
+
+/**
+ * Another instance held the lock in between and wrote the store: only the
+ * signatures memory and store agree on survive; every other one is dropped on
+ * both sides and its entity written in full once more. Counters come from the
+ * store, since the other instance ran last.
+ */
+export async function lockRegainedAfterAnotherInstanceReconciles(): Promise<void> {
+  const { db, broker, service, values } = await afterOneGatedRun();
+  const persistence = service.kernel.persistence;
+  assert.ok(persistence !== undefined);
+  values.set("t-2", 3);
+  await runConnector(service.kernel, service.gated, gatedConnector(values));
+  assert.deepEqual(broker.lastFull(), [ID("t-2")]);
+
+  service.backend.lostToAnotherInstance();
+  // What the other instance left: t-1 with another value, t-2 gone, a new t-5,
+  // and its own run counted.
+  db.signatures.set(["gated", "thingSig", ID("t-1")].join(SEP), "22");
+  db.signatures.delete(["gated", "thingSig", ID("t-2")].join(SEP));
+  db.signatures.set(["gated", "thingSig", ID("t-5")].join(SEP), "5");
+  db.state.set(["gated", "runs"].join(SEP), "7");
+  db.loads.length = 0;
+
+  await runConnector(service.kernel, service.plain, plainConnector);
+  await settle();
+  assert.equal(warned(service.log, "another instance may have held it in between"), 1);
+  assert.deepEqual([...db.loads].sort(), ["gated", "plain"], "both reconciled, the gated one without a run");
+  assert.ok(service.log.lines.some((line) => line.text.includes("3 signatures differed and were dropped")));
+  assert.equal(db.signature("gated", "thingSig", ID("t-0")), 1, "agreed: kept");
+  for (const id of ["t-1", "t-2", "t-5"]) {
+    assert.equal(
+      db.signature("gated", "thingSig", ID(id)),
+      undefined,
+      `${id}: disputed, dropped in the store`,
+    );
+  }
+
+  await runConnector(service.kernel, service.gated, gatedConnector(values));
+  assert.deepEqual(broker.lastFull(), [ID("t-1"), ID("t-2")], "the disputed ones in full, once");
+  assert.equal(service.gated.state.slot(RUNS).get(), 8, "the counter continued from the store");
+  assert.equal(db.signature("gated", "thingSig", ID("t-1")), 2);
 }
 
 /** A load failing in the eager reload is unhealthy with a reason, warned once, and retried until it works. */
@@ -804,7 +989,7 @@ export async function reloadFailureIsUnhealthyAndRetried(): Promise<void> {
   const persistence = service.kernel.persistence;
   assert.ok(persistence !== undefined);
 
-  service.backend.switchover();
+  service.backend.lostToAnotherInstance();
   db.failLoad = (connector) => connector === "gated";
   await runConnector(service.kernel, service.plain, plainConnector);
   await settle();
@@ -847,7 +1032,7 @@ export async function runRacingTheReloadWaitsForItsState(): Promise<void> {
   db.loads.length = 0;
   const sent = broker.upserts.length;
 
-  service.backend.switchover();
+  service.backend.lostToAnotherInstance();
   db.held.add("gated");
   await runConnector(service.kernel, service.plain, plainConnector);
   await settle();
@@ -899,7 +1084,7 @@ export async function reloadPassesOverARunningConnector(): Promise<void> {
   assert.equal(runsAtStart, 1, "the run started on its loaded state");
 
   db.loads.length = 0;
-  service.backend.switchover();
+  service.backend.lostToAnotherInstance();
   await runConnector(service.kernel, service.plain, plainConnector);
   await settle();
   assert.deepEqual(db.loads, ["plain"], "the running connector was not reloaded underneath its run");
@@ -917,4 +1102,170 @@ export async function reloadPassesOverARunningConnector(): Promise<void> {
   const after = persistence.health();
   assert.deepEqual([after.healthy, after.notLoaded], [true, []]);
   assert.deepEqual(after.loaded, ["gated", "plain"]);
+}
+
+/**
+ * A prune its share cap skips run after run is counted (persisted with the
+ * bookkeeping), listed in `/healthz` under `stateStore.blockedPrunes`, and
+ * from the third skip on logged as an [error] — it must not stay quiet.
+ */
+export async function blockedPruneIsListedInHealth(): Promise<void> {
+  const events: string[] = [];
+  const db = new FakeDatabase(events);
+  const broker = new Broker(events);
+  const clock = { now: T0 };
+  const values = new Map(Array.from({ length: 10 }, (_, n): [string, number] => [`t-${String(n)}`, n]));
+  const first = start(db, broker, clock);
+  await first.kernel.persistence?.prepareAll();
+  await runConnector(first.kernel, first.gated, gatedConnector(values, true));
+
+  // Half of them leave the source: 5 candidates against 5 fresh — over the cap.
+  for (let n = 5; n < 10; n += 1) values.delete(`t-${String(n)}`);
+  for (let run = 0; run < 3; run += 1) {
+    clock.now += HOUR;
+    await runConnector(first.kernel, first.gated, gatedConnector(values, true));
+  }
+  assert.equal(broker.deletes.length, 0);
+  const health = first.kernel.persistence?.health();
+  assert.ok(health !== undefined);
+  assert.deepEqual(health.blockedPrunes, [
+    {
+      connector: "gated",
+      prune: "Things (Thing)",
+      consecutiveSkips: 3,
+      blockedSince: new Date(T0 + HOUR).toISOString(),
+      heldBack: 5,
+    },
+  ]);
+  assert.equal(
+    first.log.lines.filter((line) => line.level === "error").length,
+    1,
+    "an [error] from the third",
+  );
+  assert.equal(health.healthy, true, "the store itself works");
+
+  // Survives a restart.
+  first.backend.crash();
+  clock.now += HOUR;
+  const second = start(db, broker, clock);
+  await second.kernel.persistence?.prepareAll();
+  assert.deepEqual(second.kernel.persistence?.health().blockedPrunes, [
+    {
+      connector: "gated",
+      prune: "Things (Thing)",
+      consecutiveSkips: 3,
+      blockedSince: new Date(T0 + HOUR).toISOString(),
+      heldBack: 5,
+    },
+  ]);
+
+  // The operator's release (POST /release-prunes/gated): the block goes, the
+  // skip count stays until the cap passes.
+  const persistence = second.kernel.persistence;
+  const route = adminRoutes(second.kernel, { version: "test", started: T0, cooldownMs: 60_000 }).find(
+    (candidate) => candidate.path === "/release-prunes/:id",
+  );
+  assert.ok(route !== undefined);
+  const release = (id: string, remoteAddress = "127.0.0.1"): Promise<RouteResponse> =>
+    route.handle({
+      method: "POST",
+      path: `/release-prunes/${id}`,
+      query: new URLSearchParams(),
+      params: { id },
+      headers: {},
+      body: "",
+      remoteAddress,
+    });
+
+  assert.equal((await release("gated", "10.1.2.3")).status, 403, "only from loopback");
+  assert.equal((await release("nobody")).status, 404);
+  // Still over its cap: a release now would block again at once.
+  const refused = await release("gated");
+  assert.equal(refused.status, 409);
+  assert.match(refused.body, /still over its share cap/);
+  assert.equal(persistence.health().blockedPrunes[0]?.blockedSince, new Date(T0 + HOUR).toISOString());
+
+  // Once the cap passes again (the loss aged into backlog), the release goes through.
+  const bound = persistence.connector("gated", {
+    log: second.log,
+    signatures: second.kernel.signatures,
+    state: second.kernel.state,
+  });
+  bound.bookkeeping.setCapSkips("Things|Thing|^urn:ngsi-ld:Thing:t-[0-9]+$", 0);
+  const released = await release("gated");
+  assert.equal(released.status, 200);
+  assert.deepEqual(JSON.parse(released.body), { id: "gated", released: 1 });
+  await settle();
+  assert.deepEqual(persistence.health().blockedPrunes, []);
+  const stored: unknown = JSON.parse(db.prune.get("gated") ?? "{}");
+  assert.ok(isObject(stored) && Array.isArray(stored.blockedSince) && stored.blockedSince.length === 0);
+}
+
+/**
+ * A gated upsert whose flush has nothing to write makes no round trip — and
+ * so would not notice a takeover. It proves the writer in the store first.
+ */
+export async function gatedUpsertIsFencedEvenWithNothingToWrite(): Promise<void> {
+  const { db, broker, service } = await afterOneGatedRun();
+  const backend = service.backend;
+  const newThing: ConnectorRunner = {
+    id: "gated",
+    run: async (ctx) => {
+      // A new entity: no old signature to drop, nothing marked before the upsert.
+      await ctx.orion.upsertChanged("thingSig", [thing("t-7", ctx.now())], () => 7);
+    },
+  };
+  const fencesBefore = backend.fences;
+  await runConnector(service.kernel, service.gated, newThing);
+  assert.equal(backend.fences, fencesBefore + 1, "one proof per gated upsert");
+  assert.deepEqual(broker.lastFull(), [ID("t-7")]);
+
+  db.generation += 1; // another instance took over; this lock connection still looks alive
+  const sent = broker.upserts.length;
+  await runConnector(service.kernel, service.gated, {
+    id: "gated",
+    run: async (ctx) => {
+      await ctx.orion.upsertChanged("thingSig", [thing("t-8", ctx.now())], () => 8);
+    },
+  });
+  assert.equal(broker.upserts.length, sent, "a gated upsert went out after the takeover");
+  assert.ok(
+    warned(service.log, "writer lock not proven in the store") + warned(service.log, "Upsert not sent") >= 1,
+  );
+}
+
+/** Seeded signatures are persisted at once, and the write after the seeding is no full rewrite. */
+export async function seededSignaturesArePersisted(): Promise<void> {
+  const events: string[] = [];
+  const db = new FakeDatabase(events);
+  const broker = new Broker(events);
+  const clock = { now: T0 };
+  // The broker holds three Things; this service has never written any.
+  for (const n of [0, 1, 2]) broker.things.add(ID(`t-${String(n)}`));
+  const values = new Map([
+    ["t-0", 7],
+    ["t-1", 7],
+    ["t-2", 7],
+  ]);
+  const seeding: ConnectorRunner = {
+    id: "gated",
+    run: async (ctx) => {
+      await ctx.orion.seedSignatures({
+        label: "Things",
+        queries: [{ type: "Thing", pattern: "^urn:ngsi-ld:Thing:t-[0-9]+$" }],
+        attrs: ["level"],
+        // The broker's Things all hold the value 7 (their listing carries no attributes here).
+        tables: { thingSig: () => 7 },
+      });
+      await gatedConnector(values).run(ctx);
+    },
+  };
+  const service = start(db, broker, clock);
+  await service.kernel.persistence?.prepareAll();
+  await runConnector(service.kernel, service.gated, seeding);
+  assert.deepEqual(broker.lastFull(), [], "the broker holds them: freshness only");
+  assert.equal(db.signature("gated", "thingSig", ID("t-1")), 7, "seeded and persisted");
+  assert.ok(
+    service.log.lines.some((line) => line.text.includes("3 change signatures seeded from 3 entities")),
+  );
 }

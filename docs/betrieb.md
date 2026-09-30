@@ -66,20 +66,24 @@ docker run --rm -e VUS=10 -e BASE=https://<host> \
 
 ## Datensicherung & Disaster Recovery
 
-- **Täglich** automatisierte Dumps aller PostgreSQL-Datenbanken
-  (Compose-Referenz: Dienst `backup`; Kubernetes: CronJob) mit Aufbewahrung
-  14 Tage / 8 Wochen / 3 Monate (die TRoE-Historie ist append-only und steckt
-  in jedem Voll-Dump erneut — längere Monats-Staffeln wären fast nur
-  redundantes Volumen). Rücksicherung der Datenbank `orion` mit Hypertable:
-  s. „Zeitreihen-Retention (TRoE)“, Speicherlayout.
-- **Kontinuierlich**: WAL-Archivierung (PITR) für PostgreSQL; Volume-
-  Snapshots für MongoDB; Kopie in zweite Brandzone/Region
-  (3-2-1-Regel). Das Monitoring sichert sein `/app/data` (SQLite mit der
-  Verfügbarkeitshistorie) im eigenen Deployment mit – s. `monitoring/`.
+- **Kubernetes – kontinuierlich**: WAL-Archivierung und tägliche
+  Basissicherung aller PostgreSQL-Datenbanken in S3-kompatiblen
+  Objektspeicher (CloudNativePG, Barman-Cloud-Plugin); Wiederherstellung auf
+  jeden Zeitpunkt der letzten 30 Tage, einzeln je Datenbank oder als ganzer
+  Cluster (`scripts/restore-timescale.sh`, `helm/udp/DEPLOY.md` §10c).
+  Bucket bei einem anderen Anbieter/Standort als der Cluster (3-2-1-Regel).
+- **Compose**: täglich Dumps aller PostgreSQL-Datenbanken (Dienst `backup`)
+  mit Aufbewahrung 14 Tage / 8 Wochen / 3 Monate. Rücksicherung der Datenbank
+  `orion` mit Hypertable: s. „Zeitreihen-Retention (TRoE)“, Speicherlayout.
+- **Volume-Snapshots** für MongoDB und das CKAN-Dateiverzeichnis
+  (`ckan-data`) – nicht Teil des S3-Backups. Das Monitoring sichert sein
+  `/app/data` (SQLite mit der Verfügbarkeitshistorie) im eigenen Deployment
+  mit – s. `monitoring/`.
 - **Konfiguration**: vollständig im Git (GitOps) – Wiederaufbau des Clusters
   aus Repository + Backups.
 - **DR-Übung**: halbjährliche Wiederherstellungsprobe mit Protokoll;
-  Ziele RTO ≤ 4 h, RPO ≤ 24 h (Dumps) bzw. ≤ 15 min (PITR).
+  Ziele RTO ≤ 4 h, RPO ≤ 5 min (WAL-Archiv, Kubernetes) bzw. ≤ 24 h
+  (Dumps, Compose).
 
 ## Updates & Wartung
 
@@ -116,6 +120,121 @@ DevTools → Application → Service Workers → Unregister.
   Listen für Admin-Endpunkte.
 - Secrets ausschließlich über Kubernetes-Secrets/External-Secrets, nie im
   Repository (Beispielwerte sind als solche markiert und zu ersetzen).
+
+## Webanalyse, Impressum und Datenschutz
+
+Betreiber binden eine Webanalyse ihrer Wahl (z. B. Rybbit, Plausible, Umami,
+Matomo) und ihr eigenes Impressum samt Datenschutzerklärung ein, ohne das Image
+neu zu bauen. Kubernetes (Helm-Werte):
+
+```yaml
+cockpit:
+  legal:
+    impressumUrl: "https://www.example.org/impressum"
+    datenschutzUrl: "https://www.example.org/datenschutz"
+  analytics:
+    headHtml: |
+      <script src="https://analytics.example.org/script.js" data-site-id="…" defer></script>
+    includeCockpit: false   # Standard; true = auch im Cockpit
+```
+
+Docker Compose: dieselben Schlüssel (`legal`, `analytics`) in
+`gui/public/config.js` eintragen.
+
+**Impressum/Datenschutz:** Die Links erscheinen unter der Fußzeile aller
+öffentlichen Seiten (Kommunen-Suche, Gemeinde- und Kreisseiten, Mitmachen,
+404) und in der Seitenleiste des Cockpits; im Einbettungsmodus (`?embed=1`)
+sind sie ausgeblendet. Erlaubt sind `https://…`, `http://…` oder ein Pfad auf
+dieser Domain mit genau einem führenden `/` (`/impressum`). Andere Werte
+(`javascript:`, `//host`, …) lässt das Chart nicht rendern; im Browser werden
+sie zusätzlich verworfen. Leer = kein Link.
+
+**Webanalyse:** Der Einbettungscode wird **unverändert** in den `<head>` jeder
+öffentlichen Seite eingefügt – Kommunen-Suche, alle Gemeinde- und Kreisseiten
+(auch eingebettet per `?embed=1`), Mitmachen und 404. Im Cockpit nur mit
+`analytics.includeCockpit: true`. Das übernimmt `gui/public/site.js`: Die
+Elemente werden nacheinander eingefügt, `<script>`-Elemente mit allen
+Attributen neu erzeugt, `<link>`/`<meta>` übernommen, `<noscript>` entfällt.
+Nach einem externen Skript **ohne** `async` wartet das nächste Element, bis es
+geladen ist (höchstens 10 s) – ein Inline-Skript, das die Bibliothek davor
+aufruft, funktioniert also wie in statischem HTML. Skripte mit `async` halten
+die Reihenfolge nicht auf.
+
+- Der Code ist **vertrauenswürdige Eingabe des Betreibers**: Er läuft mit
+  vollem Skriptzugriff auf allen Seiten, auf denen er eingebunden ist – mit
+  `includeCockpit: true` auch auf angemeldete Cockpit-Sitzungen samt
+  Keycloak-Tokens. Deshalb ist das Cockpit standardmäßig ausgenommen. Nur
+  Anbieter einsetzen, denen du vertraust; wo der Anbieter es unterstützt,
+  ein `integrity`-Attribut (SRI) mit angeben.
+- Cookielose Werkzeuge kommen in der Regel ohne Einwilligungsbanner aus.
+  Speichert ein Werkzeug Cookies oder nutzt localStorage o. Ä., ist nach
+  § 25 TDDDG eine Einwilligung nötig – ein Einwilligungsbanner bringt die
+  Plattform **nicht** mit.
+- Die Datenschutzerklärung muss das Werkzeug nennen. Das Chart warnt in den
+  Installationshinweisen, wenn `analytics.headHtml` gesetzt, aber
+  `legal.datenschutzUrl` leer ist. Die rechtliche Bewertung liegt beim
+  Betreiber; dieser Abschnitt ist keine Rechtsberatung.
+- Der Service Worker liefert `config.js` aus seinem Cache und frischt sie im
+  Hintergrund auf: Eine geänderte Konfiguration wirkt bei wiederkehrenden
+  Besuchern erst ab dem **zweiten** Seitenaufruf.
+- Der Service Worker legt außerdem jede GET-Anfrage an den **eigenen** Origin
+  im Cache Storage ab. Einen Analyse-Anbieter, der über denselben Origin
+  geproxyt wird und per GET mit wechselnden Query-Strings zählt, daher über
+  seinen eigenen Origin anbinden – sonst füllt jeder Zählaufruf den Cache des
+  Browsers. Alternativ den Pfad in `gui/public/sw.js` ausnehmen.
+- Eine künftige Content-Security-Policy muss den Origin des Analyse-Anbieters
+  (`script-src`, `connect-src`) und ggf. Inline-Skripte des Einbettungscodes
+  zulassen. Für die Seiten selbst setzt die Plattform derzeit keine CSP.
+
+### Logo und Favicon
+
+Logo und Favicon des Betreibers liefert die Plattform **selbst** aus (kein
+Hotlinking). Der Dateiinhalt steht base64-kodiert in den Helm-Werten:
+
+```yaml
+cockpit:
+  branding:
+    logo:
+      data: "iVBORw0KGgo…"          # base64 -w0 logo.png
+      type: image/png               # image/png | image/svg+xml | image/webp | image/jpeg
+      alt: "Musterstadt"            # leer -> "Logo"
+      href: "https://www.example.org/"   # optional, gleiche Regel wie legal.*
+    favicon:
+      data: "PHN2ZyB4bWxucz0…"      # base64 -w0 favicon.svg
+      type: image/svg+xml           # image/png | image/svg+xml | image/x-icon
+```
+
+- Kodieren: `base64 -w0 logo.png` (macOS: `base64 -i logo.png`).
+  Zeilenumbrüche im Wert sind erlaubt und werden entfernt.
+- Das Chart prüft beim Rendern: Typ aus der Liste, gültiges base64, die
+  Dateisignatur passend zum Typ (PNG, JPEG, WebP, ICO; SVG muss ein
+  `<svg`-Element enthalten) und die Größe: höchstens 128 KiB für das Logo und
+  64 KiB für das Favicon. Grund ist das Release-Secret von Helm (höchstens
+  1 MiB, gzip der Werte und Manifeste, base64-kodiert): Jedes Bild steht darin
+  zweimal – in den Werten und in der ConfigMap – und lässt sich als base64
+  kaum komprimieren. Größere Bilder brächen `helm install`/`upgrade` mit
+  „data: Too long“ ab.
+- Logo: PNG mit etwa 120 px Höhe (Anzeige mit rund 38 px, also scharf auch auf
+  hochauflösenden Displays) oder SVG. Es erscheint am Anfang des Seitenkopfs
+  der öffentlichen Seiten und statt des „UD“-Zeichens in der Seitenleiste des
+  Cockpits. Im dunklen Farbschema liegt es auf einem hellen, abgerundeten
+  Hintergrund, damit dunkle Schrift auf transparentem Grund lesbar bleibt.
+- Favicon: alle Seiten verweisen auf `/favicon`. nginx liefert das Favicon des
+  Betreibers (`favicon.png`, `.svg` oder `.ico`) und sonst das Plattform-Icon
+  `/icon.svg` aus. Das PWA-Manifest behält `/icon.svg` – installierte Apps
+  brauchen ein großes, skalierbares Icon.
+- Die Bilder liegen in der ConfigMap `cockpit-branding` und werden unter
+  `/branding/` ausgeliefert. Dort und unter `/favicon` gilt eine
+  Content-Security-Policy mit `sandbox`: Ein direkt geöffnetes SVG kann so
+  kein Skript auf der Plattform-Domain ausführen.
+- Ohne `branding` wird nichts gerendert oder gemountet; die Seiten sehen aus
+  wie bisher.
+
+Docker Compose: die Dateien vor dem GUI-Build nach `gui/public/branding/`
+legen (`logo.png`, `favicon.png` bzw. `.svg`/`.ico`) und das Logo in
+`gui/public/config.js` eintragen:
+`branding: { logo: { src: "/branding/logo.png", alt: "Musterstadt", href: "" } }`.
+Das Favicon braucht keinen Eintrag.
 
 ## Bekannte Einschränkungen Orion-LD TRoE (1.6.0)
 
@@ -244,20 +363,70 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
 - **Ports:** 1880 trägt nur die Endpunkte `/abfahrten` und `/warnungen.ics`,
   die die Cockpit-nginx weiterreicht (`UDP_CONNECTORS_UPSTREAM`, Helm
   `cockpit.connectorsUpstream`, Vorgabe der Dienst `connectors`). Der
-  Admin-Port 1881 (`/healthz`, `/trigger/<id>`) wird nie veröffentlicht und
-  von keinem Proxy weitergereicht: Ein Trigger lässt den Dienst eine Quelle
-  abrufen und nach Orion schreiben. `/trigger` antwortet zusätzlich nur auf
-  Loopback, wird also im Container ausgelöst.
+  Admin-Port 1881 (`/healthz`, `/trigger/<id>`, `/release-prunes/<id>`)
+  wird nie veröffentlicht und von keinem Proxy weitergereicht: Ein Trigger
+  lässt den Dienst eine Quelle abrufen und nach Orion schreiben, eine
+  Freigabe gibt blockierte Löschungen frei. `/trigger` und
+  `/release-prunes` antworten zusätzlich nur auf Loopback, werden also im
+  Container ausgelöst. Kein Sidecar (Service-Mesh-Proxy o. Ä.) darf den
+  Port abfangen — aus dessen Sicht käme jede Anfrage von Loopback. Prüfen
+  die Probes per `exec` statt per HTTP, den Port mit
+  `UDP_CONNECTORS_ADMIN_HOST=127.0.0.1` nur an Loopback binden.
 - **Zustand:** Änderungssignaturen, Prune-Buchführung und persistierter
   Konnektorzustand liegen in der TimescaleDB, Datenbank `orion`, Schema
   `udp_connectors` (Zugang über `TROE_DB_*`, dieselben Zugangsdaten wie
   Orion-LD). Das Schema legt der Dienst beim Start selbst an; der
   Datenbanknutzer braucht dafür `CREATE` auf der Datenbank, sonst das Schema
-  vorab anlegen. Ein Volume braucht der Dienst nicht (Root-Dateisystem
-  read-only).
+  vorab anlegen und `CREATE` auf dem Schema gewähren (auch für später
+  hinzukommende Tabellen wie `writer`; fehlt es, meldet der Dienst ein
+  `[error]` und übernimmt den Lock nicht). Ein Volume braucht der Dienst
+  nicht (Root-Dateisystem read-only).
 - **Genau eine Instanz:** Ein Advisory-Lock macht die laufende Instanz zum
   einzigen Schreiber. Helm fest mit `replicas: 1` und `strategy: Recreate`;
   eine zweite Instanz führte nur die ungegateten Konnektoren aus — doppelt.
+  Jede Übernahme des Locks zählt eine Generation hoch (Tabelle
+  `udp_connectors.writer`); daran erkennt der Dienst, ob zwischen zwei
+  eigenen Lock-Phasen jemand anderes geschrieben hat. Jeder Schreibvorgang
+  prüft sie: Hat eine andere Instanz übernommen, schreibt die alte nichts
+  mehr, auch wenn ihre Lock-Verbindung noch lebendig aussieht; vor jedem
+  gegateten Upsert prüft sie das ebenfalls.
+- **Prune:** Löscht eigene Entitäten, die die Quelle nicht mehr liefert. Der
+  30-%-Deckel gilt nur für kürzlich (unter 7 Tagen) Verschwundenes, gemessen
+  am frischen Bestand; Älteres („Altbestand“) baut der Dienst in Portionen
+  von höchstens 1.000 je Lauf ab, ältestes zuerst — erst nachdem der Prune
+  eine Woche ohne Lücke gelaufen ist (nach einem Ausfall beginnt die Woche
+  neu; sonst sähe nach langer Pause alles eine Woche alt aus) und nur
+  solange der frische Bestand nicht unter 95 % seines Referenzwerts fällt
+  (der folgt Wachstum sofort, Schrumpfen nur um 2 % je Lauf). „Verschwunden
+  seit“ misst bei Prunes mit Karenzzeit der letzte Schreibzeitpunkt, bei
+  Prunes über die vollständige Liste (Laden, Parken) die Dauer als Kandidat
+  in Folge.
+
+  **Blockierter Prune:** Überspringt der Deckel einen Prune, merkt sich der
+  Dienst den Beginn der Sperre. Ab dem dritten Überspringen in Folge ist das
+  ein `[error]`, `/healthz` nennt ihn unter `stateStore.blockedPrunes`. Was
+  mit diesem Massenverlust verschwand (ab einem Tag vor der Sperre), löscht
+  der Dienst nie von selbst — auch nicht, wenn es später zum Altbestand
+  wird: Er hält es zurück (`heldBack`), meldet in jedem Lauf ein `[error]`
+  und `scripts/healthcheck.sh` zeigt „PRUNE BLOCKED“. Bei Prunes über die
+  vollständige Liste (Laden, Parken) betrifft das alles, was nach der Sperre
+  verschwindet, auch gewöhnliche Abgänge. Kommen die Entitäten zurück
+  (Quelle wieder vollständig), hebt sich die Sperre selbst auf. Ist der
+  Verlust echt (etwa ein Anbieter hat den Feed verlassen), nach Prüfung der
+  Quelle freigeben:
+
+      bash scripts/release-prunes.sh <konnektor-id>
+
+  (Kubernetes: mit `CONNECTORS_EXEC` wie beim Auslösen.) Solange der Prune
+  noch über dem Deckel liegt, lehnt der Dienst ab (HTTP 409) — er würde
+  sofort wieder sperren; freigeben, sobald der Verlust zum Altbestand
+  geworden ist (7 Tage) und der Deckel wieder passt. Ab dem nächsten Lauf
+  gelten die zurückgehaltenen Entitäten dann als normale Kandidaten.
+  Älterer Bestand aus der Zeit vor der Sperre wird davon unabhängig
+  abgebaut (bei Prunes mit Karenzzeit).
+  Carsharing löscht zusätzlich Stationen, die zwei Läufe in Folge in der
+  vollständigen Stationsliste ihres Systems fehlen (freischwebende
+  „virtuelle Stationen“ erhalten je Parkvorgang eine neue Id).
 - **Auslösen:** `bash scripts/trigger-connector.sh <id>`. Unter Compose läuft
   der Aufruf per `docker exec udp-connectors`, in Kubernetes mit
   `CONNECTORS_EXEC="kubectl -n <namespace> exec deploy/connectors --"`.
@@ -269,9 +438,16 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   Ladezeitpunkt und Fehler je Datei). Nicht gesund ist der Zustandsspeicher
   ohne Schreib-Lock, bei scheiterndem Laden oder Schreiben oder wenn ein
   Konnektor außerhalb eines laufenden Nachladens nicht geladen ist; `reason`
-  nennt dann den Grund. Nach einem Lock-Verlust (Datenbank-Switchover) lädt
-  der Dienst alle Konnektoren sofort nach — die Sekunden, in denen das läuft
-  (`reloading`), zählen als gesund. Die Antwort bleibt 200, auch wenn die
+  nennt dann den Grund. Der Lock gilt erst als verloren, wenn die Datenbank
+  das bestätigt (Verbindung weg oder nicht in `pg_locks`); eine langsame
+  Prüfung zählt nicht. Nach einem echten Verlust (Datenbank-Switchover)
+  bleibt der Zustand im Speicher und wird nachgeschrieben, sobald der Lock
+  zurück ist. Hielt ihn zwischendurch eine andere Instanz, gleicht der
+  Dienst jeden Konnektor mit der Datenbank ab — die Sekunden, in denen das
+  läuft (`reloading`), zählen als gesund. `blockedPrunes` nennt Prunes, die
+  ihr Anteilsdeckel überspringt oder die einen Verlust zurückhalten
+  (`connector`, `prune`, `consecutiveSkips`, `blockedSince`, `heldBack`;
+  Freigabe siehe Prune). Die Antwort bleibt 200, auch wenn die
   Datenbank klemmt — Liveness-Probe und Compose-Healthcheck prüfen nur, ob der
   Prozess lebt; ein Neustart repariert keine Datenbank.
   `scripts/healthcheck.sh` zeigt den Zustandsspeicher an und schlägt fehl,
@@ -375,11 +551,21 @@ zielten nur auf den kleineren Teil des Volumens:
    erneut heraus. Vorher froren Werte bei Orion-Hängern wochenlang ein.
    Unveränderte Einzelstandorte mit Echtzeitwerten frischen nur `dateObserved`
    auf: Parkanlagen in jedem Lauf (~3.000 Zeilen/Tag, dazu ~800 für die
-   Parken-Summen), Ladesummen mit Livewerten stündlich (~22.000),
-   Carsharing-Stationen und Ladepunkte mit Livestatus reihum etwa alle 3 h
-   (~32.000 bzw. ~49.000 Zeilen/Tag). Reine Registereinträge ohne Echtzeitwert
-   bekommen keinen Zeitstempel. Die Ladesummen werden seither ebenfalls nur bei
-   Änderung voll geschrieben (vorher jede Summe stündlich mit allen Attributen).
+   Parken-Summen), Ladepunkte, Ladesummen und Carsharing-Stationen mit
+   Livewerten reihum etwa alle 3 h. Reine Registereinträge ohne Echtzeitwert
+   bekommen keinen Zeitstempel.
+
+   **Stammdaten getrennt von Messwerten.** Ladepunkte, Ladesummen und
+   Carsharing-Stationen führen wie die Parkanlagen zwei Signaturen: eine über
+   die Stammdaten (Name, Adresse, Lage, Betreiber, Anzahl Ladepunkte bzw.
+   Kapazität, AGS) und eine über die Messwerte (Livezähler bzw. verfügbare
+   Fahrzeuge). Nur neue Standorte und geänderte Stammdaten gehen voll heraus;
+   ändert sich nur ein Messwert, schreibt der Dienst die geänderten Attribute
+   plus `dateObserved` (`options=update` ersetzt nur die gesendeten Attribute).
+   Vorher schrieb jede Statusänderung eines Ladepunkts alle 12 Attribute.
+   Einmal je Woche geht jede dieser Entitäten trotzdem voll heraus: Fehlt
+   sie im Broker (gelöscht, Wiederherstellung), entstünde sonst aus den
+   Teilschreibvorgängen ein Gerippe ohne Name und Lage.
 2. **Takt an den Nutzen angepasst.** Der OCPDB-Abzug läuft stündlich statt
    halbstündlich, die Feinstaub-Einzelsensoren stündlich statt alle 15 min
    (die Gemeindemediane bleiben im 15-Minuten-Takt).
@@ -403,13 +589,40 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
    (`troe-stats`, alle 10 Minuten); wer sein Tagesvolumen überschreitet,
    erscheint als Warnung im Log des Konnektordienstes. Konnektoren ohne das Feld verhalten
    sich unverändert. Budgets sind grob das Doppelte des geschätzten
-   Regelbetriebs und fangen nur Ausreißer: `EVChargingStation` 170.000
-   (Frische ~49.000 + Änderungen ~35.000), `ChargingSummary` 80.000
-   (~22.000 + ~17.000), `CarSharingStation` 200.000 (~32.000 Frische, die
-   Änderungsrate ist geschätzt), `CityPulse` 100.000 (bis 1.103 Gemeinden ×
-   24 Läufe × Frische plus Änderungen). Der erste Lauf nach einem Deploy mit
-   Vollschrieb (z. B. ~125.000 Zeilen für die Ladepunkte) löst einmalig eine
-   Warnung aus.
+   Regelbetriebs und fangen nur Ausreißer. Schätzung (stündliche Läufe,
+   gemessene Änderungsraten):
+
+   | Typ | Bestand mit Livewerten | Änderung/h | Zeilen/Tag | Budget |
+   |---|---|---|---|---|
+   | `EVChargingStation` | ~6.100 (+ ~6.400 nur Register) | 46 % | ~244.000 | 460.000 |
+   | `ChargingSummary` | ~900 | 50 % | ~48.000 | 95.000 |
+   | `CarSharingStation` | ~4.400 | 29 % | ~91.000 (+ neue Stationen) | 180.000 |
+
+   Rechnung je Stunde: geänderte Standorte × (geänderte Messwerte +
+   `dateObserved`) plus unveränderte × ⅓ Frische. Ladepunkt: 2.806 × 3 +
+   3.294 ⁄ 3 ≈ 9.500 (bei einem Statuswechsel ändern sich meist zwei Zähler);
+   Ladesumme: 450 × 4 + 450 ⁄ 3 ≈ 1.950 (drei Zähler, eine Summe fasst
+   mehrere Standorte); Carsharing: 1.276 × 2 + 3.124 ⁄ 3 ≈ 3.600. Dazu
+   kommt der wöchentliche Vollschrieb jeder Entität (heilt Entitäten, die
+   hinter einer gespeicherten Signatur aus dem Broker verschwunden sind):
+   je Entität einmal die Woche alle Attribute statt der sonst in diesem Lauf
+   erwarteten Zeilen (Teilschrieb oder Frische, Ladepunkt mit Livewerten
+   ≈ 1,6, Ladesumme ≈ 2,2, Carsharing ≈ 0,8). Ladepunkte 6.100 × 10,4 +
+   6.400 × 7 ≈ 108.000 je Woche ≈ 15.500/Tag, Ladesummen 900 × 5,8 +
+   200 × 3 ≈ 800/Tag, Carsharing 4.400 × 8,2 ≈ 5.200/Tag. Mit dem früheren Vollschrieb waren es ~834.000, ~97.000 und
+   ~300.000 Zeilen/Tag.
+   `CityPulse` 100.000 (bis 1.103 Gemeinden × 24 Läufe × Frische plus
+   Änderungen).
+
+   Leere Signaturtabellen (Neuinstallation, verlorener Zustand, Umstellung
+   einer Tabelle) füllen Parken, Laden und Carsharing vor dem ersten Schreiben
+   aus dem Broker: Der Dienst liest die Entitäten mit genau den Attributen,
+   aus denen die Signatur besteht, und schreibt danach nur, was sich
+   geändert hat. Scheitert oder bricht die Liste ab, bleibt es beim
+   einmaligen Vollschrieb. Andere Konnektoren schreiben wenige hundert
+   Entitäten und brauchen das nicht. Warnt ein Lauf, dass mehr als die Hälfte
+   der Entitäten „geändert“ sei, obwohl Signaturen gespeichert waren
+   (`change state lost?`), ist Zustand verloren gegangen.
 5. **Lautes Scheitern statt stiller Lücken.** Der ParkAPI-Abruf prüft, ob sich
    zwei Seiten überschneiden, und bricht den Lauf mit einem Fehler ab, statt
    denselben Ausschnitt erneut zu schreiben; ein erreichter Seitendeckel
@@ -527,7 +740,7 @@ Hypertable hält den Weg zur Kompression offen, ohne sie heute zu brauchen.
 
 **Bestehende Installationen** stellen mit
 `scripts/migrate-troe-hypertable.sh` um (Runbook: `helm/udp/DEPLOY.md`
-§10c): Die Historie wird Tag für Tag (UTC) im laufenden Betrieb in eine neue
+§10d): Die Historie wird Tag für Tag (UTC) im laufenden Betrieb in eine neue
 Hypertable kopiert, nur der Tausch der Tabellen braucht eine kurze Auszeit
 der Schreiber; Rückweg bis zum Abschluss mit `rollback`. Beim Kopieren
 entfallen unveränderte Wiederholungen: Innerhalb einer Reihe (`entityid`,
@@ -568,7 +781,7 @@ und bricht ab, wenn das Volume der vollsten Instanz dafür nicht reicht —
 dann zuerst das Volume vergrößern. Die Kopie schreibt WAL in der
 Größenordnung der neuen Tabelle. Erst `finalize` gibt den Platz der alten
 Tabelle frei. Lässt sich das Volume nicht vergrößern, gibt es die
-Low-Disk-Variante (`export`, `swap-lowdisk`, `import`; DEPLOY.md §10c): Die
+Low-Disk-Variante (`export`, `swap-lowdisk`, `import`; DEPLOY.md §10d): Die
 Historie wird tageweise in lokale Dateien exportiert (gzip ≈ 30–50 Byte je
 Zeile), die alte Tabelle in kurzer Auszeit durch die leere Hypertable
 ersetzt und die Historie im laufenden Betrieb mit derselben Dedup

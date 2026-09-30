@@ -219,9 +219,11 @@ es. `mastr-bw` hätte seine Rotation jedes Mal bei 0 begonnen.
   `connector_state`, je Konnektor-id), beim Start idempotent angelegt. Orions
   TRoE-Tabellen bleiben unberührt.
 - **Laden vor dem ersten Lauf.** Sobald der Schreib-Lock gehalten wird, lädt
-  der Dienst den Zustand aller Konnektoren — beim Start und nach einem
-  Lock-Verlust (Datenbank-Switchover, etwa bei jedem Release) sofort im
-  Hintergrund, nicht erst vor dem jeweils nächsten Lauf. Ein gescheitertes
+  der Dienst den Zustand aller Konnektoren — beim Start sofort im
+  Hintergrund, nicht erst vor dem jeweils nächsten Lauf. Nach einem
+  Lock-Verlust (Datenbank-Switchover) bleibt der Speicher maßgeblich und wird
+  nachgeschrieben; nur wenn zwischendurch eine andere Instanz den Lock hielt,
+  wird mit der Datenbank abgeglichen. Ein gescheitertes
   Laden wird nach 30 s wiederholt. Ohne geladenen Zustand laufen Konnektoren
   mit Gate oder persistiertem `ctx.state` nicht (`[warn]`, der nächste Lauf
   versucht es erneut; ein Lauf wartet auf ein laufendes Laden), Prunes werden

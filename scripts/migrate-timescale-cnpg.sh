@@ -139,7 +139,7 @@ preflight() {
         # Only where the extension exists; a query error aborts (set -e).
         [ -n "$(legacy_psql -d "$db" -Atc "SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'")" ] || continue
         hyper=$(legacy_psql -d "$db" -Atc "SELECT count(*) FROM timescaledb_information.hypertables")
-        [ "$hyper" = 0 ] || die "$hyper hypertables in $db – this copy does not handle TimescaleDB hypertables. The order is: this CNPG migration first, then the TRoE conversion (scripts/migrate-troe-hypertable.sh, DEPLOY.md §10c)."
+        [ "$hyper" = 0 ] || die "$hyper hypertables in $db – this copy does not handle TimescaleDB hypertables. The order is: this CNPG migration first, then the TRoE conversion (scripts/migrate-troe-hypertable.sh, DEPLOY.md §10d)."
     done
     echo "  hypertables: 0"
     # pg_dump (without -C) does not carry ALTER DATABASE/ROLE ... SET.
