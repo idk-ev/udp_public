@@ -21,7 +21,7 @@
 | Geräte-/Sensorschicht (Edge) | LPWAN-Sensorik der Fachanwendungen (extern; via LoRa/NB-IoT/LTE-M/Mioty) |
 | Konnektivität / Datenaufnahme | Mosquitto (MQTT), FIWARE IoT-Agent JSON, HTTP-Ingest über APISIX (`/ingest`), Konnektordienst (Pull-Quellen, `platform/connectors`), Node-RED (Low-Code-Flüsse/ETL) |
 | Daten- & Kontextmanagement | **Orion-LD** (NGSI-LD Context Broker), **Mintaka** (Temporal), FIWARE Smart Data Models + kommunale Modelle via @context |
-| Datenhaltung | **PostgreSQL** + **PostGIS** (Zeitreihen/TRoE und Geodaten; TimescaleDB 07/2026 abgelöst — keine Hypertables in Nutzung), MongoDB (Broker-Zustand) |
+| Datenhaltung | **PostgreSQL** + **PostGIS** + **TimescaleDB** in der Apache-Edition (Zeitreihen/TRoE als Hypertable, Geodaten; `last()` für Mintaka), MongoDB (Broker-Zustand) |
 | Dienste-/Anwendungsschicht | FROST-Server (SensorThings), GeoServer (OGC), CKAN (Open Data/DCAT-AP.de), Superset, Fachanwendungen |
 | Übergreifend: API-Management | **Apache APISIX**: ein Einstiegspunkt, Zugriffskontrolle (OIDC), Rate-Limits, Metriken, dokumentierte Routen |
 | Übergreifend: Identität & Sicherheit | **Keycloak** (OIDC/SAML, Rollen, Mandanten-Gruppen), TLS am Ingress, Security-Header |

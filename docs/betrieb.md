@@ -70,7 +70,8 @@ docker run --rm -e VUS=10 -e BASE=https://<host> \
   (Compose-Referenz: Dienst `backup`; Kubernetes: CronJob) mit Aufbewahrung
   14 Tage / 8 Wochen / 3 Monate (die TRoE-Historie ist append-only und steckt
   in jedem Voll-Dump erneut — längere Monats-Staffeln wären fast nur
-  redundantes Volumen).
+  redundantes Volumen). Rücksicherung der Datenbank `orion` mit Hypertable:
+  s. „Zeitreihen-Retention (TRoE)“, Speicherlayout.
 - **Kontinuierlich**: WAL-Archivierung (PITR) für PostgreSQL; Volume-
   Snapshots für MongoDB; Kopie in zweite Brandzone/Region
   (3-2-1-Regel). Das Monitoring sichert sein `/app/data` (SQLite mit der
@@ -135,6 +136,14 @@ TimescaleDB fehlen die Zeilen; es gibt keinen Log-Eintrag:
 Diagnose bei Verdacht: `SELECT count(*) FROM attributes WHERE entityid =
 '<id>';` in der Datenbank `orion` — 0 Zeilen trotz vorhandener Entität im
 Broker deutet auf einen der beiden Fälle.
+
+Allgemeiner gilt: Orion-LD wertet das Ergebnis seiner TRoE-Inserts nicht aus.
+Lehnt die Datenbank einen Insert ab (Schemaänderung, voller Datenträger,
+Sperre), fehlt die Historie still, der Broker bleibt korrekt. Nach jedem
+Eingriff in das TRoE-Schema — etwa der Umstellung auf die Hypertable — deshalb
+den Zufluss beobachten: `troeRows1h` und `ingestByHour` der Entität
+`PlatformStatus:udp-troe` (`troe-stats`, alle 10 Minuten) müssen im gewohnten
+Rahmen weiterlaufen.
 
 ### Neustartschleife MongoDB → Orion-LD (Kubernetes)
 
@@ -413,14 +422,23 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
 `subattributes` (die kleine `entities`-Tabelle bleibt für Mintaka-Metadaten)
 und pflegt idempotente Indizes (`ts` sowie `(entityid, ts)` mit
 `text_pattern_ops` — Letzterer trägt die Mintaka-Temporalabfragen je Entität
-und die LIKE-Staffeln der Retention). `drop_chunks` ist bewusst NICHT im
-Einsatz — TRoE nutzt einfache Tabellen, keine Hypertables.
+und die LIKE-Staffeln der Retention; die 3-Monats-Staffel läuft als ein
+`DELETE` je Präfix). Ist `attributes` eine Hypertable (s. u.,
+„Speicherlayout“), fällt die 12-Monats-Staffel per `drop_chunks` statt per
+`DELETE`: ganze Chunks, keine toten Zeilen, keine Vacuum-Last. `drop_chunks`
+entfernt nur Chunks, die vollständig vor der Grenze enden — bis zu einer
+Chunk-Länge (7 Tage) ältere Zeilen bleiben also bis zur übernächsten Woche
+stehen; die Zusammenfassung zählt dafür Chunks statt Zeilen. Auf einer
+gewöhnlichen Tabelle (bestehende, nicht umgestellte Installationen) bleibt
+es beim `DELETE`; `subattributes` ist immer eine gewöhnliche Tabelle. Die
+nächtlichen Typsummen zählen zuerst je Entität und summieren dann je Typ.
 
 **Vacuum:** Die Retention setzt vorab (nur bei Abweichung) je Tabelle
 `autovacuum_vacuum_insert_scale_factor` und `autovacuum_analyze_scale_factor`
 auf 0,01 und fährt nach dem Lauf `VACUUM (ANALYZE)` auf `attributes` und
 `subattributes` (eigene Sitzung, 45 min Timeout, gebremst wie Autovacuum mit
-`vacuum_cost_delay = 2ms`, Fehler nur `[warn]`) — sonst bleibt die Tabelle
+`vacuum_cost_delay = 2ms`, Fehler nur `[warn]`; bei einer Hypertable wirken
+Schwellen und `VACUUM` auf alle Chunks, auch künftige) — sonst bleibt die Tabelle
 nach einem Switchover (Statistikzähler zurückgesetzt) unvacuumiert und
 `troe-stats` läuft in seinen Timeout. `VACUUM` wirkt nur als Eigentümer der
 Tabellen: Ist `TROE_DB_USER` es nicht, überspringt PostgreSQL sie mit einer
@@ -480,7 +498,80 @@ fortzuschreiben. Der Punkt gehört so oder so ins Kapazitätsmonitoring — bei
 einem produktiven Betrieb mit mehreren Mandanten ist die Staffelung neu zu
 bewerten.
 
-(Voraussetzung: `attributes` als Hypertable partitioniert; im
-Referenz-Setup von Orion-LD als normale Tabelle angelegt — dann stattdessen
-periodisch `DELETE FROM attributes WHERE ts < now() - interval '12 months'`
-+ `VACUUM`.)
+### Speicherlayout: `attributes` als Hypertable
+
+Orion-LD legt `attributes` als gewöhnliche Tabelle mit Primärschlüssel
+`(instanceId, datasetId, ts)` an. Die Plattform legt das TRoE-Schema **vor**
+dem Broker-Start selbst an (`helm/udp/files/postgres/troe-schema.sql`; Helm:
+initContainer `troe-schema` von `orion-ld`, Compose: Dienst `troe-schema`) —
+Typen, Tabellen und Spalten wie in Orion-LD 1.6.0, mit einem Unterschied:
+`attributes` ist eine TimescaleDB-Hypertable auf `ts` mit 7-Tage-Chunks und
+**ohne Primärschlüssel**. Orion-LDs eigenes DDL bricht danach an seinem ersten
+`CREATE TYPE` harmlos ab. Das Skript ist idempotent, läuft bei jedem Start
+(Advisory-Lock gegen gleichzeitig startende Repliken) und fasst eine
+bestehende, befüllte `attributes`-Tabelle nicht an — es meldet sie nur.
+
+Warum ohne Primärschlüssel: Er machte in einer Referenzinstallation 38 % der
+Tabellengröße aus, bedient keine Abfrage (Mintaka sucht über
+`entityid`/`ts`, die Retention über `ts`), und `instanceId` allein ist ohnehin
+nicht eindeutig. Orion-LD schreibt nur per `INSERT` (kein `ON CONFLICT`, kein
+`UPDATE`/`DELETE`), Mintaka liest nur. Es bleiben die Indizes
+`attributes_ts_idx (ts)` und `attributes_entityid_ts_idx (entityid
+text_pattern_ops, ts)`, dazu `entities_id_ts_idx (id, ts)` für Mintakas
+Entitätsauflösung. Die Tabellen `entities` und `subattributes` bleiben wie in
+Orion-LD.
+
+TimescaleDB läuft in der **Apache-Edition**: Hypertables, `drop_chunks`,
+`first()`/`last()`; Kompression und Continuous Aggregates (TSL) fehlen. Die
+Hypertable hält den Weg zur Kompression offen, ohne sie heute zu brauchen.
+
+**Bestehende Installationen** stellen mit
+`scripts/migrate-troe-hypertable.sh` um (Runbook: `helm/udp/DEPLOY.md`
+§10c): Die Historie wird Tag für Tag (UTC) im laufenden Betrieb in eine neue
+Hypertable kopiert, nur der Tausch der Tabellen braucht eine kurze Auszeit
+der Schreiber; Rückweg bis zum Abschluss mit `rollback`. Beim Kopieren
+entfallen unveränderte Wiederholungen: Innerhalb einer Reihe (`entityid`,
+`id`, `datasetid`), nach `ts` sortiert, fällt eine Zeile nur weg, wenn
+`opmode`, `valuetype`, `unitcode`, `observedat`, `subproperties` und alle
+Wertspalten (Text, Wahrheitswert, Zahl, Zeitpunkt, Compound, alle
+Geometrien) der Vorgängerzeile gleichen. Immer erhalten bleiben die erste
+Zeile jeder Reihe je UTC-Tag (ein Abfragefenster, das um Mitternacht UTC
+beginnt, findet damit einen Ausgangswert, und Tage lassen sich unabhängig
+kopieren; ein Fenster, das mitten am Tag beginnt, kann bis zur nächsten
+Änderung leer bleiben), `Create`-/`Delete`-Zeilen, Zeilen mit Sub-Properties und
+Zeilen, auf die `subattributes` verweist. Jeder Tag wird in seiner eigenen
+Transaktion kopiert und auf Vollständigkeit geprüft; das Umschalten prüft
+jeden Tag der neuen Tabelle noch einmal und kopiert abweichende Tage neu.
+
+**Was sich für die Temporal-API ändert — vor dem `backfill` entscheiden:**
+Unveränderte Werte liefern weniger Stützstellen. Ein historisches
+Abfragefenster, das nicht um Mitternacht UTC beginnt, kann für eine Reihe mit
+konstantem Wert leer bleiben; `lastN` reicht weiter in die Vergangenheit, und
+Aggregationen über Zeitfenster (`aggrMethods` wie `totalCount`, `sum`, `avg`)
+ergeben andere Zahlen, weil die entfallenen Wiederholungen nicht mehr mitzählen.
+Als gleich gelten auch gleichwertige Schreibweisen (JSON `1.0` und `1`,
+Zahl `-0` und `0`).
+
+Neue Installationen – Helm wie Compose – bekommen die Hypertable. Bestehende
+Installationen behalten die gewöhnliche Tabelle, bis sie umgestellt werden;
+die Retention erkennt das und löscht dort weiter per `DELETE`. Das
+Migrationsskript arbeitet nur unter Kubernetes; für bestehende
+Compose-Installationen gibt es keinen fertigen Umstellungsweg (die SQL-Schritte
+des Skripts lassen sich per `docker exec … psql` nachvollziehen). Mandanten-Datenbanken von Orion-LD (`orion_<tenant>`)
+legt der Broker selbst an — sie bleiben beim Originalschema.
+
+**Kapazität:** Die neue Tabelle braucht ohne Primärschlüssel grob 60 % der
+alten, abzüglich der entfallenen Wiederholungen (vorher mit `backfill` und
+`status` messen). Während der Umstellung liegen alte und neue Tabelle
+nebeneinander: `preflight` rechnet mit der alten Größe ohne Schlüssel × 1,3
+und bricht ab, wenn das Volume der vollsten Instanz dafür nicht reicht —
+dann zuerst das Volume vergrößern. Die Kopie schreibt WAL in der
+Größenordnung der neuen Tabelle. Erst `finalize` gibt den Platz der alten
+Tabelle frei.
+
+**Rücksicherung eines Dumps der Datenbank `orion`:** Mit Hypertable enthält
+der Dump TimescaleDBs Katalog. In eine leere Datenbank mit
+`CREATE EXTENSION timescaledb` zurückspielen, davor `SELECT
+timescaledb_pre_restore();`, danach `SELECT timescaledb_post_restore();`.
+`pg_dump` warnt dabei über zirkuläre Fremdschlüssel im TimescaleDB-Katalog —
+erwartet und harmlos.

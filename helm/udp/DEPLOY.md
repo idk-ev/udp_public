@@ -570,6 +570,15 @@ Bei generierten Secrets (Weg A) bleiben Passwörter über Upgrades **stabil**
 (via `lookup`). Config-Änderungen unter `files/` lösen dank Checksum-Annotation
 automatisch einen Rolling-Restart der betroffenen Pods aus.
 
+Die PostgreSQL-Parameter (`timescale.parameters`) sind auf die Vorgabe-Ressourcen
+(4Gi-Limit) bemessen und mit ihnen zu skalieren. Eine Änderung von
+`shared_buffers` (ebenso `max_connections`) startet die Datenbank-Instanzen
+neu – CNPG rollt die Standbys und schaltet dann per Switchover um, also ein
+paar Sekunden ohne Schreibzugriffe. Ein neues Datenbank-Image im selben
+Upgrade rollt im selben Durchgang mit: Die Sperre des CNPG-Webhooks gegen
+Image- und Parameteränderung zugleich greift nur bei `spec.imageName`, das
+Chart referenziert das Image über einen ImageCatalog (geprüft gegen CNPG 1.30).
+
 ### 10a. Migration der Datenbank auf CloudNativePG (Upgrade von Chart ≤ 1.0.x)
 
 Bis Chart 1.0.x lief die Datenbank als einzelnes StatefulSet `timescale`; ihr
@@ -635,8 +644,10 @@ nur nach vollständiger Kopie (Annotation am Cluster), Phase `""` erst, wenn
 
 Was sich ändert: gleiche Datenbanken, Rollen und Passwörter (MD5, wegen
 Orion-LD), gleicher Hostname `timescale`, Sortierung `en_US.UTF-8` wie bisher;
-PostGIS 3.5 → 3.6, TimescaleDB 2.26 → aktuelle 2.x (Apache-Edition, keine
-Hypertables im Einsatz – das Skript bricht sonst ab), Datenprüfsummen an.
+PostGIS 3.5 → 3.6, TimescaleDB 2.26 → aktuelle 2.x (Apache-Edition),
+Datenprüfsummen an. Die Kopie überträgt keine Hypertables – das Skript bricht
+dann ab. Reihenfolge deshalb: erst dieser Umzug, danach die Umstellung von
+TRoE auf die Hypertable (§10c).
 
 ### 10b. Hochverfügbarkeit: Verteilung und MongoDB-Replica-Set
 
@@ -854,6 +865,85 @@ Geht das Volume von `mongo-0` verloren, während die anderen laufen, wird es vom
 Set neu befüllt. Sind dagegen **alle** Mitglieder gleichzeitig weg und
 `mongo-0` startet mit leerem Volume, legt es ein neues, leeres Set an – dann
 aus dem Backup bzw. den Volumes der anderen Mitglieder wiederherstellen.
+
+### 10c. TRoE-Tabelle `attributes` auf Hypertable umstellen
+
+Neue Installationen legen `attributes` als TimescaleDB-Hypertable ohne
+Primärschlüssel an (initContainer `troe-schema` von `orion-ld`, Hintergrund:
+`docs/betrieb.md`, „Zeitreihen-Retention (TRoE)“). Bestehende Installationen
+behalten Orion-LDs gewöhnliche Tabelle, bis sie mit
+`scripts/migrate-troe-hypertable.sh` umgestellt werden; der initContainer
+meldet das bei jedem Start als WARNING und lässt die Tabelle in Ruhe.
+
+Ablauf: `backfill` kopiert jeden abgeschlossenen UTC-Tag in die neue
+Hypertable `attributes_new` – im laufenden Betrieb, wiederaufnehmbar, jeder
+Tag in einer eigenen, geprüften Transaktion, unveränderte Wiederholungen
+entfallen. `cutover` nimmt die TRoE-Schreiber (`orion-ld`, `connectors`,
+`node-red`, `iot-agent-json`) kurz vom Netz, kopiert den Rest (in der Regel
+nur den laufenden Tag – Tage ab eine Stunde vor dem Umschalten immer neu,
+Grenzen erst nach dem Stopp der Schreiber bestimmt), prüft jeden Tag der
+neuen Tabelle (abweichende Tage, etwa nach einem Rollback, kopiert es neu),
+prüft unter der Tabellensperre, dass die alte Tabelle seit der Kopie
+keine Zeile mehr bekommen hat, und tauscht die Tabellen per Umbenennung; die
+alte bleibt als `attributes_old`. Mintaka liest weiter.
+Die Skript-Sitzungen laufen im CNPG-Primary mit `statement_timeout`,
+`temp_file_limit` und `lock_timeout`.
+
+Vorher:
+
+- Erst die CNPG-Migration (§10a), falls noch nicht geschehen.
+- Die Temporal-API liefert danach für unveränderte Werte weniger Stützstellen;
+  Zeitfenster mitten am Tag, `lastN` und Aggregationen können andere
+  Ergebnisse geben (`docs/betrieb.md`, „Speicherlayout“) – vorher klären.
+- Keine laufende Sicherung (`db-backup`) und keine Retention zum Zeitpunkt des
+  `cutover`: Das Skript bricht sonst vor dem Tausch ab.
+- **Platz:** `preflight` schätzt den Bedarf (alte Tabelle ohne Schlüssel × 1,3)
+  und bricht ab, wenn er auf dem Volume der vollsten Instanz nicht frei ist.
+  Dann **zuerst das Volume vergrößern**: `timescale.persistence.size` anheben
+  und `helm upgrade` – CNPG vergrößert die PVCs aller Instanzen im laufenden
+  Betrieb, sofern die StorageClass `allowVolumeExpansion` erlaubt (sonst
+  gemäß CNPG-Doku Instanz für Instanz neu anlegen). Verkleinern geht nicht;
+  der Platz der alten Tabelle wird erst mit `finalize` frei.
+- Die Kopie schreibt WAL in der Größe der neuen Tabelle: Replikation und ggf.
+  WAL-Archiv müssen mithalten. Knoten-Neustarts (kured) während `cutover`
+  pausieren wie in §10a.
+
+```bash
+export NAMESPACE=udp RELEASE=udp KUBE_CONTEXT=<context>   # jede Rückfrage nennt Kontext und Namespace
+S=scripts/migrate-troe-hypertable.sh
+
+# 0. Nur falls preflight zu wenig Platz meldet: Volume vergrößern
+helm upgrade udp <chart> -n udp -f values-prod.yaml --set timescale.persistence.size=<neu>
+kubectl -n udp get pvc -l cnpg.io/cluster=timescale     # neue Größe abwarten
+
+# 1. Prüfen
+$S preflight
+
+# 2. Historie kopieren – Plattform läuft weiter; abbrechbar und wiederholbar
+$S backfill
+$S status                                          # Fortschritt, Anteil entfallener Zeilen
+
+# 3. Direkt vor dem Umschalten noch einmal nachziehen, dann umschalten
+$S backfill
+$S cutover                                         # kurze Auszeit der Schreiber
+
+# 4. Einige Stunden den TRoE-Zufluss beobachten (PlatformStatus:udp-troe,
+#    troeRows1h/ingestByHour) – Orion-LD meldet gescheiterte Inserts nicht.
+
+# 5. Nach ein paar Tagen Regelbetrieb: alte Tabelle löschen, Platz frei
+$S finalize --drop-old
+```
+
+Zurück bis zum `finalize`: `$S rollback` – Schreiber kurz vom Netz, Zeilen seit
+dem Umschalten (mit 15 min Reserve gegen Uhrenabweichung; der Primärschlüssel
+der alten Tabelle verhindert Doppelte) tageweise zurück in die alte Tabelle, Namen zurückgetauscht; ein späterer
+`cutover` kopiert die Tage ab dem Umschalten erneut. Scheitert ein Schritt
+unterwegs, bleibt die Tabellenlage unverändert, und die Schreiber kommen
+automatisch wieder hoch.
+
+Die Retention (`troe-retention`) erkennt die Hypertable selbst und schneidet
+die 12-Monats-Staffel ab dann per `drop_chunks`. Mandanten-Datenbanken
+(`orion_<tenant>`) werden nicht umgestellt.
 
 ---
 

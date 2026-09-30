@@ -45,7 +45,7 @@ aufgesetzt werden kann.
 | **DCAT-AP.de**-Metadatenkatalog mit Open-Data-Portal (**CKAN**) | CKAN 2.10 + ckanext-dcat (RDF-Endpunkte, DCAT-AP-Profil), benutzerfreundliche Oberfläche + API |
 | Open-Source-**API-Management (Apisix)** | Apache APISIX, deklarative Routen (GitOps), granulare Zugriffskontrolle (OIDC-Plugin), Rate-Limiting, Prometheus-Monitoring, dokumentierte Schnittstellen |
 | **PostgreSQL** mit **PostGIS** und **TimescaleDB** (Apache-Edition) | Zentrale Instanz: TRoE-Zeitreihen (Orion-LD), FROST- und CKAN-Datenbanken, PostGIS für Georeferenzierung, TimescaleDB-Zeitreihenfunktionen für die Temporal-API |
-| Performante, skalierbare, ausfallsichere Speicherung | Indizierte Zeitreihen (Hypertables möglich), Kubernetes-Operator-Betrieb, Backup/DR-Konzept |
+| Performante, skalierbare, ausfallsichere Speicherung | Indizierte Zeitreihen (TRoE als TimescaleDB-Hypertable), Kubernetes-Operator-Betrieb, Backup/DR-Konzept |
 
 ## B.II.5 Betrieb, Sicherheit und Wartung
 
