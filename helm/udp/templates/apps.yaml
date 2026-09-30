@@ -181,6 +181,7 @@ spec:
             - { name: UDP_CONNECTORS_PORT, value: "1880" }
             - { name: UDP_CONNECTORS_ADMIN_PORT, value: "1881" }
             - { name: UDP_TRIGGER_COOLDOWN_SECONDS, value: {{ .Values.connectors.triggerCooldownSeconds | quote }} }
+            - { name: UDP_OPEN_METEO_DAILY_CAP, value: {{ .Values.connectors.openMeteoDailyCap | quote }} }
           ports:
             # Public routes (/abfahrten, /warnungen.ics), proxied by the cockpit.
             - { name: http, containerPort: 1880 }

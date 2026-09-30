@@ -20,8 +20,10 @@
  * connector fetches `bw-gemeinden.json` itself and needs no geo context; unlike
  * it, it does not write the rows into the context. No change gate (CHUNK_HELPER
  * is spliced in, `gateChanged` never called): every run writes every entity, in
- * chunks of 100. `refireOnRestart: false` — delayed first run, see the
- * scheduler.
+ * chunks of 100. `refireOnRestart: false` on wall-clock slots three hours
+ * after `wetter-bw` (03:10, 09:10, 15:10, 21:10 UTC), see the scheduler. When the daily
+ * Open-Meteo budget runs short, this connector yields to `wetter-bw`
+ * (`reserve` below, explained in ./open-meteo-batches.ts).
  *
  * Deliberate difference, only for input the source does not produce: a location
  * with malformed values (a daily series shorter than `time`, a missing
@@ -54,16 +56,18 @@ import type {
 } from "../kernel/types.js";
 import {
   OPEN_METEO_FORECAST_URL,
+  OpenMeteoRun,
   UPSERT_CHUNK_SIZE,
   agsListOf,
   coordinateQuery,
-  fetchBatch,
   joinGroups,
   joinTimingFor,
   loadMunicipalities,
+  runCost,
   locationsOf,
   measurement,
   sliceBatches,
+  weatherReserve,
 } from "./open-meteo-batches.js";
 import type { BatchBody, JoinTiming } from "./open-meteo-batches.js";
 
@@ -338,18 +342,30 @@ export function build(
 /* ------------------------------------------------------------------ run */
 
 /**
- * `run` with the join timing injectable — the tests cannot wait minutes.
- * Without one, the window is derived from the batch count and the shared
- * Open-Meteo bucket ({@link joinTimingFor}, explained in ./open-meteo-batches.ts).
+ * `run` with the join timing (and the clock of the Open-Meteo budget)
+ * injectable — the tests cannot wait minutes. Without one, the window is
+ * derived from the batch count and the shared Open-Meteo bucket
+ * ({@link joinTimingFor}, explained in ./open-meteo-batches.ts).
  */
-export async function runWith(ctx: Ctx, timing?: JoinTiming): Promise<void> {
+export async function runWith(ctx: Ctx, timing?: JoinTiming, nowMs?: () => number): Promise<void> {
   const rows = await loadMunicipalities(ctx, LABEL);
   if (rows === null) return;
 
   const batches = planBatches(rows);
+  // Yields to the current weather: keeps its runs still due today free
+  // below the daily cap.
+  const calls = new OpenMeteoRun(ctx, {
+    label: LABEL,
+    batchCount: batches.length,
+    reserve: weatherReserve((nowMs ?? Date.now)(), ctx.entry, rows.length),
+    nowMs,
+  });
+  calls.checkCap(runCost(batches));
   // All calls are started at once and queue in the token bucket in batch
-  // order, one per 15 s — the delay node's queue.
-  const tasks = batches.map(async (batch) => partOf(batch, await fetchBatch(ctx, batch.url)));
+  // order, one per 20 s — the delay node's queue.
+  const tasks = batches.map(async (batch, index) =>
+    partOf(batch, await calls.fetch({ index, url: batch.url, municipalities: batch.agsList.length })),
+  );
   const join = timing ?? joinTimingFor(batches.length);
 
   const summary = await joinGroups(tasks, join, ctx.signal, async (group) => {
@@ -377,6 +393,7 @@ export async function runWith(ctx: Ctx, timing?: JoinTiming): Promise<void> {
         `(${String(result.failedChunks)} failed)`,
     );
   });
+  calls.report();
   if (summary.abandoned > 0) {
     ctx.log.warn(`${LABEL}: shutdown — ${String(summary.abandoned)} fetched batches not written`);
   }

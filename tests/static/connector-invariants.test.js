@@ -511,3 +511,34 @@ exports["Row budgets cover the new freshness volume"] = () => {
   const b = Object.assign({}, ...REGISTRY.map(c => c.rowBudget24h || {}));
   for (const t of ["EVChargingStation", "ChargingSummary", "CarSharingStation", "CityPulse"]) assert(b[t] > 0, "no row budget for " + t);
 };
+
+/* Weather tiles: the Open-Meteo values carry their age like parking and
+   charging do. The threshold follows the real cadence of wetter-bw and
+   vorhersage-bw: two missed runs plus a margin. */
+exports["GUI: weather tiles show their age after two missed Open-Meteo runs"] = () => {
+  const page = fs.readFileSync(path.join(ROOT, "gui/public/stadt.html"), "utf8");
+  const takt = Number((page.match(/const OM_TAKT_H = (\d+);/) || [])[1]);
+  for (const id of ["wetter-bw", "vorhersage-bw"]) {
+    assert.strictEqual(REGISTRY.find(c => c.id === id).intervalSeconds, takt * 3600, `${id}: OM_TAKT_H is not its cadence`);
+  }
+  const expr = (page.match(/const STALE = \{[^\n]*wetter: ([^}\n]+?) \};/) || [])[1];
+  assert(expr, "STALE.wetter missing");
+  const maxAge = new Function("OM_TAKT_H", `return ${expr};`)(takt);
+  const H = 3600e3;
+  assert(maxAge > 2 * takt * H && maxAge <= 2 * takt * H + 2 * H, `STALE.wetter ${maxAge / H} h, expected 2 × ${takt} h plus a small margin`);
+  assert(/const wxStand = wx \? staleStand\(wx, STALE\.wetter\)/.test(page), "weather tiles without age check");
+  assert(/const fcStand = fcEnt \? staleStand\(fcEnt, STALE\.wetter\)/.test(page), "forecast values without age check");
+  assert(/hint: fcStand \|\| "aktuell \(Open-Meteo\)"/.test(page), "UV tile still labelled current unconditionally");
+  assert(!/3-stündlich|2-h-Takt/.test(page), "outdated Open-Meteo cadence in the texts");
+
+  const lib = fs.readFileSync(path.join(ROOT, "gui/public/smartcity-lib.js"), "utf8");
+  const start = lib.indexOf("  const obsTime = e => {");
+  const end = lib.indexOf("  };", lib.indexOf("  const staleStand = ")) + 4;
+  const staleStand = new Function(lib.slice(start, end) + "\nreturn staleStand;")();
+  const at = ms => new Date(Date.now() - ms).toISOString();
+  // WeatherObserved carries observedAt on its values, WeatherForecast a dateObserved.
+  assert.strictEqual(staleStand({ temperature: { value: 20, observedAt: at(12 * H) } }, maxAge), "");
+  assert(/^Stand: /.test(staleStand({ temperature: { value: 20, observedAt: at(maxAge + H) } }, maxAge)));
+  assert.strictEqual(staleStand({ dateObserved: { value: { "@type": "DateTime", "@value": at(12 * H) } } }, maxAge), "");
+  assert(/^Stand: /.test(staleStand({ dateObserved: { value: { "@type": "DateTime", "@value": at(maxAge + H) } } }, maxAge)));
+};

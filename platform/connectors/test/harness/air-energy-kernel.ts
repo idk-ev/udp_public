@@ -27,6 +27,7 @@ import type { SharedGeo } from "../../src/kernel/geo.js";
 import { createOrion } from "../../src/kernel/orion.js";
 import { createPruner } from "../../src/kernel/prune.js";
 import { intervalMsOf, loadRegistry, sumRowBudgets } from "../../src/kernel/registry.js";
+import { memoryQuota } from "../../src/kernel/quota.js";
 import { createConnectorState } from "../../src/kernel/state.js";
 import type { Ctx, HttpResponse, RateLimiter, RegistryEntry } from "../../src/kernel/types.js";
 import { readFixture, repositoryRoot } from "./fixtures.js";
@@ -92,6 +93,7 @@ export function legacyGlobal(
 const NO_LIMIT: RateLimiter = {
   acquire: () => Promise.resolve(() => undefined),
   run: (_host, task) => task(),
+  pause: () => undefined,
 };
 
 export interface TestCtx {
@@ -152,6 +154,7 @@ export function testCtx(
     params: entry.params,
     enabledFor: entry.enabledFor,
     state: createConnectorState(),
+    quota: memoryQuota(entry.id),
     rowBudget: sumRowBudgets(loadRegistry(registryPath()).entries),
     now: () => new Date(nowMs()).toISOString(),
     intervalMs: (runs?: number) => intervalMsOf(entry, runs),

@@ -47,6 +47,8 @@ services:
         condition: service_healthy
       timescale:
         condition: service_healthy
+      troe-schema:
+        condition: service_completed_successfully
     command: >
       -dbhost mongo
       -logLevel WARN
@@ -118,10 +120,48 @@ services:
     ports:
       - "${DB_PORT:-5439}:5432"   # DB-Slot Projekt-Index 7 gem. ~/projects/PORTS.md
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-udp} -d orion"]
+      # Over TCP: during the first initialisation the entrypoint runs a
+      # temporary server on the Unix socket only – healthy there is too early.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-udp} -d orion"]
       interval: 10s
       retries: 10
     restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # TRoE schema of Orion-LD before the broker starts: attributes as a
+  # hypertable without primary key. The same file as in the Helm chart
+  # (helm/udp/files/postgres/troe-schema.sql); runs on every start, idempotent.
+  # An existing, populated plain attributes table is left alone (warning in the
+  # log); the conversion script is for Kubernetes only – docs/betrieb.md,
+  # "Zeitreihen-Retention".
+  troe-schema:
+    build:
+      context: ./config/postgres
+    image: udp/postgres-timescale-oss:16
+    container_name: udp-troe-schema
+    depends_on:
+      timescale:
+        condition: service_healthy
+    # Retries like the Helm init container: the database may still be busy
+    # with its first initialisation.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        for i in $$(seq 1 60); do
+          psql -X -q -v ON_ERROR_STOP=1 -f /troe-schema.sql && exit 0
+          echo "troe-schema: attempt $$i failed, retrying in 5 s"; sleep 5
+        done
+        exit 1
+    environment:
+      PGHOST: timescale
+      PGDATABASE: orion
+      PGUSER: ${POSTGRES_USER:-udp}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
+    volumes:
+      - ../helm/udp/files/postgres/troe-schema.sql:/troe-schema.sql:ro
+    restart: "no"
     networks: [udp]
     <<: *default-logging
 
@@ -258,6 +298,8 @@ services:
       # (docker exec) sprechen ihn über 127.0.0.1 an, kein anderer Container.
       UDP_CONNECTORS_ADMIN_HOST: "127.0.0.1"
       UDP_TRIGGER_COOLDOWN_SECONDS: "60"
+      # Weiche Tagesgrenze der Open-Meteo-Aufrufe (docs/betrieb.md).
+      UDP_OPEN_METEO_DAILY_CAP: ${UDP_OPEN_METEO_DAILY_CAP:-9000}
     volumes:
       # Registry aus dem Checkout: Takt oder Aktivierung ändern und den
       # Container neu starten genügt — kein Image-Build.

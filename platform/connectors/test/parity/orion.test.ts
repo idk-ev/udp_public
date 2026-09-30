@@ -212,6 +212,9 @@ async function writesArePacedByTheBrokersBucket(): Promise<void> {
         return real.acquire(host, options);
       },
       run: (host, task, options) => real.run(host, task, options),
+      pause: (host, ms) => {
+        real.pause(host, ms);
+      },
     };
     const store = new SignatureStore().scope("test");
     const orion = createOrion(log, createFetcher(log, limiter), createChangeGate(store, log), store, base);

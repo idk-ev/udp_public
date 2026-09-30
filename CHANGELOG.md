@@ -16,6 +16,64 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   liefert oder `dashboards.json` es für die Kommune freischaltet
   (`"fuellstand": true`).
 
+## Unveröffentlicht — Wetter: Open-Meteo-Kontingent
+
+- Wetter und Vorhersage laufen auf festen Slots (Registry
+  `intervalOffsetSeconds`): Wetter 00:10/06:10/12:10/18:10 UTC, Vorhersage
+  3 h später. 8.824 Aufrufe je Tag, auch mit Neustarts.
+- Neustarts: Konnektoren mit `refireOnRestart: false` laufen nicht erneut,
+  wenn ihr letzter Lauf (persistiert) jünger als ihr Intervall ist.
+- Tageszähler je Host im Zustandsspeicher (UTC-Tag), weiche Grenze 9.000
+  (`UDP_OPEN_METEO_DAILY_CAP`); die Vorhersage lässt den heute noch fälligen
+  Wetterläufen Vorrang.
+- Höchstens 600 Koordinaten je Minute: Batches ≤ 150, 20 s Abstand.
+- HTTP 429: `Retry-After` pausiert den gemeinsamen Bucket, danach genau eine
+  Wiederholung; ein zweites 429 beendet den Lauf. Fehlende Batches werden mit
+  Nummer und Gemeindezahl gemeldet, alte Werte bleiben.
+- Tageslimit (429 mit „Daily …“): keine Wiederholung, Pause bis 00:00 UTC,
+  der Rest des Tages wird ohne Aufruf übersprungen.
+- Tageswerte (Max/Min/UV) kommen wieder mit jedem Wetterlauf.
+- Stadtseite: Wetter, Wind und UV zeigen nach 13 h „Stand: …“; Taktangaben
+  korrigiert.
+- `sharing-bw` meldet jeden Lauf mit einer Info-Zeile.
+
+## Unveröffentlicht — TRoE als Hypertable
+
+> **Upgrade:**
+>
+> - Bestehende Installationen behalten `attributes` als gewöhnliche Tabelle
+>   (WARNING des initContainers `troe-schema` bei jedem Start von `orion-ld`).
+>   Umstellung mit `scripts/migrate-troe-hypertable.sh`, vorher ggf. das
+>   Datenbank-Volume vergrößern oder die Low-Disk-Variante nutzen –
+>   DEPLOY.md §10d.
+> - Die neuen PostgreSQL-Parameter (`shared_buffers` u. a.) und die höhere
+>   Speicheranforderung (2Gi) starten die Datenbank-Instanzen einmal neu
+>   (Switchover); die Knoten brauchen den Speicher tatsächlich.
+> - Wer `timescale.resources.requests.memory` überschreibt, muss ihn
+>   mindestens so groß wie `shared_buffers` setzen (oder `shared_buffers`
+>   mit überschreiben) – sonst lehnt CloudNativePG das Upgrade ab.
+
+- **TRoE-Schema:** `helm/udp/files/postgres/troe-schema.sql` legt das Schema
+  von Orion-LD vor dem Broker an – Helm als initContainer, Compose als Dienst
+  `troe-schema`. `attributes` ist eine Hypertable (7-Tage-Chunks) ohne
+  Primärschlüssel, neu `entities_id_ts_idx` (bestehende Installationen
+  bekommen ihn beim Umschalten).
+- **Migration:** `scripts/migrate-troe-hypertable.sh` kopiert die Historie
+  tageweise im laufenden Betrieb, verwirft unveränderte Wiederholungen,
+  tauscht die Tabellen in kurzer Auszeit; Rückweg bis `finalize`.
+  Low-Disk-Variante (`export`, `swap-lowdisk`, `import`), wenn alte und neue
+  Tabelle nicht nebeneinander passen: Historie über lokale Dateien, kurze
+  Auszeit, Import neueste Tage zuerst.
+- **Retention:** 12-Monats-Staffel per `drop_chunks` auf der Hypertable,
+  3-Monats-Staffel je Präfix, Typsummen ohne `count(DISTINCT)`.
+  `troe-stats` schätzt die Zeilen mit `approximate_row_count`.
+- **Helm:** Vorgaben für `timescale.parameters`, bemessen auf die
+  Vorgabe-Ressourcen; Speicheranforderung der Datenbank 2Gi.
+- **Compose:** Healthcheck der Datenbank über TCP, `troe-schema` mit
+  Wiederholungen.
+- `migrate-timescale-cnpg.sh` nimmt auch `connectors` vom Netz und nennt bei
+  Hypertables die richtige Reihenfolge.
+
 ## Unveröffentlicht — Webanalyse, Impressum, Datenschutz und Logo
 
 - Helm: `cockpit.analytics.headHtml` bindet den Einbettungscode einer beliebigen

@@ -73,7 +73,8 @@ docker run --rm -e VUS=10 -e BASE=https://<host> \
   Cluster (`scripts/restore-timescale.sh`, `helm/udp/DEPLOY.md` §10c).
   Bucket bei einem anderen Anbieter/Standort als der Cluster (3-2-1-Regel).
 - **Compose**: täglich Dumps aller PostgreSQL-Datenbanken (Dienst `backup`)
-  mit Aufbewahrung 14 Tage / 8 Wochen / 3 Monate.
+  mit Aufbewahrung 14 Tage / 8 Wochen / 3 Monate. Rücksicherung der Datenbank
+  `orion` mit Hypertable: s. „Zeitreihen-Retention (TRoE)“, Speicherlayout.
 - **Volume-Snapshots** für MongoDB und das CKAN-Dateiverzeichnis
   (`ckan-data`) – nicht Teil des S3-Backups. Das Monitoring sichert sein
   `/app/data` (SQLite mit der Verfügbarkeitshistorie) im eigenen Deployment
@@ -255,6 +256,14 @@ Diagnose bei Verdacht: `SELECT count(*) FROM attributes WHERE entityid =
 '<id>';` in der Datenbank `orion` — 0 Zeilen trotz vorhandener Entität im
 Broker deutet auf einen der beiden Fälle.
 
+Allgemeiner gilt: Orion-LD wertet das Ergebnis seiner TRoE-Inserts nicht aus.
+Lehnt die Datenbank einen Insert ab (Schemaänderung, voller Datenträger,
+Sperre), fehlt die Historie still, der Broker bleibt korrekt. Nach jedem
+Eingriff in das TRoE-Schema — etwa der Umstellung auf die Hypertable — deshalb
+den Zufluss beobachten: `troeRows1h` und `ingestByHour` der Entität
+`PlatformStatus:udp-troe` (`troe-stats`, alle 10 Minuten) müssen im gewohnten
+Rahmen weiterlaufen.
+
 ### Neustartschleife MongoDB → Orion-LD (Kubernetes)
 
 Orion-LD 1.6.0 beendet sich mit **SIGSEGV**, wenn MongoDB unter ihm
@@ -318,9 +327,24 @@ sofort Daten hat; danach zählt das Intervall ab diesem ersten Lauf. Für
 **seltene Quellen mit Anbieter-Limits** ist ein Lauf bei jedem Neustart
 schädlich — mehrere Neustarts hintereinander laufen in HTTP 429/504 (so
 geschehen 21.07. bei Overpass und Open-Meteo). Solche Konnektoren tragen in
-der Registry `"refireOnRestart": false` und laufen dann erst **10 Minuten**
-nach dem Start — verzögert, nicht ausgelassen: Ein Konnektor, der öfter neu
-gestartet wird, als sein Intervall lang ist, verhungerte sonst.
+der Registry `"refireOnRestart": false` und laufen dann frühestens
+**10 Minuten** nach dem Start — und ohne Zusatzlauf, wenn ihr letzter
+abgeschlossener Lauf (im Zustandsspeicher, `kernel.lastRunMs`) jünger als ihr
+Intervall ist: Der Startlauf wartet dann, bis das Intervall um ist; bei
+Cron-Konnektoren (Intervall = 1 Tag) entfällt er. Ohne bekannten letzten Lauf
+(Erststart, Datenbank nicht erreichbar) bleibt es bei den 10 Minuten.
+Verzögert, nicht ausgelassen: Ein Konnektor, der öfter neu gestartet wird, als
+sein Intervall lang ist, läuft trotzdem, sobald sein Intervall um ist.
+
+`"intervalOffsetSeconds"` legt ein Intervall auf feste Uhrzeiten: Vielfache
+des Intervalls ab 00:00 UTC plus Versatz, statt „Start + Intervall“. So
+behalten `wetter-bw` und `vorhersage-bw` ihren Abstand über jeden Neustart
+(s. [Open-Meteo-Kontingent](#open-meteo-kontingent)). Ein Slot, der seinen
+Lauf schon hatte (bis 5 min Vorlauf zählen mit), bekommt nach einem Neustart
+keinen zweiten; ein verpasster wird einmal nachgeholt, wenn danach noch
+mindestens das halbe Intervall bis zum nächsten Slot bleibt (bei unbekanntem
+letztem Lauf: höchstens eine Stunde). Ein durch Herunterfahren abgebrochener
+Lauf gilt nicht als gelaufen.
 
 Nächtliche Jobs, denen ihr Cron genügt, tragen dagegen `"fireOnStart": false`
 und laufen beim Dienststart **gar nicht**: `troe-retention` (Indizes,
@@ -334,6 +358,63 @@ Erstbefüllung oder Nachziehen nach Änderungen:
 
 Das Skript löst den Konnektor im Konnektordienst aus, ohne Neustart
 (s. unten).
+
+### Open-Meteo-Kontingent
+
+`wetter-bw` und `vorhersage-bw` holen je Lauf alle 1.103 Gemeinden in
+8 Batches (7 × 138, 1 × 137 Koordinaten). Die freie Stufe von Open-Meteo
+erlaubt 600 Aufrufe je Minute, 5.000 je Stunde und 10.000 je Tag und zählt
+**jede Koordinate** als Aufruf; mehr als 10 Variablen oder 14 Tage kosten
+anteilig mehr. Wetter (7 Variablen, 1 Tag) und Vorhersage (10 Variablen,
+4 Tage) bleiben bei Gewicht 1 — ein Test hält das fest.
+
+| | Wetter | Vorhersage |
+|---|---|---|
+| Slots (UTC) | 00:10, 06:10, 12:10, 18:10 | 03:10, 09:10, 15:10, 21:10 |
+| Aufrufe je Lauf | 1.103 | 1.103 |
+
+- **Minute:** Batches starten im Abstand von 20 s aus einem gemeinsamen
+  Token-Bucket beider Konnektoren; in jedes geschlossene 60-s-Fenster passen
+  höchstens 4 Starts, also 4 × 138 = 552 (Batches sind auf 150 Koordinaten
+  begrenzt, 4 × 150 = 600). Auch wenn beide zugleich laufen (manueller
+  Auslöser), bleibt es dabei.
+- **Stunde:** ein Lauf, 1.103 — die Läufe liegen 3 h auseinander. Weiche
+  Grenze 4.500 je gleitender Stunde (nur im Speicher).
+- **Tag:** 8 Läufe × 1.103 = **8.824** je UTC-Tag. Ein Neustart ändert daran
+  nichts (kein Zusatzlauf, s. oben); ein verpasster Slot wird nur ersetzt.
+  Weiche Grenze **9.000** (`UDP_OPEN_METEO_DAILY_CAP`, Helm
+  `connectors.openMeteoDailyCap`), gezählt je Host im
+  Zustandsspeicher, Tageswechsel 00:00 UTC (Open-Meteo nennt keine Uhrzeit;
+  UTC ist angenommen, die Reserve bis 10.000 deckt Abweichungen). Ein Batch,
+  der die Grenze überschreiten würde, wird nicht gesendet, ebenso der Rest
+  des Laufs. **Aktuelles Wetter hat Vorrang:** Die Vorhersage hält die heute
+  noch fälligen Wetterläufe frei — ein aktueller Wert ist nach Stunden
+  falsch, eine Vorhersage vom Vorlauf noch weitgehend richtig. Ein
+  zusätzlicher manueller Lauf (+1.103) kostet deshalb am selben Tag in der
+  Regel den letzten Vorhersagelauf, nie einen Wetterlauf. Ist der
+  Zustandsspeicher nicht erreichbar, zählt der Dienst nur im Speicher: Über
+  Neustarts hinweg wird die Grenze dann nicht durchgesetzt. Sinnvolles
+  Minimum: 8 × 1.103 = 8.824 für einen vollen Tag; unter 5 × 1.103 = 5.515
+  fällt die Vorhersage jeden Tag aus (der Dienst warnt einmal beim ersten
+  Lauf).
+- **HTTP 429:** `Retry-After` (Sekunden oder HTTP-Datum, sonst 60 s) pausiert
+  den gemeinsamen Bucket; der Batch wird danach **einmal** wiederholt. Ein
+  zweites 429 im Lauf oder eine Pause über 5 min beendet den Lauf. Bei einer
+  Pause über 5 min verlassen auch die wartenden Batches des anderen
+  Konnektors sofort die Warteschlange, und folgende Läufe überspringen,
+  solange die Pause gilt — kein Lauf wartet stundenlang. Das gilt für das
+  Minuten- und Stundenlimit (`reason` „Minutely …“/„Hourly …“) und für jede
+  429 ohne lesbaren Grund. Nennt die Antwort das **Tageslimit** (`reason`
+  enthält das Wort „daily“, Groß-/Kleinschreibung egal): keine Wiederholung,
+  Pause bis 00:00 UTC, und der Tag gilt im Zustandsspeicher als verbraucht —
+  alle weiteren Läufe des UTC-Tages überspringen ohne Aufruf, mit einer
+  Warnung je Lauf, auch nach einem Neustart.
+
+Nicht geholte Batches stehen mit Nummer und Gemeindezahl im Log
+(`batch 3/8 (138 municipalities) failed …`, `batches 5, 6 of 8 skipped …`);
+diese Gemeinden behalten ihre bisherigen Werte. Die Stadtseite zeigt Wetter
+und Vorhersage nach 13 h (zwei ausgefallene Läufe plus Reserve) mit
+„Stand: …“ und neutralem Status.
 
 ## Konnektordienst
 
@@ -626,14 +707,23 @@ sind seit Sprint 2.9 zwei Sicherungen eingezogen:
 `subattributes` (die kleine `entities`-Tabelle bleibt für Mintaka-Metadaten)
 und pflegt idempotente Indizes (`ts` sowie `(entityid, ts)` mit
 `text_pattern_ops` — Letzterer trägt die Mintaka-Temporalabfragen je Entität
-und die LIKE-Staffeln der Retention). `drop_chunks` ist bewusst NICHT im
-Einsatz — TRoE nutzt einfache Tabellen, keine Hypertables.
+und die LIKE-Staffeln der Retention; die 3-Monats-Staffel läuft als ein
+`DELETE` je Präfix). Ist `attributes` eine Hypertable (s. u.,
+„Speicherlayout“), fällt die 12-Monats-Staffel per `drop_chunks` statt per
+`DELETE`: ganze Chunks, keine toten Zeilen, keine Vacuum-Last. `drop_chunks`
+entfernt nur Chunks, die vollständig vor der Grenze enden — bis zu einer
+Chunk-Länge (7 Tage) ältere Zeilen bleiben also bis zur übernächsten Woche
+stehen; die Zusammenfassung zählt dafür Chunks statt Zeilen. Auf einer
+gewöhnlichen Tabelle (bestehende, nicht umgestellte Installationen) bleibt
+es beim `DELETE`; `subattributes` ist immer eine gewöhnliche Tabelle. Die
+nächtlichen Typsummen zählen zuerst je Entität und summieren dann je Typ.
 
 **Vacuum:** Die Retention setzt vorab (nur bei Abweichung) je Tabelle
 `autovacuum_vacuum_insert_scale_factor` und `autovacuum_analyze_scale_factor`
 auf 0,01 und fährt nach dem Lauf `VACUUM (ANALYZE)` auf `attributes` und
 `subattributes` (eigene Sitzung, 45 min Timeout, gebremst wie Autovacuum mit
-`vacuum_cost_delay = 2ms`, Fehler nur `[warn]`) — sonst bleibt die Tabelle
+`vacuum_cost_delay = 2ms`, Fehler nur `[warn]`; bei einer Hypertable wirken
+Schwellen und `VACUUM` auf alle Chunks, auch künftige) — sonst bleibt die Tabelle
 nach einem Switchover (Statistikzähler zurückgesetzt) unvacuumiert und
 `troe-stats` läuft in seinen Timeout. `VACUUM` wirkt nur als Eigentümer der
 Tabellen: Ist `TROE_DB_USER` es nicht, überspringt PostgreSQL sie mit einer
@@ -693,7 +783,87 @@ fortzuschreiben. Der Punkt gehört so oder so ins Kapazitätsmonitoring — bei
 einem produktiven Betrieb mit mehreren Mandanten ist die Staffelung neu zu
 bewerten.
 
-(Voraussetzung: `attributes` als Hypertable partitioniert; im
-Referenz-Setup von Orion-LD als normale Tabelle angelegt — dann stattdessen
-periodisch `DELETE FROM attributes WHERE ts < now() - interval '12 months'`
-+ `VACUUM`.)
+### Speicherlayout: `attributes` als Hypertable
+
+Orion-LD legt `attributes` als gewöhnliche Tabelle mit Primärschlüssel
+`(instanceId, datasetId, ts)` an. Die Plattform legt das TRoE-Schema **vor**
+dem Broker-Start selbst an (`helm/udp/files/postgres/troe-schema.sql`; Helm:
+initContainer `troe-schema` von `orion-ld`, Compose: Dienst `troe-schema`) —
+Typen, Tabellen und Spalten wie in Orion-LD 1.6.0, mit einem Unterschied:
+`attributes` ist eine TimescaleDB-Hypertable auf `ts` mit 7-Tage-Chunks und
+**ohne Primärschlüssel**. Orion-LDs eigenes DDL bricht danach an seinem ersten
+`CREATE TYPE` harmlos ab. Das Skript ist idempotent, läuft bei jedem Start
+(Advisory-Lock gegen gleichzeitig startende Repliken) und fasst eine
+bestehende, befüllte `attributes`-Tabelle nicht an — es meldet sie nur.
+
+Warum ohne Primärschlüssel: Er machte in einer Referenzinstallation 38 % der
+Tabellengröße aus, bedient keine Abfrage (Mintaka sucht über
+`entityid`/`ts`, die Retention über `ts`), und `instanceId` allein ist ohnehin
+nicht eindeutig. Orion-LD schreibt nur per `INSERT` (kein `ON CONFLICT`, kein
+`UPDATE`/`DELETE`), Mintaka liest nur. Es bleiben die Indizes
+`attributes_ts_idx (ts)` und `attributes_entityid_ts_idx (entityid
+text_pattern_ops, ts)`, dazu `entities_id_ts_idx (id, ts)` für Mintakas
+Entitätsauflösung. Die Tabellen `entities` und `subattributes` bleiben wie in
+Orion-LD.
+
+TimescaleDB läuft in der **Apache-Edition**: Hypertables, `drop_chunks`,
+`first()`/`last()`; Kompression und Continuous Aggregates (TSL) fehlen. Die
+Hypertable hält den Weg zur Kompression offen, ohne sie heute zu brauchen.
+
+**Bestehende Installationen** stellen mit
+`scripts/migrate-troe-hypertable.sh` um (Runbook: `helm/udp/DEPLOY.md`
+§10d): Die Historie wird Tag für Tag (UTC) im laufenden Betrieb in eine neue
+Hypertable kopiert, nur der Tausch der Tabellen braucht eine kurze Auszeit
+der Schreiber; Rückweg bis zum Abschluss mit `rollback`. Beim Kopieren
+entfallen unveränderte Wiederholungen: Innerhalb einer Reihe (`entityid`,
+`id`, `datasetid`), nach `ts` sortiert, fällt eine Zeile nur weg, wenn
+`opmode`, `valuetype`, `unitcode`, `observedat`, `subproperties` und alle
+Wertspalten (Text, Wahrheitswert, Zahl, Zeitpunkt, Compound, alle
+Geometrien) der Vorgängerzeile gleichen. Immer erhalten bleiben die erste
+Zeile jeder Reihe je UTC-Tag (ein Abfragefenster, das um Mitternacht UTC
+beginnt, findet damit einen Ausgangswert, und Tage lassen sich unabhängig
+kopieren; ein Fenster, das mitten am Tag beginnt, kann bis zur nächsten
+Änderung leer bleiben), `Create`-/`Delete`-Zeilen, Zeilen mit Sub-Properties und
+Zeilen, auf die `subattributes` verweist. Jeder Tag wird in seiner eigenen
+Transaktion kopiert und auf Vollständigkeit geprüft; das Umschalten prüft
+jeden Tag der neuen Tabelle noch einmal und kopiert abweichende Tage neu.
+
+**Was sich für die Temporal-API ändert — vor dem `backfill` entscheiden:**
+Unveränderte Werte liefern weniger Stützstellen. Ein historisches
+Abfragefenster, das nicht um Mitternacht UTC beginnt, kann für eine Reihe mit
+konstantem Wert leer bleiben; `lastN` reicht weiter in die Vergangenheit, und
+Aggregationen über Zeitfenster (`aggrMethods` wie `totalCount`, `sum`, `avg`)
+ergeben andere Zahlen, weil die entfallenen Wiederholungen nicht mehr mitzählen.
+Als gleich gelten auch gleichwertige Schreibweisen (JSON `1.0` und `1`,
+Zahl `-0` und `0`).
+
+Neue Installationen – Helm wie Compose – bekommen die Hypertable. Bestehende
+Installationen behalten die gewöhnliche Tabelle, bis sie umgestellt werden;
+die Retention erkennt das und löscht dort weiter per `DELETE`. Das
+Migrationsskript arbeitet nur unter Kubernetes; für bestehende
+Compose-Installationen gibt es keinen fertigen Umstellungsweg (die SQL-Schritte
+des Skripts lassen sich per `docker exec … psql` nachvollziehen). Mandanten-Datenbanken von Orion-LD (`orion_<tenant>`)
+legt der Broker selbst an — sie bleiben beim Originalschema.
+
+**Kapazität:** Die neue Tabelle braucht ohne Primärschlüssel grob 60 % der
+alten, abzüglich der entfallenen Wiederholungen (vorher mit `backfill` und
+`status` messen). Während der Umstellung liegen alte und neue Tabelle
+nebeneinander: `preflight` rechnet mit der alten Größe ohne Schlüssel × 1,3
+und bricht ab, wenn das Volume der vollsten Instanz dafür nicht reicht —
+dann zuerst das Volume vergrößern. Die Kopie schreibt WAL in der
+Größenordnung der neuen Tabelle. Erst `finalize` gibt den Platz der alten
+Tabelle frei. Lässt sich das Volume nicht vergrößern, gibt es die
+Low-Disk-Variante (`export`, `swap-lowdisk`, `import`; DEPLOY.md §10d): Die
+Historie wird tageweise in lokale Dateien exportiert (gzip ≈ 30–50 Byte je
+Zeile), die alte Tabelle in kurzer Auszeit durch die leere Hypertable
+ersetzt und die Historie im laufenden Betrieb mit derselben Dedup
+zurückgeladen, neueste Tage zuerst. Ohne `rollback`; bis zum Ende des Imports
+sind die Dateien die einzige Kopie der Historie, und Mintaka zeigt sie
+unvollständig.
+
+**Rücksicherung eines Dumps der Datenbank `orion`:** Mit Hypertable enthält
+der Dump TimescaleDBs Katalog. In eine leere Datenbank mit
+`CREATE EXTENSION timescaledb` zurückspielen, davor `SELECT
+timescaledb_pre_restore();`, danach `SELECT timescaledb_post_restore();`.
+`pg_dump` warnt dabei über zirkuläre Fremdschlüssel im TimescaleDB-Katalog —
+erwartet und harmlos.

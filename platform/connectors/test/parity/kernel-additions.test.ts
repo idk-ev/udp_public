@@ -25,6 +25,7 @@ import {
   joinGroups,
   joinTimingFor,
   joinWindowMs,
+  MAX_RETRY_WAIT_MS,
   REQUEST_INTERVAL_MS,
   REQUEST_TIMEOUT_MS,
 } from "../../src/connectors/open-meteo-batches.js";
@@ -452,15 +453,21 @@ async function conditionalGetAnswers304(): Promise<void> {
 /* ── Open-Meteo: join window vs. the shared bucket ───────────────────────────*/
 
 function joinWindowCoversTheSharedBucket(): void {
-  // (7 own + 8 of the other connector) × 15 s + 120 s timeout + 30 s margin.
-  assert.equal(joinWindowMs(BATCH_COUNT), (7 + 8) * REQUEST_INTERVAL_MS + REQUEST_TIMEOUT_MS + 30_000);
-  assert.equal(joinTimingFor(BATCH_COUNT).timeoutMs, 375_000);
+  // (7 own + 8 of the other connector) × 20 s + 120 s timeout, one retry after
+  // a 429 (300 s pause + 20 s + 120 s) + 30 s margin.
+  const retry = MAX_RETRY_WAIT_MS + REQUEST_INTERVAL_MS + REQUEST_TIMEOUT_MS;
+  assert.equal(
+    joinWindowMs(BATCH_COUNT),
+    (7 + 8) * REQUEST_INTERVAL_MS + REQUEST_TIMEOUT_MS + retry + 30_000,
+  );
+  assert.equal(joinTimingFor(BATCH_COUNT).timeoutMs, 890_000);
   assert.equal(joinTimingFor(BATCH_COUNT).count, BATCH_COUNT, "count 8 as the join node");
   assert.ok(joinTimingFor(1).timeoutMs >= JOIN_TIMEOUT_MS, "never below the old 240 s");
-  // The old window was sized for a bucket of one's own: 7 × 15 s + 120 s fits 240 s …
-  assert.ok(7 * REQUEST_INTERVAL_MS + REQUEST_TIMEOUT_MS < JOIN_TIMEOUT_MS);
+  // The old window was sized for the flow's bucket of one's own: 7 × 15 s + 120 s fits 240 s …
+  const flowInterval = 15_000;
+  assert.ok(7 * flowInterval + REQUEST_TIMEOUT_MS < JOIN_TIMEOUT_MS);
   // … interleaved with the other connector it would not.
-  assert.ok((7 + 8) * REQUEST_INTERVAL_MS + REQUEST_TIMEOUT_MS > JOIN_TIMEOUT_MS);
+  assert.ok((7 + 8) * flowInterval + REQUEST_TIMEOUT_MS > JOIN_TIMEOUT_MS);
 }
 
 /**
@@ -474,7 +481,13 @@ async function interleavedRunsStayOneGroup(): Promise<void> {
 }
 
 async function interleavedRunsStayOneGroupBody(): Promise<void> {
-  const pace: BucketPace = { intervalMs: 40, requestTimeoutMs: 120, sharers: 2, marginMs: 300 };
+  const pace: BucketPace = {
+    intervalMs: 40,
+    requestTimeoutMs: 120,
+    sharers: 2,
+    retryWaitMs: 0,
+    marginMs: 300,
+  };
   const window = joinWindowMs(BATCH_COUNT, pace);
   const oldWindow = 7 * pace.intervalMs + pace.requestTimeoutMs + 60;
 
@@ -515,6 +528,6 @@ export {
   orionReadsDoNotWaitBehindWrites as "kernel: Orion reads are not paced — a pending write backlog does not delay find/count/list",
   headAndOptionsAsExpress as "kernel: HEAD and OPTIONS on a GET route answer as Express did",
   conditionalGetAnswers304 as "kernel: If-None-Match against a route's ETag answers 304 as Express's res.send; routes see request headers",
-  joinWindowCoversTheSharedBucket as "open-meteo: the join window is derived from batch count × shared 15 s bucket + timeout (375 s)",
+  joinWindowCoversTheSharedBucket as "open-meteo: the join window is derived from batch count × shared 20 s bucket + timeout + one 429 retry (890 s)",
   interleavedRunsStayOneGroup as "open-meteo: interleaved runs in the shared bucket stay one group with the derived window",
 };

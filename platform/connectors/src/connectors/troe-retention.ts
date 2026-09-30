@@ -45,8 +45,8 @@
  *
  * ## Deliberate deviation: vacuum and analyse (the old node did neither)
  *
- * `attributes` is a plain table, tens of gigabytes with millions of inserts a
- * day in a state-wide installation. In a production installation it had
+ * `attributes` is tens of gigabytes with millions of inserts a day in a
+ * state-wide installation. In a production installation it had
  * never been vacuumed or analysed: every CloudNativePG switchover (each chart
  * release) resets the table's statistics counters, and autovacuum on an
  * insert-mostly table this size only triggers after millions more inserts
@@ -91,6 +91,36 @@
  *    that does not yield is running ({@link SQL_OVERLAP}). What the guard
  *    cannot see — the progress row of another database user's VACUUM hides
  *    its table — the lock timeout still catches.
+ *
+ * ## Deliberate deviation: `attributes` as a hypertable
+ *
+ * Fresh installations create `attributes` as a TimescaleDB hypertable on `ts`
+ * (7-day chunks, no primary key: helm/udp/files/postgres/troe-schema.sql);
+ * existing ones are converted with scripts/migrate-troe-hypertable.sh. The old
+ * node knew only the plain table. The port
+ *
+ *  * asks first whether `attributes` is a hypertable ({@link SQL_IS_HYPERTABLE});
+ *    if so, the 12-month tier is `drop_chunks` ({@link SQL_DROP_CHUNKS_12M})
+ *    instead of a DELETE: whole chunks go, no dead rows, no vacuum debt. It
+ *    only drops chunks whose END lies before the cut-off, so up to one chunk
+ *    interval (7 days) of older rows stays until its chunk has aged out
+ *    completely — accepted. The rows of dropped chunks are not counted (an
+ *    info line gives the chunks). On a plain table (existing installations
+ *    not converted yet) — or when the check itself fails — the old DELETE
+ *    runs, which is correct on both. `subattributes` stays a
+ *    plain table and keeps its DELETE;
+ *  * sends the 3-month tier as one DELETE per prefix ({@link SHORT_TIER_PREFIXES})
+ *    instead of one DELETE with OR-ed LIKEs: each prefix is a range of
+ *    `attributes_entityid_ts_idx`, while the planner may answer an OR of three
+ *    with a scan of the whole table. The warning carries the sum, as before; a
+ *    lock timeout skips only its own prefix;
+ *  * fills the nightly totals ({@link SQL_FILL_TYPE_STATS}) by counting per
+ *    entity first and summing per type afterwards — the same columns and
+ *    figures without `count(DISTINCT …)`, which sorted the whole table;
+ *  * counts a VACUUM of a chunk in the overlap guard ({@link SQL_OVERLAP}):
+ *    VACUUM and the autovacuum thresholds of a hypertable apply to its chunks
+ *    (verified with TimescaleDB 2.30, Apache edition), and the progress row
+ *    of such a VACUUM names the chunk, not the hypertable.
  *
  * The scheduler does not fire this connector on service start (`"fireOnStart":
  * false` in the registry): its cron is its only trigger.
@@ -172,7 +202,9 @@ export const SQL_OVERLAP =
   " WHERE application_name LIKE 'udp-troe-retention%' AND state <> 'idle' AND pid <> pg_backend_pid())" +
   " AS retention," +
   " (SELECT count(*)::int FROM pg_stat_progress_vacuum p LEFT JOIN pg_stat_activity a ON a.pid = p.pid" +
-  " WHERE p.relid IN (to_regclass('attributes'), to_regclass('subattributes'))" +
+  " WHERE (p.relid IN (to_regclass('attributes'), to_regclass('subattributes'))" +
+  // The chunks of a hypertable: its VACUUM runs chunk by chunk.
+  " OR p.relid IN (SELECT inhrelid FROM pg_inherits WHERE inhparent = to_regclass('attributes')))" +
   " AND (a.backend_type IS DISTINCT FROM 'autovacuum worker' OR a.query LIKE '%to prevent wraparound%'))" +
   " AS vacuum";
 
@@ -233,6 +265,21 @@ export const SQL_PRESENT_INDEXES =
 
 export const SQL_DELETE_ATTRIBUTES_12M =
   "DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '12 months'";
+
+/** Whether `attributes` is a TimescaleDB hypertable (fresh or migrated installation). */
+export const SQL_IS_HYPERTABLE =
+  "SELECT count(*)::int AS n FROM timescaledb_information.hypertables" +
+  " WHERE hypertable_schema = current_schema() AND hypertable_name = 'attributes'";
+
+/**
+ * The 12-month tier on a hypertable. `ts` is `timestamp without time zone`
+ * (UTC), so the cut-off is a UTC timestamp like the DELETE's, not an interval
+ * (TimescaleDB would subtract that from `now()` in the session's time zone).
+ * Drops only chunks that end before it (module header).
+ */
+export const SQL_DROP_CHUNKS_12M =
+  "SELECT count(*)::int AS chunks FROM drop_chunks('attributes', " +
+  "older_than => (now() AT TIME ZONE 'utc') - interval '12 months')";
 export const SQL_DELETE_SUBATTRIBUTES_12M =
   "DELETE FROM subattributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '12 months'";
 
@@ -250,12 +297,20 @@ export const SQL_DELETE_SUBATTRIBUTES_12M =
  * them after 3 months removes the only row there ever was, and it does not
  * grow back. The broker would stay correct (it holds the current state), but
  * the temporal API would have nothing left to deliver for parking sites.
+ *
+ * One DELETE per prefix (module header), in the old order.
  */
-export const SQL_DELETE_SHORT_TIER =
-  "DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '3 months' " +
-  "AND (entityid LIKE 'urn:ngsi-ld:EVChargingStation:%' " +
-  "  OR entityid LIKE 'urn:ngsi-ld:CarSharingStation:%' " +
-  "  OR entityid LIKE 'urn:ngsi-ld:AirQualityObserved:bw-sensor-%')";
+export const SHORT_TIER_PREFIXES = [
+  "urn:ngsi-ld:EVChargingStation:",
+  "urn:ngsi-ld:CarSharingStation:",
+  "urn:ngsi-ld:AirQualityObserved:bw-sensor-",
+] as const;
+
+export const SQL_DELETE_SHORT_TIER: readonly string[] = SHORT_TIER_PREFIXES.map(
+  (prefix) =>
+    "DELETE FROM attributes WHERE ts < (now() AT TIME ZONE 'utc') - interval '3 months' " +
+    `AND entityid LIKE '${prefix}%'`,
+);
 
 /**
  * Old-scheme remains of parken-bw: until Sprint 2.9 the entity id came from the
@@ -315,7 +370,9 @@ export const OLD_SCHEME_CAP = 5_000_000;
  * Totals per entity type for the 10-minute statistics (`troe-stats`). This is
  * the ONLY full scan of attributes — once a night, after the deletes, so it
  * counts what actually remains. Replaced atomically: readers see either
- * yesterday's or today's figures, and vanished types disappear.
+ * yesterday's or today's figures, and vanished types disappear. Counted per
+ * entity first, then summed per type: `n` and `e` are the old figures
+ * (module header).
  */
 export const SQL_CREATE_TYPE_STATS =
   "CREATE TABLE IF NOT EXISTS udp_troe_type_stats (" +
@@ -323,8 +380,8 @@ export const SQL_CREATE_TYPE_STATS =
 export const SQL_CLEAR_TYPE_STATS = "DELETE FROM udp_troe_type_stats";
 export const SQL_FILL_TYPE_STATS =
   "INSERT INTO udp_troe_type_stats (typ, n, e, computed_at) " +
-  "SELECT split_part(entityid, ':', 3), count(*), count(DISTINCT entityid), now() " +
-  "FROM attributes GROUP BY 1";
+  "SELECT split_part(entityid, ':', 3), sum(n), count(*), now() " +
+  "FROM (SELECT entityid, count(*) AS n FROM attributes GROUP BY entityid) s GROUP BY 1";
 
 /* ------------------------------------------------------------------ Pure part */
 
@@ -360,6 +417,20 @@ export function parse(raw: unknown): RetentionCounts {
 /** Pure: no network, no clock, no global state. */
 export function build(counts: RetentionCounts, _geo: GeoIndex | null, now: IsoTime): RetentionSummary {
   return { deletedAttributes: counts.attributes, deletedSubattributes: counts.subattributes, at: now };
+}
+
+/** The info line of a night that dropped chunks of the hypertable; `null` for none. */
+export function droppedChunksInfo(chunks: number): string | null {
+  return chunks === 0
+    ? null
+    : `Retention: ${String(chunks)} chunks of attributes older than 12 months dropped`;
+}
+
+export function hypertableCheckWarning(error: unknown): string {
+  return (
+    `Retention: could not tell whether attributes is a hypertable, ` +
+    `the 12-month cut runs as DELETE (${errorText(error)})`
+  );
 }
 
 export function shortTierWarning(rows: number): string | null {
@@ -513,9 +584,40 @@ function deleteRows(db: DbSession, log: Log, step: string, sql: string): Promise
   return lockStep(log, step, 0, async () => deleted(await db.query(sql)));
 }
 
+/**
+ * Whether `attributes` is a hypertable. A failed check is one `[warn]` and the
+ * DELETE path, which is correct on both kinds of table.
+ */
+async function isHypertable(db: DbSession, log: Log): Promise<boolean> {
+  try {
+    const [row] = (await db.query(SQL_IS_HYPERTABLE)).rows;
+    return rowsOf(row?.n, "hypertable check.n") > 0;
+  } catch (error) {
+    log.warn(hypertableCheckWarning(error));
+    return false;
+  }
+}
+
+/**
+ * The 12-month tier of `attributes`: chunks on a hypertable, rows on a plain
+ * table. Returns the deleted rows — dropped chunks are not counted as rows.
+ */
+async function cutAttributes12m(db: DbSession, log: Log): Promise<number> {
+  if (!(await isHypertable(db, log))) {
+    return deleteRows(db, log, "12-month cut of attributes", SQL_DELETE_ATTRIBUTES_12M);
+  }
+  const chunks = await lockStep(log, "12-month drop_chunks of attributes", 0, async () => {
+    const [row] = (await db.query(SQL_DROP_CHUNKS_12M)).rows;
+    return rowsOf(row?.chunks, "drop_chunks.chunks");
+  });
+  const text = droppedChunksInfo(chunks);
+  if (text !== null) log.info(text);
+  return 0;
+}
+
 async function retain(db: DbSession, log: Log): Promise<RetentionCounts> {
   await ensureIndexes(db, log);
-  let attributes = await deleteRows(db, log, "12-month cut of attributes", SQL_DELETE_ATTRIBUTES_12M);
+  let attributes = await cutAttributes12m(db, log);
   const subattributes = await deleteRows(
     db,
     log,
@@ -525,7 +627,10 @@ async function retain(db: DbSession, log: Log): Promise<RetentionCounts> {
 
   // Each warning is logged the moment its step is done, as in the old node:
   // a later statement that fails must not swallow what was already deleted.
-  const shortTier = await deleteRows(db, log, "3-month tier", SQL_DELETE_SHORT_TIER);
+  let shortTier = 0;
+  for (const [index, sql] of SQL_DELETE_SHORT_TIER.entries()) {
+    shortTier += await deleteRows(db, log, `3-month tier (${SHORT_TIER_PREFIXES[index] ?? sql})`, sql);
+  }
   attributes += shortTier;
   const shortTierText = shortTierWarning(shortTier);
   if (shortTierText !== null) log.warn(shortTierText);

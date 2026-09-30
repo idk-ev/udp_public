@@ -282,6 +282,18 @@ async function runMatchesTheOldFlow(): Promise<void> {
       `${key} after commit`,
     );
   }
+  // One line confirms the run (the old node logged nothing on success).
+  const written = world.broker.upserts.flat();
+  const zeroed = written.filter(
+    (entity) =>
+      isRecord(entity) && isRecord(entity.availableVehicles) && entity.availableVehicles.value === 0,
+  ).length;
+  const summary = world.log.lines.filter((line) => line.level === "info").at(-1)?.text;
+  assert.equal(
+    summary,
+    `GBFS-BW: ${String(messagesOf(legacyList).length)} systems, ${String(written.length)} summaries written ` +
+      `(${String(zeroed)} of them zeroed), prune: 1 deleted`,
+  );
 }
 
 async function brokenListWarnsOnce(): Promise<void> {

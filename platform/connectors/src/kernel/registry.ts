@@ -199,6 +199,40 @@ function fireOnStart(raw: Readonly<Record<string, unknown>>, at: string): boolea
   return false;
 }
 
+/** Longest interval a Node timer can wait (2^31 - 1 ms); a longer one would fire at once, again and again. */
+export const MAX_INTERVAL_SECONDS = 2_147_483;
+
+function intervalSeconds(raw: Readonly<Record<string, unknown>>, at: string): number | null {
+  const value = optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`);
+  if (value !== null && value > MAX_INTERVAL_SECONDS) {
+    throw new Error(`${at}.intervalSeconds: at most ${String(MAX_INTERVAL_SECONDS)} (~24.8 days)`);
+  }
+  return value;
+}
+
+/**
+ * `intervalOffsetSeconds`: only with an interval that divides the day (the
+ * slots count from 00:00 UTC) and without a cron, and within the interval —
+ * an offset of a whole interval or more is another slot's offset and
+ * certainly a typo.
+ */
+function intervalOffset(raw: Readonly<Record<string, unknown>>, at: string): number | null {
+  const offset = optionalNumber(raw.intervalOffsetSeconds, `${at}.intervalOffsetSeconds`);
+  if (offset === null) return null;
+  const interval = optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`);
+  const cron = optionalString(raw.cron, `${at}.cron`);
+  if (interval === null || interval <= 0 || (cron !== null && cron !== "")) {
+    throw new Error(`${at}.intervalOffsetSeconds: needs an intervalSeconds and no cron`);
+  }
+  if (86_400 % interval !== 0) {
+    throw new Error(`${at}.intervalOffsetSeconds: intervalSeconds must divide a day (86400)`);
+  }
+  if (offset < 0 || offset >= interval) {
+    throw new Error(`${at}.intervalOffsetSeconds: expected 0 <= offset < intervalSeconds`);
+  }
+  return offset;
+}
+
 function parseEntry(raw: unknown, index: number): RegistryEntry {
   const at = `connectors[${String(index)}]`;
   if (!isRecord(raw)) throw new Error(`${at}: expected an object`);
@@ -208,7 +242,8 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
     name: requireString(raw.name, `${at}.name`),
     scope: requireString(raw.scope, `${at}.scope`),
     enabledFor: enabledFor(raw.enabledFor, `${at}.enabledFor`),
-    intervalSeconds: optionalNumber(raw.intervalSeconds, `${at}.intervalSeconds`),
+    intervalSeconds: intervalSeconds(raw, at),
+    intervalOffsetSeconds: intervalOffset(raw, at),
     cron: optionalString(raw.cron, `${at}.cron`),
     refireOnRestart: optionalBoolean(raw.refireOnRestart, `${at}.refireOnRestart`),
     fireOnStart: fireOnStart(raw, at),

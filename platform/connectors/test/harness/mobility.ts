@@ -36,6 +36,7 @@ import { createPruner } from "../../src/kernel/prune.js";
 import { needsRefresh } from "../../src/kernel/split-gate.js";
 import { createRateLimiter } from "../../src/kernel/rate-limit.js";
 import { intervalMsOf, loadRegistry, sumRowBudgets } from "../../src/kernel/registry.js";
+import { memoryQuota } from "../../src/kernel/quota.js";
 import { createConnectorState } from "../../src/kernel/state.js";
 import type {
   BoundarySet,
@@ -311,6 +312,7 @@ export function mobilityCtx(options: WorldOptions): MobilityWorld {
     params: entry.params,
     enabledFor: entry.enabledFor,
     state: createConnectorState(),
+    quota: memoryQuota(entry.id),
     rowBudget: sumRowBudgets(
       loadRegistry(join(repositoryRoot(), "platform", "config", "connectors.json")).entries,
     ),

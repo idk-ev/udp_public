@@ -174,8 +174,9 @@ Modul. Aufbau und verbindliche Typdisziplin: `platform/connectors/README.md`.
    ```
    Quellen mit strengen Anbieter-Limits (Overpass u. a.) bekommen in der
    Registry `"refireOnRestart": false` — sie laufen dann nicht direkt nach
-   jedem Neustart, sondern erst 10 Minuten später und danach nach Zeitplan
-   bzw. auf Zuruf (s. `docs/betrieb.md`).
+   jedem Neustart, sondern erst 10 Minuten später — und gar nicht, wenn ihr
+   letzter Lauf jünger als ihr Intervall ist — und danach nach Zeitplan bzw.
+   auf Zuruf (s. `docs/betrieb.md`).
 5. **Frontend** (nur bei neuem `provides`-Typ): Render-Pfad in `gui/public/stadt.html`
    ergänzen. `provides` steuert, welche Kachel erscheint; `sampleEntity` liefert den
    Wert. Für Klick-Detailtiefe einen Eintrag in die `DETAILS`-Registry setzen:

@@ -108,6 +108,7 @@ function healthRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
             intervalSeconds: job.schedule.intervalSeconds,
             cron: job.schedule.cron,
             startupDelaySeconds: job.schedule.startupDelaySeconds,
+            offsetSeconds: job.schedule.offsetSeconds ?? null,
           })),
           stateStore: kernel.persistence?.health() ?? null,
           geo: geoHealth(kernel.geo, kernel.geoBootstrap),

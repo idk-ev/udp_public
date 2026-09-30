@@ -254,10 +254,11 @@ async function runPacesAndWritesWhatTheOldChainWrote(): Promise<void> {
   for (const call of calls) {
     const options = call.options;
     assert.ok(options !== undefined);
-    assert.equal(options.minIntervalMs, REQUEST_INTERVAL_MS, "one Open-Meteo call per 15 s");
+    assert.equal(options.bucket, null, "paced by the run itself (one call per 20 s)");
     assert.equal(options.timeoutMs, REQUEST_TIMEOUT_MS);
     assert.equal(options.retries, 0);
   }
+  assert.equal(REQUEST_INTERVAL_MS, 20_000);
   const legacyClock = openClock();
   const old = await legacyChain(NODES, await oldBatches(), bodies.map(ok), ALL);
   const legacyWindow = legacyClock.close();
@@ -275,7 +276,7 @@ async function runPacesAndWritesWhatTheOldChainWrote(): Promise<void> {
 async function failedBatchesAreSkippedAsBefore(): Promise<void> {
   const bodies = batchBodies();
   const failures = new Map<number, ScriptedAnswer>([
-    [0, { response: { status: 429, ok: false, headers: {}, body: "Too many requests" } }],
+    [0, { response: { status: 500, ok: false, headers: {}, body: "busy" } }],
     [7, { response: new Error("socket hang up") }],
   ]);
   const network = openMeteoNetwork(
@@ -287,18 +288,20 @@ async function failedBatchesAreSkippedAsBefore(): Promise<void> {
 
   const batches = await oldBatches();
   const answers = bodies.map(ok);
-  answers[0] = { statusCode: 429, payload: "Too many requests" };
+  answers[0] = { statusCode: 500, payload: "busy" };
   answers[7] = {
     statusCode: "ECONNRESET",
     payload: `RequestError: socket hang up : ${batches[7]?.url ?? ""}`,
   };
   const old = await legacyChain(NODES, batches, answers, ALL);
 
-  assert.deepEqual(old.wrapWarnings, ["Open-Meteo-Batch fehlgeschlagen (429)"]);
+  assert.deepEqual(old.wrapWarnings, ["Open-Meteo-Batch fehlgeschlagen (500)"]);
   const upserts = upsertedBatches(network.seen);
   assert.equal(upserts.flat().length, ROWS - 3 - 1, "the first batch (3) and the last (1) are missing");
   assertEntitiesEqual(old.chunks.flat(), upserts.flat());
-  assert.deepEqual(log.warnings(), ["Open-Meteo batch failed (HTTP 429)"]);
+  assert.deepEqual(log.warnings(), [
+    "BW forecast: batch 1/8 (3 municipalities) failed (HTTP 500) — previous values kept",
+  ]);
 }
 
 async function joinTimeoutWritesPartialThenLate(): Promise<void> {
@@ -332,6 +335,6 @@ export {
   malformedLocationIsCountedNotWritten as "vorhersage-bw: a malformed location is counted and dropped (deliberate difference)",
   aDriftedDayFailsTheComparison as "vorhersage-bw: a single drifted weather code fails the comparison and names its path",
   runPacesAndWritesWhatTheOldChainWrote as "vorhersage-bw: run() paces its calls and upserts what the old chain wrote",
-  failedBatchesAreSkippedAsBefore as "vorhersage-bw: an HTTP 429 and a network error cost their batch only, as in the old chain",
+  failedBatchesAreSkippedAsBefore as "vorhersage-bw: an HTTP 500 and a network error cost their batch only, as in the old chain",
   joinTimeoutWritesPartialThenLate as "vorhersage-bw: a join timeout writes the partial group, the late batch follows as a second group",
 };

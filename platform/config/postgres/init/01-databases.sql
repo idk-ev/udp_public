@@ -13,7 +13,8 @@ CREATE DATABASE keycloak;  -- genutzt im Kubernetes-Deployment (KC_DB=postgres)
 -- TimescaleDB in der **Apache-Edition** (Apache-2.0): liefert first()/last(),
 -- die Mintaka für typ-skopierte Temporal-Abfragen benötigt. TSL-Funktionen
 -- (Compression, Continuous Aggregates) sind nicht enthalten und werden nicht
--- genutzt — TRoE arbeitet mit gewöhnlichen Tabellen.
+-- genutzt. Das TRoE-Schema (attributes als Hypertable) legt der Dienst
+-- troe-schema an (helm/udp/files/postgres/troe-schema.sql).
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 CREATE EXTENSION IF NOT EXISTS postgis;
 

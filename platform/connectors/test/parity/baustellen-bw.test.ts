@@ -57,6 +57,7 @@ import {
   fixtureGeo,
   fullGeo,
   legacyChunks,
+  RIG_START_MS,
   rig,
   upsertBodies,
 } from "../harness/water-warnings-rig.js";
@@ -260,7 +261,11 @@ class Broker {
     // Three days: past the grace, but RECENT — a backlog (older than 7 days)
     // is drained only from the run after the fresh stock was first recorded
     // (src/kernel/prune.ts; test/parity/prune-backlog.test.ts).
-    const threeDaysAgo = new Date(Date.now() - 72 * HOUR).toISOString();
+    // On the rig's clock, which the port's prune reads: against Date.now() the
+    // entities were fresh on that clock once the real date passed 30.09.
+    // (72 h minus the fixed start), and nothing was deleted. The old node
+    // reads the real clock; for it they are older still, stale either way.
+    const threeDaysAgo = new Date(RIG_START_MS - 72 * HOUR).toISOString();
     const old = { type: "Property", value: { "@type": "DateTime", "@value": threeDaysAgo } };
     const stale = (id: string): Record<string, unknown> => ({ id, type: "RoadWork", dateObserved: old });
     for (const id of [

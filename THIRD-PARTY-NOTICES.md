@@ -200,7 +200,8 @@ Fertigimage `timescale/timescaledb-ha` (Timescale License, nicht OSI). Die
 Apache-Edition enthält Hypertables, `time_bucket` und `first()`/`last()`; die
 TSL-Funktionen (Compression, Continuous Aggregates) fehlen und werden nicht genutzt.
 Gebraucht wird die Erweiterung, weil Mintaka für typ-skopierte Temporal-Abfragen
-`last()` voraussetzt.
+`last()` voraussetzt und die TRoE-Tabelle `attributes` eine Hypertable ist
+(Apache-2.0-Funktionen `create_hypertable`/`drop_chunks`).
 
 > Hinweis: Eine ältere interne Lizenzübersicht führte TimescaleDB als vollständig
 > abgelöst. Das trifft auf den aktuellen Stand nicht zu — maßgeblich ist dieses

@@ -247,39 +247,55 @@ export function dropVanishedTables(ctx: Ctx, activeSystems: readonly string[]): 
   }
 }
 
-async function runSystem(ctx: Ctx, system: string, url: string, skipped: SkippedFeeds): Promise<void> {
+/** What one system's run wrote: summaries sent to the broker, of them zeroed ones. */
+interface SystemResult {
+  readonly written: number;
+  readonly zeroed: number;
+}
+
+const NOTHING: SystemResult = { written: 0, zeroed: 0 };
+
+async function runSystem(
+  ctx: Ctx,
+  system: string,
+  url: string,
+  skipped: SkippedFeeds,
+): Promise<SystemResult> {
   if (!feedAllowed(url)) {
     skipped.note(url);
-    return;
+    return NOTHING;
   }
   let body: unknown;
   try {
     const response = await ctx.fetch.json(url, FEED_FETCH);
     // `msg.statusCode >= 400 || !msg.payload …` -> return null, no warning.
-    if (response.status >= 400) return;
+    if (response.status >= 400) return NOTHING;
     body = response.body;
   } catch (error) {
     // The http request node handed a transport error on as a string payload,
     // which failed the same check silently. A redirect the URL policy
     // refused is counted instead.
     skipped.noteRefusal(error);
-    return;
+    return NOTHING;
   }
   let feed: FreeBikeFeed;
   try {
     feed = parse({ system, payload: body });
   } catch (error) {
-    if (error instanceof ParseError) return;
+    if (error instanceof ParseError) return NOTHING;
     throw error;
   }
   // Checked per system run, as the old build node did.
   const geo = ctx.geo.forRun("GBFS-BW");
-  if (geo === null) return;
+  if (geo === null) return NOTHING;
   const now = ctx.now();
   const plan = planSystem(feed, build(feed, geo, now), ctx.gate.table(lastKey(feed.system)), geo, now);
-  if (plan.entities.length === 0) return;
+  if (plan.entities.length === 0) return NOTHING;
   // One request per system, as the single message of the old node.
-  await ctx.orion.upsert(plan, { chunkSize: plan.entities.length });
+  const result = await ctx.orion.upsert(plan, { chunkSize: plan.entities.length });
+  // A zeroed summary is the one whose signature is removed (`null`, see planSystem).
+  const zeroed = plan.pending.filter(([, , value]) => value === null).length;
+  return { written: result.entities, zeroed: result.failedChunks === 0 ? zeroed : 0 };
 }
 
 export async function run(ctx: Ctx): Promise<void> {
@@ -304,7 +320,7 @@ export async function run(ctx: Ctx): Promise<void> {
   ctx.log.status(status);
 
   // `if (PRUNE_OK) pruneStale(…)` — the plausibility check is inside stale().
-  await ctx.prune.stale({
+  const pruned = await ctx.prune.stale({
     label: "GBFS-BW",
     type: "SharingSummary",
     pattern: "^urn:ngsi-ld:SharingSummary:bw-[0-9]{8}-ff-[A-Za-z0-9_-]+$",
@@ -316,10 +332,20 @@ export async function run(ctx: Ctx): Promise<void> {
   });
 
   const skipped = new SkippedFeeds();
+  let written = 0;
+  let zeroed = 0;
   for (const system of systems) {
-    await runSystem(ctx, system.id, feedUrl(system, "free_bike_status"), skipped);
+    const result = await runSystem(ctx, system.id, feedUrl(system, "free_bike_status"), skipped);
+    written += result.written;
+    zeroed += result.zeroed;
   }
   skipped.report(ctx.log, "GBFS-BW");
+  // The one line that confirms a run in the log; the old node logged nothing.
+  ctx.log.info(
+    `GBFS-BW: ${String(systems.length)} systems, ${String(written)} summaries written ` +
+      `(${String(zeroed)} of them zeroed), prune: ` +
+      (pruned.skipped === null ? `${String(pruned.deleted)} deleted` : `skipped (${pruned.skipped})`),
+  );
 }
 
 /** Checked against the contract by the compiler. */

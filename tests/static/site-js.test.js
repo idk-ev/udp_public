@@ -324,3 +324,13 @@ exports["Cockpit SPA loads site.js as cockpit right after config.js"] = () => {
   const s = html.indexOf('<script src="/site.js" data-udp-context="cockpit"></script>');
   assert(c >= 0 && s > c, 'gui/index.html: /site.js (data-udp-context="cockpit") missing or before /config.js');
 };
+
+/* Loading jsdom swaps Node's process-wide fetch dispatcher for its own undici;
+   tests/run.js puts Node's back after every test file (the connector tests'
+   local servers stalled behind jsdom's). */
+exports["runner: after jsdom, fetch uses Node's own dispatcher again"] = () => {
+  if (!JSDOM) return;
+  const dispatcher = globalThis[Symbol.for("undici.globalDispatcher.1")];
+  assert(dispatcher && dispatcher.constructor.name === "Agent",
+    `fetch dispatcher is ${dispatcher && dispatcher.constructor.name} — tests/run.js no longer restores it`);
+};

@@ -139,8 +139,9 @@ spec:
   # Updates (new image digest with every chart release, parameters) restart the
   # standbys first, then switch over to an updated one instead of restarting
   # the primary in place – a few seconds without writes instead of a restart.
-  # CNPG refuses to change the image and restart-requiring parameters in one
-  # update with this method: ship such changes in separate releases.
+  # CNPG's webhook refuses an image change together with a parameter change
+  # with this method only for spec.imageName; with the ImageCatalog below both
+  # roll out in the same pass (checked against CNPG 1.30).
   primaryUpdateStrategy: unsupervised
   primaryUpdateMethod: switchover
   # The PDB lets the operator switch over before a drain takes the primary.
