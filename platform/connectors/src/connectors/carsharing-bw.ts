@@ -56,7 +56,8 @@
  * Every run sees each system's COMPLETE `station_information`. Many stations
  * are ephemeral — free-floating "virtual stations" that get a new id per
  * parking event — so the ids of each system's list are kept
- * ({@link SYSTEM_IDS}), and an id missing from its system's list in two
+ * ({@link SYSTEM_IDS}; only stations the broker holds, {@link writtenOnly}),
+ * and an id missing from its system's list in two
  * consecutive runs is deleted ({@link diffSystems}): about two hours after it
  * vanished instead of the 24 h of the age-based prune. Never on a failed or
  * empty feed (that breaks "consecutive" for the whole system), at most half
@@ -590,8 +591,12 @@ export function diffSystems(
     }
     nextKnown.set(system, [...list, ...gone]);
     if (confirmed.length === 0) continue;
-    if (confirmed.length > previous.length * SYSTEM_DIFF_CAP) {
-      capped.push([system, confirmed.length, previous.length]);
+    // Measured against the stations the list had before they went missing:
+    // the previous list plus what went missing in the previous run — not the
+    // ids missing for longer, which still wait for their deletion.
+    const present = previous.filter((id) => (missing.get(id) ?? 0) <= 1).length;
+    if (confirmed.length > present * SYSTEM_DIFF_CAP) {
+      capped.push([system, confirmed.length, present]);
       continue;
     }
     remove.set(system, confirmed);
@@ -671,11 +676,34 @@ async function masterData(
   return ids;
 }
 
+/**
+ * The lists reduced to the stations this connector has in the broker — the
+ * ones with a master data signature, i.e. a write the broker confirmed (or
+ * seeded from it). A station in `station_information` without a status was
+ * never written; deleting it would only fail, run after run. A system whose
+ * list keeps nothing tells nothing: `null`, as a failed feed.
+ */
+export function writtenOnly(
+  lists: ReadonlyMap<string, readonly string[] | null>,
+  written: ReadonlyMap<string, unknown>,
+): Map<string, readonly string[] | null> {
+  const out = new Map<string, readonly string[] | null>();
+  for (const [system, list] of lists) {
+    const kept = list?.filter((id) => written.has(id)) ?? [];
+    out.set(system, kept.length === 0 ? null : kept);
+  }
+  return out;
+}
+
 /** Deletes what {@link diffSystems} found gone, and keeps its lists. */
 async function removeVanished(ctx: Ctx, lists: ReadonlyMap<string, readonly string[] | null>): Promise<void> {
   const knownSlot = ctx.state.slot(SYSTEM_IDS);
   const missingSlot = ctx.state.slot(MISSING_RUNS);
-  const diff = diffSystems(knownSlot.get(), missingSlot.get(), lists);
+  const diff = diffSystems(
+    knownSlot.get(),
+    missingSlot.get(),
+    writtenOnly(lists, ctx.gate.table(STATIC_KEY)),
+  );
   for (const [system, gone, previous] of diff.capped) {
     ctx.log.warn(
       `Carsharing ${system}: ${String(gone)} of ${String(previous)} stations missing from the station ` +
@@ -780,6 +808,11 @@ export async function run(ctx: Ctx): Promise<void> {
     return;
   }
 
+  // Empty tables are seeded from the broker first (the diff below reads
+  // them); the former single table goes.
+  await ctx.orion.seedSignatures(SEED);
+  ctx.gate.retain(LEGACY_GATE, () => false);
+
   // Stations gone from their system's complete list in two runs.
   await removeVanished(ctx, lists);
 
@@ -812,9 +845,6 @@ export async function run(ctx: Ctx): Promise<void> {
     intervalMs: ctx.intervalMs(),
   });
 
-  // Empty tables are seeded from the broker first; the former single table goes.
-  await ctx.orion.seedSignatures(SEED);
-  ctx.gate.retain(LEGACY_GATE, () => false);
   const storedBefore = ctx.gate.table(STATIC_KEY).size;
   const totals = emptyTotals();
   for (const system of systems) await status(ctx, cache, system, skipped, totals);

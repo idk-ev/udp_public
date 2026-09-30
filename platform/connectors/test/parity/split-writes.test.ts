@@ -24,7 +24,7 @@ import type { ChargingRow, OcpdbRun } from "../../src/connectors/ladesaeulen-bw.
 import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
 import type { SignatureScope } from "../../src/kernel/change-gate.js";
 import { createOrion } from "../../src/kernel/orion.js";
-import { planSplit } from "../../src/kernel/split-gate.js";
+import { needsRefresh, planSplit, REFRESH_EVERY_HOURS } from "../../src/kernel/split-gate.js";
 import { NGSI_CONTEXT } from "../../src/kernel/types.js";
 import type { EntityId, NgsiEntity, UpsertPlan } from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
@@ -105,6 +105,42 @@ export function plannerSendsFullPartialOrStamp(): void {
   const same = planSplit([thing("1", "x", 1, 2)], staticTable, dynamicTable, spec, T0);
   assert.deepEqual([same.unchanged, same.fresh, same.pending.length], [1, 1, 0]);
   assert.deepEqual(attributes(same.entities[0] ?? {}), ["dateObserved"], "freshness stamp only");
+}
+
+/**
+ * A kept signature of an entity that is no longer in the broker (admin
+ * delete, restore, an unconfirmed delete) makes every later write a
+ * skeleton — the weekly full write heals it: once in 168 hours per entity,
+ * spread evenly over the ids.
+ */
+export function weeklyFullWriteHealsSkeletons(): void {
+  const spec = {
+    staticKey: "s",
+    dynamicKey: "d",
+    staticSignature: (entity: NgsiEntity): string => JSON.stringify(entity.name),
+    dynamic: ["a", "b"],
+    replace: false,
+  } as const;
+  const entity = thing("1", "x", 1, 2);
+  const first = planSplit([entity], new Map(), new Map(), spec, T0);
+  const staticTable = new Map(first.pending.filter((p) => p[0] === "s").map((p) => [p[1], p[2] ?? ""]));
+  const dynamicTable = new Map(first.pending.filter((p) => p[0] === "d").map((p) => [p[1], p[2] ?? ""]));
+  const hours = Array.from({ length: REFRESH_EVERY_HOURS }, (_, h) => T0 + h * HOUR);
+  const refreshing = hours.filter((at) => needsRefresh(entity.id, at));
+  assert.equal(refreshing.length, 1, "exactly one hour of the week");
+  for (const at of hours) {
+    const plan = planSplit([entity], staticTable, dynamicTable, spec, at);
+    if (refreshing.includes(at)) {
+      assert.deepEqual([plan.full, plan.refreshed], [1, 1]);
+      assert.equal(rows(plan.entities[0] ?? {}), 4, "the whole entity: name, measurements, stamp");
+    } else {
+      assert.deepEqual([plan.full, plan.refreshed], [0, 0]);
+    }
+  }
+  // Spread: of 1,680 ids about ten per hour.
+  const ids = Array.from({ length: 1680 }, (_, n) => `urn:ngsi-ld:Thing:${String(n)}`);
+  const perHour = hours.map((at) => ids.filter((id) => needsRefresh(id, at)).length);
+  assert.ok(Math.max(...perHour) <= 30, `uneven: ${String(Math.max(...perHour))} in one hour`);
 }
 
 /* ── EVChargingStation / ChargingSummary ─────────────────────────────────── */

@@ -30,6 +30,15 @@
  * in full instead — which does not remove it either, but is what the plain
  * gate did, and rare.
  *
+ * A partial or stamp-only update of an entity that is NOT in the broker
+ * (deleted by an admin, a restore, a delete that was not confirmed) creates
+ * a skeleton — id, type, a measurement, no name, no location, no provider —
+ * and a kept static signature would never send the rest. So every entity is
+ * written in full once a week anyway ({@link needsRefresh}: a fixed hour of
+ * the week per id, spread evenly), which heals such a skeleton within a
+ * week. It costs about one seventh of a full write of the stock per day
+ * (docs/betrieb.md, "Zeilenbudget").
+ *
  * Commit after confirm, as everywhere: new signatures are pending on the
  * plan, the old ones of whatever goes out are dropped from the tables before
  * the upsert ({@link applySplit}). `replace: true` (the call sees the whole
@@ -42,6 +51,14 @@ import type { ChangeGate, NgsiEntity, PendingSignature, SignatureValue, UpsertPl
 
 /** Default of `periodMs`, as the gate's. */
 const HOUR_MS = 3_600_000;
+
+/** Hours between two full writes of an unchanged entity: one week. */
+export const REFRESH_EVERY_HOURS = 168;
+
+/** This hour is `id`'s weekly full write (the same rotation as the freshness stamps). */
+export function needsRefresh(id: string, nowMs: number): boolean {
+  return freshTurn(id, REFRESH_EVERY_HOURS, HOUR_MS, nowMs);
+}
 
 /**
  * Compact value signature: two FNV-1a runs with different primes give 64
@@ -123,6 +140,8 @@ export interface SplitPlan extends UpsertPlan {
   readonly full: number;
   /** …of which had no static signature at all (new entity, or state lost). */
   readonly unknown: number;
+  /** …of which were the weekly refresh of an unchanged entity. */
+  readonly refreshed: number;
   /** Partial updates, and the measured attributes they carry (without `dateObserved`). */
   readonly partial: number;
   readonly partialAttributes: number;
@@ -153,6 +172,7 @@ export function planSplit<T extends NgsiEntity>(
   const dropDynamic = new Set<string>();
   let full = 0;
   let unknown = 0;
+  let refreshed = 0;
   let partial = 0;
   let partialAttributes = 0;
   let unchanged = 0;
@@ -175,6 +195,13 @@ export function planSplit<T extends NgsiEntity>(
     };
 
     if (staticBefore !== staticNow) {
+      sendFull();
+      continue;
+    }
+    // The weekly full write: heals an entity that vanished behind a kept
+    // signature (see the module header), once per entity and week.
+    if (needsRefresh(id, nowMs)) {
+      refreshed += 1;
       sendFull();
       continue;
     }
@@ -228,6 +255,7 @@ export function planSplit<T extends NgsiEntity>(
     pending,
     full,
     unknown,
+    refreshed,
     partial,
     partialAttributes,
     unchanged,
@@ -277,6 +305,7 @@ export const FULL_SHARE_WARNING = 0.5;
 export interface SplitTotals {
   full: number;
   unknown: number;
+  refreshed: number;
   partial: number;
   partialAttributes: number;
   unchanged: number;
@@ -289,6 +318,7 @@ export function emptyTotals(): SplitTotals {
   return {
     full: 0,
     unknown: 0,
+    refreshed: 0,
     partial: 0,
     partialAttributes: 0,
     unchanged: 0,
@@ -308,6 +338,7 @@ export function totalsOf(result: SplitResult): SplitTotals {
 export function addTotals(totals: SplitTotals, result: SplitResult): void {
   totals.full += result.full;
   totals.unknown += result.unknown;
+  totals.refreshed += result.refreshed;
   totals.partial += result.partial;
   totals.partialAttributes += result.partialAttributes;
   totals.unchanged += result.unchanged;
@@ -328,13 +359,14 @@ export function reportSplit(
 ): void {
   log.info(
     `${label}: ${String(totals.full)}/${String(totals.total)} in full (${String(totals.unknown)} without ` +
-      `signature) · ${String(totals.partial)} partial (${String(totals.partialAttributes)} attributes) · ` +
+      `signature, ${String(totals.refreshed)} weekly refresh) · ${String(totals.partial)} partial ` +
+      `(${String(totals.partialAttributes)} attributes) · ` +
       `${String(totals.unchanged)} unchanged (${String(totals.fresh)} freshness)`,
   );
   if (
     totals.known &&
     totals.total >= MIN_ENTITIES_FOR_WARNING &&
-    totals.full / totals.total > FULL_SHARE_WARNING
+    (totals.full - totals.refreshed) / totals.total > FULL_SHARE_WARNING
   ) {
     log.warn(
       `${label}: ${String(totals.full)} of ${String(totals.total)} entities written in full although ` +

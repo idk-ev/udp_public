@@ -58,6 +58,7 @@ import {
   jsonAnswer,
   legacyGlobal,
   liveValues,
+  withoutWeeklyRefresh,
   mobilityCtx,
   staleOptions,
   tableObject,
@@ -208,13 +209,17 @@ function typeOf(entity: unknown): unknown {
 /**
  * An unchanged run: the stations as the old node wrote them; the sums only
  * as freshness stamps in their third-run rotation (the old node stamped every
- * unchanged sum in every run).
+ * unchanged sum in every run). The entities whose weekly full write falls
+ * into this hour are left out on both sides.
  */
 function expectedUnchangedRun(legacy: readonly unknown[], nowMs: number): unknown[] {
-  return legacy.filter(
-    (entity) =>
-      typeOf(entity) !== "ChargingSummary" ||
-      (isRecord(entity) && typeof entity.id === "string" && freshTurn(entity.id, 3, HOUR, nowMs)),
+  return withoutWeeklyRefresh(
+    legacy.filter(
+      (entity) =>
+        typeOf(entity) !== "ChargingSummary" ||
+        (isRecord(entity) && typeof entity.id === "string" && freshTurn(entity.id, 3, HOUR, nowMs)),
+    ),
+    nowMs,
   );
 }
 
@@ -309,13 +314,17 @@ async function incompleteRunMergesAndResets(): Promise<void> {
       assert.deepEqual(normalize(world.broker.upserts), normalize(expected), "round 1: upserts differ");
     } else {
       assert.deepEqual(
-        normalize(flat(world.broker.upserts)),
+        normalize(withoutWeeklyRefresh(flat(world.broker.upserts), world.clock.now)),
         normalize(expectedUnchangedRun(flat(expected), world.clock.now)),
         "round 2: upserts differ",
       );
     }
     const stamped = round === 1 ? flat(expected) : expectedUnchangedRun(flat(expected), world.clock.now);
-    assertClockStamps(stamped, flat(world.broker.upserts), {
+    const actual =
+      round === 1
+        ? flat(world.broker.upserts)
+        : withoutWeeklyRefresh(flat(world.broker.upserts), world.clock.now);
+    assertClockStamps(stamped, actual, {
       legacy: legacyWindow,
       ported: fixedClock(world.clock.now),
     });
@@ -556,7 +565,7 @@ async function completeRunReplacesTheTables(): Promise<void> {
       assert.deepEqual(normalize(world.broker.upserts), normalize(expected), "run 1: upserts differ");
     } else {
       assert.deepEqual(
-        normalize(flat(world.broker.upserts)),
+        normalize(withoutWeeklyRefresh(flat(world.broker.upserts), world.clock.now)),
         normalize(expectedUnchangedRun(flat(expected), world.clock.now)),
         "run 2: upserts differ",
       );

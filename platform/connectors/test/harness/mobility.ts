@@ -33,6 +33,7 @@ import { createGeoIndex, createSharedGeo, MasterDataCheck } from "../../src/kern
 import { isArray } from "../../src/kernel/parse.js";
 import { createOrion } from "../../src/kernel/orion.js";
 import { createPruner } from "../../src/kernel/prune.js";
+import { needsRefresh } from "../../src/kernel/split-gate.js";
 import { createRateLimiter } from "../../src/kernel/rate-limit.js";
 import { intervalMsOf, loadRegistry, sumRowBudgets } from "../../src/kernel/registry.js";
 import { createConnectorState } from "../../src/kernel/state.js";
@@ -348,6 +349,18 @@ export function flowTable(flow: ReadonlyMap<string, unknown>, key: string): Reco
 export function liveValues(signature: unknown): readonly unknown[] {
   const parsed: unknown = JSON.parse(String(signature));
   return isArray(parsed) ? parsed : [];
+}
+
+/**
+ * Without the entities whose weekly full write (src/kernel/split-gate.ts,
+ * `needsRefresh`) falls into the hour of `nowMs`: the port sends those in
+ * full by design, where the old nodes sent a stamp or nothing. Parity tests
+ * with a wall clock compare the rest.
+ */
+export function withoutWeeklyRefresh(entities: readonly unknown[], nowMs: number): unknown[] {
+  return entities.filter(
+    (entity) => !(isRecord(entity) && typeof entity.id === "string" && needsRefresh(entity.id, nowMs)),
+  );
 }
 
 /** The options of every `ctx.prune.stale` call of the port, in order. */

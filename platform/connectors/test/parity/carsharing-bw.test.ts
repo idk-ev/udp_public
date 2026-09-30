@@ -42,6 +42,7 @@ import {
   STATIC_KEY,
 } from "../../src/connectors/carsharing-bw.js";
 import type { StationCache } from "../../src/connectors/carsharing-bw.js";
+import { isArray } from "../../src/kernel/parse.js";
 import type { EntityId, UpsertPlan } from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, recordingLog } from "../harness/kernel.js";
@@ -53,6 +54,7 @@ import {
   jsonAnswer,
   legacyGlobal,
   liveValues,
+  withoutWeeklyRefresh,
   mobilityCtx,
   staleOptions,
 } from "../harness/mobility.js";
@@ -283,15 +285,21 @@ async function statusMatchesAcrossTwoRuns(): Promise<void> {
     // Second run, nothing changed: stations only as freshness, one in three.
     const second = await legacyStatus(master, first.flow);
     const secondPlans = portedStatus(cache, formFactors, store);
+    // A station whose weekly full write falls into this hour goes out in full by design.
+    const hour = Date.now();
     assertEntitiesEqual(
-      second.payloads.flat(),
-      secondPlans.flatMap((plan) => plan.entities),
+      withoutWeeklyRefresh(second.payloads.flat(), hour),
+      withoutWeeklyRefresh(
+        secondPlans.flatMap((plan) => plan.entities),
+        hour,
+      ),
     );
-    const stations = secondPlans
-      .flatMap((plan) => plan.entities)
-      .filter((e) => e.type === "CarSharingStation");
+    const stations = withoutWeeklyRefresh(
+      secondPlans.flatMap((plan) => plan.entities),
+      hour,
+    ).filter((e) => isRecord(e) && e.type === "CarSharingStation");
     assert.ok(
-      stations.every((entity) => !("availableVehicles" in entity)),
+      stations.every((entity) => isRecord(entity) && !("availableVehicles" in entity)),
       "unchanged station written in full",
     );
     // MERGE: the table holds all three systems, not only the last one.
@@ -413,13 +421,15 @@ async function runMatchesTheOldFlows(): Promise<void> {
     const first = await legacyStatus(master, {});
     const second = await legacyStatus(master, first.flow);
     const legacyWindow = legacyClock.close();
-    assert.deepEqual(
-      normalize(world.broker.upserts),
-      normalize(JSON.parse(JSON.stringify(second.payloads))),
-      "upserts of the second run differ",
-    );
+    // Stations whose weekly full write falls into this hour are left out on both sides.
+    const legacyChunks = second.payloads.map((chunk) => {
+      const wired: unknown = JSON.parse(JSON.stringify(chunk));
+      return withoutWeeklyRefresh(isArray(wired) ? wired : [], now);
+    });
+    const portChunks = world.broker.upserts.map((chunk) => withoutWeeklyRefresh(chunk, now));
+    assert.deepEqual(normalize(portChunks), normalize(legacyChunks), "upserts of the second run differ");
     // Stamped with the port's clock of THAT run (the test clock, `now`).
-    assertClockStamps(second.payloads, world.broker.upserts, {
+    assertClockStamps(legacyChunks, portChunks, {
       legacy: legacyWindow,
       ported: fixedClock(now),
     });

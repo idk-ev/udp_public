@@ -20,6 +20,7 @@ import {
   run,
   STATIC_KEY,
   systemPattern,
+  writtenOnly,
 } from "../../src/connectors/carsharing-bw.js";
 import { readFixture } from "../harness/fixtures.js";
 import { httpResponse } from "../harness/kernel.js";
@@ -163,10 +164,58 @@ function swuStations(world: MobilityWorld): [string, string][] {
   return out;
 }
 
+/**
+ * Only stations the broker holds are diffed: a station of
+ * `station_information` without a status was never written, and deleting it
+ * would fail run after run. A list that keeps nothing tells nothing.
+ */
+export function onlyWrittenStationsAreDiffed(): void {
+  const written = new Map([[ID("ulm", "a", "1"), "s"]]);
+  const lists = writtenOnly(
+    new Map([
+      ["a", [ID("ulm", "a", "1"), ID("ulm", "a", "2")]],
+      ["b", [ID("ulm", "b", "1")]],
+      ["c", null],
+    ]),
+    written,
+  );
+  assert.deepEqual(
+    [...lists],
+    [
+      ["a", [ID("ulm", "a", "1")]],
+      ["b", null],
+      ["c", null],
+    ],
+  );
+  // The cap counts the stations the list had before they went missing, not
+  // the ids still waiting for their deletion.
+  const ids = ["1", "2", "3", "4"].map((n) => ID("ulm", "a", n));
+  const waiting = ["7", "8", "9"].map((n) => ID("ulm", "a", n));
+  const known = new Map([["a", [...ids, ...waiting]]]);
+  const missing = new Map<string, number>([
+    ...waiting.map((id): [string, number] => [id, MAX_MISSING_RUNS]),
+    [ids[3] ?? "", 1],
+  ]);
+  const diff = diffSystems(known, missing, new Map([["a", ids.slice(0, 3)]]));
+  assert.deepEqual([...diff.remove], [["a", [ids[3]]]], "one of four gone: within the cap");
+  const inflated = diffSystems(
+    new Map([["a", [...ids, ...waiting]]]),
+    new Map<string, number>([
+      ...waiting.map((id): [string, number] => [id, MAX_MISSING_RUNS]),
+      ...ids.slice(1).map((id): [string, number] => [id, 1]),
+    ]),
+    new Map([["a", ids.slice(0, 1)]]),
+  );
+  assert.deepEqual(inflated.capped, [["a", 3, 4]], "the waiting ids do not raise the cap");
+}
+
 export async function vanishedStationIsDeletedAfterTwoRuns(): Promise<void> {
   const start = Date.parse("2026-09-29T09:00:00Z");
-  const world = mobilityCtx({ id: "carsharing-bw", start });
+  // The first run writes; only then does the diff know the stations.
+  const world = mobilityCtx({ id: "carsharing-bw", start: start - HOUR });
   serve(world);
+  await run(world.ctx);
+  world.clock.now = start;
   await run(world.ctx);
   const stations = swuStations(world);
   assert.ok(stations.length >= 4, `swu2go stations in BW: ${String(stations.length)}`);
@@ -193,8 +242,10 @@ export async function vanishedStationIsDeletedAfterTwoRuns(): Promise<void> {
 
 export async function failedFeedAndCapDeleteNothing(): Promise<void> {
   const start = Date.parse("2026-09-29T09:00:00Z");
-  const world = mobilityCtx({ id: "carsharing-bw", start });
+  const world = mobilityCtx({ id: "carsharing-bw", start: start - HOUR });
   serve(world);
+  await run(world.ctx);
+  world.clock.now = start;
   await run(world.ctx);
   const stations = swuStations(world);
   const [goneStation] = stations[0] ?? [""];
@@ -212,8 +263,10 @@ export async function failedFeedAndCapDeleteNothing(): Promise<void> {
   assert.deepEqual(world.broker.deletes.flat(), [], "deleted across a failed feed");
 
   // More than half of the system at once: warned, not deleted.
-  const capped = mobilityCtx({ id: "carsharing-bw", start });
+  const capped = mobilityCtx({ id: "carsharing-bw", start: start - HOUR });
   serve(capped);
+  await run(capped.ctx);
+  capped.clock.now = start;
   await run(capped.ctx);
   const most = stations.slice(0, Math.floor(stations.length / 2) + 2).map(([station]) => station);
   for (const hour of [1, 2]) {
