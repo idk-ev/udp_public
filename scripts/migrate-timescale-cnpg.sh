@@ -31,9 +31,10 @@
 #
 # The copy streams pg_dump | pg_restore per database through a pod in the
 # namespace – nothing is written to disk in between, the new volumes only need
-# room for the data itself. TimescaleDB's catalog schemas are excluded: the
-# platform has no hypertables (checked), the extension is created fresh – a
-# 2.26 catalog would not even restore into 2.30.
+# room for the data itself. TimescaleDB's catalog schemas are excluded: an
+# installation this old has no hypertables yet (checked – the TRoE hypertable
+# conversion comes after this move), the extension is created fresh – a 2.26
+# catalog would not even restore into 2.30.
 #
 # Environment: KUBECONFIG, NAMESPACE (default udp), DB_SECRET (default udp-db),
 # YES=1 skips the confirmations.
@@ -46,7 +47,7 @@ CLUSTER=timescale
 POD=timescale-migrate
 # Every component that holds connections to the database (NetworkPolicy
 # matrix, templates/networkpolicy.yaml).
-WRITERS="orion-ld,mintaka,frost,keycloak,node-red,ckan,db-backup"
+WRITERS="orion-ld,mintaka,frost,keycloak,node-red,connectors,ckan,db-backup"
 ANN_REPLICAS=udp.idk-ev.de/replicas-before-migration
 ANN_COPIED=udp.idk-ev.de/copied-from-legacy
 
@@ -54,6 +55,7 @@ k() { kubectl -n "$NS" "$@"; }
 log() { printf '\n\033[1m>> %s\033[0m\n' "$*"; }
 die() { printf '\033[31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 confirm() {
+    echo "  kubectl context: $(kubectl config current-context 2>/dev/null || echo '?'), namespace: $NS"
     [ "${YES:-}" = 1 ] && return 0
     read -r -p "$1 [y/N] " a
     [ "$a" = y ] || [ "$a" = Y ] || die "aborted"
@@ -137,7 +139,7 @@ preflight() {
         # Only where the extension exists; a query error aborts (set -e).
         [ -n "$(legacy_psql -d "$db" -Atc "SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'")" ] || continue
         hyper=$(legacy_psql -d "$db" -Atc "SELECT count(*) FROM timescaledb_information.hypertables")
-        [ "$hyper" = 0 ] || die "$hyper hypertables in $db – this copy does not handle TimescaleDB hypertables."
+        [ "$hyper" = 0 ] || die "$hyper hypertables in $db – this copy does not handle TimescaleDB hypertables. The order is: this CNPG migration first, then the TRoE conversion (scripts/migrate-troe-hypertable.sh, DEPLOY.md §10c)."
     done
     echo "  hypertables: 0"
     # pg_dump (without -C) does not carry ALTER DATABASE/ROLE ... SET.
