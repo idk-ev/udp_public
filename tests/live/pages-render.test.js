@@ -41,7 +41,7 @@ exports["Reutlingen: volle Detailtiefe (≥20 Kacheln, ≥7 Charts, Fehlerbox le
 };
 
 exports["Datenarme Gemeinde rendert fehlerfrei (Böllen)"] = async () => {
-  const d = await renderCity("boellen", { ags: "08336015", slug: "boellen", name: "Böllen" });
+  const d = await renderCity("boellen", { ags: "08336010", slug: "boellen", name: "Böllen" });
   assert.strictEqual(d.querySelector("#err").textContent, "");
   assert(d.querySelectorAll("#tiles .tile").length >= 5);
 };
@@ -163,11 +163,14 @@ exports["Jede Gemeinde hat die vier Bürgerservice-Kacheln + saubere Themen-Grup
   // Nicht bereitgestellte Dienste erscheinen als Potenzial-Kachel, nicht als Lücke
   assert(d.querySelectorAll('#tiles a.tile.tile-empty').length >= 1, "keine Potenzial-Kachel bei datenarmer Gemeinde");
 
-  // Themen-Gruppierung: Kacheln stehen nach Thema sortiert (nicht gemischt)
-  const order = { "": 0, wetter: 1, umwelt: 2, mobilitaet: 3, energie: 4, service: 5, freizeit: 6 };
-  const seq = [...d.querySelectorAll('#tiles .tile')].map(t => order[t.dataset.topic || ""] ?? 9);
+  // Tile order follows REL_ORDER in stadt.html (relevance, not topic);
+  // unknown labels come last in code order.
+  const src = await (await fetch(BASE + "/stadt.html")).text();
+  const rel = JSON.parse(src.match(/const REL_ORDER = (\[[\s\S]*?\]);/)[1]);
+  const rank = t => { const i = rel.indexOf(t.querySelector(".label").textContent.trim()); return i === -1 ? rel.length : i; };
+  const seq = [...d.querySelectorAll("#tiles .tile")].map(rank);
   for (let i = 1; i < seq.length; i++) {
-    assert(seq[i] >= seq[i - 1], `Kacheln nicht themengruppiert an Position ${i} (${seq.join(",")})`);
+    assert(seq[i] >= seq[i - 1], `Kacheln nicht nach REL_ORDER sortiert an Position ${i} (${seq.join(",")})`);
   }
 };
 

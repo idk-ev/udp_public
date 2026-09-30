@@ -186,7 +186,14 @@ Modul. Aufbau und verbindliche Typdisziplin: `platform/connectors/README.md`.
    Vorhandene `provides` und ihre Kacheln: `wetter`, `warnungen`, `baustellen`,
    `feinstaub`, `luft-uba`, `parken`, `sharing`, `laden`, `radverkehr`, `pv`,
    `departures`, `br`, `amtliche-station`, `laden-live`, `laden-detail`,
-   `carsharing-detail`, `passanten`, `vorhersage`.
+   `carsharing-detail`, `passanten`, `vorhersage`, `fuellstand` (Container-Füllstände
+   aus `WasteContainer`; ohne einen Konnektor mit `fuellstand` fragt die Seite den
+   Typ gar nicht erst ab).
+
+   Schlägt eine Abfrage fehl (5xx, Zeitüberschreitung, 429), zeigt die Seite statt
+   der Kachel »Daten derzeit nicht abrufbar« – aber nur für Kacheln, die die
+   Kommune bei früheren Aufrufen hatte; bei mehreren Fehlern zusätzlich einen
+   Hinweis oben. Ein leeres Ergebnis oder ein 404 gilt als »keine Daten«.
 6. **Secrets:** `requiresSecret` (z. B. `HYSTREET_API_TOKEN`) in `platform/.env`;
    der Healthcheck meldet „WARTET" statt Fehler, bis das Secret gesetzt ist, und
    die Kachel erscheint automatisch, sobald der Konnektor liefert.

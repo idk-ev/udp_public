@@ -80,7 +80,7 @@ export default function () {
     byAgs('CarSharingStation', ags, 'name,operator,availableVehicles,capacity,ags,location'),
     `${GW}?type=HeatHealthWarning&limit=10&options=keyValues`,
     byId(`urn:ngsi-ld:PublicAmenity:bw-${ags}`),
-    byAgs('WasteContainer', ags),
+    // WasteContainer: asked only where a connector provides "fuellstand" (none by default).
     byAgs('ParkingSite', ags, 'name,totalSpotNumber,availableSpotNumber,category,ags,location'),
     `${TEMPORAL}${encodeURIComponent(`urn:ngsi-ld:WeatherObserved:bw-${ags}`)}` +
       `?attrs=windSpeed&timerel=after&timeAt=${since}&options=temporalValues`,

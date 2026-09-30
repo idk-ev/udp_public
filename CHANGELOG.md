@@ -2,6 +2,19 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Fehler sichtbar statt stiller Lücken
+
+- Dashboards: fehlgeschlagene Abfragen (5xx, Netzfehler, 429) werden einmal
+  wiederholt (`Retry-After` beachtet) und von „keine Daten“ unterschieden.
+  Kacheln, die die Kommune sonst hat, zeigen dann „Daten derzeit nicht
+  abrufbar“; bei mehreren Fehlern erscheint ein Hinweis oben.
+- `/abfahrten`: gültige EFA-Antwort ohne Abfahrten ist 200 mit leerer Liste
+  statt 502; die Stadtseite zeigt „Derzeit keine Abfahrten“ bzw.
+  „Fahrplanauskunft derzeit gestört“.
+- Cockpit-nginx: leere Kontext-/Zeitreihen-Antworten nur noch 10 s im Cache.
+- Stadtseite fragt `WasteContainer` nur ab, wo ein Konnektor `fuellstand`
+  liefert.
+
 ## Unveröffentlicht — Webanalyse, Impressum, Datenschutz und Logo
 
 - Helm: `cockpit.analytics.headHtml` bindet den Einbettungscode einer beliebigen
