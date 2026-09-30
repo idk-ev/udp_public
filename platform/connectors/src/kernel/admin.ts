@@ -167,6 +167,37 @@ function triggerRoute(kernel: Kernel, options: AdminOptions): RouteDefinition {
   };
 }
 
+/**
+ * `POST /release-prunes/:id` — what `scripts/release-prunes.sh` calls after
+ * an operator checked the source: the losses that blocked the connector's
+ * prunes (`stateStore.blockedPrunes`, src/kernel/prune.ts "Blocked losses")
+ * are released, and their entities are deleted under the ordinary rules
+ * from the next run on. Loopback peers only, as `/trigger`.
+ */
+function releaseRoute(kernel: Kernel): RouteDefinition {
+  return {
+    method: "POST",
+    path: "/release-prunes/:id",
+    handle(request): Promise<RouteResponse> {
+      const id = request.params.id ?? "";
+      if (!isLoopback(request.remoteAddress)) {
+        kernel.log.info(
+          `${id}: prune release refused, peer ${request.remoteAddress ?? "unknown"} is not loopback`,
+        );
+        return Promise.resolve(
+          textResponse(403, "release only from loopback (docker exec / kubectl exec)\n"),
+        );
+      }
+      const released = kernel.persistence?.releasePrunes(id) ?? null;
+      if (released === null) return Promise.resolve(textResponse(404, `no persisted state for "${id}"\n`));
+      if (released === "unusable") {
+        return Promise.resolve(textResponse(503, `state of "${id}" not loaded right now, try again\n`));
+      }
+      return Promise.resolve(jsonResponse(200, { id, released }));
+    },
+  };
+}
+
 export function adminRoutes(kernel: Kernel, options: AdminOptions): readonly RouteDefinition[] {
-  return [healthRoute(kernel, options), triggerRoute(kernel, options)];
+  return [healthRoute(kernel, options), triggerRoute(kernel, options), releaseRoute(kernel)];
 }

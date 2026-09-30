@@ -17,13 +17,15 @@
  *                                     master data reference, one document
  *     udp_connectors.connector_state  connector, name -> value (jsonb)
  *                                     the persisted `ctx.state` keys
- *
- * Every row carries `updated_at`. The schema is created idempotently when the
- * writer lock is taken (`CREATE SCHEMA/TABLE IF NOT EXISTS`); the database
- * user needs `CREATE` on the database for that, or the schema has to exist.
- *
  *     udp_connectors.writer           one row: the writer generation, bumped by
  *                                     every instance that takes the lock
+ *
+ * Every row carries `updated_at` (`writer`: `acquired_at`). The schema is
+ * created idempotently when the writer lock is taken (`CREATE SCHEMA/TABLE IF
+ * NOT EXISTS`); the database user needs `CREATE` on the database for that, or
+ * the schema has to exist — and then `CREATE` on the schema, at least once:
+ * a service that already ran needs it again for the `writer` table added
+ * later. Without it the lock is not taken and an `[error]` says why.
  *
  * Connections: a pool of at most two for loads and writes, plus one dedicated
  * connection that holds the session advisory lock for the lifetime of the
@@ -47,12 +49,10 @@
  * connection sooner or later, and a write without it fails anyway.
  *
  * A REAL loss remains possible and is no longer expensive: a database
- * switchover ends every session, the lock connection with it. A release that
- * changes the database image rolls the cluster right after the new service
- * pod started (standbys first, then the switchover a minute later) — the
- * loss "shortly after every start" of such releases. The next check takes
- * the lock on the new primary, and memory is kept (src/kernel/persistence.ts,
- * "A lost lock keeps memory").
+ * failover or restart can end the lock session. The next check takes the
+ * lock again, and memory is kept (src/kernel/persistence.ts, "A lost lock
+ * keeps memory"). Every write, and every gated upsert before it goes out,
+ * is fenced by the writer generation (`#transaction`, `fence()`).
  */
 
 import { randomUUID } from "node:crypto";
@@ -225,6 +225,8 @@ class PgStateBackend implements StateBackend {
   #probing: Promise<boolean> | null = null;
   /** A check could not tell whether the lock is ours; warned once per streak. */
   #unverified = false;
+  /** Creating or updating the schema failed; logged once per streak. */
+  #schemaFailing = false;
 
   constructor(settings: ConnectionSettings, log: Log) {
     this.#settings = settings;
@@ -286,9 +288,25 @@ class PgStateBackend implements StateBackend {
         return false;
       }
       pid = Number(row.pid);
-      await client.query(SCHEMA_SQL);
-      const next = await client.query<Record<string, unknown>>(SQL_NEXT_GENERATION);
-      generation = Number(next.rows[0]?.generation);
+      try {
+        await client.query(SCHEMA_SQL);
+        const next = await client.query<Record<string, unknown>>(SQL_NEXT_GENERATION);
+        generation = Number(next.rows[0]?.generation);
+      } catch (error) {
+        // Most likely the privilege: a schema created beforehand needs CREATE
+        // for the tables, including `writer`, added after the first release.
+        // Once per streak: the acquire is retried every 30 s.
+        if (!this.#schemaFailing) {
+          this.#log.error(
+            `state store: schema ${STATE_SCHEMA} could not be created or updated (${describe(error)}) — ` +
+              `the database user needs CREATE on the schema ${STATE_SCHEMA} (or on the database); ` +
+              "connectors that need their state do not run until it has",
+          );
+        }
+        this.#schemaFailing = true;
+        throw error;
+      }
+      this.#schemaFailing = false;
     } catch (error) {
       await client.end().catch(() => undefined);
       throw error;
@@ -406,6 +424,10 @@ class PgStateBackend implements StateBackend {
         ]);
       }
     });
+  }
+
+  async fence(): Promise<void> {
+    await this.#transaction(() => Promise.resolve());
   }
 
   async deleteSignatures(connector: ConnectorId, table: string, fields: readonly string[]): Promise<void> {

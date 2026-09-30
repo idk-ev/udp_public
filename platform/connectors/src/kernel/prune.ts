@@ -60,22 +60,34 @@
  *    to these alone, measured against the FRESH stock (own entities that are
  *    no candidate). Over the cap: nothing at all is deleted, as before, and
  *    the confirmations start over, so a mass loss never ages into backlog.
- *  * BACKLOG (longer): gone for a week while this connector kept running and
- *    writing (`liveMs`, the interval check) — gone for good. Deleted oldest
- *    first, at most `backlogBatch` (1,000) per run, and only when every guard
- *    above passed AND the fresh stock is at least 95 % of its reference
- *    (persisted per prune; it follows a growing stock at once and a
- *    shrinking one by at most 2 % per run). An upstream outage shrinks the
- *    fresh stock first and stops the drain; its entities could reach the
- *    backlog only after a week without a single write while the connector
- *    runs, which is what "gone" means.
+ *  * BACKLOG (longer): deleted oldest first, at most `backlogBatch` (1,000)
+ *    per run, and only when every guard above passed AND
+ *     - this prune has run without a gap for a whole backlog period
+ *       (`runningSince`, persisted, reset whenever the interval check fails):
+ *       "gone for a week while the connector kept running". After a longer
+ *       downtime every entity looks a week old; this is what keeps them;
+ *     - the fresh stock is at least 95 % of its reference (persisted; it
+ *       follows a growing stock at once and a shrinking one by at most 2 %
+ *       per run, and starts at the whole own stock). A first run never
+ *       drains.
+ *
+ * ## Blocked losses
+ *
+ * A prune skipped by the cap counts its consecutive skips and remembers when
+ * the block began (`blockedSince`, both persisted); from the third skip on it
+ * is an `[error]`, and `/healthz` lists it under `stateStore.blockedPrunes`.
+ * A loss that blocked the prune is never deleted automatically — not even
+ * once it has aged into backlog: every candidate gone since shortly before
+ * the block ({@link HOLD_MARGIN_MS} before it, minus the grace) is HELD BACK,
+ * the prune stays listed and logs an `[error]` in every run. Ordinary churn
+ * from before the block (an old backlog such as the one this was built for)
+ * drains as usual. The block ends when an operator releases it
+ * (`POST /release-prunes/<id>` on the admin port, `scripts/release-prunes.sh`)
+ * — then the held candidates are candidates like any other — or by itself
+ * when nothing held is missing any more (the source recovered).
  *
  * A prune without a cap (`maxFraction: 1`, the parking legacy cleanup) has
  * nothing to be blocked by: no backlog, every candidate past the grace goes.
- *
- * A prune skipped by the cap counts its consecutive skips (persisted); from
- * the third on the skip is an `[error]`, and `/healthz` lists the prune under
- * `stateStore.blockedPrunes` — a prune that never runs must not stay quiet.
  *
  * ## State is persisted
  *
@@ -130,6 +142,12 @@ export const BACKLOG_FRESH_RATIO = 0.95;
 export const FRESH_REFERENCE_DECAY = 0.98;
 /** From this many consecutive cap skips on, the skip is an `[error]`. */
 export const BLOCKED_AFTER = 3;
+/**
+ * Candidates gone from this long before the block (minus the grace) on count
+ * as part of the blocking loss: its members were last written over a spread
+ * of freshness rotations and run intervals before the cap caught them.
+ */
+export const HOLD_MARGIN_MS = 24 * 3_600_000;
 
 /**
  * The entities `stammdaten-bw` writes — their number seeds the reference of
@@ -174,6 +192,17 @@ function confirmationTableOf(raw: unknown): Map<string, Confirmation> | null {
   return table;
 }
 
+/** A prune's block by its share cap, as `/healthz` reports it. */
+export interface PruneBlock {
+  readonly key: string;
+  /** Consecutive runs the cap skipped (0 once it passes again). */
+  readonly skips: number;
+  /** When the cap first skipped it; `null` if it is not blocked. */
+  readonly since: number | null;
+  /** Candidates held back as part of the blocked loss in the last run. */
+  readonly held: number;
+}
+
 /**
  * The state of one connector's prunes: `pruneLastRun_<label>` and the
  * `confirmKey` tables of the old flow context, plus the master data
@@ -186,10 +215,16 @@ export class PruneBookkeeping {
   /** Keyed by label, type and pattern. */
   readonly #lastRun = new Map<string, number>();
   readonly #confirmations = new Map<string, Map<string, Confirmation>>();
-  /** Fresh stock (own entities that were no candidate) of the last run that passed the cap, per prune. */
+  /** Reference of the fresh stock (own entities that were no candidate), per prune. */
   readonly #fresh = new Map<string, number>();
   /** Consecutive runs skipped by the share cap, per prune (only non-zero entries). */
   readonly #capSkips = new Map<string, number>();
+  /** Since when the prune has run without a gap (reset whenever the interval check fails). */
+  readonly #runningSince = new Map<string, number>();
+  /** When the share cap first blocked the prune — kept until released or the loss came back. */
+  readonly #blockedSince = new Map<string, number>();
+  /** Candidates held back as part of the blocked loss in the last run. */
+  readonly #held = new Map<string, number>();
   #onChange: () => void = () => undefined;
 
   constructor(masterData: MasterDataCheck = new MasterDataCheck()) {
@@ -234,9 +269,7 @@ export class PruneBookkeeping {
   }
 
   setFresh(key: string, count: number): void {
-    if (this.#fresh.get(key) === count) return;
-    this.#fresh.set(key, count);
-    this.#onChange();
+    this.#set(this.#fresh, key, count);
   }
 
   capSkips(key: string): number {
@@ -244,15 +277,82 @@ export class PruneBookkeeping {
   }
 
   setCapSkips(key: string, runs: number): void {
-    if (this.capSkips(key) === runs) return;
-    if (runs > 0) this.#capSkips.set(key, runs);
-    else this.#capSkips.delete(key);
+    this.#set(this.#capSkips, key, runs > 0 ? runs : undefined);
+  }
+
+  runningSince(key: string): number | undefined {
+    return this.#runningSince.get(key);
+  }
+
+  setRunningSince(key: string, ms: number): void {
+    this.#set(this.#runningSince, key, ms);
+  }
+
+  blockedSince(key: string): number | undefined {
+    return this.#blockedSince.get(key);
+  }
+
+  setBlocked(key: string, since: number | undefined, held: number): void {
+    this.#set(this.#blockedSince, key, since);
+    this.#set(this.#held, key, since === undefined || held === 0 ? undefined : held);
+  }
+
+  /** Prunes their share cap skips or whose blocked loss waits for a release. */
+  blocked(): readonly PruneBlock[] {
+    const keys = new Set([...this.#capSkips.keys(), ...this.#blockedSince.keys()]);
+    return [...keys].map((key) => ({
+      key,
+      skips: this.capSkips(key),
+      since: this.#blockedSince.get(key) ?? null,
+      held: this.#held.get(key) ?? 0,
+    }));
+  }
+
+  /**
+   * An operator confirmed the loss behind every block of this connector:
+   * what was held back is treated as any other candidate again (the recent
+   * ones still under the cap, the backlog in batches). Returns the number of
+   * blocks released.
+   */
+  release(): number {
+    const released = this.#blockedSince.size;
+    if (released === 0) return 0;
+    this.#blockedSince.clear();
+    this.#held.clear();
+    this.#onChange();
+    return released;
+  }
+
+  /**
+   * After another writer may have held the lock, the store's bookkeeping is
+   * taken — but never in the direction that deletes sooner: the
+   * confirmations start over, so do the gap-free runs, blocks are kept from
+   * either side (the earlier start), and the fresh reference is the higher.
+   * (A generation gap this process caused itself, an acquire that failed
+   * after its bump, takes this path too.)
+   */
+  mergeConservatively(memory: JsonValue): void {
+    const mine = new PruneBookkeeping();
+    const readable = mine.restore(memory);
+    this.#confirmations.clear();
+    this.#runningSince.clear();
+    if (readable) {
+      for (const [key, since] of mine.#blockedSince) {
+        const stored = this.#blockedSince.get(key);
+        this.#blockedSince.set(key, stored === undefined ? since : Math.min(stored, since));
+      }
+      for (const [key, count] of mine.#fresh)
+        this.#fresh.set(key, Math.max(count, this.#fresh.get(key) ?? 0));
+      for (const [key, runs] of mine.#capSkips) this.#capSkips.set(key, Math.max(runs, this.capSkips(key)));
+    }
     this.#onChange();
   }
 
-  /** Prunes the share cap skipped in their last runs: `[key, consecutive skips]`. */
-  blocked(): readonly (readonly [key: string, skips: number])[] {
-    return [...this.#capSkips];
+  #set(map: Map<string, number>, key: string, value: number | undefined): void {
+    if (map.get(key) === value) return;
+    if (value === undefined) map.delete(key);
+    else map.set(key, value);
+    this.#onChange();
   }
 
   snapshot(): JsonValue {
@@ -263,8 +363,11 @@ export class PruneBookkeeping {
         [...table].map(([id, [first, runs]]) => [id, first, runs]),
       ]),
       masterDataCount: this.masterData.snapshot(),
-      fresh: [...this.#fresh].map(([key, count]) => [key, count]),
-      capSkips: [...this.#capSkips].map(([key, runs]) => [key, runs]),
+      fresh: pairsOf(this.#fresh),
+      capSkips: pairsOf(this.#capSkips),
+      runningSince: pairsOf(this.#runningSince),
+      blockedSince: pairsOf(this.#blockedSince),
+      held: pairsOf(this.#held),
     };
   }
 
@@ -275,18 +378,19 @@ export class PruneBookkeeping {
    * `false` — empty bookkeeping only ever delays a prune.
    */
   restore(raw: unknown): boolean {
+    const maps = [this.#fresh, this.#capSkips, this.#runningSince, this.#blockedSince, this.#held] as const;
     this.#lastRun.clear();
     this.#confirmations.clear();
-    this.#fresh.clear();
-    this.#capSkips.clear();
+    for (const map of maps) map.clear();
     this.masterData.restore(null);
     if (raw === null) return true;
     if (!isRecord(raw) || !isArray(raw.lastRun) || !isArray(raw.confirmations)) return false;
     const lastRun = numberPairs(raw.lastRun);
     // Absent in documents written before the backlog drain: empty, not unreadable.
-    const fresh = raw.fresh === undefined ? new Map<string, number>() : numberPairs(raw.fresh);
-    const capSkips = raw.capSkips === undefined ? new Map<string, number>() : numberPairs(raw.capSkips);
-    if (lastRun === null || fresh === null || capSkips === null) return false;
+    const optional = (value: unknown): Map<string, number> | null =>
+      value === undefined ? new Map<string, number>() : numberPairs(value);
+    const read = [raw.fresh, raw.capSkips, raw.runningSince, raw.blockedSince, raw.held].map(optional);
+    if (lastRun === null || read.some((map) => map === null)) return false;
     const confirmations = new Map<string, Map<string, Confirmation>>();
     for (const row of raw.confirmations) {
       if (!isArray(row) || row.length !== 2) return false;
@@ -300,11 +404,16 @@ export class PruneBookkeeping {
     if (count !== null && reference === null) return false;
     for (const [key, ms] of lastRun) this.#lastRun.set(key, ms);
     for (const [key, table] of confirmations) this.#confirmations.set(key, table);
-    for (const [key, stock] of fresh) this.#fresh.set(key, stock);
-    for (const [key, runs] of capSkips) if (runs > 0) this.#capSkips.set(key, runs);
+    maps.forEach((map, index) => {
+      for (const [key, value] of read[index] ?? []) if (value > 0) map.set(key, value);
+    });
     this.masterData.restore(reference);
     return true;
   }
+}
+
+function pairsOf(map: ReadonlyMap<string, number>): JsonValue {
+  return [...map].map(([key, value]) => [key, value]);
 }
 
 /** `[[key, number], …]` as persisted; `null` if anything is off. */
@@ -474,8 +583,13 @@ class KernelPruner implements Pruner {
     // Quiet on the very first run: after a start that is the normal case, not
     // a fault worth a [warn] in the health check.
     if (previousRun === undefined || now - previousRun > 2.5 * intervalMs) {
+      // A gap: "running for a week" starts over.
+      this.#book.setRunningSince(intervalKey, now);
       return skip("no successful run within the last 2.5 intervals", previousRun === undefined);
     }
+    // Bookkeeping from before the backlog drain: running from now on.
+    const runningSince = this.#book.runningSince(intervalKey) ?? now;
+    this.#book.setRunningSince(intervalKey, runningSince);
 
     // 1. List all own entities, completely
     const listing = await orion.list(
@@ -542,9 +656,20 @@ class KernelPruner implements Pruner {
     const backlog = found.filter(isBacklog);
     const fresh = mine - found.length;
     const limit = capped ? Math.max(3, Math.floor(fresh * fraction)) : Number.POSITIVE_INFINITY;
+    // A loss that blocked the prune is never deleted automatically (module
+    // header, "Blocked losses"): what went missing from shortly before the
+    // block on is held back until an operator releases it.
+    const blockedSince = this.#book.blockedSince(intervalKey);
+    const heldFrom = blockedSince === undefined ? null : blockedSince - (o.graceMs ?? 0) - HOLD_MARGIN_MS;
+    const isHeld = (candidate: { readonly id: string; readonly timestamp: number }): boolean => {
+      if (heldFrom === null) return false;
+      const since = goneSince(candidate);
+      return since === null || since >= heldFrom;
+    };
     if (recent.length > limit) {
       const skips = this.#book.capSkips(intervalKey) + 1;
       this.#book.setCapSkips(intervalKey, skips);
+      if (blockedSince === undefined) this.#book.setBlocked(intervalKey, now, recent.length);
       const why =
         `${String(recent.length)} of ${String(mine)} entities would be deleted ` +
         `(limit ${String(limit)}) — please check manually` +
@@ -560,15 +685,29 @@ class KernelPruner implements Pruner {
       return skip(why);
     }
     this.#book.setCapSkips(intervalKey, 0);
+    const held = found.filter(isHeld);
+    if (blockedSince !== undefined) {
+      if (held.length === 0) {
+        // Everything that went missing with it is back: the source recovered.
+        this.#book.setBlocked(intervalKey, undefined, 0);
+        log.info(`${o.label}: the loss that blocked the prune is back — block cleared`);
+      } else {
+        this.#book.setBlocked(intervalKey, blockedSince, held.length);
+        log.error(
+          `${o.label}: prune holds back ${String(held.length)} entities that went missing with the loss ` +
+            `that blocked it on ${new Date(blockedSince).toISOString()} — they are deleted only after a ` +
+            "release (scripts/release-prunes.sh <connector>)",
+        );
+      }
+    }
     // The reference follows a growing stock at once and a shrinking one only
     // slowly, so that a drop pauses the drain for a while and not just for
     // one run (at 2 % per run: ~3 runs after a 10 % drop, ~2 days of hourly
-    // runs after a 60 % one).
-    const reference = this.#book.fresh(intervalKey);
-    this.#book.setFresh(
-      intervalKey,
-      reference === undefined ? fresh : Math.max(fresh, Math.floor(reference * FRESH_REFERENCE_DECAY)),
-    );
+    // runs after a 60 % one). Unknown, it starts at the whole own stock —
+    // the most careful value; it sinks towards the fresh stock from there.
+    const known = this.#book.fresh(intervalKey);
+    const reference = known ?? mine;
+    this.#book.setFresh(intervalKey, Math.max(fresh, Math.floor(reference * FRESH_REFERENCE_DECAY)));
 
     let candidates = found.map((candidate) => candidate.id);
     if (o.confirmKey !== undefined) {
@@ -585,11 +724,15 @@ class KernelPruner implements Pruner {
       });
       this.#book.setConfirmations(o.confirmKey, table);
     }
-    const confirmed = new Set(candidates);
+    const heldIds = new Set(held.map((candidate) => candidate.id));
+    const confirmed = new Set(candidates.filter((id) => !heldIds.has(id)));
 
     // Recent candidates in full; the backlog oldest first, bounded, and only
-    // while the fresh stock holds against its reference.
-    const drain = reference !== undefined && fresh >= BACKLOG_FRESH_RATIO * reference;
+    // when this prune has run without a gap for a whole backlog period ("gone
+    // for a week while the connector kept running") and the fresh stock holds
+    // against its reference. A first run never drains (no reference yet).
+    const running = now - runningSince >= backlogMs;
+    const drain = known !== undefined && running && fresh >= BACKLOG_FRESH_RATIO * reference;
     const batch = o.backlogBatch !== undefined && o.backlogBatch > 0 ? o.backlogBatch : DEFAULT_BACKLOG_BATCH;
     const backlogIds = drain
       ? backlog
@@ -599,10 +742,10 @@ class KernelPruner implements Pruner {
           .map((candidate) => candidate.id)
       : [];
     if (!drain && backlog.length > 0) {
-      log.info(
-        `${o.label}: backlog of ${String(backlog.length)} not drained in this run (fresh stock ` +
-          `${String(fresh)}, reference ${reference === undefined ? "unknown" : String(reference)})`,
-      );
+      const why = running
+        ? `fresh stock ${String(fresh)}, reference ${known === undefined ? "unknown" : String(reference)}`
+        : `running without a gap only since ${new Date(runningSince).toISOString()}`;
+      log.info(`${o.label}: backlog of ${String(backlog.length)} not drained in this run (${why})`);
     }
     const toDelete = [
       ...recent.filter((candidate) => confirmed.has(candidate.id)).map((candidate) => candidate.id),
@@ -630,9 +773,13 @@ class KernelPruner implements Pruner {
     });
     const deleted = [...result.deleted];
     if (o.confirmKey !== undefined) this.#book.forgetConfirmed(o.confirmKey, deleted);
-    // Forget the change signatures of deleted entities, so a returning object
-    // is written in full again instead of as a freshness-only update.
-    if (deleted.length > 0) for (const key of keys) signatures.forget(key, deleted);
+    // Forget the change signatures of every ATTEMPTED id, confirmed or not,
+    // so a returning object is written in full again instead of as a
+    // freshness-only or partial update onto nothing: the store lost them
+    // already (forgetAhead), and an unconfirmed delete may still have
+    // happened. A dropped signature costs one full write, a kept one could
+    // leave a skeleton entity. (The old helper forgot confirmed ids only.)
+    for (const key of keys) signatures.forget(key, toDelete);
     const fromBacklog = backlogIds.filter((id) => result.deleted.has(id)).length;
 
     log.info(

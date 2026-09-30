@@ -122,7 +122,7 @@ const CARRIED_BY = {
     ["prune", "more than 30 % of the stock is refused", "scenario"],
   ],
   prune207: [
-    ["prune", "207: only confirmed deletes count and lose their signature", "scenario"],
+    ["prune", "207: only confirmed deletes count; every attempted one loses its signature", "scenario"],
   ],
   roadworks: [
     ["baustellen-bw", "baustellen-bw: identical on the full gui/public boundary file (swapped points assigned)"],

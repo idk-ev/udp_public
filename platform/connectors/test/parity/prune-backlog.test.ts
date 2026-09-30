@@ -5,17 +5,19 @@
 
 /**
  * The self-healing prune (src/kernel/prune.ts, "Recent candidates and
- * backlog"). A backlog that piled up before any prune existed used to block
- * the prune for good: over the 30 % cap in every run, skipped in every run,
- * growing. Now the cap counts only RECENT candidates against the fresh stock,
- * and the backlog is drained oldest first in bounded batches — but only while
- * every guard holds and the fresh stock does, so an upstream outage never
- * drains anything.
+ * backlog", "Blocked losses"). A backlog that piled up before any prune
+ * existed used to block the prune for good: over the 30 % cap in every run,
+ * skipped in every run, growing. Now the cap counts only RECENT candidates
+ * against the fresh stock, and the backlog is drained oldest first in
+ * bounded batches — but only after the prune ran a week without a gap, while
+ * the fresh stock holds, and never a loss that blocked the prune: that one
+ * waits for an operator.
  */
 
 import assert from "node:assert/strict";
 
 import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
+import type { SignatureScope } from "../../src/kernel/change-gate.js";
 import { createSharedGeo, MasterDataCheck } from "../../src/kernel/geo.js";
 import { confirmedByDelete, createOrion } from "../../src/kernel/orion.js";
 import { BLOCKED_AFTER, createPruner, PruneBookkeeping } from "../../src/kernel/prune.js";
@@ -25,6 +27,7 @@ import type {
   HttpResponse,
   MunicipalityRow,
   PruneOptions,
+  PruneResult,
 } from "../../src/kernel/types.js";
 import { httpResponse, recordingLog, scriptedFetcher } from "../harness/kernel.js";
 import type { RecordedLog, SeenRequest } from "../harness/kernel.js";
@@ -38,6 +41,8 @@ class Broker {
   /** id -> time of the last write */
   readonly written = new Map<string, number>();
   readonly deleted: string[][] = [];
+  /** Deletes happen, but the 207 says nothing about them. */
+  ambiguous = false;
 
   readonly respond = (request: SeenRequest): HttpResponse => {
     const params = request.url.searchParams;
@@ -63,11 +68,15 @@ class Broker {
     const ids = Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
     this.deleted.push(ids);
     for (const id of ids) this.written.delete(id);
-    return httpResponse(204);
+    return this.ambiguous ? httpResponse(207, "{}") : httpResponse(204);
   };
 
   deletedIds(): string[] {
     return this.deleted.flat();
+  }
+
+  count(group: string): number {
+    return [...this.written.keys()].filter((id) => id.includes(`-${group}-`)).length;
   }
 }
 
@@ -97,7 +106,8 @@ interface Rig {
   readonly clock: { now: number };
   readonly log: RecordedLog;
   readonly book: PruneBookkeeping;
-  prune(options?: Partial<PruneOptions>): ReturnType<ReturnType<typeof createPruner>["stale"]>;
+  readonly store: SignatureScope;
+  prune(options?: Partial<PruneOptions>): Promise<PruneResult>;
 }
 
 function rig(backlogBatch = 100): Rig {
@@ -128,6 +138,7 @@ function rig(backlogBatch = 100): Rig {
     clock,
     log,
     book,
+    store,
     prune: (options) =>
       pruner.stale({
         label: "Stations",
@@ -136,6 +147,7 @@ function rig(backlogBatch = 100): Rig {
         graceMs: DAY,
         liveMs: 3 * HOUR,
         backlogBatch,
+        signatureKey: "stationSig",
         ...options,
       }),
   };
@@ -159,26 +171,48 @@ function nextRun(r: Rig, writes: (id: string) => boolean = () => true): void {
   }
 }
 
-export async function backlogDrainsOldestFirstInBatches(): Promise<void> {
+async function hours(
+  r: Rig,
+  count: number,
+  writes?: (id: string) => boolean,
+  options?: Partial<PruneOptions>,
+): Promise<void> {
+  for (let hour = 0; hour < count; hour += 1) {
+    nextRun(r, writes);
+    await r.prune(options);
+  }
+}
+
+/** Only the live stations numbered below `count` are still written: the others are lost upstream. */
+const writtenBelow =
+  (count: number) =>
+  (id: string): boolean =>
+    Number(id.split("-").at(-1)) < count;
+
+/** Stations 0 to `count - 1` are no longer written. */
+const lostBelow =
+  (count: number) =>
+  (id: string): boolean =>
+    Number(id.split("-").at(-1)) >= count;
+
+/* ── the drain ───────────────────────────────────────────────────────────── */
+
+/** Recent ones at once; the backlog only after a week without a gap, then oldest first in batches. */
+export async function backlogDrainsAfterAWeekOfRunning(): Promise<void> {
   const r = rig();
   world(r);
-  // Before: 270 of 370 candidates, far over 30 % — the prune could never run.
   const armed = await r.prune();
   assert.equal(armed.skipped, "no successful run within the last 2.5 intervals");
 
   nextRun(r);
-  const first = await r.prune();
-  assert.equal(first.skipped, null);
-  assert.deepEqual(
-    r.broker.deletedIds().sort(),
-    Array.from({ length: 20 }, (_, n) => ID("recent", n)).sort(),
-    "the recent ones go at once (20 of 100 fresh: within the cap)",
-  );
-  assert.equal(first.backlogDeleted, 0, "no previous fresh stock recorded: the backlog waits a run");
+  await r.prune();
+  assert.equal(r.broker.count("recent"), 0, "the recent ones go at once (20 of 100 fresh: within the cap)");
+  assert.equal(r.broker.count("old"), 250, "the backlog waits: running for an hour only");
   assert.ok(r.log.lines.some((line) => line.text.includes("backlog of 250 not drained")));
 
-  nextRun(r);
-  await r.prune();
+  await hours(r, 7 * 24 - 3);
+  assert.equal(r.broker.count("old"), 250, "drained before a week of running");
+  await hours(r, 2);
   const batch = r.broker.deleted.at(-1) ?? [];
   assert.equal(batch.length, 100, "one batch");
   // Oldest first: the old stations were written n hours apart, the highest n the longest ago.
@@ -186,118 +220,122 @@ export async function backlogDrainsOldestFirstInBatches(): Promise<void> {
     batch,
     Array.from({ length: 100 }, (_, n) => ID("old", 249 - n)),
   );
-
-  nextRun(r);
-  await r.prune();
-  nextRun(r);
-  const last = await r.prune();
-  assert.equal(last.backlogDeleted, 50);
-  assert.equal([...r.broker.written.keys()].filter((id) => id.includes("-old-")).length, 0, "drained");
-  assert.equal([...r.broker.written.keys()].filter((id) => id.includes("-live-")).length, 100, "live kept");
+  await hours(r, 2);
+  assert.equal(r.broker.count("old"), 0, "drained");
+  assert.equal(r.broker.count("live"), 100, "live kept");
   assert.equal(r.log.warnings().length, 0);
 }
 
 /**
- * An upstream outage: a third of the live stations stops being written. Once
- * they are past the grace they are RECENT candidates over the cap: nothing at
- * all is deleted — the backlog neither — the skips are counted and, from the
- * third on, an [error]. They could only become backlog after a week without a
- * write while the connector runs.
+ * A downtime longer than the backlog period: every entity looks a week old
+ * after the restart. The gap resets the running week, so nothing is drained
+ * until the connector has rewritten what it still has. (Before: 150 of 1,000
+ * live entities deleted in the second prune after the restart.)
  */
-export async function outageNeverDrainsTheBacklog(): Promise<void> {
-  const r = rig(5);
-  world(r);
-  await r.prune();
-  nextRun(r);
-  await r.prune();
-  const drained = r.broker.deletedIds().length;
-  assert.equal(drained, 20);
-
-  const silent = (id: string): boolean => Number(id.split("-").at(-1)) >= 40;
-  for (let hour = 0; hour < 30; hour += 1) {
-    nextRun(r, silent);
+export async function longDowntimeDeletesNoLiveEntity(): Promise<void> {
+  for (const withReference of [false, true]) {
+    const r = rig();
+    for (let n = 0; n < 1000; n += 1) r.broker.written.set(ID("live", n), r.clock.now - HOUR);
     await r.prune();
+    if (withReference) await hours(r, 5);
+    r.clock.now += 8 * DAY;
+    // After the restart the connector rewrites its stations over three runs,
+    // and prunes BEFORE its writes (as carsharing-bw does).
+    for (let hour = 0; hour < 48; hour += 1) {
+      r.clock.now += HOUR;
+      await r.prune();
+      for (const id of r.broker.written.keys()) {
+        if ((Number(id.split("-").at(-1)) + hour) % 3 === 0) r.broker.written.set(id, r.clock.now - 60_000);
+      }
+    }
+    assert.deepEqual(
+      r.broker.deletedIds(),
+      [],
+      `live entities deleted (reference: ${String(withReference)})`,
+    );
   }
-  const oldGone = r.broker.deletedIds().filter((id) => id.includes("-old-")).length;
-  // Drained while the stock held (the hours before the silent ones passed the grace) …
-  assert.ok(oldGone > 0 && oldGone < 250, `backlog drained ${String(oldGone)}`);
-  const stoppedAt = r.broker.deleted.length;
-  const skips = r.book.blocked();
-  assert.equal(skips.length, 1, "the blocked prune is listed");
-  assert.ok((skips[0]?.[1] ?? 0) >= BLOCKED_AFTER);
-  assert.ok(r.log.lines.some((line) => line.level === "error" && line.text.includes("prune blocked")));
-  assert.equal(
-    r.broker.deletedIds().filter((id) => id.includes("-live-")).length,
-    0,
-    "no live station deleted",
-  );
-
-  // Nothing more while it lasts.
-  nextRun(r, silent);
-  await r.prune();
-  assert.equal(r.broker.deleted.length, stoppedAt);
-
-  // The connector itself is down: nothing written any more. Within liveMs
-  // (3 h) the long-gone backlog still drains; after that, every run is
-  // skipped and nothing is touched.
-  const down = rig(5);
-  world(down);
-  await down.prune();
-  nextRun(down);
-  await down.prune();
-  let skipped: string | null = null;
-  for (let hour = 0; hour < 5 && skipped === null; hour += 1) {
-    down.clock.now += HOUR;
-    skipped = (await down.prune()).skipped;
-  }
-  assert.match(skipped ?? "", /connector down/);
-  const deletedWhenDown = down.broker.deletedIds().length;
-  for (let hour = 0; hour < 3; hour += 1) {
-    down.clock.now += HOUR;
-    await down.prune();
-  }
-  assert.equal(down.broker.deletedIds().length, deletedWhenDown, "drained while the connector was down");
-  assert.equal(down.broker.deletedIds().filter((id) => id.includes("-live-")).length, 0);
 }
 
-/** A drop of the fresh stock by more than 5 % pauses the drain, even within the cap. */
+/** A drop of the fresh stock pauses the drain for a few runs, not just one. */
 export async function shrinkingFreshStockPausesTheDrain(): Promise<void> {
   const r = rig(5);
   world(r);
-  await r.prune();
-  nextRun(r);
-  await r.prune();
+  const options = { backlogMs: 2 * DAY };
+  await r.prune(options);
+  await hours(r, 3 * 24 + 2, undefined, options);
+  const oldBefore = r.broker.count("old");
+  assert.ok(oldBefore < 250, "drained after the (shortened) backlog period");
   // Ten live stations stop being written; after the grace they are recent
-  // candidates (10 of 90 fresh: within the cap), the fresh stock fell to 90 %.
-  const writes = (id: string): boolean => Number(id.split("-").at(-1)) >= 10;
+  // candidates (10 of 90 fresh: within the cap), the fresh stock falls to 90 %.
   let shrinking: string[] | undefined;
   for (let hour = 0; hour < 30 && shrinking === undefined; hour += 1) {
-    nextRun(r, writes);
+    nextRun(r, lostBelow(10));
     const before = r.broker.deleted.length;
-    await r.prune();
+    await r.prune(options);
     const run = r.broker.deleted.slice(before).flat();
     if (run.some((id) => id.includes("-live-"))) shrinking = run;
   }
   assert.ok(shrinking !== undefined, "the silent stations never became candidates");
-  assert.equal(shrinking.length, 10);
   assert.ok(
     shrinking.every((id) => id.includes("-live-")),
     `drained while shrinking: ${shrinking.join(",")}`,
   );
-  assert.ok(
-    r.log.lines.some((line) => /backlog of \d+ not drained .*fresh stock 90, reference 100/.test(line.text)),
-  );
-  // The reference sinks by 2 % per run: the drain pauses for a few runs, not
-  // just one, and then goes on at the new, steady stock.
-  const oldBefore = r.broker.deletedIds().filter((id) => id.includes("-old-")).length;
+  assert.ok(r.log.lines.some((line) => /not drained .*fresh stock 90, reference 100/.test(line.text)));
+  const pausedAt = r.broker.count("old");
   let paused = 0;
-  for (let hour = 0; hour < 10; hour += 1) {
-    nextRun(r, writes);
-    await r.prune();
-    if (r.broker.deletedIds().filter((id) => id.includes("-old-")).length > oldBefore) break;
+  for (let hour = 0; hour < 10 && r.broker.count("old") === pausedAt; hour += 1) {
+    nextRun(r, lostBelow(10));
+    await r.prune(options);
     paused += 1;
   }
   assert.ok(paused >= 2 && paused < 10, `paused for ${String(paused)} runs`);
+}
+
+/* ── blocked losses ──────────────────────────────────────────────────────── */
+
+/**
+ * An upstream loss of 60 of 100 live stations (no keep, grace mode — car
+ * sharing, sharing-bw) blocks the prune. Once they have aged into backlog the
+ * cap passes again — but they are HELD: never deleted automatically, the
+ * prune stays listed and logs an [error], while the old backlog from before
+ * the block drains as usual. A release lets them go.
+ */
+export async function blockedLossIsHeldUntilReleased(): Promise<void> {
+  const r = rig();
+  world(r);
+  await r.prune();
+  await hours(r, 10);
+  // The loss.
+  await hours(r, 12 * 24, writtenBelow(40));
+  assert.equal(r.broker.count("live"), 100, "a blocked loss was deleted");
+  assert.equal(r.broker.count("old"), 0, "the backlog from before the block did not drain");
+  const [block] = r.book.blocked();
+  assert.ok(block !== undefined, "the blocked prune is no longer listed");
+  assert.ok(block.since !== null && block.held === 60, JSON.stringify(block));
+  assert.equal(block.skips, 0, "the cap passes again by now");
+  const errors = r.log.lines.filter((line) => line.level === "error");
+  assert.ok(errors.some((line) => line.text.includes("prune blocked by its share cap")));
+  assert.equal(errors.at(-1)?.text.includes("holds back 60 entities"), true);
+
+  // The operator checked the source: the loss is real.
+  assert.equal(r.book.release(), 1);
+  await hours(r, 2, writtenBelow(40));
+  assert.equal(r.broker.count("live"), 40, "released: drained under the ordinary rules");
+  assert.deepEqual(r.book.blocked(), []);
+}
+
+/** Should the lost stations come back, the block clears itself. */
+export async function blockedLossThatComesBackClearsItself(): Promise<void> {
+  const r = rig();
+  world(r);
+  await r.prune();
+  await hours(r, 10);
+  await hours(r, 2 * 24, writtenBelow(40));
+  assert.ok((r.book.blocked()[0]?.skips ?? 0) >= BLOCKED_AFTER, "blocked");
+  await hours(r, 3);
+  assert.deepEqual(r.book.blocked(), [], "block kept after the loss came back");
+  assert.equal(r.broker.count("live"), 100);
+  assert.ok(r.log.lines.some((line) => line.text.includes("block cleared")));
 }
 
 /**
@@ -324,7 +362,7 @@ export async function keepBasedMassLossStaysBlocked(): Promise<void> {
     await r.prune(options(400));
   }
   assert.deepEqual(r.broker.deletedIds(), [], "a mass loss drained as backlog");
-  assert.ok((r.book.blocked()[0]?.[1] ?? 0) >= 8 * 24 - 1);
+  assert.ok((r.book.blocked()[0]?.skips ?? 0) >= 8 * 24 - 1);
 
   // A few gone for good: deleted after the 24 h confirmation, as before.
   const few = rig();
@@ -348,23 +386,55 @@ export async function uncappedPruneHasNoBacklog(): Promise<void> {
   assert.equal(result.backlogDeleted, 0);
 }
 
-/** Bookkeeping written before the backlog drain restores; fresh stock and skips survive a restart. */
-export function bookkeepingKeepsFreshStockAndSkips(): void {
+/* ── bookkeeping, deletes ────────────────────────────────────────────────── */
+
+/** Bookkeeping written before the backlog drain restores; the new fields survive a restart. */
+export function bookkeepingKeepsItsNewFields(): void {
+  const key = "a|T|^x$";
   const book = new PruneBookkeeping();
-  assert.equal(book.restore({ lastRun: [["a|T|^x$", 1]], confirmations: [], masterDataCount: null }), true);
-  assert.equal(book.fresh("a|T|^x$"), undefined);
-  book.setFresh("a|T|^x$", 42);
-  book.setCapSkips("a|T|^x$", 4);
+  assert.equal(book.restore({ lastRun: [[key, 1]], confirmations: [], masterDataCount: null }), true);
+  assert.equal(book.fresh(key), undefined);
+  book.setFresh(key, 42);
+  book.setCapSkips(key, 4);
+  book.setRunningSince(key, 7);
+  book.setBlocked(key, 9, 3);
   const copy = new PruneBookkeeping();
   assert.equal(copy.restore(JSON.parse(JSON.stringify(book.snapshot()))), true);
-  assert.equal(copy.fresh("a|T|^x$"), 42);
-  assert.deepEqual(copy.blocked(), [["a|T|^x$", 4]]);
+  assert.equal(copy.fresh(key), 42);
+  assert.equal(copy.runningSince(key), 7);
+  assert.deepEqual(copy.blocked(), [{ key, skips: 4, since: 9, held: 3 }]);
   assert.equal(copy.restore({ lastRun: [], confirmations: [], fresh: [["a", "x"]] }), false);
 }
 
 /**
+ * After another writer may have held the lock (or this process skipped a
+ * generation itself), the store's bookkeeping is taken — never in the
+ * direction that deletes sooner.
+ */
+export function reconciledBookkeepingIsConservative(): void {
+  const key = "a|T|^x$";
+  const memory = new PruneBookkeeping();
+  memory.setConfirmations("gone", new Map());
+  memory.setBlocked(key, 500, 7);
+  memory.setFresh(key, 90);
+  const store = new PruneBookkeeping();
+  store.setConfirmations("gone", new Map([["urn:ngsi-ld:T:1", [100, 1] as const]]));
+  store.setRunningSince(key, 1);
+  store.setFresh(key, 80);
+  store.mergeConservatively(memory.snapshot());
+  assert.equal(
+    store.confirmations("gone"),
+    undefined,
+    "an older confirmation would shorten 'two runs' to one",
+  );
+  assert.equal(store.runningSince(key), undefined, "the running week starts over");
+  assert.equal(store.blockedSince(key), 500, "the block of the memory side is kept");
+  assert.equal(store.fresh(key), 90, "the higher reference");
+}
+
+/**
  * A 207 to a delete that carries neither `success` nor `errors` says nothing
- * about any id: none counts as deleted, none loses its signature.
+ * about any id: none counts as deleted.
  */
 export function deleteWithoutAnswerListsConfirmsNothing(): void {
   const ids: EntityId[] = [ID("x", 1), ID("x", 2)];
@@ -376,4 +446,27 @@ export function deleteWithoutAnswerListsConfirmsNothing(): void {
     ID("x", 2),
   ]);
   assert.deepEqual(confirmedByDelete(204, "", ids), ids);
+}
+
+/**
+ * …but every ATTEMPTED id loses its change signature: the delete may still
+ * have happened, and a kept signature would turn the entity's return into a
+ * partial write onto nothing — a skeleton entity.
+ */
+export async function unconfirmedDeleteForgetsSignatures(): Promise<void> {
+  const r = rig();
+  world(r);
+  r.store.replace(
+    "stationSig",
+    new Map([...r.broker.written.keys()].map((id): [string, string] => [id, "sig"])),
+  );
+  r.broker.ambiguous = true;
+  await r.prune();
+  nextRun(r);
+  const result = await r.prune();
+  assert.equal(result.deleted, 0, "nothing confirmed");
+  assert.equal(r.broker.deletedIds().length, 20, "the recent ones were attempted");
+  const table = r.store.copy("stationSig");
+  for (const id of r.broker.deletedIds()) assert.equal(table.has(id), false, `${id} kept its signature`);
+  assert.equal(table.has(ID("live", 0)), true);
 }

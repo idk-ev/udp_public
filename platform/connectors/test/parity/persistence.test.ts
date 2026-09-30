@@ -196,6 +196,17 @@ class FakeBackend implements StateBackend {
     return Promise.resolve();
   }
 
+  /** Counted: every gated upsert proves the writer before it goes out. */
+  fences = 0;
+
+  fence(): Promise<void> {
+    this.fences += 1;
+    if (!this.#db.reachable) return Promise.reject(refused());
+    if (!this.locked) return Promise.reject(new Error("writer lock not held"));
+    if (this.#takenOver()) return Promise.reject(new Error("writer lock taken over by another instance"));
+    return Promise.resolve();
+  }
+
   close(): Promise<void> {
     this.crash();
     return Promise.resolve();
@@ -1116,7 +1127,13 @@ export async function blockedPruneIsListedInHealth(): Promise<void> {
   const health = first.kernel.persistence?.health();
   assert.ok(health !== undefined);
   assert.deepEqual(health.blockedPrunes, [
-    { connector: "gated", prune: "Things (Thing)", consecutiveSkips: 3 },
+    {
+      connector: "gated",
+      prune: "Things (Thing)",
+      consecutiveSkips: 3,
+      blockedSince: new Date(T0 + HOUR).toISOString(),
+      heldBack: 5,
+    },
   ]);
   assert.equal(
     first.log.lines.filter((line) => line.level === "error").length,
@@ -1131,8 +1148,60 @@ export async function blockedPruneIsListedInHealth(): Promise<void> {
   const second = start(db, broker, clock);
   await second.kernel.persistence?.prepareAll();
   assert.deepEqual(second.kernel.persistence?.health().blockedPrunes, [
-    { connector: "gated", prune: "Things (Thing)", consecutiveSkips: 3 },
+    {
+      connector: "gated",
+      prune: "Things (Thing)",
+      consecutiveSkips: 3,
+      blockedSince: new Date(T0 + HOUR).toISOString(),
+      heldBack: 5,
+    },
   ]);
+
+  // The operator's release (POST /release-prunes/gated): the block goes, the
+  // skip count stays until the cap passes.
+  const persistence = second.kernel.persistence;
+
+  assert.equal(persistence.releasePrunes("nobody"), null);
+  assert.equal(persistence.releasePrunes("gated"), 1);
+  await settle();
+  assert.deepEqual(persistence.health().blockedPrunes, [
+    { connector: "gated", prune: "Things (Thing)", consecutiveSkips: 3, blockedSince: null, heldBack: 0 },
+  ]);
+  const stored: unknown = JSON.parse(db.prune.get("gated") ?? "{}");
+  assert.ok(isObject(stored) && Array.isArray(stored.blockedSince) && stored.blockedSince.length === 0);
+}
+
+/**
+ * A gated upsert whose flush has nothing to write makes no round trip — and
+ * so would not notice a takeover. It proves the writer in the store first.
+ */
+export async function gatedUpsertIsFencedEvenWithNothingToWrite(): Promise<void> {
+  const { db, broker, service } = await afterOneGatedRun();
+  const backend = service.backend;
+  const newThing: ConnectorRunner = {
+    id: "gated",
+    run: async (ctx) => {
+      // A new entity: no old signature to drop, nothing marked before the upsert.
+      await ctx.orion.upsertChanged("thingSig", [thing("t-7", ctx.now())], () => 7);
+    },
+  };
+  const fencesBefore = backend.fences;
+  await runConnector(service.kernel, service.gated, newThing);
+  assert.equal(backend.fences, fencesBefore + 1, "one proof per gated upsert");
+  assert.deepEqual(broker.lastFull(), [ID("t-7")]);
+
+  db.generation += 1; // another instance took over; this lock connection still looks alive
+  const sent = broker.upserts.length;
+  await runConnector(service.kernel, service.gated, {
+    id: "gated",
+    run: async (ctx) => {
+      await ctx.orion.upsertChanged("thingSig", [thing("t-8", ctx.now())], () => 8);
+    },
+  });
+  assert.equal(broker.upserts.length, sent, "a gated upsert went out after the takeover");
+  assert.ok(
+    warned(service.log, "writer lock not proven in the store") + warned(service.log, "Upsert not sent") >= 1,
+  );
 }
 
 /** Seeded signatures are persisted at once, and the write after the seeding is no full rewrite. */

@@ -194,10 +194,15 @@ function deleteErrorId(item: unknown): unknown {
  * PRUNE_HELPER, which differs from the upsert's in one detail and is kept
  * that way: only 204 and 200 confirm the whole chunk. A 207 confirms its
  * `success` list, else every id not in `errors`; a 207 that carries NEITHER
- * list is unknown and confirms none (the old helper counted every id as
- * deleted and dropped their signatures — an entity that was in fact kept
- * would then be refreshed with its stamp only, never rewritten). An
- * unparseable body or an `errors` that is not a list confirms none as well.
+ * list says nothing about any id and confirms none (the old helper counted
+ * all of them as deleted). What counts is honest: the prune reports only
+ * real deletions, and an unconfirmed candidate keeps its confirmation entry
+ * and is tried again. The change signatures are not decided here — the
+ * prune drops them for every ATTEMPTED id either way, because a kept
+ * signature of an entity that is in fact gone would turn its return into a
+ * stamp or partial write onto nothing, while a dropped one only costs one
+ * full write. An unparseable body or an `errors` that is not a list confirms
+ * none as well.
  */
 export function confirmedByDelete(
   status: number,

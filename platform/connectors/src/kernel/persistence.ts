@@ -75,8 +75,13 @@
  *       value is in the broker", and a wrong claim freezes a value while a
  *       missing one costs one resend. So only the signatures on which memory
  *       and store AGREE are kept; every other one is dropped on both sides
- *       and its entity written in full once more. Prune bookkeeping and state
- *       values come from the store (the other instance ran last). This
+ *       and its entity written in full once more. State values come from
+ *       the store (the other instance ran last), and so does the prune
+ *       bookkeeping — but never in the direction that deletes sooner: its
+ *       confirmations and gap-free runs start over, blocks are kept from
+ *       either side (`PruneBookkeeping.mergeConservatively`). A generation
+ *       gap this process caused itself (an acquire that failed after its
+ *       bump) is treated the same way; it only costs a delayed prune. This
  *       reconciliation waits for the end of a run under way — a run's state
  *       is never swapped in the middle of it — and the connector counts as
  *       not loaded until it is done.
@@ -170,6 +175,14 @@ export interface StateBackend {
   /** One transaction. Throws if the lock is not held. */
   write(connector: ConnectorId, batch: StateWrite): Promise<void>;
   deleteSignatures(connector: ConnectorId, table: string, fields: readonly string[]): Promise<void>;
+  /**
+   * Proves in the database that this instance is still the writer (the
+   * fence of every write, without writing). Throws if it is not, or the
+   * database cannot tell. Before every gated upsert: a flush with nothing
+   * marked makes no round trip, and a lock connection can look alive after
+   * another instance took over.
+   */
+  fence(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -243,6 +256,10 @@ export interface BlockedPrune {
   /** Label and entity type of the prune. */
   readonly prune: string;
   readonly consecutiveSkips: number;
+  /** When its share cap first blocked it; until a release (see src/kernel/prune.ts). */
+  readonly blockedSince: string | null;
+  /** Candidates held back as part of that loss in the last run. */
+  readonly heldBack: number;
 }
 
 export interface ConnectorBinding {
@@ -414,6 +431,21 @@ export class Persistence {
     return this.#connectors.get(id)?.reason() ?? "";
   }
 
+  /**
+   * An operator confirmed the losses that blocked `id`'s prunes: their held
+   * candidates are deleted under the ordinary rules from the next run on.
+   * `null` = no such connector (or it keeps no persisted state);
+   * `"unusable"` = its state is not loaded right now (nothing changed).
+   */
+  releasePrunes(id: ConnectorId): number | "unusable" | null {
+    const connector = this.#connectors.get(id);
+    if (connector === undefined) return null;
+    if (!connector.usable()) return "unusable";
+    const released = connector.bookkeeping.release();
+    if (released > 0) this.#log.info(`${id}: ${String(released)} blocked prune(s) released by an operator`);
+    return released;
+  }
+
   /** Writes whatever `id` still has marked. `true` when nothing is left. */
   async flush(id: ConnectorId): Promise<boolean> {
     return (await this.#connectors.get(id)?.flush()) ?? true;
@@ -454,13 +486,15 @@ export class Persistence {
       loadFailed: loadFailed.map((c) => c.id),
       failing: failing.map((c) => c.id),
       blockedPrunes: all.flatMap((c) =>
-        c.bookkeeping.blocked().map(([key, skips]) => {
+        c.bookkeeping.blocked().map((block) => {
           // The bookkeeping key is `<label>|<type>|<pattern>`.
-          const [label = key, type = ""] = key.split("|");
+          const [label = block.key, type = ""] = block.key.split("|");
           return {
             connector: c.id,
             prune: type === "" ? label : `${label} (${type})`,
-            consecutiveSkips: skips,
+            consecutiveSkips: block.skips,
+            blockedSince: block.since === null ? null : new Date(block.since).toISOString(),
+            heldBack: block.held,
           };
         }),
       ),
@@ -795,9 +829,15 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
     } else {
       this.#signatures.load(tables);
     }
+    const memoryBookkeeping = reconciling ? this.bookkeeping.snapshot() : null;
     const bookkeepingOk = this.bookkeeping.restore(rows.prune);
     // Rewrite a document that did not narrow instead of reading it again.
     this.#pruneDirty = !bookkeepingOk;
+    // The store's bookkeeping, but never in the direction that deletes sooner.
+    if (memoryBookkeeping !== null) {
+      this.bookkeeping.mergeConservatively(memoryBookkeeping);
+      this.#pruneDirty = true;
+    }
     this.#stateWritten = new Map([...values].map(([name, value]) => [name, JSON.stringify(value)]));
     this.#loaded = true;
     this.#stale = false;
@@ -807,9 +847,10 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
     if (reconciling) {
       this.#log.info(
         `state reconciled with the store: ${String(differing)} signatures differed and were dropped ` +
-          "(their entities are written in full once more); bookkeeping and state values from the store",
+          "(their entities are written in full once more); state values from the store, prune " +
+          "bookkeeping from the store with its confirmations started over",
       );
-      if (this.#dirty.size > 0) this.#schedule();
+      this.#schedule();
       return true;
     }
     this.#log.info(
@@ -833,6 +874,19 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
       for (const field of fields) if (this.#signatures.valueOf(table, field) === undefined) return true;
     }
     return false;
+  }
+
+  /** {@link StateBackend.fence}, serialised with the writes. Never throws; `false` = not proven. */
+  fenced(): Promise<boolean> {
+    return this.#enqueue(async () => {
+      if (!this.usable()) return this.#failed(this.reason());
+      try {
+        await this.#owner.backend.fence();
+      } catch (error) {
+        return this.#failed(describe(error));
+      }
+      return true;
+    });
   }
 
   forgetAhead(key: string, fields: readonly string[]): Promise<boolean> {
@@ -974,6 +1028,11 @@ class GuardedOrion implements Orion {
     const written = await this.#store.flush();
     if (!written && (gated || this.#store.hasUnwrittenDrops())) {
       return this.#refuse(plan, options, "dropped signatures could not be persisted");
+    }
+    // Its commits will be written under the writer lock: prove it is still
+    // ours before the broker gets values this instance may no longer own.
+    if (gated && !(await this.#store.fenced())) {
+      return this.#refuse(plan, options, "writer lock not proven in the store");
     }
     const result = await this.#inner.upsert(plan, options);
     // The commits of the last chunks; a failure is already warned and retried.
