@@ -27,9 +27,10 @@
  * ## The rules
  *
  *  * **Load before the first run.** Every bound connector is loaded as soon
- *    as the writer lock is held — at startup and again, eagerly and in the
- *    background, whenever the lock was lost and taken again (a database
- *    switchover): {@link Persistence.reloadAll}. A load that fails is retried
+ *    as the writer lock is held — at startup, and eagerly in the background
+ *    whenever the lock is taken again for what is not loaded or has to be
+ *    reconciled (see "A lost lock keeps memory"):
+ *    {@link Persistence.reloadAll}. A load that fails is retried
  *    after 30 s. Before every run the connector's own load is checked once
  *    more (the safety net: a run never proceeds on unloaded state, it waits
  *    for a load in flight or loads itself). While a connector's state is not
@@ -56,12 +57,34 @@
  *    strategy `Recreate`). A session advisory lock, held for the process
  *    lifetime, enforces it: an instance without the lock loads nothing and so
  *    runs no connector that needs its state; it retries, and takes over (with
- *    a fresh load) once the other instance is gone. Losing the lock
- *    connection unloads every connector; once the lock is back, all of them
- *    are reloaded at once, not each before its next run — except a
- *    connector whose run is under way: its state is never swapped in the
- *    middle of a run. It is loaded when that run ends (or by its next
- *    `prepare()`).
+ *    a fresh load) once the other instance is gone.
+ *  * **A lost lock keeps memory.** While the lock is gone nothing is
+ *    written and nothing gated is sent, but memory is NOT discarded: what the
+ *    running upserts commit is still tracked, marked and kept. Which state
+ *    wins once the lock is back depends on who held it in between — the
+ *    writer generation ({@link StateBackend.generation}) tells:
+ *
+ *     - nobody (the next generation is ours): memory is the truth. It holds
+ *       everything the database holds plus what could not be written, so the
+ *       pending marks are simply written. Loading the database over it would
+ *       throw away every signature committed since the last write — and
+ *       with them the run's work: the next run would send it all again.
+ *     - another instance, or unknown: neither side can be trusted alone —
+ *       the other instance wrote to the broker and the store, this one wrote
+ *       to the broker before it noticed. Signatures only ever claim "this
+ *       value is in the broker", and a wrong claim freezes a value while a
+ *       missing one costs one resend. So only the signatures on which memory
+ *       and store AGREE are kept; every other one is dropped on both sides
+ *       and its entity written in full once more. State values come from
+ *       the store (the other instance ran last), and so does the prune
+ *       bookkeeping — but never in the direction that deletes sooner: its
+ *       confirmations and gap-free runs start over, blocks are kept from
+ *       either side (`PruneBookkeeping.mergeConservatively`). A generation
+ *       gap this process caused itself (an acquire that failed after its
+ *       bump) is treated the same way; it only costs a delayed prune. This
+ *       reconciliation waits for the end of a run under way — a run's state
+ *       is never swapped in the middle of it — and the connector counts as
+ *       not loaded until it is done.
  *
  * Prune bookkeeping and state values are written when they change (a state
  * key changed in place, a `Map`, is caught by the write at the end of every
@@ -90,6 +113,8 @@ import type {
   Orion,
   OrionQuery,
   OrionReadOptions,
+  SeedOptions,
+  SeedResult,
   SignatureValue,
   UpsertOptions,
   UpsertPlan,
@@ -128,17 +153,36 @@ export interface StateBackend {
   /** Whether the writer lock is held, as far as the backend knows right now. */
   readonly locked: boolean;
   /**
+   * The writer generation of the current tenure: every instance that takes
+   * the lock bumps it (in the database). Two tenures of one process with
+   * generations `n` and `n + 1` had nobody in between. `null` = unknown,
+   * which counts as "somebody may have been in between".
+   */
+  readonly generation: number | null;
+  /**
    * Becomes the single writer: takes the advisory lock (held until
-   * {@link close}) and creates the schema. `false` = another instance holds
-   * it. Throws when the database cannot be reached.
+   * {@link close}), creates the schema and bumps the generation. `false` =
+   * another instance holds it. Throws when the database cannot be reached.
    */
   acquire(): Promise<boolean>;
-  /** Checks that the lock connection is still alive; `false` = lock lost. */
+  /**
+   * `false` only when the lock is verifiably not held any more (its
+   * connection closed, or the database says so) — a slow or failed check is
+   * not a lost lock.
+   */
   stillHeld(): Promise<boolean>;
   load(connector: ConnectorId): Promise<StoredRows>;
   /** One transaction. Throws if the lock is not held. */
   write(connector: ConnectorId, batch: StateWrite): Promise<void>;
   deleteSignatures(connector: ConnectorId, table: string, fields: readonly string[]): Promise<void>;
+  /**
+   * Proves in the database that this instance is still the writer (the
+   * fence of every write, without writing). Throws if it is not, or the
+   * database cannot tell. Before every gated upsert: a flush with nothing
+   * marked makes no round trip, and a lock connection can look alive after
+   * another instance took over.
+   */
+  fence(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -198,6 +242,24 @@ export interface StateStoreHealth {
   readonly loadFailed: readonly ConnectorId[];
   /** Connectors whose last write failed; retried with the next write. */
   readonly failing: readonly ConnectorId[];
+  /**
+   * Prunes their share cap skipped in the last run(s), with the number of
+   * consecutive skips — a prune that never runs lets the stock grow. Does not
+   * make the store unhealthy (the store works); `scripts/healthcheck.sh`
+   * shows them.
+   */
+  readonly blockedPrunes: readonly BlockedPrune[];
+}
+
+export interface BlockedPrune {
+  readonly connector: ConnectorId;
+  /** Label and entity type of the prune. */
+  readonly prune: string;
+  readonly consecutiveSkips: number;
+  /** When its share cap first blocked it; until a release (see src/kernel/prune.ts). */
+  readonly blockedSince: string | null;
+  /** Candidates held back as part of that loss in the last run. */
+  readonly heldBack: number;
 }
 
 export interface ConnectorBinding {
@@ -214,6 +276,10 @@ export class Persistence {
   readonly #nowMs: () => number;
   readonly #connectors = new Map<ConnectorId, ConnectorPersistence>();
   #writer: WriterState = "idle";
+  /** Generation of this process's last tenure; `null` before the first or when unknown. */
+  #generation: number | null = null;
+  /** This process held the lock before: memory may hold state worth keeping. */
+  #heldBefore = false;
   #reason = "not connected yet";
   #failedAt: number | null = null;
   #checking: Promise<boolean> | null = null;
@@ -290,7 +356,7 @@ export class Persistence {
     if (connector === undefined) return;
     connector.runEnded();
     if (connector.running || !this.#deferred.delete(id)) return;
-    if (this.writable() && !connector.loaded) void this.reloadAll();
+    if (this.writable() && !connector.current) void this.reloadAll();
   }
 
   /** Startup: the writer lock once, then every bound connector's load (awaited). */
@@ -328,7 +394,7 @@ export class Persistence {
           // The lock went again: taking it back requests the next pass.
           if (!this.writable()) break;
           if (connector.running) {
-            if (!connector.loaded) this.#deferred.add(connector.id);
+            if (!connector.current) this.#deferred.add(connector.id);
             continue;
           }
           this.#deferred.delete(connector.id);
@@ -365,6 +431,24 @@ export class Persistence {
     return this.#connectors.get(id)?.reason() ?? "";
   }
 
+  /**
+   * An operator confirmed the losses that blocked `id`'s prunes: their held
+   * candidates are deleted under the ordinary rules from the next run on.
+   * `null` = no such connector (or it keeps no persisted state);
+   * `"unusable"` = its state is not loaded right now; `"over-cap"` = a blocked
+   * prune is still over its cap (see `PruneBookkeeping.release`). Nothing changes then.
+   */
+  releasePrunes(id: ConnectorId): number | "unusable" | "over-cap" | null {
+    const connector = this.#connectors.get(id);
+    if (connector === undefined) return null;
+    if (!connector.usable()) return "unusable";
+    const released = connector.bookkeeping.release();
+    if (released !== "over-cap" && released > 0) {
+      this.#log.info(`${id}: ${String(released)} blocked prune(s) released by an operator`);
+    }
+    return released;
+  }
+
   /** Writes whatever `id` still has marked. `true` when nothing is left. */
   async flush(id: ConnectorId): Promise<boolean> {
     return (await this.#connectors.get(id)?.flush()) ?? true;
@@ -388,8 +472,8 @@ export class Persistence {
 
   health(): StateStoreHealth {
     const all = [...this.#connectors.values()];
-    const loaded = all.filter((c) => c.loaded).map((c) => c.id);
-    const notLoaded = all.filter((c) => !c.loaded).map((c) => c.id);
+    const loaded = all.filter((c) => c.current).map((c) => c.id);
+    const notLoaded = all.filter((c) => !c.current).map((c) => c.id);
     const loadFailed = all.filter((c) => c.loadError !== null);
     const failing = all.filter((c) => c.failing);
     const reloading = this.#reloading !== null;
@@ -404,6 +488,19 @@ export class Persistence {
       notLoaded,
       loadFailed: loadFailed.map((c) => c.id),
       failing: failing.map((c) => c.id),
+      blockedPrunes: all.flatMap((c) =>
+        c.bookkeeping.blocked().map((block) => {
+          // The bookkeeping key is `<label>|<type>|<pattern>`.
+          const [label = block.key, type = ""] = block.key.split("|");
+          return {
+            connector: c.id,
+            prune: type === "" ? label : `${label} (${type})`,
+            consecutiveSkips: block.skips,
+            blockedSince: block.since === null ? null : new Date(block.since).toISOString(),
+            heldBack: block.held,
+          };
+        }),
+      ),
     };
   }
 
@@ -447,11 +544,12 @@ export class Persistence {
     if (this.#writer === "writer") {
       if (await this.#backend.stillHeld()) return true;
       this.#log.warn(
-        "state store: writer lock lost — every connector's state is reloaded as soon as it is back",
+        "state store: writer lock lost — nothing is written until it is back; every connector's state " +
+          "stays in memory meanwhile",
       );
       this.#writer = "idle";
       this.#reason = "writer lock lost";
-      for (const connector of this.#connectors.values()) connector.unload();
+      for (const connector of this.#connectors.values()) connector.lockLost();
     }
     if (this.#failedAt !== null && this.#nowMs() - this.#failedAt < RETRY_AFTER_MS) return false;
     try {
@@ -483,9 +581,31 @@ export class Persistence {
     this.#writer = "writer";
     this.#reason = "";
     this.#failedAt = null;
-    this.#log.info(
-      `state store: writer lock held (${this.#backend.description}) — loading every connector's state`,
-    );
+    const previous = this.#generation;
+    const generation = this.#backend.generation;
+    this.#generation = typeof generation === "number" ? generation : null;
+    if (!this.#heldBefore) {
+      this.#heldBefore = true;
+      this.#log.info(
+        `state store: writer lock held (${this.#backend.description}) — loading every connector's state`,
+      );
+    } else {
+      // The rule of the module header, "A lost lock keeps memory".
+      const alone = previous !== null && this.#generation === previous + 1;
+      if (alone) {
+        this.#log.info(
+          "state store: writer lock held again, nobody held it in between — the state in memory is kept " +
+            "and what is pending is written now",
+        );
+      } else {
+        this.#log.warn(
+          "state store: writer lock held again, but another instance may have held it in between — each " +
+            "connector's state is reconciled with the store (differing signatures are dropped, their " +
+            "entities written once more)",
+        );
+      }
+      for (const connector of this.#connectors.values()) connector.lockRegained(alone);
+    }
     // In the background: a run that needs its state now waits for (or does)
     // its own load; all others no longer wait for their next run.
     void this.reloadAll();
@@ -511,6 +631,12 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
   /** Name -> JSON of the value last written (or loaded). */
   #stateWritten = new Map<string, string>();
   #loaded = false;
+  /**
+   * Loaded, but the writer lock changed hands with somebody possibly in
+   * between: memory has to be reconciled with the store before it is used or
+   * written (see the module header). Commits are still tracked meanwhile.
+   */
+  #stale = false;
   /** Touched the gate or a persisted state key: needs its state to run. */
   #needsState = false;
   #failing: string | null = null;
@@ -548,6 +674,11 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
     return this.#loaded;
   }
 
+  /** Loaded and not waiting for a reconciliation: memory may be used and written. */
+  get current(): boolean {
+    return this.#loaded && !this.#stale;
+  }
+
   /** A run of this connector is under way. */
   get running(): boolean {
     return this.#runs > 0;
@@ -581,11 +712,12 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
   }
 
   usable(): boolean {
-    return this.#loaded && this.#owner.writable();
+    return this.current && this.#owner.writable();
   }
 
   reason(): string {
     if (!this.#owner.writable()) return this.#owner.reason();
+    if (this.#stale) return "not reconciled yet after a change of the writer lock";
     return this.#loaded ? "" : "not loaded";
   }
 
@@ -612,17 +744,33 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
    * and gets its outcome. Never throws.
    */
   ensureLoaded(): Promise<boolean> {
-    if (this.#loaded) return Promise.resolve(true);
+    if (this.current) return Promise.resolve(true);
     return this.#enqueue(() => this.#load()).catch((error: unknown) => this.#loadFailed(describe(error)));
   }
 
-  /** The writer lock was lost: whatever is in memory may be stale by the next run. */
-  unload(): void {
-    this.#loaded = false;
-    this.#loadError = null;
+  /**
+   * The writer lock was lost. Memory stays as it is and commits keep being
+   * marked; only a load in flight is void (it read under the old tenure).
+   */
+  lockLost(): void {
     this.#epoch += 1;
-    this.#dirty.clear();
-    this.#pruneDirty = false;
+    if (!this.#loaded) this.#loadError = null;
+  }
+
+  /**
+   * The writer lock is back. `alone`: nobody held it in between, memory is
+   * the truth and what is marked is written. Otherwise the loaded state
+   * waits for its reconciliation with the store ({@link Persistence.reloadAll}
+   * or the next `prepare()`, never in the middle of a run).
+   */
+  lockRegained(alone: boolean): void {
+    if (!this.#loaded) return;
+    if (!alone) {
+      this.#stale = true;
+      return;
+    }
+    if (this.#stale) return; // an earlier change still waits for its reconciliation
+    this.#schedule();
   }
 
   #loadFailed(reason: string): false {
@@ -636,7 +784,7 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
   }
 
   async #load(): Promise<boolean> {
-    if (this.#loaded) return true;
+    if (this.current) return true;
     const epoch = this.#epoch;
     let rows: StoredRows;
     try {
@@ -671,16 +819,43 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
     for (const row of rows.state) {
       if (typeof row.name === "string") values.set(row.name, row.value);
     }
+    const reconciling = this.#loaded && this.#stale;
     this.#dirty.clear();
-    this.#signatures.load(tables);
+    let differing = 0;
+    if (reconciling) {
+      // Only what memory and store agree on survives; the rest leaves both
+      // (the marks make the next write delete it from the store).
+      for (const [table, fields] of this.#signatures.reconcile(tables)) {
+        this.#changedQuietly(table, fields);
+        differing += fields.size;
+      }
+    } else {
+      this.#signatures.load(tables);
+    }
+    const memoryBookkeeping = reconciling ? this.bookkeeping.snapshot() : null;
     const bookkeepingOk = this.bookkeeping.restore(rows.prune);
     // Rewrite a document that did not narrow instead of reading it again.
     this.#pruneDirty = !bookkeepingOk;
+    // The store's bookkeeping, but never in the direction that deletes sooner.
+    if (memoryBookkeeping !== null) {
+      this.bookkeeping.mergeConservatively(memoryBookkeeping);
+      this.#pruneDirty = true;
+    }
     this.#stateWritten = new Map([...values].map(([name, value]) => [name, JSON.stringify(value)]));
     this.#loaded = true;
+    this.#stale = false;
     this.#loadError = null;
     this.#state.restore(values);
     if (!bookkeepingOk) this.#log.warn("persisted prune bookkeeping not readable — starting empty");
+    if (reconciling) {
+      this.#log.info(
+        `state reconciled with the store: ${String(differing)} signatures differed and were dropped ` +
+          "(their entities are written in full once more); state values from the store, prune " +
+          "bookkeeping from the store with its confirmations started over",
+      );
+      this.#schedule();
+      return true;
+    }
     this.#log.info(
       `state loaded: ${String(signatures)} signatures in ${String(tables.size)} tables, ` +
         `${String(values.size)} state values` +
@@ -704,6 +879,19 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
     return false;
   }
 
+  /** {@link StateBackend.fence}, serialised with the writes. Never throws; `false` = not proven. */
+  fenced(): Promise<boolean> {
+    return this.#enqueue(async () => {
+      if (!this.usable()) return this.#failed(this.reason());
+      try {
+        await this.#owner.backend.fence();
+      } catch (error) {
+        return this.#failed(describe(error));
+      }
+      return true;
+    });
+  }
+
   forgetAhead(key: string, fields: readonly string[]): Promise<boolean> {
     return this.#enqueue(async () => {
       if (!this.usable()) return this.#failed(this.reason());
@@ -723,7 +911,9 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
   }
 
   #changed(key: string, fields: Iterable<string>): void {
-    if (!this.#loaded) return; // the next load replaces memory anyway
+    // Never loaded: the load replaces memory anyway. Loaded, even with the
+    // lock gone: marked and kept — memory is the truth (module header).
+    if (!this.#loaded) return;
     let marked = this.#dirty.get(key);
     if (marked === undefined) {
       marked = new Set();
@@ -751,6 +941,8 @@ export class ConnectorPersistence implements PruneStore, StateHooks {
 
   async #flushNow(): Promise<boolean> {
     if (!this.#loaded) return true; // nothing is marked before a load
+    // Not reconciled yet: nothing of it may reach the store, but it stays marked.
+    if (this.#stale) return this.#dirty.size === 0 && !this.#pruneDirty;
     const taken = new Map(this.#dirty);
     this.#dirty.clear();
     const signatures: SignatureRow[] = [];
@@ -840,6 +1032,11 @@ class GuardedOrion implements Orion {
     if (!written && (gated || this.#store.hasUnwrittenDrops())) {
       return this.#refuse(plan, options, "dropped signatures could not be persisted");
     }
+    // Its commits will be written under the writer lock: prove it is still
+    // ours before the broker gets values this instance may no longer own.
+    if (gated && !(await this.#store.fenced())) {
+      return this.#refuse(plan, options, "writer lock not proven in the store");
+    }
     const result = await this.#inner.upsert(plan, options);
     // The commits of the last chunks; a failure is already warned and retried.
     await this.#store.flush();
@@ -869,6 +1066,16 @@ class GuardedOrion implements Orion {
 
   count(query: OrionQuery): Promise<number | null> {
     return this.#inner.count(query);
+  }
+
+  /** Only on usable state; what was seeded is persisted right away. */
+  async seedSignatures(options: SeedOptions): Promise<SeedResult> {
+    if (!this.#store.usable()) {
+      return { seeded: 0, listed: null, skipped: `state store not usable (${this.#store.reason()})` };
+    }
+    const result = await this.#inner.seedSignatures(options);
+    if (result.seeded > 0) await this.#store.flush();
+    return result;
   }
 
   #refuse(plan: UpsertPlan, options: UpsertOptions | undefined, reason: string): UpsertResult {

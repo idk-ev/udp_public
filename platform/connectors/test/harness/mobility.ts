@@ -30,8 +30,10 @@ import { parse as parseMunicipalities } from "../../src/connectors/stammdaten-bw
 import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
 import type { SignatureScope } from "../../src/kernel/change-gate.js";
 import { createGeoIndex, createSharedGeo, MasterDataCheck } from "../../src/kernel/geo.js";
+import { isArray } from "../../src/kernel/parse.js";
 import { createOrion } from "../../src/kernel/orion.js";
 import { createPruner } from "../../src/kernel/prune.js";
+import { needsRefresh } from "../../src/kernel/split-gate.js";
 import { createRateLimiter } from "../../src/kernel/rate-limit.js";
 import { intervalMsOf, loadRegistry, sumRowBudgets } from "../../src/kernel/registry.js";
 import { createConnectorState } from "../../src/kernel/state.js";
@@ -125,10 +127,21 @@ export class Broker {
     );
   }
 
-  /** Targets of the listings, in order — what a prune asked the broker. */
+  /**
+   * Targets of the prune listings, in order — what a prune asked the broker.
+   * A prune lists with `options=sysAttrs` (as the old pager did); the
+   * seeding of empty signature tables does not, see {@link seedListings}.
+   */
   listings(): string[] {
     return this.orionRequests()
-      .filter((request) => request.method === "GET")
+      .filter((request) => request.method === "GET" && request.url.searchParams.get("options") === "sysAttrs")
+      .map((request) => request.target);
+  }
+
+  /** Targets of the other listings: `Orion.seedSignatures`. */
+  seedListings(): string[] {
+    return this.orionRequests()
+      .filter((request) => request.method === "GET" && request.url.searchParams.get("options") === null)
       .map((request) => request.target);
   }
 
@@ -191,10 +204,12 @@ export function jsonAnswer(payload: unknown, status = 200): HttpResponse {
 /* ------------------------------------------------------------------ ctx */
 
 export interface PruneCall {
-  readonly kind: "stale" | "reset";
+  readonly kind: "stale" | "reset" | "remove";
   readonly key: string;
   readonly options?: PruneOptions;
   readonly result?: PruneResult;
+  /** `remove`: the ids the broker confirmed as deleted. */
+  readonly removed?: readonly string[];
 }
 
 export interface MobilityWorld {
@@ -275,6 +290,11 @@ export function mobilityCtx(options: WorldOptions): MobilityWorld {
       pruneCalls.push({ kind: "reset", key });
       pruner.resetConfirmations(key);
     },
+    remove: async (removeOptions) => {
+      const result = await pruner.remove(removeOptions);
+      pruneCalls.push({ kind: "remove", key: removeOptions.label, removed: [...result.deleted] });
+      return result;
+    },
   };
   const ctx: Ctx = {
     id: options.id,
@@ -323,6 +343,24 @@ export function tableObject(store: SignatureScope, key: string): Record<string, 
 export function flowTable(flow: ReadonlyMap<string, unknown>, key: string): Record<string, unknown> {
   const table = flow.get(key);
   return isRecord(table) ? { ...table } : {};
+}
+
+/** The measured values of a split gate's dynamic signature (a JSON array, src/kernel/split-gate.ts). */
+export function liveValues(signature: unknown): readonly unknown[] {
+  const parsed: unknown = JSON.parse(String(signature));
+  return isArray(parsed) ? parsed : [];
+}
+
+/**
+ * Without the entities whose weekly full write (src/kernel/split-gate.ts,
+ * `needsRefresh`) falls into the hour of `nowMs`: the port sends those in
+ * full by design, where the old nodes sent a stamp or nothing. Parity tests
+ * with a wall clock compare the rest.
+ */
+export function withoutWeeklyRefresh(entities: readonly unknown[], nowMs: number): unknown[] {
+  return entities.filter(
+    (entity) => !(isRecord(entity) && typeof entity.id === "string" && needsRefresh(entity.id, nowMs)),
+  );
 }
 
 /** The options of every `ctx.prune.stale` call of the port, in order. */

@@ -10,10 +10,18 @@
  *
  * Pinned: all pages from `total_count` (and the cap of 60 with its warning),
  * the page completeness that decides everything else, `replace: complete` on
- * both gate tables (an incomplete run merges, a complete one drops what left
+ * the gate tables (an incomplete run merges, a complete one drops what left
  * the source), the confirmation reset of an incomplete run, the deduplication
  * with the old `Object.keys` order, and a complete run's prunes, including the
- * `ocSig` signatures they forget.
+ * station signatures they forget.
+ *
+ * Deliberate deviations: the old tables `ocSig`/`ocSumSig` are now split into
+ * master data and live counters (`ocStatic`/`ocLive`, `ocSumStatic`/
+ * `ocSumLive`), so that a moved counter is a partial update
+ * (test/parity/split-writes.test.ts); and an unchanged sum refreshes its
+ * stamp every third run like a station, not every run. First writes are
+ * unchanged and compared as before; for unchanged runs the stations are
+ * compared, the sums against the rotation.
  *
  * Fixtures: test/fixtures/ladesaeulen-bw-count.json and
  * ladesaeulen-bw-offset{10000,20000}.json (see their `note`s). A consistent
@@ -30,10 +38,14 @@ import {
   pageUrl,
   parse,
   run,
-  STATION_GATE,
-  SUMMARY_GATE,
+  STATION_LIVE,
+  STATION_STATIC,
+  SUMMARY_LIVE,
+  SUMMARY_STATIC,
   wrapPage,
 } from "../../src/connectors/ladesaeulen-bw.js";
+import { freshTurn } from "../../src/kernel/change-gate.js";
+import { isArray } from "../../src/kernel/parse.js";
 import { readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, httpResponse } from "../harness/kernel.js";
 import {
@@ -45,6 +57,8 @@ import {
   HOUR,
   jsonAnswer,
   legacyGlobal,
+  liveValues,
+  withoutWeeklyRefresh,
   mobilityCtx,
   staleOptions,
   tableObject,
@@ -151,15 +165,62 @@ async function legacyCommit(legacy: LegacyBuild): Promise<Record<string, unknown
   return flow;
 }
 
+/**
+ * The split tables against the old single ones: the same entities, and the
+ * same live counters — the old signature ends with them (`""` resp. `0` where
+ * the new one holds `null`).
+ */
 function assertTables(flow: Readonly<Record<string, unknown>>, world: MobilityWorld, when: string): void {
   const map = new Map(Object.entries(flow));
-  for (const key of [SUMMARY_GATE, STATION_GATE]) {
+  for (const [old, staticKey, liveKey] of [
+    ["ocSumSig", SUMMARY_STATIC, SUMMARY_LIVE],
+    ["ocSig", STATION_STATIC, STATION_LIVE],
+  ] as const) {
+    const legacy = flowTable(map, old);
+    const keys = Object.keys(legacy).sort();
     assert.deepEqual(
-      normalize(tableObject(world.store, key)),
-      normalize(flowTable(map, key)),
-      `${when}: ${key} differs`,
+      Object.keys(tableObject(world.store, staticKey)).sort(),
+      keys,
+      `${when}: ${staticKey} ids`,
     );
+    const live = tableObject(world.store, liveKey);
+    assert.deepEqual(Object.keys(live).sort(), keys, `${when}: ${liveKey} ids`);
+    for (const id of keys) {
+      const counters = liveValues(live[id]).map((value) => value ?? "");
+      const oldCounters = String(legacy[id])
+        .split("|")
+        .slice(-4)
+        .map((value) => (value === "" || (old === "ocSig" && value === "0") ? "" : Number(value)));
+      const ported = counters.map((value) => (old === "ocSig" && value === 0 ? "" : value));
+      assert.deepEqual(ported, oldCounters, `${when}: ${liveKey} ${id}`);
+    }
   }
+}
+
+/** Entities of the upserts, flat — chunk borders move when fewer sums go out. */
+function flat(upserts: readonly unknown[]): unknown[] {
+  return upserts.flatMap((chunk): readonly unknown[] => (isArray(chunk) ? chunk : []));
+}
+
+function typeOf(entity: unknown): unknown {
+  return isRecord(entity) ? entity.type : undefined;
+}
+
+/**
+ * An unchanged run: the stations as the old node wrote them; the sums only
+ * as freshness stamps in their third-run rotation (the old node stamped every
+ * unchanged sum in every run). The entities whose weekly full write falls
+ * into this hour are left out on both sides.
+ */
+function expectedUnchangedRun(legacy: readonly unknown[], nowMs: number): unknown[] {
+  return withoutWeeklyRefresh(
+    legacy.filter(
+      (entity) =>
+        typeOf(entity) !== "ChargingSummary" ||
+        (isRecord(entity) && typeof entity.id === "string" && freshTurn(entity.id, 3, HOUR, nowMs)),
+    ),
+    nowMs,
+  );
 }
 
 function wire(value: unknown): unknown {
@@ -190,7 +251,9 @@ async function pagesFollowTotalCount(): Promise<void> {
   cappedWorld.broker.sources.set(COUNT_URL, jsonAnswer({ total_count: 99_000 }));
   await run(cappedWorld.ctx);
   assert.equal(
-    cappedWorld.broker.requests.filter((request) => request.url.href.includes("limit=1000")).length,
+    cappedWorld.broker.requests.filter(
+      (request) => request.url.origin !== "http://orion-ld:1026" && request.url.href.includes("limit=1000"),
+    ).length,
     60,
   );
   assert.match(cappedWorld.log.warnings()[0] ?? "", /capped at 60/);
@@ -235,10 +298,11 @@ async function incompleteRunMergesAndResets(): Promise<void> {
   for (const fixture of served) world.broker.sources.set(fixture.url, jsonAnswer(fixture.payload));
   // Signatures of a station on a page that failed this time: merge keeps them.
   const elsewhere = "urn:ngsi-ld:EVChargingStation:ulm-ocpdb-1";
-  world.store.replace(STATION_GATE, new Map([[elsewhere, "2|0|0|0|0"]]));
+  world.store.replace(STATION_STATIC, new Map([[elsewhere, "static"]]));
+  world.store.replace(STATION_LIVE, new Map([[elsewhere, "[null,null,null,null]"]]));
   const oldBroker = new Broker(0);
 
-  let flow: Record<string, unknown> = { [STATION_GATE]: { [elsewhere]: "2|0|0|0|0" } };
+  let flow: Record<string, unknown> = { ocSig: { [elsewhere]: "2|0|0|0|0" } };
   for (const round of [1, 2]) {
     world.broker.upserts.length = 0;
     const legacyClock = openClock();
@@ -246,12 +310,21 @@ async function incompleteRunMergesAndResets(): Promise<void> {
     const legacyWindow = legacyClock.close();
     await run(world.ctx);
     const expected = legacy.messages.map((message) => wire(arrayField(message, "payload")));
-    assert.deepEqual(
-      normalize(world.broker.upserts),
-      normalize(expected),
-      `round ${String(round)}: upserts differ`,
-    );
-    assertClockStamps(expected, world.broker.upserts, {
+    if (round === 1) {
+      assert.deepEqual(normalize(world.broker.upserts), normalize(expected), "round 1: upserts differ");
+    } else {
+      assert.deepEqual(
+        normalize(withoutWeeklyRefresh(flat(world.broker.upserts), world.clock.now)),
+        normalize(expectedUnchangedRun(flat(expected), world.clock.now)),
+        "round 2: upserts differ",
+      );
+    }
+    const stamped = round === 1 ? flat(expected) : expectedUnchangedRun(flat(expected), world.clock.now);
+    const actual =
+      round === 1
+        ? flat(world.broker.upserts)
+        : withoutWeeklyRefresh(flat(world.broker.upserts), world.clock.now);
+    assertClockStamps(stamped, actual, {
       legacy: legacyWindow,
       ported: fixedClock(world.clock.now),
     });
@@ -264,7 +337,8 @@ async function incompleteRunMergesAndResets(): Promise<void> {
     flow = await legacyCommit(legacy);
     assertTables(flow, world, `round ${String(round)}`);
   }
-  assert.ok(world.store.copy(STATION_GATE).has(elsewhere), "an incomplete run replaced the table");
+  assert.ok(world.store.copy(STATION_STATIC).has(elsewhere), "an incomplete run replaced the table");
+  assert.ok(world.store.copy(STATION_LIVE).has(elsewhere), "an incomplete run replaced the live table");
   assert.deepEqual(
     world.pruneCalls.map((call) => `${call.kind}:${call.key}`),
     [...CONFIRM_KEYS, ...CONFIRM_KEYS].map((key) => `reset:${key}`),
@@ -328,7 +402,7 @@ async function completeRunReplacesAndPrunes(): Promise<void> {
     1,
     total,
     {
-      [STATION_GATE]: { [STALE_STATION]: "1|0|0|0|0" },
+      ocSig: { [STALE_STATION]: "1|0|0|0|0" },
       pruneLastRun_OCPDB_EVChargingStation: now - HOUR,
       pruneLastRun_OCPDB_ChargingSummary: now - HOUR,
       ocPruneStation: { [STALE_STATION]: [now - 25 * HOUR, 1] },
@@ -344,13 +418,16 @@ async function completeRunReplacesAndPrunes(): Promise<void> {
   seed(world.broker);
   world.broker.sources.set(COUNT_URL, jsonAnswer(world1.count));
   world.broker.sources.set(pageUrl(0), jsonAnswer(world1.page));
-  world.store.replace(STATION_GATE, new Map([[STALE_STATION, "1|0|0|0|0"]]));
+  world.store.replace(STATION_STATIC, new Map([[STALE_STATION, "static"]]));
+  world.store.replace(STATION_LIVE, new Map([[STALE_STATION, "[null,null,null,null]"]]));
   for (let hour = 0; hour <= 26; hour += 1) {
     world.clock.now = now - 26 * HOUR + hour * HOUR;
     await run(world.ctx);
   }
+  // The first run writes every station in full next to one stored signature:
+  // the split gate rightly suspects lost state — the only warning.
   assert.deepEqual(
-    world.log.warnings().filter((line) => !line.startsWith("Upsert")),
+    world.log.warnings().filter((line) => !line.startsWith("Upsert") && !line.includes("change state lost?")),
     [],
   );
   // The settings themselves, against the old pruneStale option objects.
@@ -362,9 +439,11 @@ async function completeRunReplacesAndPrunes(): Promise<void> {
     [...new Set(oldBroker.listings())].sort(),
     "prune listings differ",
   );
-  const oldSig = legacy.run.flow.get(STATION_GATE);
+  const oldSig = legacy.run.flow.get("ocSig");
   assert.ok(isRecord(oldSig) && !(STALE_STATION in oldSig), "old: signature of the pruned station kept");
-  assert.ok(!world.store.copy(STATION_GATE).has(STALE_STATION), "port: signature of the pruned station kept");
+  for (const key of [STATION_STATIC, STATION_LIVE]) {
+    assert.ok(!world.store.copy(key).has(STALE_STATION), `port: ${key} of the pruned station kept`);
+  }
 }
 
 /**
@@ -481,20 +560,29 @@ async function completeRunReplacesTheTables(): Promise<void> {
     const total = items(input.page).length;
     const legacy = await legacyBuild([{ statusCode: 200, payload: input.page }], 1, total, flow, oldBroker);
     await run(world.ctx);
-    assert.deepEqual(
-      normalize(world.broker.upserts),
-      normalize(legacy.messages.map((message) => wire(arrayField(message, "payload")))),
-      `run ${String(round + 1)}: upserts differ`,
-    );
+    const expected = legacy.messages.map((message) => wire(arrayField(message, "payload")));
+    if (round === 0) {
+      assert.deepEqual(normalize(world.broker.upserts), normalize(expected), "run 1: upserts differ");
+    } else {
+      assert.deepEqual(
+        normalize(withoutWeeklyRefresh(flat(world.broker.upserts), world.clock.now)),
+        normalize(expectedUnchangedRun(flat(expected), world.clock.now)),
+        "run 2: upserts differ",
+      );
+    }
     flow = await legacyCommit(legacy);
     assertTables(flow, world, `run ${String(round + 1)} after commit`);
   }
-  const goneId = [...world.store.copy(STATION_GATE).keys()].find((id) =>
-    id.endsWith(`-ocpdb-${String(gone.id)}`),
-  );
-  assert.equal(goneId, undefined, "the vanished location keeps its signature (replace not applied)");
+  for (const key of [STATION_STATIC, STATION_LIVE]) {
+    const goneId: string | undefined = [...world.store.copy(key).keys()].find((id) =>
+      id.endsWith(`-ocpdb-${String(gone.id)}`),
+    );
+    assert.equal(goneId, undefined, `the vanished location keeps its ${key} (replace not applied)`);
+  }
   const goneSum = `urn:ngsi-ld:ChargingSummary:bw-${agsOf(gone) ?? ""}`;
-  assert.ok(!world.store.copy(SUMMARY_GATE).has(goneSum), "the vanished sum keeps its signature");
+  for (const key of [SUMMARY_STATIC, SUMMARY_LIVE]) {
+    assert.ok(!world.store.copy(key).has(goneSum), `the vanished sum keeps its ${key}`);
+  }
 }
 
 /**
@@ -535,7 +623,7 @@ export {
   pagesFollowTotalCount as "ladesaeulen-bw: all pages from total_count, the cap of 60 and the skips match the old fan-out",
   incompleteRunMergesAndResets as "ladesaeulen-bw: an incomplete run writes the old chunks, merges the tables, resets the confirmations",
   dedupeKeepsTheOldOrder as "ladesaeulen-bw: deduplication and Object.keys order of the old build node",
-  completeRunReplacesAndPrunes as "ladesaeulen-bw: a complete run prunes the same stations and sums and forgets their ocSig",
+  completeRunReplacesAndPrunes as "ladesaeulen-bw: a complete run prunes the same stations and sums and forgets the station signatures",
   confirmWindowRunByRun as "ladesaeulen-bw: candidates just inside and just outside the 24 h confirmation are deleted run by run as by the old node",
-  completeRunReplacesTheTables as "ladesaeulen-bw: complete runs replace ocSumSig/ocSig, a vanished location loses its signature",
+  completeRunReplacesTheTables as "ladesaeulen-bw: complete runs replace the split tables, a vanished location loses its signatures",
 };

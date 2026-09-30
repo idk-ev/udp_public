@@ -129,6 +129,11 @@ async function triggerLivesOnTheAdminPortOnly(): Promise<void> {
     assert.equal((await fetch(r.url(r.kernel.adminHttp, "/healthz"))).status, 200);
     assert.equal(r.runs(), 1);
     assert.equal((await fetch(r.url(r.kernel.adminHttp, "/trigger/nobody"), { method: "POST" })).status, 404);
+    // The prune release is an admin route as well (no persisted state here: 404).
+    const release = (server: typeof r.kernel.adminHttp): Promise<Response> =>
+      fetch(r.url(server, "/release-prunes/demo"), { method: "POST" });
+    assert.equal((await release(r.kernel.publicHttp)).status, 404, "/release-prunes on the public port");
+    assert.equal((await release(r.kernel.adminHttp)).status, 404);
   } finally {
     r.finishRun();
     await r.close();

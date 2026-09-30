@@ -71,7 +71,8 @@ fetch("http://127.0.0.1:" + (process.env.UDP_CONNECTORS_ADMIN_PORT || "1881") + 
                + (if .stateStore.reason then ", \(.stateStore.reason)" else "" end) + ")"
                + (if (.stateStore.notLoaded | length) > 0 then "\n   not loaded" + (if .stateStore.reloading == true then " (reloading)" else "" end) + ": \(.stateStore.notLoaded | join(", "))" else "" end)
                + (if ((.stateStore.loadFailed // []) | length) > 0 then "\n   failing loads: \(.stateStore.loadFailed | join(", "))" else "" end)
-               + (if (.stateStore.failing | length) > 0 then "\n   failing writes: \(.stateStore.failing | join(", "))" else "" end)' <<<"$HEALTHZ"
+               + (if (.stateStore.failing | length) > 0 then "\n   failing writes: \(.stateStore.failing | join(", "))" else "" end)
+               + (if ((.stateStore.blockedPrunes // []) | length) > 0 then "\n   PRUNE BLOCKED by its share cap: " + ([.stateStore.blockedPrunes[] | "\(.connector) \(.prune) (\(.consecutiveSkips) runs" + (if (.heldBack // 0) > 0 then ", \(.heldBack) held back since \(.blockedSince) - release: scripts/release-prunes.sh \(.connector)" else "" end) + ")"] | join(", ")) else "" end)' <<<"$HEALTHZ"
         jq -e '(.connectors | length) == 0 or .stateStore.healthy' >/dev/null <<<"$HEALTHZ" || fail=1
     else
         echo "-- connector service: /healthz not answering"

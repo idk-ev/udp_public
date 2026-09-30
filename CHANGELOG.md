@@ -2,6 +2,53 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Konnektordienst: Zustand und Schreibvolumen
+
+- Schreib-Lock: gilt nur noch als verloren, wenn die Datenbank das bestätigt
+  (kein clientseitiges Query-Timeout mehr, Abgleich über `pg_locks`). Nach
+  einem echten Verlust bleiben die Signaturen im Speicher und werden
+  nachgeschrieben, statt ältere Stände darüberzuladen; hielt zwischenzeitlich
+  eine andere Instanz den Lock, überleben nur übereinstimmende Signaturen.
+  Schreibvorgänge prüfen die Writer-Generation (neue Tabelle
+  `udp_connectors.writer`).
+- Leere Signaturtabellen (Neuinstallation, Zustandsverlust) werden bei
+  Parken, Laden und Carsharing aus dem Broker befüllt – kein Vollschrieb.
+- Ladepunkte, Ladesummen und Carsharing-Stationen trennen Stammdaten von
+  Messwerten: Statusänderungen schreiben nur die geänderten Werte plus
+  `dateObserved`. Zeilenbudgets neu: `EVChargingStation` 460.000,
+  `ChargingSummary` 95.000, `CarSharingStation` 180.000 (docs/betrieb.md).
+  Ladesummen frischen `dateObserved` wie die Ladepunkte alle 3 h auf; die
+  Stadtseite zeigt sie bis 6 h als aktuell.
+- Prune: Altbestand (älter als 7 Tage) wird in Portionen von 1.000 je Lauf
+  abgebaut, erst nach einer Woche lückenlosen Laufs; der 30-%-Deckel gilt
+  nur noch für frisch Verschwundenes. Ein Massenverlust, der den Deckel
+  auslöst, wird nie automatisch gelöscht: Er bleibt in `/healthz`
+  (`stateStore.blockedPrunes`) und im Log, bis er zurückkommt oder per
+  `scripts/release-prunes.sh <id>` freigegeben wird (erst, wenn der Deckel
+  wieder passt, sonst HTTP 409). Versuchte Löschungen
+  verwerfen ihre Signaturen, auch unbestätigte.
+- Carsharing löscht Stationen, die zwei Läufe in Folge in der vollständigen
+  Stationsliste ihres Systems fehlen (nur geschriebene, je System höchstens
+  50 %).
+- Laden und Carsharing schreiben jede Entität einmal je Woche voll, damit
+  aus dem Broker verschwundene Entitäten nicht als Gerippe stehen bleiben
+  (~15.500, ~800 und ~5.200 Zeilen/Tag zusätzlich).
+- Ein 207 auf ein Delete ohne `success`/`errors` zählt nicht mehr als
+  gelöscht.
+- Log: je Gate-Schreibvorgang „geändert/gesamt“; Warnung, wenn mehr als die
+  Hälfte trotz gespeicherter Signaturen als geändert gilt.
+
+> **Upgrade:**
+>
+> - Neue Tabelle `udp_connectors.writer`. Wurde das Schema vorab angelegt,
+>   braucht der Datenbanknutzer `CREATE` auf dem Schema; sonst übernimmt
+>   der Dienst den Schreib-Lock nicht und meldet ein `[error]`.
+> - Der erste Lauf füllt die neuen Signaturtabellen von Laden und Carsharing
+>   aus dem Broker (einige Listenabrufe, keine Schreiblast).
+> - Der Abbau von Altbestand beginnt frühestens eine Woche nach dem Upgrade,
+>   danach höchstens 1.000 Löschungen je Prune und Lauf; ein großer
+>   Altbestand ist so bei stündlichen Läufen nach wenigen Stunden abgebaut.
+
 ## Unveröffentlicht — Cockpit-Durchsatz
 
 - Cockpit-nginx liefert vorkomprimierte statische Dateien aus (`gzip_static`),

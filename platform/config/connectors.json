@@ -344,7 +344,7 @@
       "requiresSecret": null,
       "active": true,
       "rowBudget24h": {
-        "CarSharingStation": 200000
+        "CarSharingStation": 180000
       }
     },
     {
@@ -365,8 +365,8 @@
       "requiresSecret": null,
       "active": true,
       "rowBudget24h": {
-        "EVChargingStation": 170000,
-        "ChargingSummary": 80000
+        "EVChargingStation": 460000,
+        "ChargingSummary": 95000
       }
     },
     {

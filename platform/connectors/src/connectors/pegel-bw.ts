@@ -253,7 +253,11 @@ export async function run(ctx: Ctx): Promise<void> {
   // Orion confirmed, so a lost write is repeated in the next run. The gate
   // reports "changed/total" itself; an empty plan sends nothing, as the old
   // `if (!geaendert.length) return null;`.
-  const result = await ctx.orion.upsertChanged(GATE_KEY, entities, signatureOf, { chunkSize: CHUNK_SIZE });
+  const result = await ctx.orion.upsertChanged(GATE_KEY, entities, signatureOf, {
+    chunkSize: CHUNK_SIZE,
+    // Water levels in cm: most gauges move between two runs.
+    volatile: true,
+  });
   if (result.entities > 0) {
     ctx.log.info(
       `${String(result.entities)} of ${String(entities.length)} gauges upserted in ${String(result.chunks)} ` +
