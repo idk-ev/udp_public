@@ -13,6 +13,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 > - Die neuen PostgreSQL-Parameter (`shared_buffers` u. a.) und die höhere
 >   Speicheranforderung (2Gi) starten die Datenbank-Instanzen einmal neu
 >   (Switchover); die Knoten brauchen den Speicher tatsächlich.
+> - Wer `timescale.resources.requests.memory` überschreibt, muss ihn
+>   mindestens so groß wie `shared_buffers` setzen (oder `shared_buffers`
+>   mit überschreiben) – sonst lehnt CloudNativePG das Upgrade ab.
 
 - **TRoE-Schema:** `helm/udp/files/postgres/troe-schema.sql` legt das Schema
   von Orion-LD vor dem Broker an – Helm als initContainer, Compose als Dienst

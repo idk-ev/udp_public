@@ -486,6 +486,8 @@ timescale:
   # maintenance_work_mem and /dev/shm (shmSize). Changing shared_buffers (or
   # max_connections) restarts the instances – with switchover, see DEPLOY.md
   # §10. Override single keys in your values; set a key to null to drop it.
+  # CNPG rejects a memory REQUEST below shared_buffers: lower shared_buffers
+  # together with resources.requests.memory.
   parameters:
     shared_buffers: 1GB
     effective_cache_size: 3GB
