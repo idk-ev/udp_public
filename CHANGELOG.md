@@ -2,7 +2,7 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht — Ingestion im Konnektordienst
+## 1.3.0 — Ingestion im Konnektordienst
 
 Alle 29 Konnektoren laufen im Konnektordienst (`platform/connectors`,
 TypeScript) statt in generierten Node-RED-Flows. Node-RED bleibt als
