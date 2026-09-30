@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { config } from "./config";
+import { config, isSafeUrl } from "./config";
 import { setTenant } from "./api";
 import { useAuth } from "./auth";
 import {
@@ -32,6 +32,25 @@ const titles: Record<string, string> = {
   "/verwaltung": "Benutzer & Mandanten",
 };
 
+// Operator's legal pages (Helm: cockpit.legal); unset or invalid URLs are left out.
+const legalLinks = [
+  { label: "Impressum", href: config.legal.impressumUrl },
+  { label: "Datenschutz", href: config.legal.datenschutzUrl },
+].filter((link) => isSafeUrl(link.href));
+
+// Operator logo (Helm: cockpit.branding.logo) instead of the "UD" badge.
+const brandLogo = (() => {
+  const logo = config.branding.logo;
+  if (!logo || !isSafeUrl(logo.src)) return null;
+  return {
+    src: logo.src,
+    // Compose config.js is hand-written: a non-string alt must not throw at
+    // module load (that would blank the whole cockpit).
+    alt: typeof logo.alt === "string" && logo.alt.trim() ? logo.alt.trim() : "Logo",
+    href: isSafeUrl(logo.href) ? logo.href : "",
+  };
+})();
+
 export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
@@ -56,7 +75,19 @@ export default function App() {
 
       <aside className="sidebar" aria-label="Hauptnavigation">
         <div className="brand">
-          <div className="brand-logo" aria-hidden>UD</div>
+          {brandLogo ? (
+            brandLogo.href ? (
+              <a className="brand-img" href={brandLogo.href}>
+                <img src={brandLogo.src} alt={brandLogo.alt} />
+              </a>
+            ) : (
+              <span className="brand-img">
+                <img src={brandLogo.src} alt={brandLogo.alt} />
+              </span>
+            )
+          ) : (
+            <div className="brand-logo" aria-hidden>UD</div>
+          )}
           <div>
             <div className="brand-name">UDP-Cockpit</div>
             <div className="brand-sub">Urbane Datenplattform</div>
@@ -78,6 +109,15 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <IconShield /> EUPL-1.2 · FIWARE · DIN SPEC 91357
           </div>
+          {legalLinks.length > 0 && (
+            <nav className="sidebar-legal" aria-label="Rechtliches">
+              {legalLinks.map((link) => (
+                <a key={link.label} href={link.href}>
+                  {link.label}
+                </a>
+              ))}
+            </nav>
+          )}
         </div>
       </aside>
 

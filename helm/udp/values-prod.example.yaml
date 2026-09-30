@@ -70,6 +70,26 @@ networkPolicies:
 cockpit:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+  # Impressum und Datenschutzerklärung des Betreibers (Fußzeile aller Seiten).
+  # legal:
+  #   impressumUrl: "https://www.example.org/impressum"
+  #   datenschutzUrl: "https://www.example.org/datenschutz"
+  # Webanalyse: Einbettungscode des Anbieters unverändert einfügen (Platzhalter).
+  # Nennt die Datenschutzerklärung das Werkzeug? s. docs/betrieb.md
+  # analytics:
+  #   headHtml: |
+  #     <script src="https://analytics.example.org/script.js" data-site-id="…" defer></script>
+  #   includeCockpit: false   # true = auch im Cockpit (Admin-Sitzungen!)
+  # Logo und Favicon, base64-kodiert (base64 -w0 logo.png), höchstens 128 KiB (Logo) bzw. 64 KiB (Favicon).
+  # branding:
+  #   logo:
+  #     data: "iVBORw0KGgo…"
+  #     type: image/png
+  #     alt: "Musterstadt"
+  #     href: "https://www.example.org/"
+  #   favicon:
+  #     data: "PHN2ZyB4bWxucz0…"
+  #     type: image/svg+xml
 ckan:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
