@@ -649,6 +649,15 @@ Bei generierten Secrets (Weg A) bleiben Passwörter über Upgrades **stabil**
 (via `lookup`). Config-Änderungen unter `files/` lösen dank Checksum-Annotation
 automatisch einen Rolling-Restart der betroffenen Pods aus.
 
+Die PostgreSQL-Parameter (`timescale.parameters`) sind auf die Vorgabe-Ressourcen
+(4Gi-Limit) bemessen und mit ihnen zu skalieren. Eine Änderung von
+`shared_buffers` (ebenso `max_connections`) startet die Datenbank-Instanzen
+neu – CNPG rollt die Standbys und schaltet dann per Switchover um, also ein
+paar Sekunden ohne Schreibzugriffe. Ein neues Datenbank-Image im selben
+Upgrade rollt im selben Durchgang mit: Die Sperre des CNPG-Webhooks gegen
+Image- und Parameteränderung zugleich greift nur bei `spec.imageName`, das
+Chart referenziert das Image über einen ImageCatalog (geprüft gegen CNPG 1.30).
+
 ### 10a. Migration der Datenbank auf CloudNativePG (Upgrade von Chart ≤ 1.0.x)
 
 Bis Chart 1.0.x lief die Datenbank als einzelnes StatefulSet `timescale`; ihr
@@ -714,8 +723,10 @@ nur nach vollständiger Kopie (Annotation am Cluster), Phase `""` erst, wenn
 
 Was sich ändert: gleiche Datenbanken, Rollen und Passwörter (MD5, wegen
 Orion-LD), gleicher Hostname `timescale`, Sortierung `en_US.UTF-8` wie bisher;
-PostGIS 3.5 → 3.6, TimescaleDB 2.26 → aktuelle 2.x (Apache-Edition, keine
-Hypertables im Einsatz – das Skript bricht sonst ab), Datenprüfsummen an.
+PostGIS 3.5 → 3.6, TimescaleDB 2.26 → aktuelle 2.x (Apache-Edition),
+Datenprüfsummen an. Die Kopie überträgt keine Hypertables – das Skript bricht
+dann ab. Reihenfolge deshalb: erst dieser Umzug, danach die Umstellung von
+TRoE auf die Hypertable (§10d).
 
 ### 10b. Hochverfügbarkeit: Verteilung und MongoDB-Replica-Set
 
@@ -990,6 +1001,178 @@ bewusst `backup.acknowledgeNoBackup: true` setzen. Das PVC `db-backup-data`
 mit den letzten Dumps bleibt stehen (`resource-policy: keep`) – löschen,
 sobald die erste S3-Sicherung `completed` ist:
 `kubectl -n udp delete pvc db-backup-data`.
+
+### 10d. TRoE-Tabelle `attributes` auf Hypertable umstellen
+
+Neue Installationen legen `attributes` als TimescaleDB-Hypertable ohne
+Primärschlüssel an (initContainer `troe-schema` von `orion-ld`, Hintergrund:
+`docs/betrieb.md`, „Zeitreihen-Retention (TRoE)“). Bestehende Installationen
+behalten Orion-LDs gewöhnliche Tabelle, bis sie mit
+`scripts/migrate-troe-hypertable.sh` umgestellt werden; der initContainer
+meldet das bei jedem Start als WARNING und lässt die Tabelle in Ruhe.
+
+Ablauf: `backfill` kopiert jeden abgeschlossenen UTC-Tag in die neue
+Hypertable `attributes_new` – im laufenden Betrieb, wiederaufnehmbar, jeder
+Tag in einer eigenen, geprüften Transaktion, unveränderte Wiederholungen
+entfallen. `cutover` nimmt die TRoE-Schreiber (`orion-ld`, `connectors`,
+`node-red`, `iot-agent-json`) kurz vom Netz, kopiert den Rest (in der Regel
+nur den laufenden Tag – Tage ab eine Stunde vor dem Umschalten immer neu,
+Grenzen erst nach dem Stopp der Schreiber bestimmt), prüft jeden Tag der
+neuen Tabelle (abweichende Tage, etwa nach einem Rollback, kopiert es neu),
+prüft unter der Tabellensperre, dass die alte Tabelle seit der Kopie
+keine Zeile mehr bekommen hat, und tauscht die Tabellen per Umbenennung; die
+alte bleibt als `attributes_old`. Mintaka liest weiter.
+Die Skript-Sitzungen laufen im CNPG-Primary mit `statement_timeout`,
+`temp_file_limit` und `lock_timeout`.
+
+Vorher:
+
+- Erst die CNPG-Migration (§10a), falls noch nicht geschehen.
+- Die Temporal-API liefert danach für unveränderte Werte weniger Stützstellen;
+  Zeitfenster mitten am Tag, `lastN` und Aggregationen können andere
+  Ergebnisse geben (`docs/betrieb.md`, „Speicherlayout“) – vorher klären.
+- Kein `pg_dump` und keine Retention zum Zeitpunkt des `cutover` (bzw.
+  `swap-lowdisk`): Das Skript bricht sonst vor dem Tausch ab. Das S3-Backup
+  (Basissicherung, WAL-Archiv) stört nicht; es archiviert das WAL der Kopie
+  mit.
+- **Platz:** `preflight` schätzt den Bedarf (alte Tabelle ohne Schlüssel × 1,3)
+  und bricht ab, wenn er auf dem Volume der vollsten Instanz nicht frei ist.
+  Dann **zuerst das Volume vergrößern** – oder die Low-Disk-Variante (unten)
+  nehmen: `timescale.persistence.size` anheben
+  und `helm upgrade` – CNPG vergrößert die PVCs aller Instanzen im laufenden
+  Betrieb, sofern die StorageClass `allowVolumeExpansion` erlaubt (sonst
+  gemäß CNPG-Doku Instanz für Instanz neu anlegen). Verkleinern geht nicht;
+  der Platz der alten Tabelle wird erst mit `finalize` frei.
+- Die Kopie schreibt WAL in der Größe der neuen Tabelle: Replikation und ggf.
+  WAL-Archiv müssen mithalten. Knoten-Neustarts (kured) während `cutover`
+  pausieren wie in §10a.
+
+```bash
+export NAMESPACE=udp RELEASE=udp KUBE_CONTEXT=<context>   # jede Rückfrage nennt Kontext und Namespace
+S=scripts/migrate-troe-hypertable.sh
+
+# 0. Nur falls preflight zu wenig Platz meldet: Volume vergrößern
+helm upgrade udp <chart> -n udp -f values-prod.yaml --set timescale.persistence.size=<neu>
+kubectl -n udp get pvc -l cnpg.io/cluster=timescale     # neue Größe abwarten
+
+# 1. Prüfen
+$S preflight
+
+# 2. Historie kopieren – Plattform läuft weiter; abbrechbar und wiederholbar
+$S backfill
+$S status                                          # Fortschritt, Anteil entfallener Zeilen
+
+# 3. Direkt vor dem Umschalten noch einmal nachziehen, dann umschalten
+$S backfill
+$S cutover                                         # kurze Auszeit der Schreiber
+
+# 4. Einige Stunden den TRoE-Zufluss beobachten (PlatformStatus:udp-troe,
+#    troeRows1h/ingestByHour) – Orion-LD meldet gescheiterte Inserts nicht.
+
+# 5. Nach ein paar Tagen Regelbetrieb: alte Tabelle löschen, Platz frei
+$S finalize --drop-old
+```
+
+Zurück bis zum `finalize`: `$S rollback` – Schreiber kurz vom Netz, Zeilen seit
+dem Umschalten (mit 15 min Reserve gegen Uhrenabweichung; der Primärschlüssel
+der alten Tabelle verhindert Doppelte) tageweise zurück in die alte Tabelle, Namen zurückgetauscht; ein späterer
+`cutover` kopiert die Tage ab dem Umschalten erneut. Scheitert ein Schritt
+unterwegs, bleibt die Tabellenlage unverändert, und die Schreiber kommen
+automatisch wieder hoch.
+
+#### Low-Disk-Variante: alte und neue Tabelle passen nicht nebeneinander
+
+Lässt sich das Volume nicht ausreichend vergrößern, verlässt die Historie die
+Datenbank vorübergehend:
+
+- `export` schreibt jeden abgeschlossenen UTC-Tag als Rohzeilen (alle
+  Spalten, `COPY`-Textformat, gzip) nach `DIR/attributes_<Tag>.copy.gz` und
+  führt `DIR/manifest.tsv` (Tag, Zeilen, Bytes, SHA-256) – im laufenden
+  Betrieb, bevorzugt von einem Replikat, das den Stand des Primary erreicht
+  hat, sonst vom Primary. Ein Tag kommt erst ins Manifest, wenn die Datei
+  vollständig ist und ihre Zeilen der Zeilenzahl in der Datenbank
+  entsprechen. Wiederaufnehmbar: intakte, unveränderte Tage werden
+  übersprungen, geänderte (etwa durch die nächtliche Retention) neu
+  exportiert; die ersetzte Datei bleibt bis zum nächsten Export des Tages als
+  `….copy.gz.prev` liegen. `export` rechnet den lokalen Platzbedarf aus den
+  bisher geschriebenen Dateien hoch und bricht ab, wenn er in `DIR` nicht frei
+  ist. Nach einem Umschalten verweigert es jeden Export – auch einer, der
+  gleichzeitig läuft, schreibt die leere neue Tabelle nie über eine Datei.
+- `swap-lowdisk` prüft **vor** der Auszeit: jede Datei (Prüfsumme, Format des
+  Manifests), die Zeilenzahl jedes Tages gegen das Manifest (derselbe Zähllauf
+  wie in der Auszeit, mit Dauer), keine Zeilen in der Zukunft, keine Objekte,
+  die von `attributes` abhängen, `entities_id_ts_idx`, und lädt den größten
+  Tag probeweise mit Dedup in temporäre Tabellen (Typen, `TEMP_FILE_LIMIT`,
+  `STATEMENT_TIMEOUT`). Dann nimmt es die Schreiber vom Netz (**Auszeit**),
+  exportiert die restlichen Tage, prüft alle Dateien noch einmal und
+  vergleicht in **einer** Transaktion jeden Tag der alten Tabelle mit dem
+  Manifest (je Tag dieselbe Zeilenzahl wie beim Export, keine Zeilen
+  außerhalb der exportierten Tage) sowie ihre Spalten mit denen des Exports.
+  Erst dann löscht es `attributes`, legt sie mit `troe-schema.sql` – derselben
+  Datei wie der initContainer – leer als Hypertable neu an, prüft Spalten,
+  Typen und `NOT NULL` gegen die alte Tabelle und überträgt deren Rechte
+  (etwa `GRANT SELECT … TO PUBLIC`). Scheitert etwas, bleibt die alte Tabelle
+  unverändert und die Schreiber kommen zurück; das Skript liest dann aus der
+  Datenbank, ob umgeschaltet wurde, und sagt es (auch wenn die Verbindung
+  mitten im Umschalten abreißt). Die Auszeit umfasst den Export des
+  laufenden Tages und die Zählung aller Tage; die Zählung muss in
+  `STATEMENT_TIMEOUT` (Vorgabe 30 min) passen – `export` und `swap-lowdisk`
+  melden, wie lange sie dauert.
+- `import` lädt danach im laufenden Betrieb Tag für Tag, **neueste zuerst**,
+  über eine UNLOGGED-Staging-Tabelle in die Hypertable – mit derselben Dedup
+  wie `backfill`, Zeilen und Buchungszeile in einer Transaktion. Vor jedem Tag
+  prüft es die Prüfsumme der Datei (ein beschädigter Tag wird verweigert, die
+  übrigen laufen weiter) und den freien Platz (Staging, Insert, Temp-Dateien
+  der Sortierung, Reserve `IMPORT_MARGIN`, Vorgabe `max_wal_size`); weicht
+  die geladene Zeilenzahl vom Manifest ab, bricht der ganze Lauf ab.
+  Wiederaufnehmbar: Ein Tag mit Buchungszeile ist importiert, Zeilen der
+  Hypertable werden nie gelöscht. Zeilen, die nach dem Umschalten live
+  hinzukommen, bleiben unberührt.
+
+Wichtig:
+
+- **Zwischen `swap-lowdisk` und vollständigem `import` sind die Dateien die
+  einzige Kopie der Historie.** `DIR` vor dem Umschalten auf einen zweiten
+  Datenträger kopieren und danach noch einmal (das Umschalten ergänzt die
+  letzten Tage und das Manifest); beide Kopien aufheben, bis `status` jeden Tag
+  als importiert zeigt und die Historie geprüft ist.
+- Lokaler Platz: gzip-komprimiert erfahrungsgemäß 30–50 Byte je Zeile
+  (`preflight` schätzt, `export` rechnet mit den beobachteten Werten). Der
+  Export läuft über `kubectl exec` auf den Rechner, der das Skript ausführt –
+  unter Windows in Git Bash; `DIR` darf ein Windows-Pfad sein.
+- Mintaka zeigt bis zum Ende des `import` eine unvollständige Historie; die
+  jüngsten Tage sind zuerst wieder da.
+- Konnten die Schreiber nach einem Schritt nicht wieder hochgefahren werden,
+  nennt das Skript die `kubectl`-Befehle; oder `$S resume-writers`.
+- Kein `rollback` – es gibt keine alte Tabelle mehr. Die Dateien sind die
+  vollständige Rohhistorie: `import --no-dedup` lädt die noch nicht
+  importierten Tage ohne Dedup. Soll die Dedup nachträglich zurückgenommen
+  werden: in der Hypertable die Zeilen bis zur jüngsten exportierten Zeile
+  löschen (`status`: `lowdisk_max_ts`; `DELETE … WHERE ts <= …` – nicht
+  `cutover_ts`, der von der Uhr der Datenbank stammt, `ts` von der des
+  Brokers), `udp_troe_migration` leeren und mit `--no-dedup` neu importieren.
+- `finalize --drop-old` löscht nach vollständigem Import nur noch die
+  Buchführung; danach lässt sich `import` nicht mehr fortsetzen.
+
+```bash
+DIR=/d/troe-export                                 # lokal, außerhalb des Clusters
+
+$S preflight                                       # nennt den lokalen Platzbedarf
+$S export --dir $DIR                               # Plattform läuft, wiederaufnehmbar
+$S status --dir $DIR
+$S export --dir $DIR                               # direkt vor dem Umschalten nachziehen
+cp -a $DIR /zweiter/datentraeger/                  # zweite Kopie vor dem Umschalten
+$S swap-lowdisk --dir $DIR                         # Prüfungen, dann kurze Auszeit
+cp -a $DIR /zweiter/datentraeger/                  # zweite Kopie auf den Stand bringen
+$S import --dir $DIR                               # Plattform läuft, neueste Tage zuerst
+$S status --dir $DIR                               # alle Tage importiert?
+$S finalize --drop-old                             # Buchführung löschen
+# Die Dateien erst löschen, wenn die Historie in Mintaka geprüft ist.
+```
+
+Die Retention (`troe-retention`) erkennt die Hypertable selbst und schneidet
+die 12-Monats-Staffel ab dann per `drop_chunks`. Mandanten-Datenbanken
+(`orion_<tenant>`) werden nicht umgestellt.
 
 ---
 
