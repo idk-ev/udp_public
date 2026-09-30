@@ -91,6 +91,20 @@ data:
 {{ .Files.Get "files/postgres/00-auth.sh" | indent 4 }}
   01-databases.sql: |
 {{ .Files.Get "files/postgres/01-databases.sql" | indent 4 }}
+{{- if .Values.orionLd.troeSchema }}
+---
+# TRoE schema of Orion-LD (hypertable attributes), run by the init container
+# troe-schema of orion-ld – the same file docker compose runs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: troe-schema
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "orion-ld") | nindent 4 }}
+data:
+  troe-schema.sql: |
+{{ .Files.Get "files/postgres/troe-schema.sql" | indent 4 }}
+{{- end }}
 ---
 # Mosquitto listeners (MQTT 1883, WebSocket 9001). Without this file Mosquitto
 # 2.x falls back to "local only mode" and binds 127.0.0.1 only.
