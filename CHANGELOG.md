@@ -14,6 +14,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   `avgDelayMinutes: null` ließ Orion-LD die ganze Entität ablehnen (207,
   Neuversand alle 5 min); ohne Median wird das Attribut entfernt.
 - Upsert-Warnungen nennen die abgelehnten Entitäten und den Fehler.
+- Abfahrten nur vom angefragten Halt: Für eine unbekannte Halt-ID liefert
+  EFA die Abfahrten eines erratenen Orts — jetzt „gestört“ statt falscher
+  Tafel. „no matching departure“ (-4030) zeigt „Derzeit keine Abfahrten“.
 
 ## Unveröffentlicht — Kachelwerte
 

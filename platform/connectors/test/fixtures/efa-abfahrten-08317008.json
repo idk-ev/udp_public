@@ -1,7 +1,7 @@
 {
   "source": "https://www.efa-bw.de/nvbw/XML_DM_REQUEST?outputFormat=rapidJSON&type_dm=any&name_dm=de:08317:14450&mode=direct&useRealtime=1&limit=20",
   "recordedAt": "2026-09-28T03:12:47.555Z",
-  "note": "Trimmed by hand: top-level serverInfo, systemMessages and locations removed; in every stop event only the fields listed here are kept (isCancelled, realtimeStatus, isRealtimeControlled, location.{id,name,type,properties}, departureTimePlanned/BaseTimetable/Estimated, transportation.{id,name,disassembledName,number,destination}). Neither the old function node nor the port reads anything else. All 20 stop events are kept, values verbatim.",
+  "note": "Trimmed by hand: top-level serverInfo, systemMessages and locations removed; in every stop event only the fields listed here are kept (isCancelled, realtimeStatus, isRealtimeControlled, location.{id,name,type,properties}, departureTimePlanned/BaseTimetable/Estimated, transportation.{id,name,disassembledName,number,destination}). Neither the old function node nor the port reads anything else. All 20 stop events are kept, values verbatim. Top-level locations: the resolved stop (id, name, type, isBest), taken from a later answer for the same stop (2026-10-01) — EFA answers carry it, and the port checks it.",
   "statusCode": 200,
   "headers": {
     "content-type": "application/json",
@@ -10,6 +10,14 @@
   "format": "json",
   "payload": {
     "version": "11.0.6.72",
+    "locations": [
+      {
+        "id": "de:08317:14450",
+        "name": "Bad Peterstal, Bahnhof",
+        "type": "stop",
+        "isBest": true
+      }
+    ],
     "stopEvents": [
       {
         "realtimeStatus": [

@@ -58,6 +58,10 @@
  *  * The stop id is URL-encoded in the request (`:` kept), the old node
  *    concatenated it; identical bytes for every configured id.
  *  * Warning texts are English (the code language of this service).
+ *  * Departures count only if EFA resolved the requested stop
+ *    ({@link parseDepartureMonitor}); for an unknown or removed id EFA guesses
+ *    another place and answers with ITS departures, which the old node wrote
+ *    under this stop. Now: a `[warn]`, nothing written for that stop.
  *  * No real-time departure, no median: `avgDelayMinutes` is left out and a
  *    value still in the broker is withdrawn ({@link Orion.deleteAttribute})
  *    instead of sending `value: null`. Orion-LD refuses a null value — the
@@ -107,6 +111,7 @@ import {
   EFA_MIN_INTERVAL_MS,
   mapPool,
   parseDepartureMonitor,
+  WrongStopError,
 } from "./efa.js";
 import type { DepartureMonitor, StopEvent } from "./efa.js";
 import { failureText, nodePayload, scalar } from "./http-payload.js";
@@ -285,7 +290,8 @@ export function parse(raw: unknown): EfaRun {
     answers: answers.map((answer, index) => {
       const at = `run.answers[${String(index)}]`;
       const record = requireRecord(answer, at);
-      return { stop: parseStop(record.stop, `${at}.stop`), monitor: parseDepartureMonitor(record.payload) };
+      const stop = parseStop(record.stop, `${at}.stop`);
+      return { stop, monitor: parseDepartureMonitor(record.payload, stop.stopId) };
     }),
   };
 }
@@ -482,10 +488,14 @@ async function fetchStop(ctx: Ctx, stop: StopConfig): Promise<StopAnswer | null>
     payload = null;
   }
   try {
-    return { stop, monitor: parseDepartureMonitor(payload) };
+    return { stop, monitor: parseDepartureMonitor(payload, stop.stopId) };
   } catch (error) {
     if (!(error instanceof ParseError)) throw error;
-    ctx.log.warn(`EFA-BW ${stop.ags}: no departures (${status})`);
+    ctx.log.warn(
+      error instanceof WrongStopError
+        ? `EFA-BW ${stop.ags}: answer is not for stop ${stop.stopId} (EFA resolved another place) — skipped`
+        : `EFA-BW ${stop.ags}: no departures (${status})`,
+    );
     return null;
   }
 }

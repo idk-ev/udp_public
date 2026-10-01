@@ -69,6 +69,11 @@
  *    502 "Auskunft nicht erreichbar", so the dashboard dropped the board as if
  *    EFA were down, and the nginx kept serving the last evening's departures
  *    stale. Anything else without `stopEvents` stays a 502.
+ *  * Departures of the requested stop only: EFA resolves an unknown or
+ *    removed id to some other stop or POI and answers with that place's
+ *    departures; the old node showed them under this stop's name. Now 502
+ *    ("gestört" on the page), see {@link parseDepartureMonitor}. And -4030 "no
+ *    matching departure" counts as no departures like -4050.
  *  * No JSONP: Express's `res.jsonp` wrapped the body into a script when the
  *    query carried `callback=…`. Nothing uses that, and a JSONP endpoint on a
  *    cached public URL is an injection surface, not a feature.
@@ -316,9 +321,10 @@ export function departuresResponse(halt: Halt, upstream: Upstream, now: IsoTime)
   let monitor: DepartureMonitor | null = null;
   if (upstream.status === null || upstream.status < 400) {
     try {
-      monitor = parseDepartureMonitor(upstream.payload);
+      monitor = parseDepartureMonitor(upstream.payload, halt.stopId ?? "");
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
+      // A WrongStopError (EFA guessed another place) is never "empty": 502.
       if (isEmptyDepartureMonitor(upstream.payload, halt.stopId ?? "")) monitor = { stopEvents: [] };
     }
   }

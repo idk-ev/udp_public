@@ -107,7 +107,35 @@ function fixtureName(ags: string): string {
 }
 
 function fixturePayload(ags: string): unknown {
-  return readFixture(fixtureName(ags)).payload;
+  const payload = readFixture(fixtureName(ags)).payload;
+  if (STOPS.some((stop) => stop === ags)) return payload;
+  // A borrowed recording answers as EFA would for this stop: resolved to it.
+  const stop = stopOf(ags);
+  return {
+    ...(isRecord(payload) ? payload : {}),
+    locations: [{ id: stop.stopId, name: stop.name, type: "stop", isBest: true }],
+  };
+}
+
+/**
+ * EFA's answer for an unknown or removed id, modelled on a real one: the id
+ * resolved to some POI (`isBest`), the requested stop only as a fuzzy
+ * candidate, and the POI's nearest stop's departures under `stopEvents`.
+ */
+function misresolved(ags: string): unknown {
+  const payload = fixturePayload(ags);
+  return {
+    ...(isRecord(payload) ? payload : {}),
+    locations: [
+      {
+        id: "poiID:1655788:8211000:-1:Domaine1795:Baden-Baden:Domaine1795:ANY:POI:915365:5757868:MRCV:b_w",
+        name: "Baden-Baden, Domaine1795",
+        type: "poi",
+        isBest: true,
+      },
+      { id: stopOf(ags).stopId, name: "candidate", type: "stop", isBest: false },
+    ],
+  };
 }
 
 /** Every stop the registry enables — each has its own generated pipeline in the frozen flows. */
@@ -414,8 +442,13 @@ async function requestProfileIsCapped(): Promise<void> {
   // The new profile: every stop, at most EFA_CONCURRENCY in flight, each
   // request through the shared EFA bucket, no retries.
   const payload = fixturePayload(REUTLINGEN);
+  // The same departures for every stop, each answer resolved to the stop asked for.
+  const answerFor = (url: string): unknown => ({
+    ...(isRecord(payload) ? payload : {}),
+    locations: [{ id: new URL(url).searchParams.get("name_dm"), type: "stop", isBest: true }],
+  });
   const network = recordingFetcher(
-    (request) => (request.url.startsWith(ORION) ? httpResponse(204) : jsonHttp(200, payload)),
+    (request) => (request.url.startsWith(ORION) ? httpResponse(204) : jsonHttp(200, answerFor(request.url))),
     25,
   );
   const g = rig(entry, network.fetcher);
@@ -431,6 +464,29 @@ async function requestProfileIsCapped(): Promise<void> {
   const upserts = network.seen.filter((request) => request.url.startsWith(ORION));
   assert.equal(upserts.length, 1, "one batch upsert instead of one per stop");
   assert.equal(upsertedEntities(upserts).length, agsList.length);
+}
+
+/* ------------------------------------------------ departures of another place */
+
+async function misresolvedStopIsNotWritten(): Promise<void> {
+  // DELIBERATE DEVIATION (module header): the old node wrote the guessed
+  // place's departures under this stop; the port warns and skips it.
+  const p = pair([REUTLINGEN, "08111000"]);
+  p.answers.set(REUTLINGEN, { status: 200, payload: misresolved(REUTLINGEN) });
+  const legacy = await legacyStop(p, REUTLINGEN);
+  assert.ok(isRecord(legacy.entity) && "departures" in legacy.entity, "the old node wrote them");
+
+  const before = p.seen.length;
+  await run(p.port.ctx);
+  const written = upsertedEntities(p.seen.slice(before));
+  assert.deepEqual(
+    written.map((entity) => (isRecord(entity) ? entity.id : undefined)),
+    [stopOf("08111000").entityId],
+    "only the stop EFA resolved is written",
+  );
+  assert.deepEqual(p.port.log.warnings(), [
+    `EFA-BW ${REUTLINGEN}: answer is not for stop ${stopOf(REUTLINGEN).stopId} (EFA resolved another place) — skipped`,
+  ]);
 }
 
 /* ------------------------------------------------ the 207 of the audit */
@@ -576,6 +632,7 @@ async function unknownMedianIsWithdrawnNotNull(): Promise<void> {
 
 export {
   unknownMedianIsWithdrawnNotNull as "efa-abfahrten: no median is withdrawn, not sent as null — Orion-LD accepts the batch (deliberate deviation)",
+  misresolvedStopIsNotWritten as "efa-abfahrten: departures of a place EFA guessed for the stop id are not written (deliberate deviation)",
   runsAndSignatureTablesMatch as "efa-abfahrten: URLs, deduped entities and oepnvSig tables match the old pipelines over five runs",
   everyEnabledStopMatchesItsOwnNode as "efa-abfahrten: all 23 enabled stops match their own old pipeline over two runs",
   errorPathsWarnAsBefore as "efa-abfahrten: EFA errors, refused connections and non-JSON warn per stop and write nothing",

@@ -284,6 +284,10 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
   Antwort 30 s wiederverwendet wird; eigene Warteschlange (2 laufend, 8
   wartend, darüber sofort 503); Abbruch, wenn kein Client mehr wartet;
   EFA-Fehler als gedrosseltes `[warn]`.
+- `efa-abfahrten`, `/abfahrten`: Abfahrten zählen nur, wenn EFA den
+  angefragten Halt aufgelöst hat (alt: bei unbekannter Id die Abfahrten eines
+  erratenen Orts); sonst `[warn]` ohne Schreiben bzw. 502. -4030 „no matching
+  departure“ gilt wie -4050 als „keine Abfahrten“.
 - `efa-abfahrten`: ohne Echtzeit-Median fehlt `avgDelayMinutes` und wird im
   Broker entfernt (alt: `value: null`, von Orion-LD mit 207 für die ganze
   Entität abgelehnt, Neuversand alle 5 min).

@@ -115,45 +115,18 @@ function parseEvent(raw: unknown): StopEvent | null {
 }
 
 /**
- * `!msg.payload || !Array.isArray(msg.payload.stopEvents)` of both old nodes,
- * as a narrowing that gets loud: a {@link ParseError} is the "no departures"
- * warning resp. the 502 of the endpoint.
- */
-export function parseDepartureMonitor(payload: unknown): DepartureMonitor {
-  const events = field(payload, "stopEvents");
-  if (!isArray(events)) throw new ParseError("payload.stopEvents", "array", events);
-  const stopEvents: StopEvent[] = [];
-  for (const event of events) {
-    const parsed = parseEvent(event);
-    if (parsed !== null) stopEvents.push(parsed);
-  }
-  return { stopEvents };
-}
-
-/** EFA-BW's system message code for "no serving lines found". */
-export const NO_DEPARTURES_CODE = -4050;
-
-/**
- * Whether `payload` is a valid departure monitor answer for `stopId` that
- * lists no departure (late at night, a stop served only on weekdays). As
- * recorded from EFA-BW, such an answer has no `stopEvents`, at most the error
- * message {@link NO_DEPARTURES_CODE}, and the requested stop itself under
- * `locations` (`type: "stop"`, `isBest: true`, its id, or a platform of it).
+ * Whether EFA resolved the request to `stopId` itself: `locations` holds it as
+ * `type: "stop"`, `isBest: true`, with its id or the id of one of its
+ * platforms (`<stopId>:…`).
  *
- * Not "no departures", stays a 502: an unknown or removed stop (EFA answers
- * with fuzzy candidates, `isBest: false`, other ids), any other error message
- * (e.g. "invalid date" with the stop resolved), anything without `version`.
+ * Needed because EFA does not reject an unknown or removed id: it resolves it
+ * fuzzily to some other stop or POI (`isBest` on that one) and answers with
+ * THAT place's departures, under a valid `stopEvents` list.
  */
-export function isEmptyDepartureMonitor(payload: unknown, stopId: string): boolean {
-  if (!isRecord(payload) || !isString(payload.version) || payload.stopEvents !== undefined) return false;
-  const messages = payload.systemMessages ?? [];
-  if (!isArray(messages)) return false;
-  const otherError = messages.some(
-    (message) => isRecord(message) && message.type === "error" && message.code !== NO_DEPARTURES_CODE,
-  );
-  if (otherError) return false;
-  const locations = payload.locations;
+export function resolvesStop(payload: unknown, stopId: string): boolean {
+  const locations = field(payload, "locations");
   return (
+    stopId !== "" &&
     isArray(locations) &&
     locations.some(
       (location) =>
@@ -164,6 +137,63 @@ export function isEmptyDepartureMonitor(payload: unknown, stopId: string): boole
         (location.id === stopId || location.id.startsWith(`${stopId}:`)),
     )
   );
+}
+
+/** An answer with departures — of another place than the requested stop. */
+export class WrongStopError extends ParseError {
+  constructor(stopId: string, locations: unknown) {
+    super("payload.locations", `the stop ${stopId} resolved (isBest)`, locations);
+    this.name = "WrongStopError";
+  }
+}
+
+/**
+ * `!msg.payload || !Array.isArray(msg.payload.stopEvents)` of both old nodes,
+ * as a narrowing that gets loud: a {@link ParseError} is the "no departures"
+ * warning resp. the 502 of the endpoint.
+ *
+ * Deliberate deviation (audit): the departures count only if EFA resolved
+ * the requested stop ({@link resolvesStop}); otherwise a {@link WrongStopError}.
+ * The old nodes showed whatever stop EFA had guessed.
+ */
+export function parseDepartureMonitor(payload: unknown, stopId: string): DepartureMonitor {
+  const events = field(payload, "stopEvents");
+  if (!isArray(events)) throw new ParseError("payload.stopEvents", "array", events);
+  if (!resolvesStop(payload, stopId)) throw new WrongStopError(stopId, field(payload, "locations"));
+  const stopEvents: StopEvent[] = [];
+  for (const event of events) {
+    const parsed = parseEvent(event);
+    if (parsed !== null) stopEvents.push(parsed);
+  }
+  return { stopEvents };
+}
+
+/**
+ * EFA-BW's system message codes for a resolved stop without departures:
+ * -4050 "no serving lines found" (night, weekday-only stops) and -4030 "no
+ * matching departure" (evenings in rural areas).
+ */
+export const NO_DEPARTURES_CODES: ReadonlySet<unknown> = new Set([-4050, -4030]);
+
+/**
+ * Whether `payload` is a valid departure monitor answer for `stopId` that
+ * lists no departure (late at night, a stop served only on weekdays). As
+ * recorded from EFA-BW, such an answer has no `stopEvents`, at most the error
+ * messages {@link NO_DEPARTURES_CODES}, and the requested stop itself under
+ * `locations` ({@link resolvesStop}).
+ *
+ * Not "no departures", stays a 502: an unknown or removed stop (EFA answers
+ * with fuzzy candidates, `isBest: false`, other ids), any other error message
+ * (e.g. "invalid date" with the stop resolved), anything without `version`.
+ */
+export function isEmptyDepartureMonitor(payload: unknown, stopId: string): boolean {
+  if (!isRecord(payload) || !isString(payload.version) || payload.stopEvents !== undefined) return false;
+  const messages = payload.systemMessages ?? [];
+  if (!isArray(messages)) return false;
+  const otherError = messages.some(
+    (message) => isRecord(message) && message.type === "error" && !NO_DEPARTURES_CODES.has(message.code),
+  );
+  return !otherError && resolvesStop(payload, stopId);
 }
 
 /**

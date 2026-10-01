@@ -422,7 +422,82 @@ async function realErrorsStay502(): Promise<void> {
   }
 }
 
+/**
+ * Deliberate deviation: EFA resolves an unknown or removed id to another
+ * place and answers with its departures. The old node showed them under this
+ * stop's name; the port answers 502 ("gestört" on the page). Modelled on a
+ * real answer for an unknown id: a POI as best match, the stop only fuzzy.
+ */
+async function misresolvedStopIs502(): Promise<void> {
+  const real = recordedPayload("abfahrten-on-demand-08115003");
+  assert.ok(isRecord(real));
+  const guessed = {
+    ...real,
+    locations: [
+      {
+        id: "poiID:1655788:8211000:-1:Domaine1795:Baden-Baden:Domaine1795:ANY:POI:915365:5757868:MRCV:b_w",
+        name: "Baden-Baden, Domaine1795",
+        type: "poi",
+        isBest: true,
+      },
+      { id: "de:08115:7100", name: "Böblingen, Böblingen", type: "stop", isBest: false },
+    ],
+  };
+  const scenario: Scenario = {
+    name: "EFA answers for another place",
+    query: "ags=08115003",
+    expressQuery: { ags: "08115003" },
+    efa: jsonHttp(200, guessed),
+  };
+  const old = await legacy(scenario);
+  assert.equal(old.response.status, 200, "the old node's answer changed – revisit the deviation");
+  const now = await ported(scenario);
+  assert.equal(now.response.status, 502);
+  const body: unknown = JSON.parse(now.response.body);
+  assert.ok(isRecord(body));
+  assert.equal(body.fehler, "Auskunft nicht erreichbar");
+  // The recorded answer itself, resolved to the stop, still lists its departures.
+  const fine = await ported({ ...scenario, efa: recorded("abfahrten-on-demand-08115003") });
+  assert.equal(fine.response.status, 200);
+}
+
+/** -4030 "no matching departure" for the resolved stop is "no departures" like -4050. */
+async function noMatchingDepartureIsEmpty(): Promise<void> {
+  const night = recordedPayload("abfahrten-on-demand-keine-abfahrten");
+  assert.ok(isRecord(night));
+  const evening = {
+    ...night,
+    systemMessages: [{ type: "error", module: "BROKER", code: -4030, text: "no matching departure found" }],
+  };
+  assert.equal(isEmptyDepartureMonitor(evening, GSCHWEND.stopId), true);
+  // Same resolved-stop rule as for -4050.
+  const stop = { id: GSCHWEND.stopId, name: GSCHWEND.stopName, type: "stop" };
+  assert.equal(
+    isEmptyDepartureMonitor({ ...evening, locations: [{ ...stop, isBest: false }] }, GSCHWEND.stopId),
+    false,
+  );
+  assert.equal(
+    isEmptyDepartureMonitor(
+      { ...evening, locations: [{ ...stop, id: "de:08136:27001", isBest: true }] },
+      GSCHWEND.stopId,
+    ),
+    false,
+  );
+  const now = await ported({
+    name: "-4030",
+    query: `ags=${GSCHWEND.ags}`,
+    expressQuery: { ags: GSCHWEND.ags },
+    efa: jsonHttp(200, evening),
+  });
+  assert.equal(now.response.status, 200);
+  const body: unknown = JSON.parse(now.response.body);
+  assert.ok(isRecord(body));
+  assert.deepEqual(body.abfahrten, []);
+}
+
 export {
+  misresolvedStopIs502 as "abfahrten-on-demand: departures of a place EFA guessed for the stop id are a 502 (deliberate deviation)",
+  noMatchingDepartureIsEmpty as "abfahrten-on-demand: -4030 for the resolved stop is an empty list, like -4050",
   departureTimesAreLocal as "abfahrten-on-demand: departure times are Berlin wall-clock time, not the UTC cut (deliberate)",
   noDeparturesIsAnEmptyList as "abfahrten-on-demand: a valid EFA answer without departures is 200 with an empty list (deviation)",
   realErrorsStay502 as "abfahrten-on-demand: network, HTTP and malformed EFA answers stay 502",
