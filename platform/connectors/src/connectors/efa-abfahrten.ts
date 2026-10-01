@@ -506,6 +506,13 @@ export async function run(ctx: Ctx): Promise<void> {
   if (stops.length === 0) return;
 
   const answers = await mapPool(stops, EFA_CONCURRENCY, (stop) => fetchStop(ctx, stop), ctx.signal);
+  const resolved = answers.filter((answer) => answer !== null).length;
+  if (resolved === 0) {
+    // One line for the run: every stop failed, which is no longer a stop's problem.
+    ctx.log.warn(
+      `EFA-BW: 0/${String(stops.length)} stops resolved — EFA unreachable or its answer format changed`,
+    );
+  }
   const now = ctx.now();
   const entities: NgsiEntity[] = [];
   const pending: PendingSignature[] = [];
@@ -530,11 +537,15 @@ export async function run(ctx: Ctx): Promise<void> {
       if (await ctx.orion.deleteAttribute(entity.id, name, ID)) pending.push([key, name, ABSENT, entity.id]);
     }
   }
-  if (entities.length === 0) return;
+  const counts = `${String(resolved)}/${String(stops.length)} stops resolved, ${String(entities.length)} written`;
+  if (entities.length === 0) {
+    ctx.log.status(counts);
+    return;
+  }
 
   const result = await ctx.orion.upsert({ entities, pending });
   ctx.log.status(
-    `${String(entities.length)}/${String(stops.length)} stops, ${String(result.committed)} signatures committed` +
+    `${counts}, ${String(result.committed)} signatures committed` +
       (result.dropped > 0 ? `, ${String(result.dropped)} dropped` : ""),
   );
 }

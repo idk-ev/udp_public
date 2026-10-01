@@ -288,6 +288,9 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
   angefragten Halt aufgelöst hat (alt: bei unbekannter Id die Abfahrten eines
   erratenen Orts); sonst `[warn]` ohne Schreiben bzw. 502. -4030 „no matching
   departure“ gilt wie -4050 als „keine Abfahrten“.
+- `eco-bw`, `wetter-bw`: Attribute mit `value: null` werden weggelassen und
+  einmal je Prozess im Broker entfernt (alt: gesendet, von Orion-LD mit 207
+  für die ganze Entität abgelehnt).
 - `efa-abfahrten`: ohne Echtzeit-Median fehlt `avgDelayMinutes` und wird im
   Broker entfernt (alt: `value: null`, von Orion-LD mit 207 für die ganze
   Entität abgelehnt, Neuversand alle 5 min).

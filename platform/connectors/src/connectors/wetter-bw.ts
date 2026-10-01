@@ -35,9 +35,15 @@
  * whose values are malformed (a missing key, a string where a number belongs) is
  * skipped and counted with a warning. The old node wrote whatever it found — or
  * threw on a missing daily array and lost the whole group.
+ *
+ * Deliberate deviation (audit): a value Open-Meteo reports as `null` is left
+ * out, and a value still in the broker withdrawn (kernel/null-values.ts). The
+ * old node sent `value: null`, which Orion-LD 1.6 refuses for the whole entity
+ * (207), so the municipality kept all of its old values.
  */
 
 import { observed } from "../kernel/ngsi.js";
+import { withdrawNulls } from "../kernel/null-values.js";
 import { ParseError, field, isRecord, isTruthy, requireArray, requireString } from "../kernel/parse.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
@@ -322,7 +328,8 @@ export async function runWith(ctx: Ctx, timing?: JoinTiming, nowMs?: () => numbe
       return;
     }
     ctx.log.status(`${String(entities.length)} municipalities with weather`);
-    const result = await ctx.orion.upsert(ctx.gate.ungated(entities), { chunkSize: UPSERT_CHUNK_SIZE });
+    const written = await withdrawNulls(ctx, entities, LABEL);
+    const result = await ctx.orion.upsert(ctx.gate.ungated(written), { chunkSize: UPSERT_CHUNK_SIZE });
     ctx.log.info(
       `${String(result.entities)} WeatherObserved upserted in ${String(result.chunks)} chunks ` +
         `(${String(result.failedChunks)} failed)`,

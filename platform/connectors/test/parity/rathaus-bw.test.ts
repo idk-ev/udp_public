@@ -527,9 +527,14 @@ function scoreWeighsNameTypeAndHours(): void {
   );
   // Word END too: an Ortsteil that starts like the town is not the town.
   assert.equal(score(tags({ name: "Rathaus Aufeld" }), "Au"), SCORE.townHallName);
-  // One part of a double name counts.
+  // One half of a double name counts less: which one is the main town is unknown.
   assert.equal(
     score(tags({ name: "Rathaus Villingen" }), "Villingen-Schwenningen"),
+    SCORE.townHallName + SCORE.municipalityPart,
+  );
+  // The full double name counts fully.
+  assert.equal(
+    score(tags({ name: "Rathaus Villingen-Schwenningen" }), "Villingen-Schwenningen"),
     SCORE.townHallName + SCORE.municipalityName,
   );
   // An annex named after the town does not beat the plain seat.

@@ -66,6 +66,7 @@
  */
 
 import { isArray, isRecord, isString, isTruthy } from "./parse.js";
+import { NGSI_CONTEXT } from "./types.js";
 import type { SignatureScope } from "./change-gate.js";
 import type {
   ChangeGate,
@@ -236,6 +237,19 @@ function deleteAnswerKnown(body: string): boolean {
   try {
     const parsed: unknown = JSON.parse(body === "" ? "{}" : body);
     return isRecord(parsed) && (isArray(parsed.success) || isArray(parsed.errors));
+  } catch {
+    return false;
+  }
+}
+
+/** `rel` of a JSON-LD context in a `Link` header. */
+const JSON_LD_CONTEXT_REL = "http://www.w3.org/ns/json-ld#context";
+
+/** An NGSI-LD "ResourceNotFound" problem details body. */
+function notFound(body: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    return isRecord(parsed) && isString(parsed.type) && parsed.type.endsWith("/ResourceNotFound");
   } catch {
     return false;
   }
@@ -448,6 +462,9 @@ class OrionClient implements Orion {
     try {
       response = await this.#fetch.text(url, {
         method: "DELETE",
+        // The context the entities are written with, so the short name expands
+        // to the same attribute — not to whatever default a broker assumes.
+        headers: { Link: `<${NGSI_CONTEXT}>; rel="${JSON_LD_CONTEXT_REL}"; type="application/ld+json"` },
         retries: 0,
         timeoutMs: WRITE_TIMEOUT_MS,
         redirect: "error",
@@ -456,8 +473,10 @@ class OrionClient implements Orion {
       this.#log.warn(`${label} delete ${attribute} of ${id} failed (${describeFailure(error)})`);
       return false;
     }
-    // 404: neither the attribute nor perhaps the entity exists — not held either way.
-    if (response.status === 204 || response.status === 200 || response.status === 404) return true;
+    // 404 ResourceNotFound: neither the attribute nor perhaps the entity exists —
+    // not held either way. Any other 404 (a proxy, a wrong path) proves nothing.
+    if (response.status === 204 || response.status === 200) return true;
+    if (response.status === 404 && notFound(response.body)) return true;
     const answer = describeAnswer(response.body);
     this.#log.warn(
       `${label} delete ${attribute} of ${id} HTTP ${String(response.status)}${answer === "" ? "" : ` — ${answer}`}`,

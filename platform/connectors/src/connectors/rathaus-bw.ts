@@ -45,7 +45,11 @@
  *    hours and the old name test stay as secondary signals ({@link SCORE});
  *  * a tie goes to the candidate nearer the municipality's centre (master
  *    data row); without master data, or at equal distance, the first element
- *    still wins.
+ *    still wins. Limitation: that centre is the polygon centroid of
+ *    `bw-gemeinden.json`, not the town centre; the generator of the stop
+ *    directory has a better reference (Wikidata), the geo context does not.
+ *    Of a double name ("Villingen-Schwenningen") one half counts only
+ *    {@link SCORE}.municipalityPart: which one is the main town is not known.
  */
 
 import { cleanText, dateObserved } from "../kernel/ngsi.js";
@@ -127,6 +131,7 @@ export const SCORE = {
   openingHours: 2,
   townHallName: 1,
   municipalityName: 4,
+  municipalityPart: 2,
   mainType: 5,
   subType: -5,
   annex: -3,
@@ -150,24 +155,33 @@ const WORD = /[\p{L}\p{N}]/u;
  * Villingen-Schwenningen — but not "Rathaus" or "Rathaus Aufeld" for Au.
  */
 function namesMunicipality(text: string, municipality: string | undefined): boolean {
+  return nameMatch(text, municipality) !== null;
+}
+
+/**
+ * `"full"`: the name (core) itself; `"part"`: only one half of a double name.
+ * Which half is the main town ("Villingen" or "Schwenningen") the master data
+ * do not say, so a half counts less ({@link SCORE}).
+ */
+function nameMatch(text: string, municipality: string | undefined): "full" | "part" | null {
   const core = municipality === undefined ? "" : coreName(municipality);
-  if (core === "") return false;
-  const parts = core.includes("-") ? [core, ...core.split("-").filter((part) => part.length >= 4)] : [core];
+  if (core === "") return null;
+  if (wordAt(text, core)) return "full";
+  const parts = core.includes("-") ? core.split("-").filter((part) => part.length >= 4) : [];
+  return parts.some((part) => wordAt(text, part)) ? "part" : null;
+}
+
+/** `part` as a word of `text` (an adjective or genitive ending allowed). */
+function wordAt(text: string, part: string): boolean {
   const lower = text.toLowerCase();
-  return parts.some((part) => {
-    for (let at = lower.indexOf(part); at >= 0; at = lower.indexOf(part, at + 1)) {
-      const before = at === 0 ? "" : lower.charAt(at - 1);
-      const after = lower.slice(at + part.length);
-      // An adjective or genitive ending is fine: "Stuttgarter", "Neckarsulms".
-      if (
-        !WORD.test(before) &&
-        (after === "" || !WORD.test(after.charAt(0)) || /^(?:er|s)(?![\p{L}\p{N}])/u.test(after))
-      ) {
-        return true;
-      }
-    }
-    return false;
-  });
+  for (let at = lower.indexOf(part); at >= 0; at = lower.indexOf(part, at + 1)) {
+    const before = at === 0 ? "" : lower.charAt(at - 1);
+    const after = lower.slice(at + part.length);
+    // An adjective or genitive ending is fine: "Stuttgarter", "Neckarsulms".
+    const ending = after === "" || !WORD.test(after.charAt(0)) || /^(?:er|s)(?![\p{L}\p{N}])/u.test(after);
+    if (!WORD.test(before) && ending) return true;
+  }
+  return false;
 }
 
 export interface TownHallEntity extends NgsiEntity {
@@ -212,7 +226,9 @@ export function score(tags: ReadonlyMap<string, string>, municipality?: string, 
   if (present(tags.get("opening_hours"))) points += SCORE.openingHours;
   if (TOWN_HALL_NAME.test(name)) points += SCORE.townHallName;
   // Not for an annex either: "Technisches Rathaus Göppingen" is not the seat.
-  if (!subOffice && !annex && namesMunicipality(name, municipality)) points += SCORE.municipalityName;
+  const named = subOffice || annex ? null : nameMatch(name, municipality);
+  if (named === "full") points += SCORE.municipalityName;
+  if (named === "part") points += SCORE.municipalityPart;
   if (MAIN_TYPES.has(type)) points += SCORE.mainType;
   if (SUB_TYPES.has(type) || (town && type === VILLAGE)) points += SCORE.subType;
   if (annex) points += SCORE.annex;

@@ -229,6 +229,11 @@ function isCommitWarning(text: string): boolean {
   return text.startsWith("Upsert not confirmed") || text.startsWith("orion upsert");
 }
 
+/** The port's one line for a run in which no stop resolved (the old nodes had no run). */
+function isRunWarning(text: string): boolean {
+  return text.startsWith("EFA-BW: 0/");
+}
+
 /**
  * One run on both sides; compares URLs, upserted entities, warnings per stop
  * and the signature tables after the commit. Returns what the port upserted.
@@ -263,7 +268,7 @@ async function cycle(p: Pair, label: string): Promise<unknown[]> {
   }
   const portWarnings = p.port.log.warnings().slice(warningsBefore);
   assert.equal(
-    portWarnings.filter((text) => !isCommitWarning(text)).length,
+    portWarnings.filter((text) => !isCommitWarning(text) && !isRunWarning(text)).length,
     legacy.reduce((sum, stop) => sum + stop.warnings.length, 0),
     `${label}: number of connector warnings differs`,
   );
@@ -362,7 +367,16 @@ async function errorPathsWarnAsBefore(): Promise<void> {
   p.answers.set("08317008", { status: 200, payload: "not json at all" });
   const upserted = await cycle(p, "EFA 500 / refused / not JSON");
   assert.equal(upserted.length, 0);
-  assert.equal(p.port.log.warnings().length, 3, "one warning per stop, as each old node warned");
+  const warnings = p.port.log.warnings();
+  assert.equal(
+    warnings.filter((w) => !isRunWarning(w)).length,
+    3,
+    "one warning per stop, as each old node warned",
+  );
+  // Plus one line for the run: nothing resolved at all.
+  assert.deepEqual(warnings.filter(isRunWarning), [
+    "EFA-BW: 0/3 stops resolved — EFA unreachable or its answer format changed",
+  ]);
   assert.ok(!p.seen.some((request) => request.url.startsWith(ORION)), "nothing to write, no upsert");
 }
 
@@ -549,11 +563,16 @@ async function unknownMedianIsWithdrawnNotNull(): Promise<void> {
 
   // The port against the same broker, over seven runs.
   let answer = { status: 200, payload: withoutRealtime(fixturePayload(ags)) };
-  let deleteStatus = 500;
+  // A bare 404 (a proxy, a wrong path) proves nothing; Orion-LD's own says what is missing.
+  const notFound = jsonHttp(404, {
+    type: "https://uri.etsi.org/ngsi-ld/errors/ResourceNotFound",
+    title: "Entity/Attribute not found",
+  });
+  let deleteAnswer: HttpResponse = httpResponse(404, "<html>not found</html>");
   let upsertStatus: number | null = null;
   const network = recordingFetcher((request): HttpResponse => {
     if (request.url.startsWith(ORION)) {
-      if (request.method === "DELETE") return httpResponse(deleteStatus);
+      if (request.method === "DELETE") return deleteAnswer;
       if (upsertStatus !== null) return httpResponse(upsertStatus);
       return orionLd16(request.body ?? "[]");
     }
@@ -572,7 +591,7 @@ async function unknownMedianIsWithdrawnNotNull(): Promise<void> {
     };
   };
 
-  // 1: the withdrawal fails — the entity is still written in full, but its
+  // 1: the withdrawal fails (a bare 404) — the entity is still written in full, but its
   // absence is not recorded, so the next run tries again.
   const first = await step();
   assert.equal(first.deletes, 1);
@@ -584,10 +603,17 @@ async function unknownMedianIsWithdrawnNotNull(): Promise<void> {
   assert.equal(port.ctx.gate.table(key).get("avgDelayMinutes"), undefined);
   assert.equal(port.ctx.gate.table(key).has("departures"), true, "the stop itself was confirmed");
 
-  // 2: withdrawn (404 counts: not held); absence committed with the entity.
-  deleteStatus = 404;
+  // 2: withdrawn (ResourceNotFound counts: not held); absence committed with the entity.
+  deleteAnswer = notFound;
+  const before = network.seen.length;
   const second = await step();
   assert.equal(second.deletes, 1);
+  // With the context the entities are written with.
+  const sent = network.seen.slice(before).find((r) => r.method === "DELETE");
+  assert.equal(
+    sent?.options?.headers?.Link,
+    '<https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.6.jsonld>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"',
+  );
   assert.equal(port.ctx.gate.table(key).get("avgDelayMinutes"), ABSENT);
 
   // 3: still unknown — no request for it, freshness only.
@@ -605,7 +631,7 @@ async function unknownMedianIsWithdrawnNotNull(): Promise<void> {
 
   // 5: gone again — withdrawn once more.
   answer = { status: 200, payload: withoutRealtime(fixturePayload(ags)) };
-  deleteStatus = 204;
+  deleteAnswer = httpResponse(204);
   const fifth = await step();
   assert.equal(fifth.deletes, 1);
   assert.equal(port.ctx.gate.table(key).get("avgDelayMinutes"), ABSENT);

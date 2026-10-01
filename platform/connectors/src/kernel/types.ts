@@ -805,7 +805,8 @@ export interface Orion {
    * Removes one attribute of one entity (`DELETE …/entities/{id}/attrs/{attr}`)
    * — the only way to withdraw a value, since Orion-LD refuses a `null` value
    * in a batch upsert. `true` when the broker no longer holds it (204, or 404
-   * for a missing attribute or entity); `false` with a `[warn]` otherwise.
+   * ResourceNotFound for a missing attribute or entity); `false` with a `[warn]`
+   * otherwise. Sent with the core context as `Link`, as the entities are written.
    * Paced as a write, no retry. Never throws for a broker fault.
    */
   deleteAttribute(id: EntityId, attribute: string, label?: string): Promise<boolean>;

@@ -27,14 +27,17 @@
  *  * Coordinates given as numeric strings would have gone into `location`
  *    as strings; they are written as numbers here (`GeoJsonPoint`). The feed
  *    has one site with empty-string coordinates, which both skip.
- *  * A channel without numeric `counts` is written with `dailyTotal: null`
- *    (the old node wrote a Property without a value); a non-string
- *    `iso_timestamp` or a `null` channel is skipped (the old node threw).
+ *  * A channel without numeric `counts` is written without `dailyTotal`, and a
+ *    value still in the broker is withdrawn (kernel/null-values.ts). The old
+ *    node sent `value: null`, which Orion-LD 1.6 refuses for the whole entity
+ *    (207): such a counter was never written. A non-string `iso_timestamp` or a
+ *    `null` channel is skipped (the old node threw).
  *  * The prune runs after the upsert instead of concurrently before it; it
  *    keeps every id of the run, so both touch disjoint ids.
  */
 
 import { cleanText, dateObserved, observed } from "../kernel/ngsi.js";
+import { withdrawNulls } from "../kernel/null-values.js";
 import { isArray, isRecord, isString, isTruthy } from "../kernel/parse.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
@@ -253,7 +256,8 @@ export async function run(ctx: Ctx): Promise<void> {
   ctx.log.status(status);
 
   // Written in full once a day, as before: the old flow had no gate here.
-  await ctx.orion.upsert(ctx.gate.ungated(result.entities), { chunkSize: CHUNK_SIZE });
+  const entities = await withdrawNulls(ctx, result.entities, LABEL);
+  await ctx.orion.upsert(ctx.gate.ungated(entities), { chunkSize: CHUNK_SIZE });
 
   // Daily run over the complete feed: remove own counters and municipal sums
   // not confirmed for 60 h (2.5 runs).
