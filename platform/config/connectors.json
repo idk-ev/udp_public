@@ -634,9 +634,9 @@
       "name": "ÖPNV-Abfahrten auf Anfrage (EFA-BW, alle Kommunen)",
       "scope": "land",
       "enabledFor": "*",
-      "intervalSeconds": 86400,
+      "intervalSeconds": 3600,
       "cron": null,
-      "sollMinutes": 1560,
+      "sollMinutes": 150,
       "sampleEntity": null,
       "provides": [
         "abfahrten-live"

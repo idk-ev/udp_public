@@ -802,6 +802,15 @@ export interface Orion {
   /** Batch delete, chunked. Never throws for a broker fault; see {@link DeleteResult.deleted}. */
   delete(ids: readonly EntityId[], options?: DeleteOptions): Promise<DeleteResult>;
   /**
+   * Removes one attribute of one entity (`DELETE …/entities/{id}/attrs/{attr}`)
+   * — the only way to withdraw a value, since Orion-LD refuses a `null` value
+   * in a batch upsert. `true` when the broker no longer holds it (204, or 404
+   * ResourceNotFound for a missing attribute or entity); `false` with a `[warn]`
+   * otherwise. Sent with the core context as `Link`, as the entities are written.
+   * Paced as a write, no retry. Never throws for a broker fault.
+   */
+  deleteAttribute(id: EntityId, attribute: string, label?: string): Promise<boolean>;
+  /**
    * One request. Result stays `unknown`; the caller narrows it.
    *
    * Reads (`find`, `list`, `count`) are not paced and so never wait behind a

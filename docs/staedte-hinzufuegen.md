@@ -117,6 +117,20 @@ Minuten alt. Der Micro-Cache des Cockpit-nginx (60 s) fängt Andrang auf
 denselben Halt ab. Der Dauerabruf besteht nur noch für die Städte in
 `efa-abfahrten.enabledFor` — deren Verlaufsdaten speisen den Gemeinde-Puls.
 
+Halteauswahl (`scripts/efa-haltestellen.py`): nur Halte mit ID im eigenen
+Kreis (`de:08<kreis>:…`) bis 5 km von der Ortsmitte (Wikidata P625,
+`scripts/ortsmitten.json`; der Mittelpunkt in `bw-gemeinden.json` ist der
+Flächenschwerpunkt), ohne solche ein Halt im Nachbarkreis bis 2 km; bewertet
+werden Bahnhof/ZOB/Rathaus/Mitte, Zuordnung zu Gemeinde und Hauptort und Nähe.
+Ohne gültigen Halt fehlt die Gemeinde (keine Tafel statt einer falschen). Für
+die Städte mit `efa-abfahrten.params.stopId` gilt der dort gepflegte Halt
+(`art: "kuratiert"`). Die Datei bestimmt keine Entitäts-IDs:
+`efa-abfahrten` nimmt seine Halte aus `params` der Registry und schreibt unter
+`bw-<ags>-stop` bzw. `params.entityId`; ein neuer `stopId` dort überschreibt
+dieselbe Entität. Wer `entityId` ändert oder eine Stadt aus `enabledFor`
+nimmt, löscht die alte `PublicTransportStop`-Entität von Hand — der Konnektor
+räumt bewusst nicht selbst auf.
+
 ### Was echte Kommunenarbeit bleibt
 
 Diese Bausteine brauchen eine Datenquelle, die es nur lokal gibt — sie lassen

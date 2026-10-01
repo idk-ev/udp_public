@@ -66,6 +66,7 @@
  */
 
 import { isArray, isRecord, isString, isTruthy } from "./parse.js";
+import { NGSI_CONTEXT } from "./types.js";
 import type { SignatureScope } from "./change-gate.js";
 import type {
   ChangeGate,
@@ -241,8 +242,66 @@ function deleteAnswerKnown(body: string): boolean {
   }
 }
 
+/** `rel` of a JSON-LD context in a `Link` header. */
+const JSON_LD_CONTEXT_REL = "http://www.w3.org/ns/json-ld#context";
+
+/** An NGSI-LD "ResourceNotFound" problem details body. */
+function notFound(body: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    return isRecord(parsed) && isString(parsed.type) && parsed.type.endsWith("/ResourceNotFound");
+  } catch {
+    return false;
+  }
+}
+
 function describeFailure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Errors of a batch answer named in a warning; the rest are counted. */
+export const LOGGED_ERRORS = 3;
+const LOGGED_ERROR_LENGTH = 240;
+const LOGGED_BODY_LENGTH = 300;
+
+function clip(text: string, length: number): string {
+  return text.length > length ? `${text.slice(0, length - 1)}…` : text;
+}
+
+/** `title — detail` of an NGSI-LD problem details object, or `""`. */
+function problemText(problem: unknown): string {
+  if (!isRecord(problem)) return "";
+  return [problem.title, problem.detail].filter((part) => isString(part) && part !== "").join(" — ");
+}
+
+/**
+ * A broker answer for a warning. A batch answer (`success` / `errors`) is
+ * summarised errors first — entity id with title and detail of the first
+ * {@link LOGGED_ERRORS}, then counts; the raw body spent its whole length on
+ * the success list and cut the errors off. A single problem details object
+ * gives its title and detail; anything else its first characters.
+ */
+export function describeAnswer(body: string): string {
+  if (body === "") return "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return clip(body, LOGGED_BODY_LENGTH);
+  }
+  if (isRecord(parsed) && (isArray(parsed.errors) || isArray(parsed.success))) {
+    const errors = isArray(parsed.errors) ? parsed.errors : [];
+    const named = errors.slice(0, LOGGED_ERRORS).map((item) => {
+      const id = idOf(item);
+      const text = problemText(isRecord(item) ? item.error : undefined) || JSON.stringify(item);
+      return `${isString(id) ? id : "?"}: ${clip(text, LOGGED_ERROR_LENGTH)}`;
+    });
+    const more = errors.length > LOGGED_ERRORS ? ` (+${String(errors.length - LOGGED_ERRORS)} more)` : "";
+    const ok = isArray(parsed.success) ? `, ${String(parsed.success.length)} ok` : "";
+    return `${String(errors.length)} refused${ok}${named.length > 0 ? `: ${named.join("; ")}` : ""}${more}`;
+  }
+  const problem = problemText(parsed);
+  return clip(problem === "" ? body : problem, LOGGED_BODY_LENGTH);
 }
 
 class OrionClient implements Orion {
@@ -307,16 +366,19 @@ class OrionClient implements Orion {
       const statusText = status === null ? `no response: ${failure}` : String(status);
       const chunkFailed = status === null || ((status < 200 || status >= 300) && status !== 207);
       if (chunkFailed) failed += 1;
+      const answer = describeAnswer(body);
+      const refused = part.length - confirmed.size;
       if (outcome.dropped > 0) {
         // Wording of SIG_COMMIT, so the warning reads the same in both runtimes.
         this.#log.warn(
           `Upsert not confirmed (${statusText}): ${String(outcome.dropped)} change signatures dropped, ` +
-            `entities will be sent again${body === "" ? "" : ` — ${body.slice(0, 200)}`}`,
+            `entities will be sent again${answer === "" ? "" : ` — ${answer}`}`,
         );
-      } else if (chunkFailed) {
+      } else if (chunkFailed || refused > 0) {
+        // Also a 207 of an ungated write: nothing to drop, but entities refused.
         this.#log.warn(
-          `orion upsert: ${String(part.length)} entities not confirmed (${statusText})` +
-            (body === "" ? "" : ` — ${body.slice(0, 300)}`),
+          `orion upsert: ${String(refused)} of ${String(part.length)} entities not confirmed (${statusText})` +
+            (answer === "" ? "" : ` — ${answer}`),
         );
       }
       if (pending.length > 0) {
@@ -390,6 +452,36 @@ class OrionClient implements Orion {
       }
     }
     return { requested: ids.length, chunks: chunks.length, failedChunks: failed, deleted };
+  }
+
+  async deleteAttribute(id: EntityId, attribute: string, label = "orion"): Promise<boolean> {
+    const url =
+      `${this.#base}/ngsi-ld/v1/entities/${encodeURIComponent(id)}` +
+      `/attrs/${encodeURIComponent(attribute)}`;
+    let response: HttpResponse;
+    try {
+      response = await this.#fetch.text(url, {
+        method: "DELETE",
+        // The context the entities are written with, so the short name expands
+        // to the same attribute — not to whatever default a broker assumes.
+        headers: { Link: `<${NGSI_CONTEXT}>; rel="${JSON_LD_CONTEXT_REL}"; type="application/ld+json"` },
+        retries: 0,
+        timeoutMs: WRITE_TIMEOUT_MS,
+        redirect: "error",
+      });
+    } catch (error) {
+      this.#log.warn(`${label} delete ${attribute} of ${id} failed (${describeFailure(error)})`);
+      return false;
+    }
+    // 404 ResourceNotFound: neither the attribute nor perhaps the entity exists —
+    // not held either way. Any other 404 (a proxy, a wrong path) proves nothing.
+    if (response.status === 204 || response.status === 200) return true;
+    if (response.status === 404 && notFound(response.body)) return true;
+    const answer = describeAnswer(response.body);
+    this.#log.warn(
+      `${label} delete ${attribute} of ${id} HTTP ${String(response.status)}${answer === "" ? "" : ` — ${answer}`}`,
+    );
+    return false;
   }
 
   /**

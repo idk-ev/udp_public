@@ -271,9 +271,15 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - nginx: Cache-Schlüssel und Upstream-Anfrage von `/abfahrten` und
   `/warnungen.ics` nur mit `ags` bzw. `kreis`; `limit_req` je Client (30 bzw.
   10 Anfragen/min, darüber 429).
+- Upsert-Warnungen nennen bei 207 zuerst die abgelehnten Entitäten mit Fehler
+  (höchstens drei, Rest gezählt) statt des abgeschnittenen Rohtexts; ein 207
+  mit Ablehnungen warnt auch ohne Signaturen.
 
 *Konnektoren*
 
+- `abfahrten-on-demand`: Halteverzeichnis stündlich statt täglich geladen,
+  bedingt (`If-None-Match`/`If-Modified-Since`, 304 = unverändert) — beim
+  Rolling Update erwischte der erste Abruf sonst einen Tag lang die alte Datei.
 - `abfahrten-on-demand`: EFA über den gemeinsamen EFA-Bucket, ohne Retry, 30 s
   Timeout (502 nach 30 s statt nginx-504 nach 60 s); kein JSONP; ein
   Verzeichnis ohne `halte`-Objekt wird verworfen, das alte bleibt.
@@ -281,6 +287,20 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
   Antwort 30 s wiederverwendet wird; eigene Warteschlange (2 laufend, 8
   wartend, darüber sofort 503); Abbruch, wenn kein Client mehr wartet;
   EFA-Fehler als gedrosseltes `[warn]`.
+- `efa-abfahrten`, `/abfahrten`: Abfahrten zählen nur, wenn EFA den
+  angefragten Halt aufgelöst hat (alt: bei unbekannter Id die Abfahrten eines
+  erratenen Orts); sonst `[warn]` ohne Schreiben bzw. 502. -4030 „no matching
+  departure“ gilt wie -4050 als „keine Abfahrten“.
+- `eco-bw`, `wetter-bw`: Attribute mit `value: null` werden weggelassen und
+  einmal je Prozess im Broker entfernt (alt: gesendet, von Orion-LD mit 207
+  für die ganze Entität abgelehnt).
+- `efa-abfahrten`: ohne Echtzeit-Median fehlt `avgDelayMinutes` und wird im
+  Broker entfernt (alt: `value: null`, von Orion-LD mit 207 für die ganze
+  Entität abgelehnt, Neuversand alle 5 min).
+- `rathaus-bw`: auch Relationen abgefragt; Bezirks-/Ortsverwaltungen und
+  `townhall:type` district/village abgewertet, city/town/municipality und der
+  Gemeindename aufgewertet; Gleichstand nach Nähe zum Ortskern (alt: erstes
+  Element; Öffnungszeiten +2, Name +1).
 - `efa-abfahrten`: höchstens 2 Anfragen gleichzeitig, 500 ms Abstand (statt 23
   auf einmal); ein Batch-Upsert statt 23; fehlende `stopId` einmal je Prozess
   gewarnt; Halt-Id URL-kodiert (`:` bleibt, heutige URLs bytegleich).

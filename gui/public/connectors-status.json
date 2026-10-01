@@ -1,5 +1,5 @@
 {
- "stand": "2026-09-29T10:12:06+00:00",
+ "stand": "2026-10-01T06:24:45+00:00",
  "connectors": [
   {
    "id": "ops-host",
@@ -510,7 +510,7 @@
    "name": "ÖPNV-Abfahrten auf Anfrage (EFA-BW, alle Kommunen)",
    "scope": "land",
    "enabledFor": "*",
-   "sollMinutes": 1560,
+   "sollMinutes": 150,
    "sampleEntity": null,
    "provides": [
     "abfahrten-live"

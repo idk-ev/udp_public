@@ -288,7 +288,11 @@ function request(ags: string, signal?: AbortSignal): RouteRequest {
   };
 }
 
-const EFA_OK = jsonHttp(200, { stopEvents: [] });
+/** An empty departure list, resolved to the stop asked for (`name_dm`). */
+function efaOk(url: string): HttpResponse {
+  const stopId = new URL(url).searchParams.get("name_dm") ?? "";
+  return jsonHttp(200, { stopEvents: [], locations: [{ id: stopId, type: "stop", isBest: true }] });
+}
 
 async function onDemandRig(
   respond: (request: GRequest) => HttpResponse | Error,
@@ -310,7 +314,7 @@ function efaRequests(seen: readonly GRequest[]): GRequest[] {
 }
 
 async function sameStopIsFetchedOnceAndReused(): Promise<void> {
-  const r = await onDemandRig(() => EFA_OK, 30);
+  const r = await onDemandRig((request) => efaOk(request.url), 30);
   const answers = await Promise.all(Array.from({ length: 6 }, () => r.route.handle(request(agsOf(0)))));
   assert.deepEqual(
     answers.map((answer) => answer.status),
@@ -326,7 +330,7 @@ async function sameStopIsFetchedOnceAndReused(): Promise<void> {
 }
 
 async function fullQueueIsA503WithoutWarning(): Promise<void> {
-  const r = await onDemandRig(() => EFA_OK, 80);
+  const r = await onDemandRig((request) => efaOk(request.url), 80);
   const answers = await Promise.all(
     Array.from({ length: STOPS }, (_, i) => r.route.handle(request(agsOf(i)))),
   );
@@ -354,7 +358,7 @@ async function lastClientGoneAbortsTheUpstreamRequest(): Promise<void> {
       signals.push(signal);
       return new Promise<HttpResponse>((resolve, reject) => {
         const timer = setTimeout(() => {
-          resolve(EFA_OK);
+          resolve(efaOk(url));
         }, 300);
         signal.addEventListener("abort", () => {
           clearTimeout(timer);
@@ -461,7 +465,10 @@ async function postMayReset(url: string, body: string): Promise<number | null> {
 }
 
 async function triggerOnlyFromLoopbackAndBodiesNeverError(): Promise<void> {
-  const g = rig(registryEntry("abfahrten-on-demand"), recordingFetcher(() => EFA_OK).fetcher);
+  const g = rig(
+    registryEntry("abfahrten-on-demand"),
+    recordingFetcher((request) => efaOk(request.url)).fetcher,
+  );
   const kernel = g.kernel;
   let runs = 0;
   kernel.scheduler.add(

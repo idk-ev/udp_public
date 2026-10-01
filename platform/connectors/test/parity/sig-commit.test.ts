@@ -19,7 +19,7 @@
 import assert from "node:assert/strict";
 import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
 import type { SignatureScope } from "../../src/kernel/change-gate.js";
-import { createOrion } from "../../src/kernel/orion.js";
+import { createOrion, describeAnswer, LOGGED_ERRORS } from "../../src/kernel/orion.js";
 import type {
   EntityId,
   HttpResponse,
@@ -151,7 +151,102 @@ async function onlyTheChunksPendingIsCommitted(): Promise<void> {
   assert.match(log.warnings()[0] ?? "", /^Upsert not confirmed \(500\): 1 change signatures dropped/);
 }
 
+/** Orion-LD 1.6.0's per-entity error for a `null` value, as recorded from the broker. */
+function nullValueError(id: EntityId): Record<string, unknown> {
+  return {
+    entityId: id,
+    error: {
+      type: "https://uri.etsi.org/ngsi-ld/errors/BadRequestData",
+      title: "The use of NULL value is not recommended for JSON-LD (the whole attribute gets ignored)",
+      detail: "https://uri.etsi.org/ngsi-ld/default-context/avgDelayMinutes",
+      status: 400,
+    },
+  };
+}
+
+async function warningNamesTheErrorsFirst(): Promise<void> {
+  // The shape of the efa-abfahrten warning that never showed its errors: a
+  // long success list first, the errors behind it, the body cut at 200 chars.
+  const ids: EntityId[] = Array.from(
+    { length: 23 },
+    (_, n): EntityId => `urn:ngsi-ld:PublicTransportStop:bw-stop-${String(n)}`,
+  );
+  const refused = ids.slice(16);
+  const body = JSON.stringify({ success: ids.slice(0, 16), errors: refused.map(nullValueError) });
+  const store = new SignatureStore().scope("test");
+  const { fetcher } = scriptedFetcher((): HttpResponse => httpResponse(207, body));
+  const log = recordingLog();
+  const orion = createOrion(log, fetcher, createChangeGate(store, log), store);
+  const entities = ids.map((id) => ({ id, type: "PublicTransportStop", "@context": CONTEXT }));
+  const pending: PendingSignature[] = ids.map((id) => [`sig:${id}`, "departures", "x", id]);
+  const result = await orion.upsert({ entities, pending });
+  assert.equal(result.dropped, 7);
+  assert.equal(log.warnings().length, 1);
+  const [warning = ""] = log.warnings();
+  assert.ok(
+    warning.startsWith(
+      "Upsert not confirmed (207): 7 change signatures dropped, entities will be sent again — 7 refused, 16 ok: " +
+        `${refused[0] ?? ""}: The use of NULL value is not recommended for JSON-LD (the whole attribute gets ignored)` +
+        " — https://uri.etsi.org/ngsi-ld/default-context/avgDelayMinutes; ",
+    ),
+    warning,
+  );
+  assert.ok(warning.endsWith(" (+4 more)"), warning);
+  assert.ok(!warning.includes(`${ids[0] ?? "-"}:`), "the success list is counted, not listed");
+}
+
+async function refusedUngatedEntitiesWarn(): Promise<void> {
+  // No pending signatures (an ungated write): nothing is dropped, but a 207
+  // with refused entities is still worth a warning — it used to pass silently.
+  const store = new SignatureStore().scope("test");
+  const body = JSON.stringify({ success: [A, C], errors: [nullValueError(B)] });
+  const log = recordingLog();
+  const orion = createOrion(
+    log,
+    scriptedFetcher((): HttpResponse => httpResponse(207, body)).fetcher,
+    createChangeGate(store, log),
+    store,
+  );
+  const result = await orion.upsert({ entities: ENTITIES, pending: [] });
+  assert.deepEqual([...result.confirmed], [A, C]);
+  assert.equal(result.failedChunks, 0);
+  assert.match(
+    log.warnings()[0] ?? "",
+    /^orion upsert: 1 of 3 entities not confirmed \(207\) — 1 refused, 2 ok: urn:ngsi-ld:Test:b: The use of NULL value/,
+  );
+  // A fully confirmed 207 stays quiet.
+  const quiet = recordingLog();
+  const all = JSON.stringify({ success: [A, B, C], errors: [] });
+  const ok = createOrion(
+    quiet,
+    scriptedFetcher((): HttpResponse => httpResponse(207, all)).fetcher,
+    createChangeGate(store, quiet),
+    store,
+  );
+  await ok.upsert({ entities: ENTITIES, pending: [] });
+  assert.deepEqual(quiet.warnings(), []);
+}
+
+function brokerAnswersAreSummarised(): void {
+  assert.equal(describeAnswer(""), "");
+  assert.equal(
+    describeAnswer(JSON.stringify({ type: "x", title: "Bad Request", detail: "no entities" })),
+    "Bad Request — no entities",
+  );
+  assert.equal(describeAnswer("<html>proxy error</html>"), "<html>proxy error</html>");
+  assert.equal(describeAnswer("x".repeat(1000)).length, 300);
+  // An error without problem details still names its entity.
+  assert.equal(
+    describeAnswer(JSON.stringify({ errors: [{ entityId: A }] })),
+    `1 refused: ${A}: {"entityId":"${A}"}`,
+  );
+  assert.equal(LOGGED_ERRORS, 3);
+}
+
 export {
   everyBrokerAnswerCommitsTheSame as "signature commit: old SIG_COMMIT node and Orion.upsert commit identically for every broker answer",
   onlyTheChunksPendingIsCommitted as "signature commit: each chunk commits only its own pending signatures",
+  warningNamesTheErrorsFirst as "signature commit: a 207 warning names the refused entities and their errors, and counts the rest",
+  refusedUngatedEntitiesWarn as "signature commit: a 207 with refused entities warns without pending signatures too",
+  brokerAnswersAreSummarised as "signature commit: broker answers are summarised for the log (problem details, clipped bodies)",
 };

@@ -279,6 +279,7 @@ class Broker {
   /** Ids of `Thing` entities the broker holds, for the prune's listing. */
   readonly things = new Set<string>();
   countRequests = 0;
+  attributeDeletes = 0;
   readonly events: string[];
 
   constructor(events: string[]) {
@@ -303,6 +304,10 @@ class Broker {
         this.things.delete(id);
         this.events.push(`broker delete ${id}`);
       }
+      return httpResponse(204);
+    }
+    if (request.method === "DELETE" && path.includes("/attrs/")) {
+      this.attributeDeletes += 1;
       return httpResponse(204);
     }
     const type = request.url.searchParams.get("type");
@@ -1232,6 +1237,27 @@ export async function gatedUpsertIsFencedEvenWithNothingToWrite(): Promise<void>
   assert.ok(
     warned(service.log, "writer lock not proven in the store") + warned(service.log, "Upsert not sent") >= 1,
   );
+}
+
+/**
+ * Withdrawing an attribute becomes a signature ("absent"), so it is fenced
+ * like a gated upsert: after a takeover it is not sent.
+ */
+export async function attributeDeleteIsFenced(): Promise<void> {
+  const { db, broker, service } = await afterOneGatedRun();
+  const withdraw = (outcome: boolean[]): ConnectorRunner => ({
+    id: "gated",
+    run: async (ctx) => {
+      outcome.push(await ctx.orion.deleteAttribute(ID("t-0"), "value"));
+    },
+  });
+  const outcome: boolean[] = [];
+  await runConnector(service.kernel, service.gated, withdraw(outcome));
+  assert.deepEqual([outcome, broker.attributeDeletes], [[true], 1]);
+
+  db.generation += 1; // another instance took over
+  await runConnector(service.kernel, service.gated, withdraw(outcome));
+  assert.deepEqual([outcome, broker.attributeDeletes], [[true, false], 1], "sent after the takeover");
 }
 
 /** Seeded signatures are persisted at once, and the write after the seeding is no full rewrite. */

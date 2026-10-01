@@ -1056,6 +1056,16 @@ class GuardedOrion implements Orion {
     return this.#inner.delete(ids, options);
   }
 
+  /**
+   * Its success becomes a signature (the attribute is absent), so it follows
+   * the rule of a gated upsert: not sent without usable state or without the
+   * writer lock — a stale owner must not withdraw what the new one wrote.
+   */
+  async deleteAttribute(id: EntityId, attribute: string, label?: string): Promise<boolean> {
+    if (!this.#store.usable() || !(await this.#store.fenced())) return false;
+    return this.#inner.deleteAttribute(id, attribute, label);
+  }
+
   find(query: OrionQuery, options?: OrionReadOptions): Promise<JsonResponse> {
     return this.#inner.find(query, options);
   }

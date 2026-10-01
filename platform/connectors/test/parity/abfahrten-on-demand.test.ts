@@ -29,7 +29,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { clock, DIRECTORY_URL, ROUTE_PATH, run, routes } from "../../src/connectors/abfahrten-on-demand.js";
+import {
+  clock,
+  DIRECTORY,
+  DIRECTORY_URL,
+  ROUTE_PATH,
+  run,
+  routes,
+} from "../../src/connectors/abfahrten-on-demand.js";
 import { EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor } from "../../src/connectors/efa.js";
 import { isArray } from "../../src/kernel/parse.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
@@ -422,7 +429,121 @@ async function realErrorsStay502(): Promise<void> {
   }
 }
 
+/**
+ * Deliberate deviation: EFA resolves an unknown or removed id to another
+ * place and answers with its departures. The old node showed them under this
+ * stop's name; the port answers 502 ("gestört" on the page). Modelled on a
+ * real answer for an unknown id: a POI as best match, the stop only fuzzy.
+ */
+async function misresolvedStopIs502(): Promise<void> {
+  const real = recordedPayload("abfahrten-on-demand-08115003");
+  assert.ok(isRecord(real));
+  const guessed = {
+    ...real,
+    locations: [
+      {
+        id: "poiID:1655788:8211000:-1:Domaine1795:Baden-Baden:Domaine1795:ANY:POI:915365:5757868:MRCV:b_w",
+        name: "Baden-Baden, Domaine1795",
+        type: "poi",
+        isBest: true,
+      },
+      { id: "de:08115:7100", name: "Böblingen, Böblingen", type: "stop", isBest: false },
+    ],
+  };
+  const scenario: Scenario = {
+    name: "EFA answers for another place",
+    query: "ags=08115003",
+    expressQuery: { ags: "08115003" },
+    efa: jsonHttp(200, guessed),
+  };
+  const old = await legacy(scenario);
+  assert.equal(old.response.status, 200, "the old node's answer changed – revisit the deviation");
+  const now = await ported(scenario);
+  assert.equal(now.response.status, 502);
+  const body: unknown = JSON.parse(now.response.body);
+  assert.ok(isRecord(body));
+  assert.equal(body.fehler, "Auskunft nicht erreichbar");
+  // The recorded answer itself, resolved to the stop, still lists its departures.
+  const fine = await ported({ ...scenario, efa: recorded("abfahrten-on-demand-08115003") });
+  assert.equal(fine.response.status, 200);
+}
+
+/** -4030 "no matching departure" for the resolved stop is "no departures" like -4050. */
+async function noMatchingDepartureIsEmpty(): Promise<void> {
+  const night = recordedPayload("abfahrten-on-demand-keine-abfahrten");
+  assert.ok(isRecord(night));
+  const evening = {
+    ...night,
+    systemMessages: [{ type: "error", module: "BROKER", code: -4030, text: "no matching departure found" }],
+  };
+  assert.equal(isEmptyDepartureMonitor(evening, GSCHWEND.stopId), true);
+  // Same resolved-stop rule as for -4050.
+  const stop = { id: GSCHWEND.stopId, name: GSCHWEND.stopName, type: "stop" };
+  assert.equal(
+    isEmptyDepartureMonitor({ ...evening, locations: [{ ...stop, isBest: false }] }, GSCHWEND.stopId),
+    false,
+  );
+  assert.equal(
+    isEmptyDepartureMonitor(
+      { ...evening, locations: [{ ...stop, id: "de:08136:27001", isBest: true }] },
+      GSCHWEND.stopId,
+    ),
+    false,
+  );
+  const now = await ported({
+    name: "-4030",
+    query: `ags=${GSCHWEND.ags}`,
+    expressQuery: { ags: GSCHWEND.ags },
+    efa: jsonHttp(200, evening),
+  });
+  assert.equal(now.response.status, 200);
+  const body: unknown = JSON.parse(now.response.body);
+  assert.ok(isRecord(body));
+  assert.deepEqual(body.abfahrten, []);
+}
+
+/**
+ * Deliberate deviation: the directory is reloaded hourly, not daily, as a
+ * conditional GET. During a rolling update the first load can reach a cockpit
+ * that still serves the old file; the old node kept that for a day.
+ */
+async function directoryIsReloadedConditionally(): Promise<void> {
+  const entry = registryEntry("abfahrten-on-demand");
+  assert.equal(entry.intervalSeconds, 3600, "hourly");
+  let file: unknown = { halte: { "08115003": { stopId: "de:08115:1", stopName: "Alt" } } };
+  let etag = 'W/"alt"';
+  const network = recordingFetcher((request) => {
+    assert.equal(request.url, DIRECTORY_URL);
+    const sent = request.options?.headers ?? {};
+    if (sent["If-None-Match"] === etag) return httpResponse(304, "");
+    return jsonHttp(200, file, { etag, "last-modified": "Wed, 30 Sep 2026 10:00:00 GMT" });
+  });
+  const g = rig(entry, network.fetcher);
+  const stopOf = (): string | undefined => g.ctx.state.slot(DIRECTORY).get()?.get("08115003")?.stopId;
+
+  // First load: unconditional (nothing in memory to fall back on).
+  await run(g.ctx);
+  assert.deepEqual(network.seen[0]?.options?.headers ?? {}, {});
+  assert.equal(stopOf(), "de:08115:1");
+  // Unchanged: a 304, the directory stays.
+  await run(g.ctx);
+  assert.deepEqual(network.seen[1]?.options?.headers, {
+    "If-None-Match": 'W/"alt"',
+    "If-Modified-Since": "Wed, 30 Sep 2026 10:00:00 GMT",
+  });
+  assert.equal(stopOf(), "de:08115:1");
+  // The new file arrives: the next reload serves it.
+  file = { halte: { "08115003": { stopId: "de:08115:7100", stopName: "Bahnhof" } } };
+  etag = 'W/"neu"';
+  await run(g.ctx);
+  assert.equal(stopOf(), "de:08115:7100");
+  assert.deepEqual(g.log.warnings(), []);
+}
+
 export {
+  directoryIsReloadedConditionally as "abfahrten-on-demand: the stop directory is reloaded hourly with a conditional GET (deviation)",
+  misresolvedStopIs502 as "abfahrten-on-demand: departures of a place EFA guessed for the stop id are a 502 (deliberate deviation)",
+  noMatchingDepartureIsEmpty as "abfahrten-on-demand: -4030 for the resolved stop is an empty list, like -4050",
   departureTimesAreLocal as "abfahrten-on-demand: departure times are Berlin wall-clock time, not the UTC cut (deliberate)",
   noDeparturesIsAnEmptyList as "abfahrten-on-demand: a valid EFA answer without departures is 200 with an empty list (deviation)",
   realErrorsStay502 as "abfahrten-on-demand: network, HTTP and malformed EFA answers stay 502",
