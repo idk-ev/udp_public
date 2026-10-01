@@ -277,6 +277,9 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 
 *Konnektoren*
 
+- `abfahrten-on-demand`: Halteverzeichnis stündlich statt täglich geladen,
+  bedingt (`If-None-Match`/`If-Modified-Since`, 304 = unverändert) — beim
+  Rolling Update erwischte der erste Abruf sonst einen Tag lang die alte Datei.
 - `abfahrten-on-demand`: EFA über den gemeinsamen EFA-Bucket, ohne Retry, 30 s
   Timeout (502 nach 30 s statt nginx-504 nach 60 s); kein JSONP; ein
   Verzeichnis ohne `halte`-Objekt wird verworfen, das alte bleibt.

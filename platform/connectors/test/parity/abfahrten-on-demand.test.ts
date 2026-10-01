@@ -29,7 +29,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { clock, DIRECTORY_URL, ROUTE_PATH, run, routes } from "../../src/connectors/abfahrten-on-demand.js";
+import {
+  clock,
+  DIRECTORY,
+  DIRECTORY_URL,
+  ROUTE_PATH,
+  run,
+  routes,
+} from "../../src/connectors/abfahrten-on-demand.js";
 import { EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor } from "../../src/connectors/efa.js";
 import { isArray } from "../../src/kernel/parse.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
@@ -495,7 +502,46 @@ async function noMatchingDepartureIsEmpty(): Promise<void> {
   assert.deepEqual(body.abfahrten, []);
 }
 
+/**
+ * Deliberate deviation: the directory is reloaded hourly, not daily, as a
+ * conditional GET. During a rolling update the first load can reach a cockpit
+ * that still serves the old file; the old node kept that for a day.
+ */
+async function directoryIsReloadedConditionally(): Promise<void> {
+  const entry = registryEntry("abfahrten-on-demand");
+  assert.equal(entry.intervalSeconds, 3600, "hourly");
+  let file: unknown = { halte: { "08115003": { stopId: "de:08115:1", stopName: "Alt" } } };
+  let etag = 'W/"alt"';
+  const network = recordingFetcher((request) => {
+    assert.equal(request.url, DIRECTORY_URL);
+    const sent = request.options?.headers ?? {};
+    if (sent["If-None-Match"] === etag) return httpResponse(304, "");
+    return jsonHttp(200, file, { etag, "last-modified": "Wed, 30 Sep 2026 10:00:00 GMT" });
+  });
+  const g = rig(entry, network.fetcher);
+  const stopOf = (): string | undefined => g.ctx.state.slot(DIRECTORY).get()?.get("08115003")?.stopId;
+
+  // First load: unconditional (nothing in memory to fall back on).
+  await run(g.ctx);
+  assert.deepEqual(network.seen[0]?.options?.headers ?? {}, {});
+  assert.equal(stopOf(), "de:08115:1");
+  // Unchanged: a 304, the directory stays.
+  await run(g.ctx);
+  assert.deepEqual(network.seen[1]?.options?.headers, {
+    "If-None-Match": 'W/"alt"',
+    "If-Modified-Since": "Wed, 30 Sep 2026 10:00:00 GMT",
+  });
+  assert.equal(stopOf(), "de:08115:1");
+  // The new file arrives: the next reload serves it.
+  file = { halte: { "08115003": { stopId: "de:08115:7100", stopName: "Bahnhof" } } };
+  etag = 'W/"neu"';
+  await run(g.ctx);
+  assert.equal(stopOf(), "de:08115:7100");
+  assert.deepEqual(g.log.warnings(), []);
+}
+
 export {
+  directoryIsReloadedConditionally as "abfahrten-on-demand: the stop directory is reloaded hourly with a conditional GET (deviation)",
   misresolvedStopIs502 as "abfahrten-on-demand: departures of a place EFA guessed for the stop id are a 502 (deliberate deviation)",
   noMatchingDepartureIsEmpty as "abfahrten-on-demand: -4030 for the resolved stop is an empty list, like -4050",
   departureTimesAreLocal as "abfahrten-on-demand: departure times are Berlin wall-clock time, not the UTC cut (deliberate)",

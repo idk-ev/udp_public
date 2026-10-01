@@ -198,17 +198,49 @@ export function build(raw: StopDirectoryFile, _geo: GeoIndex | null, _now: IsoTi
  */
 export const DIRECTORY = stateKey<StopDirectory | null>("stopDirectory", () => null);
 
+/**
+ * Validators of the loaded file (`ETag`, `Last-Modified`), sent back as a
+ * conditional GET: the hourly reload costs a 304 while the file is unchanged.
+ */
+export interface DirectoryValidators {
+  readonly etag: string | undefined;
+  readonly lastModified: string | undefined;
+}
+export const VALIDATORS = stateKey<DirectoryValidators | null>("stopDirectoryValidators", () => null);
+
+function conditionalHeaders(validators: DirectoryValidators | null): Record<string, string> {
+  if (validators === null) return {};
+  return {
+    ...(validators.etag === undefined ? {} : { "If-None-Match": validators.etag }),
+    ...(validators.lastModified === undefined ? {} : { "If-Modified-Since": validators.lastModified }),
+  };
+}
+
 /** Kept from the original: the fix is to run the script that writes the file. */
 function notLoadable(ctx: Ctx, status: string): void {
   ctx.log.warn(`stop directory not loadable (${status}) — run scripts/efa-haltestellen.py`);
 }
 
+/**
+ * Loads the stop directory — hourly (registry), not once a day: during a
+ * rolling update the first load can reach a cockpit that still serves the old
+ * file, and that old directory used to stay for a day. Conditional, so an
+ * unchanged file is a 304 and is not parsed again.
+ */
 export async function run(ctx: Ctx): Promise<void> {
+  const loaded = ctx.state.slot(DIRECTORY).get();
+  const validators = ctx.state.slot(VALIDATORS);
   let response: HttpResponse;
   try {
-    response = await ctx.fetch.text(DIRECTORY_URL);
+    // Validators only with a directory in memory: a 304 must never leave none.
+    const headers = loaded === null ? {} : conditionalHeaders(validators.get());
+    response = await ctx.fetch.text(DIRECTORY_URL, Object.keys(headers).length > 0 ? { headers } : undefined);
   } catch (error) {
     notLoadable(ctx, failureText(error));
+    return;
+  }
+  if (response.status === 304 && loaded !== null) {
+    ctx.log.status(`${String(loaded.size)} stops (unchanged)`);
     return;
   }
   let file: StopDirectoryFile | null = null;
@@ -227,6 +259,9 @@ export async function run(ctx: Ctx): Promise<void> {
   }
   const directory = build(file, null, ctx.now());
   ctx.state.slot(DIRECTORY).set(directory);
+  const etag = response.headers.etag;
+  const lastModified = response.headers["last-modified"];
+  validators.set(etag === undefined && lastModified === undefined ? null : { etag, lastModified });
   ctx.log.status(`${String(directory.size)} stops`);
 }
 

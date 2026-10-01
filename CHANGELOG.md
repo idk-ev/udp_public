@@ -19,6 +19,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - `eco-bw`, `wetter-bw`: ein unbekannter Wert (`null`) wird weggelassen und
   im Broker entfernt — Orion-LD lehnte sonst die ganze Entität ab.
 - Upsert-Warnungen nennen die abgelehnten Entitäten und den Fehler.
+- `/abfahrten` lädt das Halteverzeichnis stündlich (bedingt, 304 kostet
+  nichts) statt einmal am Tag — nach einem Update gelten neue Halte binnen
+  einer Stunde.
 - Abfahrten nur vom angefragten Halt: Für eine unbekannte Halt-ID liefert
   EFA die Abfahrten eines erratenen Orts — jetzt „gestört“ statt falscher
   Tafel. „no matching departure“ (-4030) zeigt „Derzeit keine Abfahrten“.
