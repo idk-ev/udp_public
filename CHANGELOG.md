@@ -2,6 +2,19 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — ÖPNV-Halte und Rathäuser
+
+- `oepnv-halte.json` neu erzeugt: nur BW-Halte im eigenen Kreis (bis 5 km
+  vom Gemeindemittelpunkt, Nachbarkreis nur ohne eigenen und bis 2 km),
+  zentrale Halte im Hauptort bevorzugt, mit Koordinate. Keine Treffer mehr in AT/CH/FR oder anderen
+  Bundesländern; Gemeinden ohne gültigen Halt fehlen.
+- `rathaus-bw`: der Rathaus-Sitz statt Bezirksrathaus oder Ortsverwaltung
+  (Relationen, `townhall:type`, Gemeindename, Nähe zum Gemeindemittelpunkt).
+- `efa-abfahrten`: Halte ohne Echtzeit werden wieder geschrieben —
+  `avgDelayMinutes: null` ließ Orion-LD die ganze Entität ablehnen (207,
+  Neuversand alle 5 min); ohne Median wird das Attribut entfernt.
+- Upsert-Warnungen nennen die abgelehnten Entitäten und den Fehler.
+
 ## Unveröffentlicht — Kachelwerte
 
 - Kachel „E-Scooter“ heißt „Sharing“: alle frei flottierenden Fahrzeuge, im

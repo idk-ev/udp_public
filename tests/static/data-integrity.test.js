@@ -85,3 +85,33 @@ exports["Node-RED: nur der Beispielfluss, gleiche Dateien in Compose und Helm"] 
     assert(new RegExp(`name: ${name}\\n\\s+valueFrom:`).test(nodeRed), `Helm: ${name} fehlt im Node-RED-Container`);
   }
 };
+
+exports["oepnv-halte.json: BW-Halte mit Koordinate, eigener Kreis oder Nachbarkreis in der Nähe"] = () => {
+  // Grenzen aus dem Generator, damit Test und Auswahl nicht auseinanderlaufen.
+  const script = fs.readFileSync(path.join(ROOT, "scripts/efa-haltestellen.py"), "utf8");
+  const limit = name => Number((new RegExp(`^${name} = ([0-9]+)`, "m").exec(script) || [])[1]);
+  const eigen = limit("RADIUS_EIGEN_M"), nachbar = limit("RADIUS_NACHBAR_M");
+  assert(eigen > 0 && nachbar > 0 && nachbar <= eigen, "Radien im Generator nicht lesbar");
+
+  const gemeinden = new Map(J("gui/public/bw-gemeinden.json").gemeinden.map(g => [g[0], g]));
+  const halte = J("gui/public/oepnv-halte.json").halte;
+  const km = (a, b, c, d) => {
+    const r = x => x * Math.PI / 180;
+    const h = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2;
+    return 2 * 6371000 * Math.asin(Math.sqrt(h));
+  };
+  const eintraege = Object.entries(halte);
+  // Fehlende Gemeinden sind gewollt (kein gültiger Halt), aber die Ausnahme.
+  assert(eintraege.length > 1000, `nur ${eintraege.length} Halte`);
+  for (const [ags, h] of eintraege) {
+    const g = gemeinden.get(ags);
+    assert(g, `${ags}: keine BW-Gemeinde`);
+    assert(/^de:08\d{3}:/.test(h.stopId), `${ags} ${g[1]}: ${h.stopId} ist kein BW-Halt`);
+    assert(typeof h.stopName === "string" && h.stopName, `${ags}: kein Haltname`);
+    assert(Number.isFinite(h.lat) && Number.isFinite(h.lon), `${ags} ${g[1]}: keine Koordinate`);
+    const dist = km(g[2], g[3], h.lat, h.lon);
+    const eigenerKreis = h.stopId.startsWith(`de:${g[4]}:`);
+    assert(dist <= (eigenerKreis ? eigen : nachbar) + 1,
+      `${ags} ${g[1]}: ${h.stopId} ${Math.round(dist)} m vom Gemeindemittelpunkt (${eigenerKreis ? "eigener Kreis" : "Nachbarkreis"})`);
+  }
+};

@@ -138,7 +138,7 @@ const SOURCE = "EFA-BW (naldo/bwegt)";
 /** What `res.jsonp` sets on an object payload (Express adds the charset). */
 export const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 
-/** One entry of `oepnv-halte.json`: `{ stopId, stopName, qualitaet, art }`. */
+/** One entry of `oepnv-halte.json`: `{ stopId, stopName, lat, lon, entfernungM, art }`; only the first two are read. */
 export interface Halt {
   /** EFA stop id; `undefined` answers 404 as `!h.stopId` did. */
   readonly stopId: string | undefined;

@@ -271,6 +271,9 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - nginx: Cache-Schlüssel und Upstream-Anfrage von `/abfahrten` und
   `/warnungen.ics` nur mit `ags` bzw. `kreis`; `limit_req` je Client (30 bzw.
   10 Anfragen/min, darüber 429).
+- Upsert-Warnungen nennen bei 207 zuerst die abgelehnten Entitäten mit Fehler
+  (höchstens drei, Rest gezählt) statt des abgeschnittenen Rohtexts; ein 207
+  mit Ablehnungen warnt auch ohne Signaturen.
 
 *Konnektoren*
 
@@ -281,6 +284,13 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
   Antwort 30 s wiederverwendet wird; eigene Warteschlange (2 laufend, 8
   wartend, darüber sofort 503); Abbruch, wenn kein Client mehr wartet;
   EFA-Fehler als gedrosseltes `[warn]`.
+- `efa-abfahrten`: ohne Echtzeit-Median fehlt `avgDelayMinutes` und wird im
+  Broker entfernt (alt: `value: null`, von Orion-LD mit 207 für die ganze
+  Entität abgelehnt, Neuversand alle 5 min).
+- `rathaus-bw`: auch Relationen abgefragt; Bezirks-/Ortsverwaltungen und
+  `townhall:type` district/village abgewertet, city/town/municipality und der
+  Gemeindename aufgewertet; Gleichstand nach Nähe zum Ortskern (alt: erstes
+  Element; Öffnungszeiten +2, Name +1).
 - `efa-abfahrten`: höchstens 2 Anfragen gleichzeitig, 500 ms Abstand (statt 23
   auf einmal); ein Batch-Upsert statt 23; fehlende `stopId` einmal je Prozess
   gewarnt; Halt-Id URL-kodiert (`:` bleibt, heutige URLs bytegleich).
