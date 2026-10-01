@@ -5,16 +5,19 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 ## Unveröffentlicht — ÖPNV-Halte und Rathäuser
 
 - `oepnv-halte.json` neu erzeugt: nur BW-Halte im eigenen Kreis (bis 5 km
-  vom Gemeindemittelpunkt, Nachbarkreis nur ohne eigenen und bis 2 km),
-  zentrale Halte im Hauptort bevorzugt (kein Gewerbegebiet, kein
-  Ortsteil-Bahnhof), mit Koordinate. Für die Städte von `efa-abfahrten` gilt
-  der in der Registry gepflegte Halt. Keine Treffer mehr in AT/CH/FR oder anderen
-  Bundesländern; Gemeinden ohne gültigen Halt fehlen.
+  von der Ortsmitte laut Wikidata, Nachbarkreis nur ohne eigenen und bis
+  2 km), zentrale Halte im Hauptort bevorzugt (kein Gewerbegebiet, kein
+  Ortsteil-Bahnhof, keine Platzhalternamen), mit Koordinate. Für die Städte
+  von `efa-abfahrten` gilt der in der Registry gepflegte Halt. Keine Treffer
+  mehr in AT/CH/FR oder anderen Bundesländern; Gemeinden ohne gültigen Halt
+  und gemeindefreie Gebiete fehlen.
 - `rathaus-bw`: der Rathaus-Sitz statt Bezirksrathaus oder Ortsverwaltung
   (Relationen, `townhall:type`, Gemeindename, Nähe zum Gemeindemittelpunkt).
 - `efa-abfahrten`: Halte ohne Echtzeit werden wieder geschrieben —
   `avgDelayMinutes: null` ließ Orion-LD die ganze Entität ablehnen (207,
   Neuversand alle 5 min); ohne Median wird das Attribut entfernt.
+- `eco-bw`, `wetter-bw`: ein unbekannter Wert (`null`) wird weggelassen und
+  im Broker entfernt — Orion-LD lehnte sonst die ganze Entität ab.
 - Upsert-Warnungen nennen die abgelehnten Entitäten und den Fehler.
 - Abfahrten nur vom angefragten Halt: Für eine unbekannte Halt-ID liefert
   EFA die Abfahrten eines erratenen Orts — jetzt „gestört“ statt falscher

@@ -90,8 +90,10 @@ exports["oepnv-halte.json: BW-Halte mit Koordinate, eigener Kreis oder Nachbarkr
   // Grenzen aus dem Generator, damit Test und Auswahl nicht auseinanderlaufen.
   const script = fs.readFileSync(path.join(ROOT, "scripts/efa-haltestellen.py"), "utf8");
   const limit = name => Number((new RegExp(`^${name} = ([0-9]+)`, "m").exec(script) || [])[1]);
-  const eigen = limit("RADIUS_EIGEN_M"), nachbar = limit("RADIUS_NACHBAR_M");
-  assert(eigen > 0 && nachbar > 0 && nachbar <= eigen, "Radien im Generator nicht lesbar");
+  const eigen = limit("RADIUS_EIGEN_M"), nachbar = limit("RADIUS_NACHBAR_M"), mitteMax = limit("ORTSMITTE_MAX_M");
+  assert(eigen > 0 && nachbar > 0 && nachbar <= eigen && mitteMax > 0, "Radien im Generator nicht lesbar");
+  // Bezugspunkt wie im Generator: Ortsmitte (Wikidata), sonst Flächenschwerpunkt.
+  const mitten = J("scripts/ortsmitten.json").ortsmitten;
 
   const gemeinden = new Map(J("gui/public/bw-gemeinden.json").gemeinden.map(g => [g[0], g]));
   const halte = J("gui/public/oepnv-halte.json").halte;
@@ -106,6 +108,7 @@ exports["oepnv-halte.json: BW-Halte mit Koordinate, eigener Kreis oder Nachbarkr
   for (const [ags, h] of eintraege) {
     const g = gemeinden.get(ags);
     assert(g, `${ags}: keine BW-Gemeinde`);
+    assert(g[5] !== "F", `${ags} ${g[1]}: gemeindefreies Gebiet mit Halt`);
     assert(/^de:08\d{3}:/.test(h.stopId), `${ags} ${g[1]}: ${h.stopId} ist kein BW-Halt`);
     assert(typeof h.stopName === "string" && h.stopName, `${ags}: kein Haltname`);
     assert(Number.isFinite(h.lat) && Number.isFinite(h.lon), `${ags} ${g[1]}: keine Koordinate`);
@@ -115,9 +118,11 @@ exports["oepnv-halte.json: BW-Halte mit Koordinate, eigener Kreis oder Nachbarkr
       assert(eigenerKreis, `${ags} ${g[1]}: kuratierter Halt ${h.stopId} nicht im eigenen Kreis`);
       continue;
     }
-    const dist = km(g[2], g[3], h.lat, h.lon);
+    const m = mitten[ags];
+    const [lat, lon] = m && km(g[2], g[3], m[0], m[1]) <= mitteMax ? m : [g[2], g[3]];
+    const dist = km(lat, lon, h.lat, h.lon);
     assert(dist <= (eigenerKreis ? eigen : nachbar) + 1,
-      `${ags} ${g[1]}: ${h.stopId} ${Math.round(dist)} m vom Gemeindemittelpunkt (${eigenerKreis ? "eigener Kreis" : "Nachbarkreis"})`);
+      `${ags} ${g[1]}: ${h.stopId} ${Math.round(dist)} m von der Ortsmitte (${eigenerKreis ? "eigener Kreis" : "Nachbarkreis"})`);
   }
 };
 

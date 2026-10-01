@@ -12,14 +12,22 @@ Von Hand gepflegte Halte gehen vor: Hat `efa-abfahrten` in
 platform/config/connectors.json für eine Gemeinde `params.stopId`, ist das
 ihr Halt (art »kuratiert«), nur die EFA-Koordinate wird nachgeschlagen.
 
-Alle übrigen (siehe rangliste): Kandidaten aus der Umkreissuche um den
-Gemeindemittelpunkt und aus der Namenssuche, nur mit EFA-Koordinate. Gültig
-ist ein Halt nur, wenn seine ID den eigenen Kreis trägt (de:08<kreis>:…) und
-er höchstens RADIUS_EIGEN_M vom Mittelpunkt liegt; nur wenn es keinen solchen
-gibt, ein Halt in einem anderen BW-Kreis binnen RADIUS_NACHBAR_M. Unter den
-gültigen gewinnt die höchste Punktzahl (Bahnhof, ZOB, Rathaus, Mitte, eigene
-Gemeinde und ihr Hauptort, Nähe), nicht der erste Treffer. Eine Gemeinde ohne
-gültigen Halt fehlt in der Datei — lieber keine Abfahrtstafel als eine falsche.
+Alle übrigen (siehe rangliste): Kandidaten aus der Umkreissuche um die
+Ortsmitte und aus der Namenssuche, nur mit EFA-Koordinate. Gültig ist ein Halt
+nur, wenn seine ID den eigenen Kreis trägt (de:08<kreis>:…) und er höchstens
+RADIUS_EIGEN_M von der Ortsmitte liegt; nur wenn es keinen solchen gibt, ein
+Halt in einem anderen BW-Kreis binnen RADIUS_NACHBAR_M. Unter den gültigen
+gewinnt die höchste Punktzahl (Bahnhof, ZOB, Rathaus, Mitte, eigene Gemeinde
+und ihr Hauptort, Nähe), nicht der erste Treffer. Eine Gemeinde ohne gültigen
+Halt fehlt in der Datei — lieber keine Abfahrtstafel als eine falsche;
+gemeindefreie Gebiete (Typ F) bekommen keinen.
+
+Ortsmitte: die Wikidata-Koordinate der Gemeinde (P625, über den AGS P439),
+gespeichert in scripts/ortsmitten.json (`--ortsmitten` lädt sie neu). Der
+Mittelpunkt in bw-gemeinden.json ist der Flächenschwerpunkt und liegt bei
+großen Gemeinden im Wald (Sachsenheim: 6 km vom Bahnhof). Fehlt eine
+Ortsmitte oder liegt sie über ORTSMITTE_MAX_M vom Schwerpunkt, gilt der
+Schwerpunkt.
 
 Bewusst langsam (1,2 s vor jeder Anfrage, rund drei je Gemeinde) und
 wiederaufnehmbar: Einträge mit Koordinate werden übersprungen.
@@ -29,7 +37,8 @@ wiederaufnehmbar: Einträge mit Koordinate werden übersprungen.
     py -3 scripts/efa-haltestellen.py --nur 08226096,08237040
     py -3 scripts/efa-haltestellen.py --pruefen       # Halte gegen den Abfahrtsmonitor testen
     py -3 scripts/efa-haltestellen.py --neu --cache efa-cache.json   # Suchen zwischenspeichern
-    py -3 scripts/efa-haltestellen.py --alle --cache efa-cache.json  # neu bewerten, kaum Anfragen
+    py -3 scripts/efa-haltestellen.py --alle --cache efa-cache.json  # neu bewerten
+    py -3 scripts/efa-haltestellen.py --ortsmitten    # Ortsmitten aus Wikidata neu laden
 """
 import json
 import math
@@ -45,18 +54,21 @@ WURZEL = pathlib.Path(__file__).resolve().parent.parent
 GEMEINDEN = WURZEL / "gui" / "public" / "bw-gemeinden.json"
 ZIEL = WURZEL / "gui" / "public" / "oepnv-halte.json"
 REGISTRY = WURZEL / "platform" / "config" / "connectors.json"
+ORTSMITTEN = WURZEL / "scripts" / "ortsmitten.json"
+SPARQL = "https://query.wikidata.org/sparql"
 EFA = "https://www.efa-bw.de/nvbw/XML_STOPFINDER_REQUEST"
 EFA_COORD = "https://www.efa-bw.de/nvbw/XML_COORD_REQUEST"
 EFA_DM = "https://www.efa-bw.de/nvbw/XML_DM_REQUEST"
 PAUSE = 1.2
 KOORD_FORMAT = "WGS84[dd.ddddd]"
 
-# Der Gemeindemittelpunkt (bw-gemeinden.json) ist mal der Ortskern, mal der
-# Flächenschwerpunkt. Die mittlere BW-Gemeinde hat rund 30 km² (Radius eines
-# flächengleichen Kreises ~3 km); auch flächengroße Gemeinden haben ihren
-# Hauptort binnen 5 km vom Mittelpunkt. Weiter draußen liegt ein anderer Ort.
-# Kuratierte Halte sind davon ausgenommen (Konstanz: Bahnhof 5,7 km).
+# Von der Ortsmitte (siehe oben): Die mittlere BW-Gemeinde hat rund 30 km²
+# (Radius eines flächengleichen Kreises ~3 km); Bahnhof oder Rathaus des
+# Hauptorts liegen binnen 5 km. Weiter draußen liegt ein anderer Ort.
+# Kuratierte Halte sind davon ausgenommen.
 RADIUS_EIGEN_M = 5000
+# Eine Ortsmitte weiter vom Flächenschwerpunkt ist eher ein Datenfehler.
+ORTSMITTE_MAX_M = 10000
 # Halt in einem anderen BW-Kreis: nur, wenn der eigene Kreis keinen gültigen
 # hat, und nur direkt jenseits der Grenze.
 RADIUS_NACHBAR_M = 2000
@@ -70,19 +82,26 @@ STADTBAHN = {2, 3, 4}
 # Punkte für den Haltnamen (nur das höchste Merkmal zählt). `ortsteil`: Steht
 # davor ein anderer Name als der der Gemeinde (»Wollmatingen Bahnhof«,
 # »Baumgarten Ortsmitte«), ist es der Bahnhof bzw. die Mitte eines Ortsteils —
-# dann zählt das Merkmal nur halb.
+# dann zählt das Merkmal nur halb. Dritte Spalte: wo ein solcher Name steht
+# (»beide« Seiten; beim ZOB nur »davor«, dahinter folgt meist sein Platz:
+# »ZOB Lindenplatz«).
 NAMEN = [
-    (re.compile(r"\b(hauptbahnhof|hbf)\b"), 25, True),
-    (re.compile(r"\b(bahnhof|bf|bhf)\b"), 20, True),
-    (re.compile(r"\b(zob|busbahnhof|omnibusbahnhof)\b"), 18, True),
+    (re.compile(r"\b(hauptbahnhof|hbf)\b"), 25, "beide"),
+    (re.compile(r"\b(stadtbahnhof|bahnhof|bf|bhf)\b"), 20, "beide"),
+    (re.compile(r"\b(zob|busbahnhof|omnibusbahnhof)\b"), 18, "davor"),
     # Nicht »SBK-Markt« (ein Laden).
-    (re.compile(r"(?<![\w-])(rathaus(platz)?|markt(platz)?)\b"), 12, False),
+    (re.compile(r"(?<![\w-])(rathaus(platz)?|markt(platz)?)\b"), 12, None),
     # Nicht »Schulzentrum«.
-    (re.compile(r"(?<![\w-])((orts|stadt|dorf)?mitte|(orts|stadt)?zentrum)\b"), 12, True),
+    (re.compile(r"(?<![\w-])((orts|stadt|dorf)?mitte|(orts|stadt)?zentrum)\b"), 12, "beide"),
 ]
 # Wörter, die vor dem Merkmal keinen Ortsteil anzeigen: »Am Bahnhof«, »ZOB Am Bahnhof«.
-FUELLWOERTER = {"am", "an", "an der", "beim", "bei", "zum", "zur", "vor", "vorm", "hinterm", "zob",
-                "alter", "altes", "neuer", "neues"}
+FUELLWOERTER = {"am", "an", "an der", "beim", "bei", "zum", "zur", "vor", "vorm", "hinterm", "zob", "stadt",
+                "alte", "alter", "altes", "neue", "neuer", "neues"}
+# Steht dahinter ein Name, ist es der Bahnhof eines Ortsteils: »Bahnhof Manzell«.
+# Klammern und Alternativen nach »/« zählen nicht: »Bahnhof (Bus)«, »Bahnhof/ZOB«.
+# Platzhalter aus der EFA-Datenpflege (»Bahnhof XXX«): keine Namenspunkte, als
+# Name gilt dann der des Abfahrtsmonitors.
+PLATZHALTER = re.compile(r"x{3,}")
 # Ein Gewerbegebiet am Bahnhof ist kein Bahnhof: »Industriegebiet Bahnhof«.
 GEWERBE = re.compile(r"(industrie|gewerbe)(gebiet|park|ring)|\bgewerbe\b|\bindustrie\b")
 ERSATZ = re.compile(r"\bersatz|\bsev\b")        # Ersatzhalt, »(Ersatz)«, »Ersatz-Hst.«, SEV
@@ -168,19 +187,49 @@ def kern(name: str) -> str:
     return re.split(r"\s*[(,]|\s+(?:am|an der|an den|im|in|bei|ob|unter)\s+", name.lower())[0].strip()
 
 
+def _woerter(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text)).strip()
+
+
+def _fremder_name(teil: str, name: str) -> bool:
+    """Ob `teil` (vor oder hinter dem Merkmal) einen anderen Ort nennt."""
+    teil = _woerter(teil)
+    # »Karlsdorf-Neuthard Bahnhof«: der Gemeindename selbst, auch mit Bindestrich.
+    if not teil or teil.startswith(_woerter(kern(name))) or teil in FUELLWOERTER:
+        return False
+    if all(w in FUELLWOERTER for w in teil.split()):
+        return False
+    # Kürzel wie das Kfz-Zeichen: »FN-Stadtbahnhof«.
+    return len(teil.replace(" ", "")) > 3
+
+
+def _fremd(m: re.Match, seite: str | None, text: str, name: str) -> bool:
+    """Nennt der Name vor (oder, bei »beide«, hinter) dem Merkmal einen anderen Ort?"""
+    if seite is None:
+        return False
+    dahinter = re.sub(r"\([^)]*\)", " ", text[m.end():]).split("/")[0]
+    return _fremder_name(text[:m.start()], name) or (seite == "beide" and _fremder_name(dahinter, name))
+
+
+def ortsteil_halt(text: str, name: str) -> bool:
+    """Bahnhof, ZOB oder Mitte eines anderen Orts: »Bahnhof Niederbiegen«."""
+    for rx, _, seite in NAMEN:
+        m = rx.search(text)
+        if m and _fremd(m, seite, text, name):
+            return True
+    return False
+
+
 def namens_punkte(text: str, name: str) -> int:
     """Punkte des Haltnamens `text` (klein) in der Gemeinde `name`."""
-    if GEWERBE.search(text):
+    if GEWERBE.search(text) or PLATZHALTER.search(text):
         return 0
     beste = 0
-    for rx, punkte, ortsteil in NAMEN:
+    for rx, punkte, seite in NAMEN:
         m = rx.search(text)
         if not m:
             continue
-        davor = re.sub(r"[^\w\s]", " ", text[:m.start()]).strip()
-        davor = re.sub(r"\s+", " ", davor)
-        if ortsteil and davor and not davor.startswith(kern(name)) and davor not in FUELLWOERTER \
-                and not all(w in FUELLWOERTER for w in davor.split()):
+        if _fremd(m, seite, text, name):
             punkte //= 2
         beste = max(beste, punkte)
     if text and text in (name.lower(), kern(name)):
@@ -206,7 +255,10 @@ def kandidat(halt: dict, ags: str, name: str, kreis: str, lat: float, lon: float
     ort = str((halt.get("parent") or {}).get("name") or "")
     np = namens_punkte(text, name)
     # EFA nennt den Hauptort wie die Gemeinde (»Walldorf (Baden)«), Ortsteile anders.
-    hauptort = bool(ort) and ort.lower().startswith(kern(name))
+    # Nennt der Haltname einen Ortsteil, gilt der Halt nicht als Hauptort, auch
+    # wenn EFA ihn ihm zuordnet, und sein Gleis zählt nur halb.
+    ortsteil = ortsteil_halt(text, name)
+    hauptort = bool(ort) and ort.lower().startswith(kern(name)) and not ortsteil
     klassen = set(halt.get("productClasses") or [])
     schiene = bool(klassen & SCHIENE)
     eigene_gemeinde = gemeinde_von(halt) == ags
@@ -214,7 +266,8 @@ def kandidat(halt: dict, ags: str, name: str, kreis: str, lat: float, lon: float
     punkte = np
     punkte += PUNKTE_EIGENE_GEMEINDE if eigene_gemeinde else 0
     punkte += PUNKTE_HAUPTORT if eigene_gemeinde and hauptort else 0
-    punkte += PUNKTE_SCHIENE if schiene else PUNKTE_STADTBAHN if klassen & STADTBAHN else 0
+    schiene_punkte = PUNKTE_SCHIENE // 2 if ortsteil else PUNKTE_SCHIENE
+    punkte += schiene_punkte if schiene else PUNKTE_STADTBAHN if klassen & STADTBAHN else 0
     punkte += min(len(klassen), 6)        # Knoten mit vielen Verkehrsmitteln
     punkte += PUNKTE_GEWERBE if GEWERBE.search(text) else 0
     punkte += PUNKTE_ERSATZHALT if ERSATZ.search(text) else 0
@@ -254,8 +307,8 @@ def rangliste(halte: list, ags: str, name: str, kreis: str, lat: float, lon: flo
     return sorted(wahl, key=lambda k: (-k["_punkte"], k["entfernungM"], k["stopId"]))
 
 
-def liefert_abfahrten(stop_id: str) -> bool:
-    """Kennt der Abfahrtsmonitor diesen Halt?
+def liefert_abfahrten(stop_id: str) -> dict | None:
+    """Der Halt, wie ihn der Abfahrtsmonitor aufgelöst hat, oder None.
 
     Die Suche liefert auch IDs, die XML_DM_REQUEST nicht auflöst. Ein
     aufgelöster Halt ohne Abfahrten zählt als gültig: -4050 »no serving lines«
@@ -269,32 +322,77 @@ def liefert_abfahrten(stop_id: str) -> bool:
     }))
     # Eine unbekannte ID löst EFA unscharf auf (irgendein POI) und liefert
     # dann die Abfahrten eines anderen Halts — Abfahrten allein beweisen nichts.
-    aufgeloest = any(isinstance(l, dict) and l.get("type") == "stop" and l.get("isBest") is True
-                     and (l.get("id") == stop_id or str(l.get("id", "")).startswith(stop_id + ":"))
-                     for l in d.get("locations") or [])
-    if not aufgeloest or not isinstance(d.get("version"), str):
-        return False
+    ort = next((l for l in d.get("locations") or []
+                if isinstance(l, dict) and l.get("type") == "stop" and l.get("isBest") is True
+                and (l.get("id") == stop_id or str(l.get("id", "")).startswith(stop_id + ":"))), None)
+    if ort is None or not isinstance(d.get("version"), str):
+        return None
     if isinstance(d.get("stopEvents"), list):
-        return True
-    return "stopEvents" not in d and not any(
-        isinstance(m, dict) and m.get("type") == "error" and m.get("code") not in KEINE_ABFAHRTEN
-        for m in d.get("systemMessages") or [])
+        return ort
+    if "stopEvents" in d or any(
+            isinstance(m, dict) and m.get("type") == "error" and m.get("code") not in KEINE_ABFAHRTEN
+            for m in d.get("systemMessages") or []):
+        return None
+    return ort
 
 
-def halt_suchen(ags: str, name: str, kreis: str, lat: float, lon: float,
-                bekannt: str | None = None) -> dict | None:
-    """Zentraler Halt einer Gemeinde, oder None ohne gültigen Kandidaten.
-
-    `bekannt`: eine schon gegen den Abfahrtsmonitor geprüfte ID (der bisherige
-    Eintrag) — gewinnt sie wieder, entfällt die Prüfung.
-    """
+def halt_suchen(ags: str, name: str, kreis: str, lat: float, lon: float) -> dict | None:
+    """Zentraler Halt einer Gemeinde um die Ortsmitte (lat, lon), oder None."""
     # Die 100 nächsten Halte decken die Ortsmitte ab; die Namenssuche ergänzt den
     # Bahnhof, der bei großen Städten weiter draußen liegen kann.
     halte = suche_koordinate(lat, lon) + suche(name + " Bahnhof")
     for k in rangliste(halte, ags, name, kreis, lat, lon)[:MAX_DM_VERSUCHE]:
-        if k["stopId"] == bekannt or liefert_abfahrten(k["stopId"]):
-            return {f: v for f, v in k.items() if not f.startswith("_")}
+        ort = liefert_abfahrten(k["stopId"])
+        if ort is None:
+            continue
+        eintrag = {f: v for f, v in k.items() if not f.startswith("_")}
+        if PLATZHALTER.search(eintrag["stopName"].lower()):
+            dm_name = (ort.get("disassembledName") or str(ort.get("name") or "").split(",")[-1]).strip()
+            if not dm_name or PLATZHALTER.search(dm_name.lower()):
+                continue
+            eintrag["stopName"] = dm_name
+        return eintrag
     return None
+
+
+def ortsmitten_laden() -> int:
+    """Wikidata P625 je AGS (P439) nach scripts/ortsmitten.json — eine Abfrage."""
+    query = """SELECT ?ags ?coord WHERE {
+  ?ort wdt:P439 ?ags . FILTER(STRSTARTS(?ags, "08"))
+  ?ort wdt:P625 ?coord .
+}"""
+    url = SPARQL + "?" + urllib.parse.urlencode({"query": query, "format": "json"})
+    req = urllib.request.Request(url, headers={"User-Agent": "udp-efa-haltestellen/1.0",
+                                               "Accept": "application/sparql-results+json"})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        daten = json.load(r)
+    gemeinden = {g[0]: g for g in json.loads(GEMEINDEN.read_text(encoding="utf-8"))["gemeinden"]}
+    mitten: dict[str, list] = {}
+    for b in daten["results"]["bindings"]:
+        ags, wert = b["ags"]["value"], b["coord"]["value"]      # »Point(lon lat)«
+        m = re.match(r"Point\(([-\d.]+) ([-\d.]+)\)", wert)
+        g = gemeinden.get(ags)
+        if not m or not g:
+            continue
+        punkt = [round(float(m.group(2)), 6), round(float(m.group(1)), 6)]
+        # Mehrere Koordinaten: die nächste am Schwerpunkt.
+        alt = mitten.get(ags)
+        if alt is None or entfernung_m(g[2], g[3], *punkt) < entfernung_m(g[2], g[3], *alt):
+            mitten[ags] = punkt
+    ORTSMITTEN.write_text(json.dumps(
+        {"_doc": "Ortsmitte je AGS: Wikidata P625 (über P439), [lat, lon]; "
+                 "erzeugt von scripts/efa-haltestellen.py --ortsmitten",
+         "ortsmitten": dict(sorted(mitten.items()))}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    print(f"{len(mitten)} Ortsmitten für {len(gemeinden)} Gemeinden gespeichert")
+    return 0
+
+
+def ortsmitte(g: list, mitten: dict) -> tuple[float, float]:
+    """Bezugspunkt einer Gemeinde: Ortsmitte, sonst Flächenschwerpunkt."""
+    punkt = mitten.get(g[0])
+    if punkt and entfernung_m(g[2], g[3], punkt[0], punkt[1]) <= ORTSMITTE_MAX_M:
+        return float(punkt[0]), float(punkt[1])
+    return g[2], g[3]
 
 
 def kuratierte_halte() -> dict:
@@ -337,6 +435,8 @@ def speichern(bestand: dict) -> None:
 def pruefen() -> int:
     """Jeden hinterlegten Halt testen; untaugliche neu ermitteln oder entfernen."""
     gemeinden = {g[0]: g for g in json.loads(GEMEINDEN.read_text(encoding="utf-8"))["gemeinden"]}
+    mitten = json.loads(ORTSMITTEN.read_text(encoding="utf-8")).get("ortsmitten", {}) \
+        if ORTSMITTEN.exists() else {}
     bestand = json.loads(ZIEL.read_text(encoding="utf-8"))["halte"]
     print(f"{len(bestand)} Halte werden gegen den Abfahrtsmonitor geprüft")
     ersetzt = verworfen = 0
@@ -347,9 +447,9 @@ def pruefen() -> int:
             continue                                # gepflegt, nicht hier ersetzen
         g = gemeinden.get(ags)
         try:
-            if liefert_abfahrten(eintrag["stopId"]):
+            if liefert_abfahrten(eintrag["stopId"]) is not None:
                 continue
-            neu = halt_suchen(ags, g[1], g[4], g[2], g[3]) if g else None
+            neu = halt_suchen(ags, g[1], g[4], *ortsmitte(g, mitten)) if g else None
         except Exception as e:                      # Netzfehler: Eintrag behalten
             print(f"  {g[1] if g else ags}: {e} — Eintrag bleibt", file=sys.stderr)
             continue
@@ -372,11 +472,19 @@ def main() -> int:
         CACHE = json.loads(cache_datei.read_text(encoding="utf-8")) if cache_datei.exists() else {}
     else:
         cache_datei = None
+    if "--ortsmitten" in sys.argv:
+        return ortsmitten_laden()
     if "--pruefen" in sys.argv:
         return pruefen()
-    gemeinden = json.loads(GEMEINDEN.read_text(encoding="utf-8"))["gemeinden"]
+    # Gemeindefreie Gebiete (Typ F, Truppenübungsplätze, Staatsforste) haben keinen Halt.
+    gemeinden = [g for g in json.loads(GEMEINDEN.read_text(encoding="utf-8"))["gemeinden"] if g[5] != "F"]
+    mitten = json.loads(ORTSMITTEN.read_text(encoding="utf-8")).get("ortsmitten", {}) \
+        if ORTSMITTEN.exists() else {}
     bestand = {} if "--neu" in sys.argv or not ZIEL.exists() else \
         json.loads(ZIEL.read_text(encoding="utf-8")).get("halte", {})
+    erlaubt = {g[0] for g in gemeinden}
+    for ags in [a for a in bestand if a not in erlaubt]:
+        del bestand[ags]
     kuratiert = kuratierte_halte()
     if "--nur" in sys.argv:
         i = sys.argv.index("--nur")
@@ -400,12 +508,13 @@ def main() -> int:
 
     fehler = 0
     for i, g in enumerate(offen, 1):
-        ags, name, lat, lon, kreis = g[0], g[1], g[2], g[3], g[4]
+        ags, name, kreis = g[0], g[1], g[4]
+        lat, lon = ortsmitte(g, mitten)
         try:
             if ags in kuratiert:
                 treffer = kuratierter_halt(kuratiert[ags][0], kuratiert[ags][1], name, lat, lon)
             else:
-                treffer = halt_suchen(ags, name, kreis, lat, lon, (bestand.get(ags) or {}).get("stopId"))
+                treffer = halt_suchen(ags, name, kreis, lat, lon)
             if treffer:
                 bestand[ags] = treffer
             else:
@@ -418,7 +527,9 @@ def main() -> int:
         if i % 25 == 0 or i == len(offen):
             speichern(bestand)
             if cache_datei is not None:
-                cache_datei.write_text(json.dumps(CACHE, ensure_ascii=False), encoding="utf-8")
+                tmp = cache_datei.with_suffix(cache_datei.suffix + ".tmp")
+                tmp.write_text(json.dumps(CACHE, ensure_ascii=False), encoding="utf-8")
+                os.replace(tmp, cache_datei)
             print(f"  {i}/{len(offen)} · {len(bestand)} Halte · {fehler} ohne Treffer", flush=True)
 
     from collections import Counter
