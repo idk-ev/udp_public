@@ -109,9 +109,31 @@ exports["oepnv-halte.json: BW-Halte mit Koordinate, eigener Kreis oder Nachbarkr
     assert(/^de:08\d{3}:/.test(h.stopId), `${ags} ${g[1]}: ${h.stopId} ist kein BW-Halt`);
     assert(typeof h.stopName === "string" && h.stopName, `${ags}: kein Haltname`);
     assert(Number.isFinite(h.lat) && Number.isFinite(h.lon), `${ags} ${g[1]}: keine Koordinate`);
-    const dist = km(g[2], g[3], h.lat, h.lon);
     const eigenerKreis = h.stopId.startsWith(`de:${g[4]}:`);
+    // Von Hand gepflegt (efa-abfahrten): eigener Kreis, aber ohne Radius.
+    if (h.art === "kuratiert") {
+      assert(eigenerKreis, `${ags} ${g[1]}: kuratierter Halt ${h.stopId} nicht im eigenen Kreis`);
+      continue;
+    }
+    const dist = km(g[2], g[3], h.lat, h.lon);
     assert(dist <= (eigenerKreis ? eigen : nachbar) + 1,
       `${ags} ${g[1]}: ${h.stopId} ${Math.round(dist)} m vom Gemeindemittelpunkt (${eigenerKreis ? "eigener Kreis" : "Nachbarkreis"})`);
+  }
+};
+
+exports["oepnv-halte.json: die Halte von efa-abfahrten (Registry) gehen vor"] = () => {
+  const efa = J("platform/config/connectors.json").connectors.find(c => c.id === "efa-abfahrten");
+  const halte = J("gui/public/oepnv-halte.json").halte;
+  const kuratiert = Object.entries((efa.params && efa.params.stopId) || {});
+  assert(kuratiert.length > 0, "efa-abfahrten ohne params.stopId");
+  for (const [ags, stopId] of kuratiert) {
+    assert(halte[ags], `${ags}: kein Eintrag in oepnv-halte.json`);
+    assert.strictEqual(halte[ags].stopId, stopId, `${ags}: Halt weicht von der Registry ab — efa-haltestellen.py laufen lassen`);
+    assert.strictEqual(halte[ags].art, "kuratiert", `${ags}: nicht als kuratiert markiert`);
+  }
+  // Umgekehrt: »kuratiert« nur, wo die Registry den Halt vorgibt.
+  const ausRegistry = new Set(kuratiert.map(([ags]) => ags));
+  for (const [ags, h] of Object.entries(halte)) {
+    if (h.art === "kuratiert") assert(ausRegistry.has(ags), `${ags}: kuratiert, aber nicht in der Registry`);
   }
 };

@@ -6,7 +6,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
 - `oepnv-halte.json` neu erzeugt: nur BW-Halte im eigenen Kreis (bis 5 km
   vom Gemeindemittelpunkt, Nachbarkreis nur ohne eigenen und bis 2 km),
-  zentrale Halte im Hauptort bevorzugt, mit Koordinate. Keine Treffer mehr in AT/CH/FR oder anderen
+  zentrale Halte im Hauptort bevorzugt (kein Gewerbegebiet, kein
+  Ortsteil-Bahnhof), mit Koordinate. Für die Städte von `efa-abfahrten` gilt
+  der in der Registry gepflegte Halt. Keine Treffer mehr in AT/CH/FR oder anderen
   Bundesländern; Gemeinden ohne gültigen Halt fehlen.
 - `rathaus-bw`: der Rathaus-Sitz statt Bezirksrathaus oder Ortsverwaltung
   (Relationen, `townhall:type`, Gemeindename, Nähe zum Gemeindemittelpunkt).

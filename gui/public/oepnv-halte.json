@@ -7,7 +7,7 @@
    "lat": 48.784729,
    "lon": 9.183172,
    "entfernungM": 1394,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08115001": {
    "stopId": "de:08115:4777",
@@ -79,7 +79,7 @@
    "lat": 48.593956,
    "lon": 8.862626,
    "entfernungM": 670,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08115022": {
    "stopId": "de:08115:4798",
@@ -191,7 +191,7 @@
    "lat": 48.620371,
    "lon": 9.062115,
    "entfernungM": 278,
-   "art": "bahnhof"
+   "art": "zentral"
   },
   "08115052": {
    "stopId": "de:08115:4569",
@@ -347,11 +347,11 @@
   },
   "08116033": {
    "stopId": "de:08116:4211",
-   "stopName": "Bahnhof",
+   "stopName": "Kirchheim (Teck) Bahnhof",
    "lat": 48.64416,
    "lon": 9.443872,
    "entfernungM": 943,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08116035": {
    "stopId": "de:08116:4088",
@@ -426,11 +426,11 @@
    "art": "zentral"
   },
   "08116049": {
-   "stopId": "de:08116:5863",
-   "stopName": "Vorstadt Bahnhof",
-   "lat": 48.620163,
-   "lon": 9.340269,
-   "entfernungM": 56,
+   "stopId": "de:08116:2931",
+   "stopName": "Bahnhof",
+   "lat": 48.628131,
+   "lon": 9.342721,
+   "entfernungM": 945,
    "art": "bahnhof"
   },
   "08116050": {
@@ -626,11 +626,11 @@
    "art": "zentral"
   },
   "08117011": {
-   "stopId": "de:08117:4036",
-   "stopName": "Industriegebiet",
-   "lat": 48.761036,
-   "lon": 9.632563,
-   "entfernungM": 274,
+   "stopId": "de:08117:4034",
+   "stopName": "Friedhof",
+   "lat": 48.75724,
+   "lon": 9.632042,
+   "entfernungM": 360,
    "art": "naechster"
   },
   "08117012": {
@@ -682,11 +682,11 @@
    "art": "bahnhof"
   },
   "08117019": {
-   "stopId": "de:08117:1014",
-   "stopName": "Hauptstr./Bahnhof",
-   "lat": 48.695321,
-   "lon": 9.706395,
-   "entfernungM": 1050,
+   "stopId": "de:08117:155",
+   "stopName": "Bahnhof",
+   "lat": 48.696643,
+   "lon": 9.704707,
+   "entfernungM": 1038,
    "art": "bahnhof"
   },
   "08117020": {
@@ -946,11 +946,11 @@
    "art": "zentral"
   },
   "08118016": {
-   "stopId": "de:08118:5708",
-   "stopName": "Gewerbegebiet",
-   "lat": 49.006675,
-   "lon": 9.056725,
-   "entfernungM": 409,
+   "stopId": "de:08118:5707",
+   "stopName": "Post",
+   "lat": 49.008607,
+   "lon": 9.05977,
+   "entfernungM": 551,
    "art": "naechster"
   },
   "08118018": {
@@ -1023,7 +1023,7 @@
    "lat": 48.892083,
    "lon": 9.185229,
    "entfernungM": 2677,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08118049": {
    "stopId": "de:08118:7503",
@@ -1034,11 +1034,11 @@
    "art": "bahnhof"
   },
   "08118050": {
-   "stopId": "de:08118:3306",
-   "stopName": "Abzweig Bahnhof",
-   "lat": 48.904904,
-   "lon": 9.090717,
-   "entfernungM": 1705,
+   "stopId": "de:08118:6888",
+   "stopName": "Mitte/Helenenstraße",
+   "lat": 48.905784,
+   "lon": 9.083234,
+   "entfernungM": 1164,
    "art": "zentral"
   },
   "08118051": {
@@ -1434,12 +1434,12 @@
    "art": "bahnhof"
   },
   "08121000": {
-   "stopId": "de:08121:1113",
-   "stopName": "Hbf/Busbahnhof",
-   "lat": 49.141957,
-   "lon": 9.206797,
-   "entfernungM": 2145,
-   "art": "bahnhof"
+   "stopId": "de:08121:26",
+   "stopName": "Heilbronn Hauptbahnhof",
+   "lat": 49.142927,
+   "lon": 9.207974,
+   "entfernungM": 2160,
+   "art": "kuratiert"
   },
   "08125001": {
    "stopId": "de:08125:4475",
@@ -1567,7 +1567,7 @@
    "lat": 49.063448,
    "lon": 9.262206,
    "entfernungM": 844,
-   "art": "zentral"
+   "art": "naechster"
   },
   "08125047": {
    "stopId": "de:08125:668",
@@ -1698,19 +1698,19 @@
    "art": "bahnhof"
   },
   "08125081": {
-   "stopId": "de:08125:4433",
-   "stopName": "Abzweig Bahnhof",
-   "lat": 49.058409,
-   "lon": 8.950822,
-   "entfernungM": 595,
+   "stopId": "de:08125:4431",
+   "stopName": "Ortsmitte",
+   "lat": 49.062418,
+   "lon": 8.974888,
+   "entfernungM": 1338,
    "art": "zentral"
   },
   "08125084": {
-   "stopId": "de:08125:913",
-   "stopName": "Abzw. Bahnhof",
-   "lat": 49.361731,
-   "lon": 9.343413,
-   "entfernungM": 565,
+   "stopId": "de:08125:1913",
+   "stopName": "Bahnhof",
+   "lat": 49.360801,
+   "lon": 9.341635,
+   "entfernungM": 540,
    "art": "bahnhof"
   },
   "08125086": {
@@ -1778,12 +1778,12 @@
    "art": "naechster"
   },
   "08125108": {
-   "stopId": "de:08125:3443",
-   "stopName": "Abzw. Bahnhof",
-   "lat": 49.063359,
-   "lon": 8.898163,
-   "entfernungM": 749,
-   "art": "zentral"
+   "stopId": "de:08125:14450",
+   "stopName": "Naturparkzentrum",
+   "lat": 49.060616,
+   "lon": 8.912303,
+   "entfernungM": 346,
+   "art": "naechster"
   },
   "08125110": {
    "stopId": "de:08125:2032",
@@ -2346,12 +2346,12 @@
    "art": "bahnhof"
   },
   "08135019": {
-   "stopId": "de:08135:650",
-   "stopName": "ZOB Am Bahnhof",
-   "lat": 48.681041,
-   "lon": 10.154673,
-   "entfernungM": 3839,
-   "art": "bahnhof"
+   "stopId": "de:08135:600",
+   "stopName": "Bahnhof",
+   "lat": 48.680715,
+   "lon": 10.156344,
+   "entfernungM": 3793,
+   "art": "kuratiert"
   },
   "08135020": {
    "stopId": "de:08135:1339",
@@ -2735,7 +2735,7 @@
    "lat": 48.841045,
    "lon": 10.09604,
    "entfernungM": 1961,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08136089": {
    "stopId": "de:08136:5210",
@@ -2746,20 +2746,20 @@
    "art": "bahnhof"
   },
   "08211000": {
-   "stopId": "de:08211:31895",
-   "stopName": "Marktplatz/Rathaus",
-   "lat": 48.762931,
-   "lon": 8.240561,
-   "entfernungM": 1729,
-   "art": "zentral"
+   "stopId": "de:08211:1847",
+   "stopName": "Bahnhof",
+   "lat": 48.790198,
+   "lon": 8.191036,
+   "entfernungM": 5523,
+   "art": "kuratiert"
   },
   "08212000": {
-   "stopId": "de:08212:89",
-   "stopName": "Hauptbahnhof (Vorplatz)",
-   "lat": 48.994369,
-   "lon": 8.39967,
-   "entfernungM": 2110,
-   "art": "bahnhof"
+   "stopId": "de:08212:90",
+   "stopName": "Karlsruhe Hauptbahnhof",
+   "lat": 48.993349,
+   "lon": 8.401036,
+   "entfernungM": 2171,
+   "art": "kuratiert"
   },
   "08215007": {
    "stopId": "de:08215:1553",
@@ -2946,11 +2946,11 @@
    "art": "bahnhof"
   },
   "08215102": {
-   "stopId": "de:08215:1140",
-   "stopName": "Forschungszentrum Bahnhof",
-   "lat": 49.097069,
-   "lon": 8.43033,
-   "entfernungM": 3341,
+   "stopId": "de:08215:1120",
+   "stopName": "Bahnhof",
+   "lat": 49.075695,
+   "lon": 8.397963,
+   "entfernungM": 1891,
    "art": "bahnhof"
   },
   "08215103": {
@@ -3055,7 +3055,7 @@
    "lat": 48.682435,
    "lon": 8.184775,
    "entfernungM": 786,
-   "art": "zentral"
+   "art": "naechster"
   },
   "08216009": {
    "stopId": "de:08216:1819",
@@ -3207,7 +3207,7 @@
    "lat": 49.404317,
    "lon": 8.676243,
    "entfernungM": 1307,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08222000": {
    "stopId": "de:08222:2417",
@@ -3215,7 +3215,7 @@
    "lat": 49.479747,
    "lon": 8.469936,
    "entfernungM": 3112,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08225001": {
    "stopId": "de:08225:6155",
@@ -3586,12 +3586,12 @@
    "art": "bahnhof"
   },
   "08226041": {
-   "stopId": "de:08226:1892",
-   "stopName": "St. Ilgen-Sandhausen Bahnhof",
-   "lat": 49.341326,
-   "lon": 8.668716,
-   "entfernungM": 2267,
-   "art": "bahnhof"
+   "stopId": "de:08226:1885",
+   "stopName": "Rathaus",
+   "lat": 49.348712,
+   "lon": 8.691137,
+   "entfernungM": 977,
+   "art": "zentral"
   },
   "08226046": {
    "stopId": "de:08226:3806",
@@ -3871,7 +3871,7 @@
    "lat": 48.893979,
    "lon": 8.703247,
    "entfernungM": 2069,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08235006": {
    "stopId": "de:08235:10153",
@@ -4255,7 +4255,7 @@
    "lat": 48.953748,
    "lon": 8.572731,
    "entfernungM": 1304,
-   "art": "bahnhof"
+   "art": "zentral"
   },
   "08236072": {
    "stopId": "de:08236:1301",
@@ -4431,7 +4431,7 @@
    "lat": 47.997458,
    "lon": 7.840954,
    "entfernungM": 1786,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08315003": {
    "stopId": "de:08315:30074",
@@ -4754,11 +4754,11 @@
    "art": "zentral"
   },
   "08315108": {
-   "stopId": "de:08315:6529",
-   "stopName": "Süd Bahnhof",
-   "lat": 47.878474,
-   "lon": 7.727703,
-   "entfernungM": 1057,
+   "stopId": "de:08315:6526",
+   "stopName": "Bahnhof",
+   "lat": 47.885426,
+   "lon": 7.728117,
+   "entfernungM": 1783,
    "art": "bahnhof"
   },
   "08315109": {
@@ -4803,7 +4803,7 @@
   },
   "08315130": {
    "stopId": "de:08315:6523",
-   "stopName": "Münstertal Bahnhof",
+   "stopName": "Bahnhof",
    "lat": 47.855104,
    "lon": 7.78109,
    "entfernungM": 2951,
@@ -4826,11 +4826,11 @@
    "art": "bahnhof"
   },
   "08315133": {
-   "stopId": "de:08315:6674",
-   "stopName": "Burkheim-Bischoffingen Bf",
-   "lat": 48.104101,
-   "lon": 7.611893,
-   "entfernungM": 2366,
+   "stopId": "de:08315:6703",
+   "stopName": "Bahnhof",
+   "lat": 48.089126,
+   "lon": 7.620552,
+   "entfernungM": 1163,
    "art": "bahnhof"
   },
   "08316002": {
@@ -5042,12 +5042,12 @@
    "art": "bahnhof"
   },
   "08317008": {
-   "stopId": "de:08317:14460",
+   "stopId": "de:08317:14450",
    "stopName": "Bahnhof",
-   "lat": 48.448409,
-   "lon": 8.230724,
-   "entfernungM": 898,
-   "art": "bahnhof"
+   "lat": 48.42876,
+   "lon": 8.201951,
+   "entfernungM": 2366,
+   "art": "kuratiert"
   },
   "08317009": {
    "stopId": "de:08317:15880",
@@ -5259,11 +5259,11 @@
   },
   "08317096": {
    "stopId": "de:08317:14506",
-   "stopName": "Hauptbahnhof",
+   "stopName": "Bahnhof",
    "lat": 48.476496,
    "lon": 7.946668,
    "entfernungM": 253,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08317097": {
    "stopId": "de:08317:15892",
@@ -5351,7 +5351,7 @@
    "lat": 48.456035,
    "lon": 7.889562,
    "entfernungM": 1469,
-   "art": "zentral"
+   "art": "naechster"
   },
   "08317126": {
    "stopId": "de:08317:32901",
@@ -5386,11 +5386,11 @@
    "art": "bahnhof"
   },
   "08317145": {
-   "stopId": "de:08317:18030",
-   "stopName": "Halbmeil Bahnhof",
-   "lat": 48.2907,
-   "lon": 8.270187,
-   "entfernungM": 798,
+   "stopId": "de:08317:18010",
+   "stopName": "Bahnhof",
+   "lat": 48.294651,
+   "lon": 8.221786,
+   "entfernungM": 3273,
    "art": "bahnhof"
   },
   "08317146": {
@@ -5623,7 +5623,7 @@
    "lat": 47.837783,
    "lon": 8.557953,
    "entfernungM": 111,
-   "art": "bahnhof"
+   "art": "zentral"
   },
   "08326006": {
    "stopId": "de:08326:6711",
@@ -5671,7 +5671,7 @@
    "lat": 47.929024,
    "lon": 8.490068,
    "entfernungM": 3700,
-   "art": "bahnhof"
+   "art": "zentral"
   },
   "08326031": {
    "stopId": "de:08326:1145",
@@ -5730,11 +5730,11 @@
    "art": "bahnhof"
   },
   "08326061": {
-   "stopId": "de:08326:1753",
-   "stopName": "Gewerbegebiet",
-   "lat": 48.028947,
-   "lon": 8.61081,
-   "entfernungM": 129,
+   "stopId": "de:08326:1324",
+   "stopName": "Wasen",
+   "lat": 48.030215,
+   "lon": 8.606274,
+   "entfernungM": 271,
    "art": "naechster"
   },
   "08326065": {
@@ -5762,11 +5762,11 @@
    "art": "bahnhof"
   },
   "08326075": {
-   "stopId": "de:08326:1684",
-   "stopName": "Spitalgasse/Bahnhof",
-   "lat": 48.006991,
-   "lon": 8.466496,
-   "entfernungM": 362,
+   "stopId": "de:08326:6666",
+   "stopName": "Bahnhof",
+   "lat": 48.007406,
+   "lon": 8.465822,
+   "entfernungM": 413,
    "art": "bahnhof"
   },
   "08327002": {
@@ -6122,12 +6122,12 @@
    "art": "naechster"
   },
   "08335043": {
-   "stopId": "de:08335:6556",
-   "stopName": "Wollmatingen Bahnhof",
-   "lat": 47.68252,
-   "lon": 9.147176,
-   "entfernungM": 2702,
-   "art": "bahnhof"
+   "stopId": "de:08335:6554",
+   "stopName": "Bahnhof",
+   "lat": 47.65874,
+   "lon": 9.177333,
+   "entfernungM": 5706,
+   "art": "kuratiert"
   },
   "08335055": {
    "stopId": "de:08335:2737",
@@ -6154,11 +6154,11 @@
    "art": "naechster"
   },
   "08335063": {
-   "stopId": "de:08335:6695",
-   "stopName": "Haselbrunn Bahnhof",
-   "lat": 47.744696,
-   "lon": 8.975221,
-   "entfernungM": 2291,
+   "stopId": "de:08335:6560",
+   "stopName": "Bahnhof",
+   "lat": 47.73581,
+   "lon": 8.969247,
+   "entfernungM": 3366,
    "art": "bahnhof"
   },
   "08335066": {
@@ -6170,12 +6170,12 @@
    "art": "bahnhof"
   },
   "08335075": {
-   "stopId": "de:08335:2409",
-   "stopName": "Industriegebiet Bahnhof",
-   "lat": 47.759415,
-   "lon": 8.87248,
-   "entfernungM": 216,
-   "art": "bahnhof"
+   "stopId": "de:08335:2049",
+   "stopName": "ZOB",
+   "lat": 47.759288,
+   "lon": 8.840707,
+   "entfernungM": 2212,
+   "art": "kuratiert"
   },
   "08335077": {
    "stopId": "de:08335:2290",
@@ -6351,7 +6351,7 @@
    "lat": 47.613899,
    "lon": 7.665279,
    "entfernungM": 2099,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08336057": {
    "stopId": "de:08336:6602",
@@ -6658,11 +6658,11 @@
    "art": "zentral"
   },
   "08337066": {
-   "stopId": "de:08337:6571",
-   "stopName": "Ost Bahnhof",
-   "lat": 47.5662,
-   "lon": 8.073186,
-   "entfernungM": 2206,
+   "stopId": "de:08337:6643",
+   "stopName": "Bahnhof",
+   "lat": 47.563515,
+   "lon": 8.058328,
+   "entfernungM": 2548,
    "art": "zentral"
   },
   "08337070": {
@@ -6695,7 +6695,7 @@
    "lat": 47.555973,
    "lon": 7.948922,
    "entfernungM": 1471,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08337097": {
    "stopId": "de:08337:5501",
@@ -6891,11 +6891,11 @@
   },
   "08415061": {
    "stopId": "de:08415:22006",
-   "stopName": "Hauptbahnhof",
+   "stopName": "Reutlingen Hauptbahnhof",
    "lat": 48.49643,
    "lon": 9.20951,
    "entfernungM": 1589,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08415062": {
    "stopId": "de:08415:28254",
@@ -7083,11 +7083,11 @@
   },
   "08416041": {
    "stopId": "de:08416:11000",
-   "stopName": "Hauptbahnhof",
+   "stopName": "Tübingen Hauptbahnhof",
    "lat": 48.516147,
    "lon": 9.055575,
    "entfernungM": 1401,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08416048": {
    "stopId": "de:08416:2044",
@@ -7319,7 +7319,7 @@
    "lat": 48.399121,
    "lon": 9.984181,
    "entfernungM": 2683,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08425002": {
    "stopId": "de:08425:3005",
@@ -7743,7 +7743,7 @@
    "lat": 48.443112,
    "lon": 9.661282,
    "entfernungM": 73,
-   "art": "zentral"
+   "art": "naechster"
   },
   "08425140": {
    "stopId": "de:08425:3881",
@@ -8175,7 +8175,7 @@
    "lat": 47.84702,
    "lon": 9.306097,
    "entfernungM": 707,
-   "art": "zentral"
+   "art": "naechster"
   },
   "08435024": {
    "stopId": "de:08435:4514",
@@ -8279,7 +8279,7 @@
    "lat": 47.667277,
    "lon": 9.610375,
    "entfernungM": 1604,
-   "art": "zentral"
+   "art": "naechster"
   },
   "08435059": {
    "stopId": "de:08435:4788",
@@ -8415,7 +8415,7 @@
    "lat": 47.977034,
    "lon": 9.516968,
    "entfernungM": 2601,
-   "art": "zentral"
+   "art": "naechster"
   },
   "08436024": {
    "stopId": "de:08436:1768",
@@ -8471,7 +8471,7 @@
    "lat": 47.694856,
    "lon": 10.040434,
    "entfernungM": 2058,
-   "art": "zentral"
+   "art": "naechster"
   },
   "08436052": {
    "stopId": "de:08436:1159",
@@ -8503,7 +8503,7 @@
    "lat": 47.784555,
    "lon": 9.606673,
    "entfernungM": 3247,
-   "art": "bahnhof"
+   "art": "kuratiert"
   },
   "08436067": {
    "stopId": "de:08436:1666",
