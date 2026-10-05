@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+#
+# Public dashboards may be indexed. Kept out: live queries (a crawler that
+# renders JavaScript would otherwise send ~1,100 municipality pages' worth of
+# live upstream queries), the operator cockpit and the main dashboard.
+# Templates, scripts and data files stay allowed – crawlers need them to
+# render the pages. /g/ holds the same pages as /<slug> (canonical).
+
+User-agent: *
+Disallow: /abfahrten
+Disallow: /warnungen.ics
+Disallow: /gateway/
+Disallow: /cockpit
+Disallow: /daten$
+Disallow: /karte$
+Disallow: /zeitreihen$
+Disallow: /module$
+Disallow: /verwaltung$
+Disallow: /dashboard.html
+Disallow: /g/
+Allow: /
+
+# The origin placeholder is replaced with the address of the installation
+# when served (see scripts/generate-city-pages.py, which writes the sitemap).
+Sitemap: __PUBLIC_ORIGIN__/sitemap.xml
