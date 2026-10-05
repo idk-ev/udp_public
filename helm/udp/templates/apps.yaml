@@ -182,6 +182,12 @@ spec:
             - { name: UDP_CONNECTORS_ADMIN_PORT, value: "1881" }
             - { name: UDP_TRIGGER_COOLDOWN_SECONDS, value: {{ .Values.connectors.triggerCooldownSeconds | quote }} }
             - { name: UDP_OPEN_METEO_DAILY_CAP, value: {{ .Values.connectors.openMeteoDailyCap | quote }} }
+            {{- with .Values.connectors.efaOnDemandDailyCap | toString | trim }}
+            {{- if not (regexMatch "^[0-9]+$" .) }}
+            {{- fail (printf "connectors.efaOnDemandDailyCap: %q must be a whole number (or empty for the service default)" .) }}
+            {{- end }}
+            - { name: UDP_EFA_ON_DEMAND_DAILY_CAP, value: {{ . | quote }} }
+            {{- end }}
           ports:
             # Public routes (/abfahrten, /warnungen.ics), proxied by the cockpit.
             - { name: http, containerPort: 1880 }
@@ -278,6 +284,21 @@ spec:
             {{- with .Values.cockpit.trustedProxies }}
             # Proxy networks allowed to set the client address (rate limit key).
             - { name: UDP_TRUSTED_PROXIES, value: {{ join " " . | quote }} }
+            {{- end }}
+            # Who may embed the public municipality pages (CSP frame-ancestors).
+            # Same rule as gui/docker/19-udp-public.envsh, checked here already
+            # at render time: *, 'self', 'none' or host/scheme sources.
+            {{- $frameAncestors := (dig "embed" "frameAncestors" "*" (.Values.cockpit | default dict)) | toString | trim | default "*" }}
+            {{- range $src := splitList " " $frameAncestors }}
+            {{- if and $src (not (has $src (list "*" "'self'" "'none'"))) (not (regexMatch "^[A-Za-z0-9.:/*_~-]*[A-Za-z0-9][A-Za-z0-9.:/*_~-]*$" $src)) }}
+            {{- fail (printf "cockpit.embed.frameAncestors: %q is no CSP source (allowed: *, 'self', 'none', https:, https://host[:port], https://*.example.org)" $src) }}
+            {{- end }}
+            {{- end }}
+            - { name: UDP_FRAME_ANCESTORS, value: {{ $frameAncestors | quote }} }
+            # Absolute URLs in /sitemap.xml and /robots.txt.
+            {{- $publicOrigin := include "udp.publicUrl" . | trimSuffix "/" }}
+            {{- if regexMatch "^https?://[A-Za-z0-9.:-]+$" $publicOrigin }}
+            - { name: UDP_PUBLIC_ORIGIN, value: {{ $publicOrigin | quote }} }
             {{- end }}
           # nginx-unprivileged lauscht auf 8080 – Ports unter 1024 brauchen
           # CAP_NET_BIND_SERVICE, das mit "drop: ALL" wegfaellt. Der Service

@@ -1,0 +1,65 @@
+#!/bin/sh
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+#
+# Sourced by the nginx entrypoint before the templates are rendered: settings
+# of the public pages in cockpit.conf.template.
+#
+#   UDP_FRAME_ANCESTORS  who may embed the public municipality pages in an
+#                        iframe (map $udp_frame_ancestors -> CSP
+#                        frame-ancestors). Space-separated CSP sources,
+#                        default "*" (any site). Restrict it to an allowlist,
+#                        e.g. "https://www.example.org https://*.example.de",
+#                        or "'none'" to forbid embedding. Helm:
+#                        cockpit.embed.frameAncestors. Every other page
+#                        (cockpit SPA, /dashboard.html, the start page) stays
+#                        at frame-ancestors 'self' regardless of this value.
+#   UDP_PUBLIC_ORIGIN    scheme://host[:port] of the platform as browsers see
+#                        it, for the absolute URLs in /sitemap.xml and
+#                        /robots.txt. Empty (default) -> taken from the
+#                        request (Host, X-Forwarded-Proto). Helm sets it from
+#                        cockpit.publicUrl / ingress.host.
+#
+# Allowed per frame-ancestors source: *, 'self', 'none', a scheme (https:) or
+# a host source ([scheme://]host[:port][/path], host may start with "*.").
+# Anything else in either variable – quotes, semicolons, "$", braces – stops
+# the container (non-zero exit of the entrypoint) instead of rendering a
+# broken or injectable nginx configuration.
+: "${UDP_FRAME_ANCESTORS:=*}"
+udp_sources=""
+udp_valid=yes
+# No pathname expansion while splitting: "*" is a source, not a glob.
+set -f
+for udp_src in $UDP_FRAME_ANCESTORS; do
+    case "$udp_src" in
+        "*" | "'self'" | "'none'") ;;
+        *[!A-Za-z0-9.:/*_~-]*) udp_valid=no ;;
+        *[A-Za-z0-9]*) ;;
+        *) udp_valid=no ;;
+    esac
+    udp_sources="${udp_sources:+$udp_sources }$udp_src"
+done
+set +f
+if [ "$udp_valid" != yes ] || [ -z "$udp_sources" ]; then
+    echo "19-udp-public: ERROR: UDP_FRAME_ANCESTORS must be CSP sources like * or 'self' or https://www.example.org, got '$UDP_FRAME_ANCESTORS' - refusing to start" >&2
+    exit 1
+fi
+export UDP_FRAME_ANCESTORS="$udp_sources"
+echo "19-udp-public: public municipality pages may be embedded by: $UDP_FRAME_ANCESTORS"
+
+# The entrypoint runs with "set -u": an unset variable must not be expanded.
+UDP_PUBLIC_ORIGIN="${UDP_PUBLIC_ORIGIN:-}"
+UDP_PUBLIC_ORIGIN="${UDP_PUBLIC_ORIGIN%/}"
+case "$UDP_PUBLIC_ORIGIN" in
+    "") ;;
+    http://*[!A-Za-z0-9.:-]* | https://*[!A-Za-z0-9.:-]*) udp_valid=no ;;
+    http://?* | https://?*) ;;
+    *) udp_valid=no ;;
+esac
+if [ "$udp_valid" != yes ]; then
+    echo "19-udp-public: ERROR: UDP_PUBLIC_ORIGIN must be scheme://host[:port] (e.g. https://udp.example.org), got '$UDP_PUBLIC_ORIGIN' - refusing to start" >&2
+    exit 1
+fi
+export UDP_PUBLIC_ORIGIN
+echo "19-udp-public: UDP_PUBLIC_ORIGIN=${UDP_PUBLIC_ORIGIN:-(from the request)}"
+unset udp_src udp_sources udp_valid

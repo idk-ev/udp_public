@@ -25,7 +25,7 @@ exports["bw-gemeinden.json: 1103 Gemeinden, 44 Kreise, eindeutige Slugs"] = () =
 
 exports["Registry und Status-Export sind synchron"] = () => {
   const reg = J("platform/config/connectors.json").connectors;
-  const exp = J("gui/public/connectors-status.json").connectors;
+  const exp = J("gui/ops/connectors-status.json").connectors;
   assert.deepStrictEqual(exp.map(c => c.id), reg.map(c => c.id), "Konnektor-IDs weichen ab");
   for (const c of exp) if (c.pending) assert(reg.find(r => r.id === c.id).pending, `pending nicht aus Registry: ${c.id}`);
 };

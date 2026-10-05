@@ -160,7 +160,8 @@ Service Workers → Unregister.
 
 Die Kontext-API (`/gateway/ngsi-ld/`) läuft im Cockpit über einen
 Loopback-Hop (`127.0.0.1:8081`), der leere Antworten (`[]`) auf 10 s Cache
-begrenzt; nicht leere bleiben 60 s. Im Zugriffslog des Cockpits steht als
+begrenzt; nicht leere bleiben 60 s. Zeitreihen (`/gateway/temporal/`) bleiben
+ebenfalls 60 s im Cache. Im Zugriffslog des Cockpits steht als
 Upstream deshalb dieser Hop, nicht APISIX. Antwortet das Gateway mit 5xx,
 schreibt der Hop eine eigene Zeile (`hop "…" 502 upstream=<APISIX-Adresse>
 upstream_status=… upstream_time=…`); weiter geht es im Log von APISIX.
@@ -242,9 +243,17 @@ Secret, kein Mount).
 - Die Kachel „UDP-Hauptdashboard“ auf der Cockpit-Seite „Module“ führt weiter
   dorthin; der Browser fragt nach den Zugangsdaten. Die Seite wird weder vom
   Browser noch vom Service-Worker zwischengespeichert.
-- Die Daten, die das Dashboard anzeigt (`connectors-status.json`,
-  PlatformStatus über `/gateway/…`), bleiben öffentlich lesbar – geschützt
-  ist die Betriebsübersicht als Seite.
+- Auch die Daten des Dashboards liegen hinter derselben Anmeldung (und
+  derselben 404-Regel ohne htpasswd): `/ops/connectors-status.json`
+  (vollständiger Konnektorstatus mit Secret-Namen und Health-URLs) und
+  `/ops/gateway/…` (Plattform-API ohne die öffentlichen Einschränkungen,
+  u. a. die PlatformStatus-Entitäten mit Host- und Datenbankkennzahlen und
+  ihr Lastverlauf). Bis 30 Anfragen je Minute und Adresse (Spitze 30). Das
+  öffentliche `/connectors-status.json` enthält nur noch, was die
+  Kommunenseiten brauchen – ohne Betriebskonnektoren.
+  `scripts/export-connector-status.py` schreibt beide Dateien
+  (`gui/public/` und `gui/ops/`); das Cockpit-Image legt die vollständige
+  außerhalb des Web-Roots ab, Compose bindet `gui/ops/` ein.
 
 Docker Compose: die Datei nach `platform/config/nginx/udp-auth/htpasswd`
 legen (das Verzeichnis ist in `.gitignore`) und das Cockpit neu starten:
@@ -256,6 +265,101 @@ docker compose -f platform/docker-compose.yml restart cockpit
 ```
 
 Die Datei muss für den nginx-Benutzer (UID 101) lesbar sein (`chmod 644`).
+
+### Öffentliche Plattform-API über `/gateway/`
+
+Ohne Anmeldung ist die Plattform-API nur lesend und nur in dem Umfang
+erreichbar, den die öffentlichen Seiten und das Cockpit nutzen:
+
+- **Kontext-API:** `GET /gateway/ngsi-ld/v1/entities?type=…`,
+  `/gateway/ngsi-ld/v1/entities/<id>` und `/gateway/ngsi-ld/v1/types`.
+  Listenabfragen brauchen genau einen `type`-Parameter mit einfachen
+  Typnamen (Buchstaben, Ziffern, `_`, `.`, `-`; `type=A` oder `type=A,B`).
+  Erlaubt sind nur die Parameter `type`, `q`, `attrs`, `limit`, `offset`,
+  `count`, `options`, `georel`, `geometry`, `coordinates`, `geoproperty` und
+  `lang` (Einzelabruf und Typliste: `attrs`, `options`, `lang`, `details`),
+  jeweils als `name=wert`. Abfragen ohne Typ (`idPattern=.*`, `local=true`,
+  nur `q=…`) oder mit anderen Parametern (z. B. `jsonldContext`)
+  beantwortet der Cockpit-nginx mit 400. Alles andere von Orion-LD (`/ngsi-ld/ex/v1/version`, `/ex/v1/tenants`,
+  Subscriptions, Registrierungen, `@context`-Cache) antwortet mit 404.
+- **Temporal-API:** nur `/gateway/temporal/temporal/entities/<id>` (Verlauf
+  einer Entität) und `/gateway/temporal/health`; `/info`, Metriken und
+  Listenabfragen bleiben intern. Parameter nur `attrs`, `timerel`, `timeAt`,
+  `endTimeAt`, `timeproperty`, `options`, `lastN`, `aggrMethods`,
+  `aggrPeriodDuration`; sonst 400.
+- **Betriebsdaten:** Entitäten vom Typ `PlatformStatus` (Serverlast,
+  Speicher, Datenbankkennzahlen) gibt es öffentlich nicht (403), weder per
+  Typ, ID noch Verlauf – nur über `/ops/gateway/…` hinter der Anmeldung des
+  Hauptdashboards. Die Typpflicht oben sorgt dafür, dass sie auch nicht in
+  typfreien Abfragen auftauchen.
+- **Mandanten:** öffentlich gibt es nur den Standardmandanten. Die Header
+  `NGSILD-Tenant` und `Fiware-Service` entfernt der Cockpit-nginx; die
+  Mandantenauswahl im Cockpit ist eine Demo. **Bevor ein Mandant mit nicht
+  öffentlichen Daten entsteht**, muss die Mandantentrennung ins Gateway
+  (Mandant aus einem geprüften Token-Claim, OIDC in APISIX) – ein Header, den
+  der Client selbst setzt, ist keine Zugriffskontrolle.
+- **`@context`:** einen `Link`-Header des Clients reicht der Cockpit-nginx
+  nicht weiter (Orion-LD lädt sonst jede genannte URL aus dem Cluster heraus
+  und speichert sie unbegrenzt). Begriffe gelten gegen den Core-Kontext.
+  Ebenso wenig einen `Authorization`-Header: der öffentliche Pfad ist anonym.
+- **FROST, CKAN, GeoServer, Masterportal** (`/gateway/FROST-Server/…`,
+  `/gateway/catalog/…`, `/gateway/geoserver/…`, `/gateway/portal/…`): lesend,
+  ohne Cache, je Adresse höchstens 10 Anfragen/s (Spitze 60) und 10
+  gleichzeitige Verbindungen; zusätzlich das Rate-Limit von APISIX
+  (`apisix.rateLimit`). Viele WMS-Nutzer hinter einer gemeinsamen
+  NAT-Adresse können an die 10 Verbindungen stoßen (429); dann `limit_conn`
+  in `platform/config/nginx/cockpit.conf.template` anheben. Andere Pfade unter
+  `/gateway/` antworten mit 404 – auch der IoT-Agent (`/gateway/iot/…`): seine
+  Nordschnittstelle ist die Geräteverwaltung und bleibt intern, unabhängig
+  von `iotAgentJson.exposeRoutes`.
+- `/abfahrten`: 120 Anfragen je Minute und Adresse (Spitze 60), damit Ämter
+  und Schulen hinter einer gemeinsamen Adresse nicht an das Limit stoßen.
+  IPv6-Clients mit eigenem /64-Netz können die Adresse wechseln; vor den
+  Upstreams stehen dann weiter Cache und APISIX-Limits.
+
+Wer `ingress.apiPaths` setzt, veröffentlicht die APIs direkt über APISIX –
+an diesen Einschränkungen vorbei. Der Cockpit-nginx sendet keine
+Versionsnummer (`server_tokens off`).
+
+### Kommunenseiten einbetten
+
+Die Startseite bietet Einbettungscode für die Kommunenseiten an
+(`<iframe src="https://<host>/<slug>?embed=1">`). Für diese Seiten (und
+`stadt.html`/`kreis.html`) sendet der Cockpit-nginx statt
+`X-Frame-Options` den Header `Content-Security-Policy: frame-ancestors …`;
+Cockpit, `/dashboard.html`, die Startseite und alle übrigen Antworten bleiben
+bei `SAMEORIGIN` / `frame-ancestors 'self'`.
+
+```yaml
+cockpit:
+  embed:
+    frameAncestors: "*"   # Standard: jede Seite darf einbetten
+    # frameAncestors: "https://www.example.org https://*.example.de"
+    # frameAncestors: "'none'"   # Einbetten verbieten
+```
+
+Compose: Variable `UDP_FRAME_ANCESTORS`. Ungültige Werte (Anführungszeichen,
+Semikolon, `$`) lassen das Rendern bzw. den Containerstart scheitern. Ein
+`X-Frame-Options` am Ingress (Annotation) gälte für jede Antwort und verböte
+das Einbetten wieder.
+
+`/sitemap.xml` und `/robots.txt` tragen den Platzhalter `__PUBLIC_ORIGIN__`;
+der Cockpit-nginx ersetzt ihn durch die öffentliche Adresse (Helm:
+`cockpit.publicUrl` bzw. `ingress.host`, Compose: `UDP_PUBLIC_ORIGIN`). Leer
+nimmt er den `Host`-Header der Anfrage samt Port – nur in der Form
+`hostname[:port]`, sonst 400 – und `X-Forwarded-Proto` nur von einem Proxy
+aus `UDP_TRUSTED_PROXIES`. Beide Dateien gehen mit `Cache-Control: no-cache`
+hinaus, damit kein Cache eine vom Host abhängige Antwort weiterreicht.
+
+### Datenbank-Zeitlimit der Temporal-API
+
+Mintaka setzt auf jeder Datenbankverbindung `statement_timeout` (Standard
+30 s, `mintaka.statementTimeout`, leer = kein Limit; Compose fest 30 s): ein
+Verlauf über ein riesiges Zeitfenster belegt so keine Verbindung und keinen
+Datenbank-Kern für Minuten. Es gilt für den Standardmandanten (Mintakas
+Verbindungen je Mandant übernehmen es nicht). Mintaka verbindet sich weiter
+mit der Eigentümerrolle der Datenbank; eine eigene Nur-Lese-Rolle mit dem
+Zeitlimit als Rolleneinstellung ist als Folgearbeit vorgesehen.
 
 ## Webanalyse, Impressum und Datenschutz
 
@@ -723,7 +827,9 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   nur `docker compose restart connectors`. In Kubernetes kommt das Image
   samt Registry aus der Image-Pipeline, per Digest im Chart gepinnt.
 - **Status-Export:** `scripts/export-connector-status.py` schreibt aus der
-  Registry `gui/public/connectors-status.json` (Hauptdashboard, Stadtseiten,
+  Registry `gui/ops/connectors-status.json` (vollständig: Hauptdashboard
+  über `/ops/…`, `scripts/healthcheck.sh`) und das verkürzte öffentliche
+  `gui/public/connectors-status.json` (Stadtseiten,
   `healthcheck.sh`); `deploy/deploy.sh` ruft es auf, die CI prüft den Stand.
 
 ## Node-RED

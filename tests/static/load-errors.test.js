@@ -17,7 +17,8 @@
 "use strict";
 const assert = require("assert");
 
-const { JSDOM, LIB, CONN, json, renderStadt, renderPage, labels, errorLabels } = require("./page-harness");
+const { JSDOM, ROOT, LIB, CONN, json, renderStadt, renderPage, labels, errorLabels } = require("./page-harness");
+const OPS_CONN = JSON.parse(require("fs").readFileSync(require("path").join(ROOT, "gui", "ops", "connectors-status.json"), "utf8"));
 
 /* A window with smartcity-lib loaded; `backend(url, n)` answers the n-th call
    of a URL (a Response, or an Error to simulate a network failure). */
@@ -196,8 +197,10 @@ exports["stadt.html: pending connector is still asked, its 404 is no data"] = as
   // hystreet is "pending" in the image, but its token arrives at runtime
   // (reverted e6bed5c): the sample entity must still be asked for, and its
   // 404 must neither produce an error tile nor count for the banner.
+  // "pending" is only in the operations export; the page sees the public one.
   const hystreet = CONN.connectors.find(c => c.id === "hystreet");
-  assert(hystreet && hystreet.pending && hystreet.enabledFor.includes("08415061"), "fixture assumption changed");
+  const opsHystreet = OPS_CONN.connectors.find(c => c.id === "hystreet");
+  assert(hystreet && opsHystreet.pending && hystreet.enabledFor.includes("08415061"), "fixture assumption changed");
   const { w, d, calls } = await renderStadt({ entities: { [WX.id]: WX }, storage: { "sc-tiles:stadt:08415061": '["passanten"]' } });
   assert(calls.some(u => u.includes(hystreet.sampleEntity)), "pending connector not asked – the tile would stay hidden with a runtime token");
   assert(!errorLabels(d).includes("Passanten"), "a 404 of a pending connector became an error tile");

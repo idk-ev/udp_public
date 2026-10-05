@@ -202,6 +202,14 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "udp.dbSecretName" . }}, key: POSTGRES_PASSWORD } }
             - { name: ENDPOINTS_ALL_PORT, value: "8080" }
             - { name: MICRONAUT_METRICS_ENABLED, value: "false" }  # JDK-cgroup-Bug-Workaround
+            {{- with .Values.mintaka.statementTimeout | toString | trim }}
+            {{- if not (regexMatch "^[0-9]+(ms|s|min)?$" .) }}
+            {{- fail (printf "mintaka.statementTimeout: %q must be a PostgreSQL duration like 30s, 500ms or 2min" .) }}
+            {{- end }}
+            # Upper bound per query (s. mintaka.statementTimeout), run on every
+            # new pooled connection.
+            - { name: DATASOURCES_DEFAULT_CONNECTION_INIT_SQL, value: {{ printf "SET statement_timeout = '%s'" . | quote }} }
+            {{- end }}
             # Explicit -Xmx: with container support disabled the JVM would size
             # its heap from the node's memory (s. mintaka.javaOpts).
             - { name: JAVA_TOOL_OPTIONS, value: {{ .Values.mintaka.javaOpts | quote }} }

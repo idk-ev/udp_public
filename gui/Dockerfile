@@ -41,6 +41,12 @@ COPY --chmod=755 gui/docker/17-udp-upstreams.envsh /docker-entrypoint.d/17-udp-u
 # Access rule of /dashboard.html: basic auth if an htpasswd file is mounted at
 # /etc/nginx/udp-auth/htpasswd, else 404.
 COPY --chmod=755 gui/docker/18-udp-dashboard-auth.envsh /docker-entrypoint.d/18-udp-dashboard-auth.envsh
+# Settings of the public pages (UDP_FRAME_ANCESTORS, UDP_PUBLIC_ORIGIN), checked.
+COPY --chmod=755 gui/docker/19-udp-public.envsh /docker-entrypoint.d/19-udp-public.envsh
+# Complete connector status for the main dashboard: OUTSIDE the web root, the
+# cockpit serves it only as /ops/connectors-status.json behind the dashboard
+# login (scripts/export-connector-status.py writes it next to the public copy).
+COPY gui/ops/connectors-status.json /usr/share/nginx/ops/connectors-status.json
 
 # Der Entrypoint liest die Nameserver aus /etc/resolv.conf nach
 # NGINX_LOCAL_RESOLVERS – so stimmt der resolver in Docker (127.0.0.11) wie in

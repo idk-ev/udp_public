@@ -94,9 +94,11 @@ async function renderStadt(opts = {}) {
   return { w, d: w.document, calls, leaflet };
 }
 
-/* Renders another page; static files come from gui/public. The gateway
-   answers 503 for URLs matching `failRe`, entity ids with 404, listings with
-   `types[type]` (default: empty). */
+/* Renders another page; static files come from gui/public, /ops/… files
+   from gui/ops (served behind the dashboard login). The gateway – public
+   /gateway/ or the dashboard's /ops/gateway/ – answers 503 for URLs matching
+   `failRe`, entity ids with 404, listings with `types[type]` (default:
+   empty). */
 async function renderPage(file, url, failRe, globals = {}, types = {}) {
   const html = fs.readFileSync(path.join(PUB, file), "utf8").replace(/<script src="[^"]*"><\/script>/g, "");
   const dom = new JSDOM(html, { url, runScripts: "outside-only", pretendToBeVisual: true });
@@ -105,8 +107,9 @@ async function renderPage(file, url, failRe, globals = {}, types = {}) {
   w.fetch = async u => {
     const s = decodeURIComponent(String(u));
     if (failRe && failRe.test(s)) return json({}, 503, { "Retry-After": "0" });
-    if (!s.startsWith("/gateway")) {
-      const f = path.join(PUB, s.split("?")[0]);
+    if (!s.startsWith("/gateway") && !s.startsWith("/ops/gateway")) {
+      const f = s.startsWith("/ops/") ? path.join(ROOT, "gui", "ops", s.split("?")[0].slice(5))
+        : path.join(PUB, s.split("?")[0]);
       return fs.existsSync(f) ? new Response(fs.readFileSync(f)) : json({}, 404);
     }
     if (s.includes("/entities/")) return json({ title: "Not Found" }, 404);

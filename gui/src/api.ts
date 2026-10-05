@@ -115,11 +115,12 @@ export interface ComponentStatus {
   ok: boolean | null;
 }
 
+// Only components the public gateway serves. The IoT agent is not among them
+// (cockpit.conf.template: its north port is the provisioning API).
 const probeTargets: Omit<ComponentStatus, "ok">[] = [
   { name: "Orion-LD Context Broker", role: "NGSI-LD Echtzeit-Kontext", url: `${config.gatewayUrl}/ngsi-ld/ex/v1/version` },
   { name: "Mintaka", role: "NGSI-LD Temporal API", url: `${config.gatewayUrl}/temporal/health` },
   { name: "FROST-Server", role: "OGC SensorThings API", url: `${config.gatewayUrl}/FROST-Server/v1.1/` },
-  { name: "IoT-Agent (JSON/MQTT)", role: "Geräteanbindung", url: `${config.gatewayUrl}/iot/about` },
   { name: "CKAN", role: "Open-Data-Katalog (DCAT-AP.de)", url: `${config.gatewayUrl}/catalog/api/3/action/status_show` },
   { name: "GeoServer", role: "OGC WMS/WFS", url: `${config.gatewayUrl}/geoserver/web/` },
 ];

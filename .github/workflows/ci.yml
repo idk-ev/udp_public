@@ -52,7 +52,7 @@ jobs:
         run: |
           python3 scripts/generate-city-pages.py
           python3 scripts/export-connector-status.py
-          git diff --stat --exit-code -I'"stand":' gui/public/connectors-status.json gui/public/g \
+          git diff --stat --exit-code -I'"stand":' gui/public/connectors-status.json gui/ops/connectors-status.json gui/public/g \
             || echo "::warning::Generierte Artefakte weichen vom Generator-Stand ab — generate-city-pages.py bzw. export-connector-status.py laufen lassen und committen"
 
   # A separate job instead of extra steps in build-test: the connector service

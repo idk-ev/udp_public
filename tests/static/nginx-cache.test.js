@@ -66,12 +66,13 @@ exports["cockpit nginx: empty NGSI-LD answers get a 10 s TTL through the loopbac
   assert.match(body, /proxy_cache_use_stale updating /);
 };
 
-exports["cockpit nginx: the temporal API goes straight to the gateway, 300 s"] = () => {
+exports["cockpit nginx: the temporal API goes straight to the gateway, 60 s"] = () => {
   // Mintaka has no 2-byte "empty" answer for entity queries, the hop would do nothing.
   const body = location("/gateway/temporal/");
   assert.match(body, /proxy_pass \$gateway;/);
   assert(!/udp_gateway_hop/.test(body), "temporal API through the hop");
-  assert(body.includes("proxy_cache_valid 200 300s;"));
+  // Pages refresh every 2 min and round timeAt to the minute: at most ~1 min old.
+  assert(body.includes("proxy_cache_valid 200 60s;"));
   assert.match(body, /proxy_set_header X-Real-IP \$remote_addr;/);
 };
 
