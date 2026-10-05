@@ -1460,7 +1460,7 @@ async function render() {
   const attrib = [...new Set(CONN.filter(c => c.active !== false && c.attribution)
     .flatMap(c => String(c.attribution).split(" · ").map(x => x.trim())))];
   $("#footer").innerHTML = "Datenquellen: " + esc(attrib.join(" · ")) +
-    " · Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0) · <a href='/dashboard.html'>Kommunen-Suche & UDP-Hauptdashboard</a>" +
+    " · Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0) · <a href='/'>Kommunen-Suche</a>" +
     (dashUrl && dashUrl.startsWith("http") ? ` · <a href="${esc(safeUrl(dashUrl))}" target="_blank" rel="noopener">Eigenes Angebot der Kommune</a>` : "");
 
   $("#stand").textContent = "Stand: " + new Date().toLocaleTimeString("de-DE") + " · Auto-Refresh 120 s";

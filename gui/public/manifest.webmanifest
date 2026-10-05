@@ -2,7 +2,7 @@
   "name": "Urbane Datenplattform — Smart City Baden-Württemberg",
   "short_name": "UDP Smart City",
   "description": "Live-Dashboards mit offenen Daten für alle Gemeinden Baden-Württembergs.",
-  "start_url": "/dashboard.html",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

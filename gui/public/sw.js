@@ -13,8 +13,12 @@
    verwirft damit die Caches seines Vorgängers. Bis Sprint 2.9 stand hier ein
    handgepflegtes "udp-v2", das seit dem ersten Release nie erhöht wurde. */
 const V = "udp-1.3.0";
+/* "/" is the public start page (nginx serves mitmachen.html there) and the
+   offline fallback for pages. /dashboard.html is not part of the shell: it
+   sits behind HTTP basic auth (or answers 404), and a single failing URL makes
+   addAll() reject - the worker would never install. */
 const SHELL = [
-  "/stadt.html", "/kreis.html", "/dashboard.html", "/mitmachen.html",
+  "/", "/stadt.html", "/kreis.html", "/mitmachen.html",
   "/smartcity-lib.js", "/smartcity-theme.css", "/site.js",
   "/vendor/leaflet.js", "/vendor/leaflet.css",
   "/manifest.webmanifest", "/icon.svg", "/favicon",
@@ -22,17 +26,24 @@ const SHELL = [
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
+/* Pages the worker never touches: login-protected, so neither a cached copy
+   nor the network-first branch may stand between the browser and the
+   server's 401 (the browser shows its login prompt only for its own request). */
+const PRIVATE = ["/dashboard.html"];
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys()
     .then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k))))
+    // A copy cached while the page was still public stays in a cache of the
+    // same version otherwise.
+    .then(() => caches.open(V)).then(c => Promise.all(PRIVATE.map(p => c.delete(p))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", e => {
   const u = new URL(e.request.url);
-  if (e.request.method !== "GET" || u.origin !== location.origin) return;
+  if (e.request.method !== "GET" || u.origin !== location.origin || PRIVATE.includes(u.pathname)) return;
   const ablegen = r => { if (r.ok) { const cp = r.clone(); caches.open(V).then(c => c.put(e.request, cp)); } return r; };
   const netFirst = () => fetch(e.request).then(ablegen)
-    .catch(() => caches.match(e.request).then(c => c || (e.request.mode === "navigate" ? caches.match("/dashboard.html") : undefined)));
+    .catch(() => caches.match(e.request).then(c => c || (e.request.mode === "navigate" ? caches.match("/") : undefined)));
   // Seiten + Live-Daten immer frisch, offline aus dem Cache
   if (e.request.mode === "navigate" || u.pathname.startsWith("/gateway") || u.pathname.startsWith("/abfahrten")) {
     e.respondWith(netFirst()); return;

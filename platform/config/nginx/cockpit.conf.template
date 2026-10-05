@@ -159,7 +159,9 @@ server {
     }
 
     # Abgelöste Seiten (Konsolidierung 2026-07): alte Bookmarks sauber umleiten
-    location = /kommunen.html { return 301 /dashboard.html; }
+    # /kommunen.html war die öffentliche Kommunen-Suche; die steht heute auf
+    # der Startseite (das Hauptdashboard ist nur noch für den Betrieb).
+    location = /kommunen.html { return 301 /; }
     location = /reutlingen_smartcity.html { return 301 /reutlingen; }
     location = /smartcity.html { return 301 /reutlingen; }
 
