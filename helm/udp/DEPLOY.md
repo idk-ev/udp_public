@@ -54,7 +54,7 @@ den Context Broker).
 | Pfad | Ziel | Standard |
 |------|------|----------|
 | `/` | Cockpit (SPA + generierte Kommunenseiten) | offen |
-| `/dashboard.html` | Hauptdashboard (Kommunen-Suche + Betriebsdaten), Basic Auth im Cockpit-nginx | 404 ohne `cockpit.dashboardAuth.existingSecret` (Secret mit Schlüssel `htpasswd`, s. `docs/betrieb.md`) |
+| `/dashboard.html` | Hauptdashboard (Kommunen-Suche + Betriebsdaten), Basic Auth im Cockpit-nginx | Anmeldung (Secret `udp-dashboard-auth` vom Chart erzeugt, s. `docs/betrieb.md`); 404 mit `cockpit.dashboardAuth.enabled: false` |
 | `/gateway/…` | Cockpit-nginx → APISIX, **nur GET/HEAD/OPTIONS** (Micro-Cache) | offen |
 | `/abfahrten`, `/warnungen.ics` | Cockpit-nginx → Konnektordienst (exakte Pfade, `cockpit.connectorsUpstream`) | offen |
 | `/ngsi-ld`, `/temporal`, `/FROST-Server` | APISIX | aus (`ingress.apiPaths: []`) |
@@ -285,6 +285,9 @@ kubectl --context "$KUBE_CONTEXT" -n udp get secret udp-db \
   -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d; echo
 kubectl --context "$KUBE_CONTEXT" -n udp get secret udp-keycloak \
   -o jsonpath='{.data.KEYCLOAK_ADMIN_PASSWORD}' | base64 -d; echo
+# Anmeldung am Hauptdashboard /dashboard.html (Benutzer: Schlüssel username)
+kubectl --context "$KUBE_CONTEXT" -n udp get secret udp-dashboard-auth \
+  -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 Ein bestimmtes Passwort erzwingen (nur wenn wirklich nötig) – z. B. weil eine
 Alt-Datenbank bereits existiert:
