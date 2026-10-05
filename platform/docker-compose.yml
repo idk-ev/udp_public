@@ -89,6 +89,11 @@ services:
       # Workaround JDK-cgroup-Bug (NPE in CgroupInfo.getMountPoint) auf neuen Kerneln
       MICRONAUT_METRICS_ENABLED: "false"
       JAVA_TOOL_OPTIONS: "-XX:-UseContainerSupport"
+      # Upper bound for every query of the temporal API: a history request
+      # across a huge time window must not keep a database connection busy
+      # for minutes. Set on each pooled connection (HikariCP
+      # connection-init-sql); same as mintaka.statementTimeout in Helm.
+      DATASOURCES_DEFAULT_CONNECTION_INIT_SQL: "SET statement_timeout = '30s'"
     expose: ["8080"]       # Temporal API nur intern; extern über Gateway /temporal
     restart: unless-stopped
     networks: [udp]
@@ -524,8 +529,17 @@ services:
       # Proxy-Netze, deren X-Forwarded-For das Cockpit für den Rate-Limit-
       # Schlüssel übernimmt; leer = alle privaten Bereiche (s. .env.example).
       UDP_TRUSTED_PROXIES: ${UDP_TRUSTED_PROXIES:-}
+      # Wer die öffentlichen Kommunenseiten per iframe einbetten darf
+      # (CSP frame-ancestors, gui/docker/19-udp-public.envsh); Standard "*".
+      UDP_FRAME_ANCESTORS: ${UDP_FRAME_ANCESTORS:-*}
+      # Basis-Adresse für /sitemap.xml und /robots.txt (https://host);
+      # leer = aus der Anfrage (Host, X-Forwarded-Proto).
+      UDP_PUBLIC_ORIGIN: ${UDP_PUBLIC_ORIGIN:-}
     volumes:
       - ../gui/dist:/usr/share/nginx/html:ro
+      # Vollständiger Konnektorstatus fürs Hauptdashboard – außerhalb des
+      # Web-Roots, nur als /ops/connectors-status.json hinter der Anmeldung.
+      - ../gui/ops:/usr/share/nginx/ops:ro
       - ./config/nginx/cockpit.conf.template:/etc/nginx/templates/default.conf.template:ro
       # Dieselben Entrypoint-Skripte wie im Cockpit-Image (gui/Dockerfile):
       # vertrauenswürdige Proxys (${UDP_REALIP_FROM} der Vorlage) und der
@@ -539,6 +553,7 @@ services:
       #   htpasswd -nbB admin '<passwort>' > platform/config/nginx/udp-auth/htpasswd
       - ../gui/docker/18-udp-dashboard-auth.envsh:/docker-entrypoint.d/18-udp-dashboard-auth.envsh:ro
       - ./config/nginx/udp-auth:/etc/nginx/udp-auth:ro
+      - ../gui/docker/19-udp-public.envsh:/docker-entrypoint.d/19-udp-public.envsh:ro
     ports:
       - "${UI_PORT:-3700}:8080"         # UI-Slot gem. PORTS.md
     restart: unless-stopped

@@ -109,9 +109,13 @@
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";
-const { $, css, esc, jget, jlist, entity, failed, tile, errorTile, grade, barSvg, fmtN, fmtT, asRows } = SC;
+const { $, css, esc, jget, jlist, failed, tile, errorTile, grade, barSvg, fmtN, fmtT, asRows } = SC;
 SC.themeSelector("#thememount");
-const GW = SC.GW;
+// Operations data comes through /ops/… of the cockpit nginx, behind the same
+// login as this page: the public /gateway/ serves no PlatformStatus entities,
+// and the public /connectors-status.json lacks the operations connectors,
+// secret names and health URLs.
+const OPS = "/ops/gateway";
 const PLAT_ID = "urn:ngsi-ld:PlatformStatus:udp", TROE_ID = "urn:ngsi-ld:PlatformStatus:udp-troe";
 const fmtDate = iso => { const d = new Date(iso); return isNaN(d) ? "–" : d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + " Uhr"; };
 const fmtBytes = b => b == null ? "–" : b > 1073741824 ? (b / 1073741824).toFixed(1).replace(".", ",") + " GB" : Math.round(b / 1048576) + " MB";
@@ -198,28 +202,42 @@ async function loadGemeinden() {
 }
 
 /* ---------- Schnittstellen-Probes ---------- */
+// every: probe only every n-th refresh (minutes) and show the last result in
+// between – FROST, CKAN and GeoServer are neither cached nor cheap
+// (GetCapabilities builds the whole layer list).
 const SERVICES = [
-  { name: "Orion-LD (Context Broker)", url: GW + "/ngsi-ld/v1/entities?type=CityPulse&limit=1" },
-  { name: "Mintaka (Temporal API)", url: GW + "/temporal/health" },
-  { name: "FROST (SensorThings)", url: GW + "/FROST-Server/v1.1" },
-  { name: "CKAN (Open-Data-Portal)", url: GW + "/catalog/api/3/action/status_show" },
-  { name: "GeoServer (WMS/WFS)", url: GW + "/geoserver/ows?service=WMS&version=1.3.0&request=GetCapabilities" },
+  { name: "Orion-LD (Context Broker)", url: OPS + "/ngsi-ld/v1/entities?type=CityPulse&limit=1" },
+  { name: "Mintaka (Temporal API)", url: OPS + "/temporal/health" },
+  { name: "FROST (SensorThings)", url: OPS + "/FROST-Server/v1.1", every: 5 },
+  { name: "CKAN (Open-Data-Portal)", url: OPS + "/catalog/api/3/action/status_show", every: 5 },
+  { name: "GeoServer (WMS/WFS)", url: OPS + "/geoserver/ows?service=WMS&version=1.3.0&request=GetCapabilities", every: 5 },
   { name: "Cockpit (nginx)", url: "/config.js" },
 ];
+const lastProbe = {};
+let probeRound = 0;
 async function probe(svc) {
+  const last = lastProbe[svc.url];
+  if (last && svc.every && probeRound % svc.every !== 0) return last;
   const t0 = performance.now();
+  let res;
   try {
     const r = await fetch(svc.url, { cache: "no-store" });
-    return { ...svc, ok: r.ok, ms: Math.round(performance.now() - t0) };
+    res = { ...svc, ok: r.ok, ms: Math.round(performance.now() - t0) };
   } catch (e) {
-    return { ...svc, ok: false, ms: Math.round(performance.now() - t0) };
+    res = { ...svc, ok: false, ms: Math.round(performance.now() - t0) };
   }
+  return (lastProbe[svc.url] = res);
+}
+// One entity by id through the ops path: { e: entity or null, err: query failed }.
+async function opsEntity(id) {
+  const list = await jlist(OPS + "/ngsi-ld/v1/entities?id=" + encodeURIComponent(id) + "&limit=1");
+  return { e: list[0] || null, err: failed(list) };
 }
 
 /* ---------- Konnektoren (vollständige Registry inkl. kommune-spezifischer) ---------- */
 let CONNECTORS = []; // aus /connectors-status.json (Registry-Export, F1)
 async function loadConnectorRegistry() {
-  const j = await jget("/connectors-status.json");
+  const j = await jget("/ops/connectors-status.json");
   CONNECTORS = j.connectors || []; // komplette Registry — auch Deaktivierte sichtbar
 }
 const geltung = c => c.enabledFor === "*" ? "landesweit"
@@ -249,6 +267,21 @@ function lineSvg(el, pts, unit) {
   host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}<path d="${d}" fill="none" stroke="var(--series-1)" stroke-width="2"/></svg>`;
 }
 
+/* EFA-BW on-demand requests of the day (connector service, PlatformStatus:udp)
+   against the daily cap: yellow from 80 %, red at 100 %. No tile while the
+   connector service does not report them yet (older version) or the host
+   status failed (its error tiles say so already). */
+function efaTile(plat) {
+  const n = a => (plat && plat[a] && plat[a].value != null && Number.isFinite(Number(plat[a].value))) ? Number(plat[a].value) : null;
+  const used = n("efaOnDemandCallsToday"), cap = n("efaOnDemandDailyCap");
+  if (used == null || !cap) return "";
+  const pct = used / cap * 100;
+  return tile("EFA-Abfahrten heute", fmtN(used) + " / " + fmtN(cap), "", {
+    status: grade(pct, 80, 100),
+    hint: Math.round(pct) + " % des Tageslimits",
+    explain: "Abfragen der EFA-BW-Fahrplanauskunft für /abfahrten (Cache-Fehltreffer) seit Mitternacht, gegen das Tageslimit des Konnektordienstes. Rot = Tageslimit erreicht." });
+}
+
 /* ---------- Laden ---------- */
 async function load() {
   if (!CONNECTORS.length) await loadConnectorRegistry();
@@ -256,15 +289,17 @@ async function load() {
   // 1) Dienste-Probes + Konnektoren + Host-Status + TRoE-Statistik parallel
   // (DB-Kennzahlen kommen als PlatformStatus:udp-troe aus dem Konnektordienst — kein SQL im Browser)
   const mark = SC.loadMark();
-  const [probes, sysList, platRes, troe] = await Promise.all([
+  const [probes, sysList, plat, troeQ] = await Promise.all([
     Promise.all(SERVICES.map(probe)),
-    jlist(GW + "/ngsi-ld/v1/entities?id=" + withSample.map(c => c.sampleEntity).join(",") + "&options=sysAttrs&limit=50"),
-    entity(PLAT_ID),
-    entity(TROE_ID),
+    jlist(OPS + "/ngsi-ld/v1/entities?id=" + withSample.map(c => c.sampleEntity).join(",") + "&options=sysAttrs&limit=50"),
+    opsEntity(PLAT_ID),
+    opsEntity(TROE_ID),
   ]);
+  probeRound++;
   SC.loadBanner("#loadwarn", mark);
   // A failed query shows the error state instead of "–" or a red 0.
-  const platErr = failed(PLAT_ID), troeErr = failed(TROE_ID), sysErr = failed(sysList);
+  const platRes = plat.e, troe = troeQ.e;
+  const platErr = plat.err, troeErr = troeQ.err, sysErr = failed(sysList);
   const orErr = (isErr, label, html) => isErr ? errorTile(label) : html;
   const ok = probes.filter(p => p.ok).length;
   const v = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
@@ -305,6 +340,7 @@ async function load() {
       explain: "Ingestion-Rate: so viele neue Zeitreihenwerte kamen in der letzten Stunde über alle Schnittstellen herein. 0 = Alarmzeichen." })) +
     orErr(platErr, "Host-Uptime", tile("Host-Uptime", v(platRes, "uptimeDays"), "Tage", {
       explain: "Zeit seit dem letzten Neustart des Servers." })) +
+    efaTile(platErr ? null : platRes) +
     `<a class="tile" href="/reutlingen" target="_blank" rel="noopener" data-explain="Das Reutlinger Dashboard ist die Vorlage: ein Template für alle Städte — jede Kommune zeigt automatisch, was ihre Datenlage hergibt, Reutlingen den vollen Ausbau.">
        <div class="label">Template-Dashboard</div>
        <div class="value">Smart City Reutlingen →</div>
@@ -345,10 +381,13 @@ async function load() {
 
 async function loadCharts() {
   // Ingestion + Typen aus PlatformStatus:udp-troe (Konnektordienst), Lastverlauf via Mintaka (TRoE)
-  const [troe, loadHist] = await Promise.all([
-    entity(TROE_ID),
-    SC.hist(PLAT_ID, "cpuLoadPct", 24),
+  const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+  const [troeQ, loadHist] = await Promise.all([
+    opsEntity(TROE_ID),
+    jlist(OPS + "/temporal/temporal/entities/" + encodeURIComponent(PLAT_ID) +
+          "?attrs=cpuLoadPct&timerel=after&timeAt=" + since + "&options=temporalValues"),
   ]);
+  const troe = troeQ.e;
   const v = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
   barSvg("#bars-ingest", asRows(v(troe, "ingestByHour")).map(([h, n]) => [h + " Uhr", n]));
   if (failed(loadHist)) $("#ch-load").innerHTML = `<div class="desc">${SC.LOAD_ERR_TXT}</div>`;

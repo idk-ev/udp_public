@@ -92,6 +92,8 @@ routes:
   - id: sensorthings
     uris: ["/FROST-Server/*"]
     upstream_id: frost
+    plugins:
+      {{- include "udp.apisixRateLimit" . | nindent 6 }}
 
 {{- if .Values.iotAgentJson.exposeRoutes }}
   # IoT-Geräteprovisionierung (Admin) – NUR mit OIDC-Absicherung veröffentlichen.
@@ -125,6 +127,7 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/catalog/(.*)", "/$1"]
+      {{- include "udp.apisixRateLimit" . | nindent 6 }}
 {{- end }}
 {{- if .Values.geoserver.enabled }}
 
@@ -132,6 +135,8 @@ routes:
   - id: geo
     uris: ["/geoserver/*"]
     upstream_id: geoserver
+    plugins:
+      {{- include "udp.apisixRateLimit" . | nindent 6 }}
 {{- end }}
 {{- if .Values.masterportal.enabled }}
 

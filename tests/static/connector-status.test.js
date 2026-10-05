@@ -3,10 +3,15 @@
  * © 2024–2026 Thomas Kieß and contributors
  */
 
-/* The status export gui/public/connectors-status.json: what the main
-   dashboard, the city pages and scripts/healthcheck.sh read about the
-   connectors. It is written by scripts/export-connector-status.py from the
-   registry (platform/config/connectors.json) and checked in.
+/* The status exports of the connectors, written by
+   scripts/export-connector-status.py from the registry
+   (platform/config/connectors.json) and checked in:
+     gui/ops/connectors-status.json     complete – the main dashboard (served
+                                        as /ops/connectors-status.json behind
+                                        its login) and scripts/healthcheck.sh
+     gui/public/connectors-status.json  public – the city pages; no
+                                        operations connectors, no secret
+                                        names, health URLs or schedules
 
    The field set is a contract with those readers; the checked-in file must
    match the registry, and the script must reproduce it byte for byte (up to
@@ -23,11 +28,14 @@ const { spawnSync } = require("child_process");
 const ROOT = path.join(__dirname, "..", "..");
 const SCRIPT = path.join(ROOT, "scripts", "export-connector-status.py");
 const REGISTRY = path.join(ROOT, "platform", "config", "connectors.json");
-const STATUS = path.join(ROOT, "gui", "public", "connectors-status.json");
+const STATUS = path.join(ROOT, "gui", "ops", "connectors-status.json");
+const PUBLIC = path.join(ROOT, "gui", "public", "connectors-status.json");
 
-/* Read by gui/public/dashboard.html, stadt.html and scripts/healthcheck.sh. */
+/* Read by gui/public/dashboard.html and scripts/healthcheck.sh. */
 const FIELDS = ["id", "name", "scope", "enabledFor", "sollMinutes", "sampleEntity", "provides",
   "attribution", "requiresSecret", "active", "supersededBy", "pending", "refireOnRestart", "healthUrl"];
+/* Read by gui/public/stadt.html – nothing more is published. */
+const PUBLIC_FIELDS = ["id", "name", "enabledFor", "provides", "attribution", "active", "sampleEntity"];
 
 /* python3 on Linux/CI, the py launcher on Windows (python/python3 there are
    often store aliases that start nothing). PYTHON overrides, e.g. "py -3". */
@@ -57,7 +65,28 @@ exports["status export: field set and values match the registry"] = () => {
   }
 };
 
-exports["status export: the script reproduces the checked-in file"] = () => {
+exports["public status export: only the fields of the city pages, no operations connectors"] = () => {
+  const registry = JSON.parse(fs.readFileSync(REGISTRY, "utf8")).connectors;
+  const status = JSON.parse(fs.readFileSync(PUBLIC, "utf8"));
+  const expected = registry.filter(c => c.scope !== "betrieb");
+  assert(expected.length < registry.length, "fixture: the registry has operations connectors");
+  assert.deepStrictEqual(status.connectors.map(c => c.id), expected.map(c => c.id), "public connector ids differ");
+  for (const [i, c] of expected.entries()) {
+    const exported = status.connectors[i];
+    assert.deepStrictEqual(Object.keys(exported), PUBLIC_FIELDS, `${c.id}: public fields changed`);
+    for (const k of PUBLIC_FIELDS) assert.deepStrictEqual(exported[k], c[k] ?? null, `${c.id}.${k}`);
+  }
+  const text = fs.readFileSync(PUBLIC, "utf8");
+  for (const secret of registry.map(c => c.requiresSecret).filter(Boolean))
+    assert(!text.includes(secret), `secret name ${secret} in the public status export`);
+  assert(!/healthUrl|requiresSecret|PlatformStatus/.test(text), "operations details in the public status export");
+  // The city page reads no connector field that is no longer published.
+  const stadt = fs.readFileSync(path.join(ROOT, "gui", "public", "stadt.html"), "utf8");
+  for (const k of FIELDS.filter(f => !PUBLIC_FIELDS.includes(f)))
+    assert(!new RegExp(`C?\\.${k}\\b`).test(stadt), `stadt.html reads ${k}, which is no longer public`);
+};
+
+exports["status export: the script reproduces the checked-in files"] = () => {
   const python = findPython();
   if (python === null) {
     assert(!process.env.CI, "no Python 3 found (python3, python, py -3) — CI must have one");
@@ -66,12 +95,15 @@ exports["status export: the script reproduces the checked-in file"] = () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udp-status-"));
   try {
     const out = path.join(dir, "connectors-status.json");
+    const ops = path.join(dir, "ops", "connectors-status.json");
     const [command, ...args] = python;
-    const r = spawnSync(command, [...args, SCRIPT, "--registry", REGISTRY, "--status-export", out],
+    const r = spawnSync(command, [...args, SCRIPT, "--registry", REGISTRY, "--status-export", out, "--ops-export", ops],
       { encoding: "utf8", env: { ...process.env, PYTHONIOENCODING: "utf-8" } });
     assert.strictEqual(r.status, 0, `export failed:\n${r.stdout || ""}${r.stderr || ""}`);
-    assert.strictEqual(withoutStand(fs.readFileSync(out, "utf8")), withoutStand(fs.readFileSync(STATUS, "utf8")),
-      "connectors-status.json is stale — run scripts/export-connector-status.py and commit");
+    assert.strictEqual(withoutStand(fs.readFileSync(out, "utf8")), withoutStand(fs.readFileSync(PUBLIC, "utf8")),
+      "gui/public/connectors-status.json is stale — run scripts/export-connector-status.py and commit");
+    assert.strictEqual(withoutStand(fs.readFileSync(ops, "utf8")), withoutStand(fs.readFileSync(STATUS, "utf8")),
+      "gui/ops/connectors-status.json is stale — run scripts/export-connector-status.py and commit");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

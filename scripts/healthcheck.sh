@@ -3,10 +3,11 @@
 # © 2024–2026 Thomas Kieß and contributors
 
 # Registry-getriebener Health-Check aller Konnektoren (Masterplan §5 F1).
-# Quelle: gui/public/connectors-status.json (scripts/export-connector-status.py).
+# Quelle: gui/ops/connectors-status.json (scripts/export-connector-status.py, der
+# vollständige Export inkl. Betriebskonnektoren und Secret-Namen).
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-STATUS="$REPO/gui/public/connectors-status.json"
+STATUS="$REPO/gui/ops/connectors-status.json"
 GW="http://localhost:8780"
 echo "== Konnektoren-Health $(date '+%H:%M:%S') =="
 ids=$(jq -r '.connectors[] | select(.active != false and .sampleEntity != null) | .sampleEntity' "$STATUS" | paste -sd,)

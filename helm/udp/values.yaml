@@ -262,13 +262,16 @@ ingress:
   # /gateway/… erreichbar.
   exposeComponentPaths: false
   # Zusätzliche Annotationen (Security-Header, Rate-Limit) – nginx-Beispiele.
+  # Die Security-Header setzt der Cockpit-nginx selbst (auch ohne
+  # ingress-nginx). KEIN X-Frame-Options am Ingress: es gälte für jede
+  # Antwort und verböte das Einbetten der Kommunenseiten
+  # (cockpit.embed.frameAncestors).
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "16m"
     nginx.ingress.kubernetes.io/configuration-snippet: |
       more_set_headers "X-Content-Type-Options: nosniff";
-      more_set_headers "X-Frame-Options: SAMEORIGIN";
       more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
       more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
 
@@ -619,7 +622,11 @@ orionLd:
   # the crash-right-after-start pattern above before the old pod is gone.
   minReadySeconds: 10
   # Should the broker still wedge, the liveness probe restarts the pod within
-  # about a minute instead of leaving a dead-but-running process in the Service.
+  # about two minutes instead of leaving a dead-but-running process in the
+  # Service. The probe asks the serving port itself: under a burst that fills
+  # maxConnections it fails like any client would – readiness takes the pod
+  # out of the Service at once, liveness waits 8 × 15 s so a busy broker is
+  # not restarted (which would only push its load onto the other replicas).
   probes:
     # Orion-LD waits for MongoDB/TimescaleDB on start.
     startup:
@@ -635,7 +642,7 @@ orionLd:
       httpGet: { path: /ngsi-ld/ex/v1/version, port: 1026 }
       periodSeconds: 15
       timeoutSeconds: 5
-      failureThreshold: 4
+      failureThreshold: 8
 
 mintaka:
   image: { repository: fiware/mintaka, tag: "0.7.0" }
@@ -658,6 +665,13 @@ mintaka:
   # i.e. an OOM kill under load. Hence the explicit -Xmx; keep it about 300 MiB
   # below resources.limits.memory (metaspace, threads, code cache).
   javaOpts: "-XX:-UseContainerSupport -Xms128m -Xmx448m"
+  # Upper bound for every database query of the temporal API (PostgreSQL
+  # statement_timeout, e.g. "30s", "500ms"; "" = none). A history request
+  # across a huge time window would otherwise keep a connection and a CPU of
+  # the database busy for minutes – the temporal API is public. Applied to
+  # each pooled connection of the default tenant (HikariCP
+  # connection-init-sql); Mintaka's per-tenant pools do not copy it.
+  statementTimeout: "30s"
   # Verified against 0.7.0: /health/liveness stays 200 with the database gone
   # (safe for liveness), /health/readiness follows the database.
   probes:
@@ -1116,6 +1130,10 @@ connectors:
   # Soft daily cap of Open-Meteo calls (one per coordinate) for wetter-bw and
   # vorhersage-bw, below the free tier's 10,000 a day (docs/betrieb.md).
   openMeteoDailyCap: 9000
+  # Daily cap of on-demand EFA-BW departure requests (/abfahrten cache
+  # misses) of the connector service. Empty -> the service's own default
+  # (20000). Shown on the main dashboard (PlatformStatus).
+  efaOnDemandDailyCap: ""
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { cpu: 1000m, memory: 1Gi }
@@ -1212,6 +1230,15 @@ cockpit:
     #   kubectl -n <namespace> create secret generic dashboard-htpasswd \
     #     --from-literal=htpasswd="$(htpasswd -nbB betrieb '<passwort>')"
     existingSecret: ""
+  # Einbetten der öffentlichen Kommunenseiten (/<slug>, Snippet auf der
+  # Startseite: <iframe src="https://<host>/<slug>?embed=1">) in fremde
+  # Webseiten. frameAncestors = CSP-Quellen für frame-ancestors, durch
+  # Leerzeichen getrennt: "*" (jede Seite), eine Freigabeliste wie
+  # "https://www.example.org https://*.example.de" oder "'none'" (gar nicht).
+  # Cockpit, /dashboard.html und die Startseite bleiben unabhängig davon auf
+  # SAMEORIGIN. s. docs/betrieb.md
+  embed:
+    frameAncestors: "*"
   # Öffentliche Basis-Adresse der Plattform, wie sie im BROWSER steht. Daraus
   # erzeugt das Chart die Laufzeit-Konfiguration der SPA (ConfigMap
   # cockpit-config) und die Redirect-URIs im Keycloak-Realm. Leer (empfohlen)
@@ -1304,14 +1331,20 @@ cockpit:
     runAsGroup: 101
   # Static files only – the probes never go through the /gateway proxy, so an
   # APISIX outage does not take the cockpit out of the Service as well.
+  # timeoutSeconds 5 instead of Kubernetes' 1 s: at its CPU limit nginx
+  # answers a static file in more than a second, and a saturated cockpit
+  # would otherwise be restarted exactly when it is needed. Liveness only
+  # after 6 × 20 s without an answer.
   probes:
     readiness:
       httpGet: { path: /index.html, port: 8080 }
       periodSeconds: 10
+      timeoutSeconds: 5
     liveness:
       httpGet: { path: /index.html, port: 8080 }
       periodSeconds: 20
-      failureThreshold: 3
+      timeoutSeconds: 5
+      failureThreshold: 6
 
 # ---------- Betrieb ----------
 # Continuous backup of the database cluster "timescale" to S3-compatible object
