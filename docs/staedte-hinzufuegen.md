@@ -219,7 +219,10 @@ Modul. Aufbau und verbindliche Typdisziplin: `platform/connectors/README.md`.
 
 Dedizierter NGSI-LD-Mandant bzw. eigene UDP-Instanz (Keycloak-Rollen, eigener
 Open-Data-Katalog/CKAN, SLA, Datenhoheit) — Projektgeschäft, außerhalb dieses
-Manifests. Anfragen an **info@idkev.de**.
+Manifests. Ein Mandant mit nicht öffentlichen Daten setzt die geplante
+Mandantendurchsetzung am Gateway voraus
+([`architektur.md`](architektur.md#mandantenmodell)); bis dahin heißt
+Datenhoheit eine eigene Instanz. Anfragen an **info@idkev.de**.
 
 ## Prüfliste
 

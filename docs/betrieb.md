@@ -115,11 +115,44 @@ DevTools → Application → Service Workers → Unregister.
 - TLS überall (Ingress, cert-manager), HSTS; interne Netzsegmentierung über
   NetworkPolicies.
 - Mosquitto in Produktion: Authentifizierung + TLS, kein `allow_anonymous`.
-- Keycloak: Brute-Force-Schutz aktiv, MFA für administrative Rollen.
-- APISIX: OIDC-Pflicht auf allen schreibenden Routen, Rate-Limits, IP-Allow-
-  Listen für Admin-Endpunkte.
+- Öffentliche API nur lesend: Der Cockpit-nginx lässt auf `/gateway/…`,
+  `/abfahrten` und `/warnungen.ics` nur `GET`/`HEAD`/`OPTIONS` durch; die
+  CORS-Regel von APISIX erlaubt nur `GET`. Schreibende Zugriffe laufen
+  ausschließlich innerhalb der Plattform (Konnektordienst, Node-RED,
+  IoT-Agent). Details: [`api.md`](api.md#zugriff-und-sicherheitsmodell).
+- APISIX: Rate-Limits je Client auf `/ngsi-ld` und `/temporal`
+  (`apisix.rateLimit`); die Routen zur IoT-Provisionierung und zum Ingest sind
+  standardmäßig aus (`iotAgentJson.exposeRoutes: false`).
+- Keycloak: Brute-Force-Schutz im Realm aktiv. Die Anmeldung im Cockpit ist
+  standardmäßig aus (`cockpit.authEnabled: false`).
+- **Geplant / Voraussetzung vor nicht öffentlichen Mandanten oder schreibendem
+  Zugriff von außen:** OIDC-Pflicht (openid-connect-Plugin) auf den
+  APISIX-Routen, Tenant aus dem Token-Claim (s.
+  [`architektur.md`](architektur.md#mandantenmodell)), MFA für administrative
+  Rollen in Keycloak, IP-Allow-Listen für Admin-Endpunkte. Nichts davon ist
+  heute aktiv.
 - Secrets ausschließlich über Kubernetes-Secrets/External-Secrets, nie im
   Repository (Beispielwerte sind als solche markiert und zu ersetzen).
+
+### Vor dem Einschalten der Anmeldung (Keycloak)
+
+> **Achtung:** Der mitgelieferte Realm
+> (`helm/udp/files/keycloak/udp-realm.json.tpl`, Compose:
+> `platform/config/keycloak/udp-realm.json`) ist ein **Demo-Realm**.
+>
+> - Er legt Demo-Konten (`plattform.admin`, `anna.fach`, `lars.leitstelle`)
+>   mit einem **öffentlich bekannten Passwort** an – vorher löschen oder die
+>   Passwörter ändern.
+> - Das Client-Secret des Clients `udp-gateway` steht im Repository – vorher
+>   neu erzeugen.
+> - `KC_HOSTNAME` auf die öffentliche Adresse setzen; das Chart startet
+>   Keycloak mit `--hostname-strict=false`.
+> - Der Realm-Import greift nur beim **ersten** Start (leere Keycloak-DB).
+>   Änderungen an der Vorlage erreichen eine bestehende Installation nicht;
+>   dort die Konten und das Secret in der Admin-Konsole bereinigen.
+>
+> Das gilt, bevor `cockpit.authEnabled` eingeschaltet oder Keycloak
+> öffentlich erreichbar gemacht wird.
 
 ### Cockpit-Micro-Cache und Zugriffslog
 

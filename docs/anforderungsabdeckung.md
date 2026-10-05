@@ -10,9 +10,9 @@ aufgesetzt werden kann.
 
 | Anforderung | Umsetzung |
 |---|---|
-| Offene, modulare **Multimandantenlösung** | NGSI-LD-Tenants (Orion-LD/Mintaka), Keycloak-Gruppenbaum (Kreis → Kommune), Tenant-Umschalter im Cockpit; jede Komponente einzeln austausch-/erweiterbar |
+| Offene, modulare **Multimandantenlösung** | NGSI-LD-Tenants (Orion-LD/Mintaka), Keycloak-Gruppenbaum (Kreis → Kommune), Tenant-Umschalter im Cockpit; jede Komponente einzeln austausch-/erweiterbar. Heute nur der öffentliche Standardmandant; Durchsetzung der Trennung am Gateway geplant (docs/architektur.md, Mandantenmodell) |
 | **Verfügbarkeit ≥ 99,5 %** | Managed Kubernetes, ≥ 2 Replikate zustandsloser Dienste, Pod-Anti-Affinity, PodDisruptionBudgets, HA-Datenbankbetrieb per Operator; Monitoring + Alarmierung (Uptime Kuma, getrennt deployt in `monitoring/`); Nachweis über monatliche Verfügbarkeitsberichte (docs/betrieb.md) |
-| Modulare Struktur, künftige Erweiterungen/Mandanten | Container-/Microservice-Architektur, deklarative Konfiguration (GitOps), neue Mandanten ohne Neuinstallation (Header + Realm-Gruppe) |
+| Modulare Struktur, künftige Erweiterungen/Mandanten | Container-/Microservice-Architektur, deklarative Konfiguration (GitOps), neue Mandanten ohne Neuinstallation (Header + Realm-Gruppe), nicht öffentliche Mandanten erst nach Umsetzung der Gateway-Durchsetzung |
 | Höchste Anforderungen an Betrieb/Doku/Aktualisierung | docs/betrieb.md (Patch-/Update-Prozess, Backup/DR, Incident Management) |
 
 ## B.II.2 Architektur und Open Source
@@ -22,7 +22,7 @@ aufgesetzt werden kann.
 | Vollständiger Aufbau + Funktionsdemonstration | Schnellstart (README), reproduzierbar per Compose (Demo) und Kustomize (Produktion) |
 | Durchgängig **Open-Source-Technologien** | Sämtliche Komponenten quelloffen, siehe THIRD-PARTY-NOTICES.md |
 | Hosting agnostisch in **Kubernetes** | kubernetes/base (Kustomize), lauffähig auf jedem CNCF-konformen Cluster |
-| Mandantenfähiges **Rollen-/Rechtemanagement** | Keycloak-Realm „udp“: 5 Rollen, Gruppen je Gebietskörperschaft, OIDC/PKCE, Tenant-Claim im Token |
+| Mandantenfähiges **Rollen-/Rechtemanagement** | Keycloak-Realm „udp“: 5 Rollen, Gruppen je Gebietskörperschaft, OIDC/PKCE, Tenant-Claim im Token; Auswertung der Tokens an den APIs geplant (heute öffentlich nur lesend) |
 | **Copyleft-Lizenz, vorzugsweise EUPL 1.2** | Gesamtwerk unter EUPL-1.2 (LICENSE); „Public Money – Public Code“ erfüllt |
 | Integration weiterer kommunaler Anwendungen | NGSI-LD-Datenmodelle + offene APIs; Module (Liegenschaften, Energie, Mobilität) docken als eigene Typen/Mandanten/Routen an |
 
@@ -32,10 +32,10 @@ aufgesetzt werden kann.
 |---|---|
 | **DIN SPEC 91357**-Konformität | Schichtenmapping in docs/architektur.md; Nachweisweg über KTS/BBSR-Veröffentlichung (März 2025) im Angebot |
 | **FIWARE Context Broker** | Orion-LD 1.5 (NGSI-LD 1.6) |
-| **NGSI-LD** | Vollständige NGSI-LD-API über Gateway-Route `/ngsi-ld`, Temporal API (Mintaka) über `/temporal` |
+| **NGSI-LD** | NGSI-LD-API über Gateway-Route `/ngsi-ld`, Temporal API (Mintaka) über `/temporal`; öffentlich lesend unter `/gateway/…` (docs/api.md) |
 | **SensorThings** | FROST-Server (OGC SensorThings API v1.1) über `/FROST-Server` |
 | Standardisierte APIs, medienbruchfreie Integration | REST/JSON(-LD) durchgängig; OGC WMS/WFS/WPS (GeoServer); MQTT; DCAT-AP (CKAN); Prometheus-Metriken |
-| **FIWARE Smart Data Models** + individuelle Modelle | Beispielentitäten (WeatherObserved, OffStreetParking, …); NGSI-LD @context erlaubt kommunale Modelle ohne Plattformänderung |
+| **FIWARE Smart Data Models** + individuelle Modelle | An Smart Data Models angelehnte Typen (WeatherObserved, AirQualityObserved, EVChargingStation, …) plus eigene Aggregate; das Vokabular ist als eigener @context veröffentlicht und eingefroren (docs/api.md), eine Umstellung auf die Smart-Data-Models-Kontexte ist als spätere Migration beschrieben |
 
 ## B.II.4 Datenmanagement und Dokumentation
 
@@ -43,7 +43,7 @@ aufgesetzt werden kann.
 |---|---|
 | Low-Code-Datenfluss-Management (**Node-RED**), ETL | Node-RED (Upstream-Image) als Low-Code-Werkzeug mit vorkonfiguriertem Beispielfluss (Open Data → NGSI-LD-Upsert in Orion-LD; ausgeliefert deaktiviert, damit er keine Demo-Werte in den Broker schreibt — im Editor aktivieren, um ihn auszuprobieren), in Compose und Helm ausgerollt; eigene Flüsse lassen sich im Editor bauen, optional hinter einer Anmeldung (`adminAuth`). Die Ingestion der 29 Referenz-Konnektoren läuft im Konnektordienst (`platform/connectors`, TypeScript, je Konnektor ein getestetes Modul), gesteuert über die Registry `platform/config/connectors.json` |
 | **DCAT-AP.de**-Metadatenkatalog mit Open-Data-Portal (**CKAN**) | CKAN 2.10 + ckanext-dcat (RDF-Endpunkte, DCAT-AP-Profil), benutzerfreundliche Oberfläche + API |
-| Open-Source-**API-Management (Apisix)** | Apache APISIX, deklarative Routen (GitOps), granulare Zugriffskontrolle (OIDC-Plugin), Rate-Limiting, Prometheus-Monitoring, dokumentierte Schnittstellen |
+| Open-Source-**API-Management (Apisix)** | Apache APISIX, deklarative Routen (GitOps), Rate-Limiting, Prometheus-Monitoring, dokumentierte Schnittstellen (docs/api.md); Zugriffskontrolle per OIDC-Plugin geplant, bis dahin öffentlich nur lesend |
 | **PostgreSQL** mit **PostGIS** und **TimescaleDB** (Apache-Edition) | Zentrale Instanz: TRoE-Zeitreihen (Orion-LD), FROST- und CKAN-Datenbanken, PostGIS für Georeferenzierung, TimescaleDB-Zeitreihenfunktionen für die Temporal-API |
 | Performante, skalierbare, ausfallsichere Speicherung | Indizierte Zeitreihen (TRoE als TimescaleDB-Hypertable), Kubernetes-Operator-Betrieb, Backup/DR-Konzept |
 
