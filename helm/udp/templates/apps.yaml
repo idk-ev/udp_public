@@ -230,7 +230,10 @@ spec:
         # Neue Adressen in config.js sollen die Pods auch wirklich neu ausrollen.
         checksum/config: {{ include "udp.cockpitConfigJs" . | sha256sum }}
         {{- $branding := include "udp.branding" . | fromJson }}
-        {{- $dashboardAuth := (.Values.cockpit.dashboardAuth | default dict).existingSecret | default "" | toString | trim }}
+        {{- $dashboardAuth := include "udp.dashboardAuthSecretName" . }}
+        {{- /* Operator-provided udp-dashboard-auth (secrets.create=false, no
+               existingSecret): optional, a missing one leaves the page at 404. */}}
+        {{- $dashboardAuthOptional := and (not .Values.secrets.create) (not ((.Values.cockpit.dashboardAuth | default dict).existingSecret | default "" | toString | trim)) }}
         {{- if $branding.files }}
         # Logo/favicon (ConfigMap cockpit-branding): a new image rolls the pods
         # instead of waiting for the kubelet to sync the mounted directory.
@@ -316,10 +319,14 @@ spec:
         - name: dashboard-auth
           secret:
             secretName: {{ $dashboardAuth | quote }}
-            # Only this key; a missing one keeps the pod from starting
-            # instead of silently disabling the page. Readable by nginx (101).
+            # Only this key. Readable by nginx (101). A missing secret or key
+            # keeps the pod from starting instead of silently disabling the
+            # page - except for the operator-provided default name.
             items: [{ key: htpasswd, path: htpasswd }]
             defaultMode: 0444
+            {{- if $dashboardAuthOptional }}
+            optional: true
+            {{- end }}
         {{- end }}
 ---
 apiVersion: v1

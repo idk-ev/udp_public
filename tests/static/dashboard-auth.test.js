@@ -110,12 +110,77 @@ exports["cockpit nginx: dashboard login is rate-limited"] = () => {
 
 exports["helm: htpasswd Secret mounted read-only at the fixed path"] = () => {
   const values = read("helm/udp/values.yaml");
-  assert.match(values, /\n  dashboardAuth:\n    existingSecret: ""\n/, "default must stay empty (page answers 404)");
+  // On by default with a chart-generated login; existingSecret only overrides.
+  assert.match(values, /\n  dashboardAuth:\n(    #.*\n)*    enabled: true\n(    #.*\n)*    username: "betrieb"\n(    #.*\n)*    existingSecret: ""\n/);
   const apps = read("helm/udp/templates/apps.yaml");
   const cockpit = apps.slice(apps.indexOf("  name: cockpit\n"), apps.indexOf("kind: Service", apps.indexOf("  name: cockpit\n")));
+  assert.match(cockpit, /\$dashboardAuth := include "udp\.dashboardAuthSecretName" \./);
   assert.match(cockpit, /- name: dashboard-auth\n\s+mountPath: \/etc\/nginx\/udp-auth\n\s+readOnly: true/);
   assert.match(cockpit, /secretName: \{\{ \$dashboardAuth \| quote \}\}/);
   assert.match(cockpit, /items: \[\{ key: htpasswd, path: htpasswd \}\]/);
+};
+
+exports["helm: generated login follows the conventions of the other chart secrets"] = () => {
+  const secrets = read("helm/udp/templates/secrets.yaml");
+  const at = secrets.indexOf('lookup "v1" "Secret" .Release.Namespace "udp-dashboard-auth"');
+  assert(at > 0, "udp-dashboard-auth is not kept via lookup");
+  const block = secrets.slice(secrets.lastIndexOf("{{- if", at), secrets.indexOf("{{- end }}\n", secrets.indexOf("htpasswd:", secrets.indexOf("stringData:", at))));
+  assert.match(block, /\{\{- if and \.Values\.secrets\.create \(eq \(include "udp\.dashboardAuthSecretName" \.\) "udp-dashboard-auth"\) \}\}/);
+  assert.match(block, /randAlphaNum \(\.Values\.secrets\.passwordLength \| int\)/);
+  assert.match(block, /"helm\.sh\/resource-policy": keep/);
+  // bcrypt via Helm; the old line is reused while username and password are
+  // unchanged, otherwise every upgrade would get a new salt (Secret churn).
+  assert.match(block, /htpasswd \$daUser \$daPass/);
+  assert.match(block, /if and \(index \$daData "htpasswd"\) \(eq \$daSum \$daOldSum\)/);
+  assert.match(block, /checksum\/htpasswd: \{\{ \$daSum \| quote \}\}/);
+  for (const key of ["username", "password", "htpasswd"])
+    assert(new RegExp(`\\n  ${key}: \\{\\{`).test(block), `key ${key} missing`);
+
+  const helpers = read("helm/udp/templates/_helpers.tpl");
+  const at2 = helpers.indexOf('{{- define "udp.dashboardAuthSecretName" -}}');
+  assert(at2 >= 0, "helper udp.dashboardAuthSecretName missing");
+  const def = helpers.slice(at2, helpers.indexOf("{{- end -}}\n{{- end -}}", at2));
+  assert(def.includes('$existing | default "udp-dashboard-auth"'));
+  assert(def.includes("regexMatch"), "username is not checked – a ':' would break the htpasswd line");
+};
+
+/* Renders the chart when helm is installed (locally; CI's chart job renders
+   the same cases). lookup is empty here, so a fresh password is generated. */
+exports["helm: rendered login for defaults, enabled=false and existingSecret"] = () => {
+  const probe = spawnSync("helm", ["version", "--short"], { encoding: "utf8" });
+  if (probe.error || probe.status !== 0) { console.log("    (skipped: no helm)"); return; }
+  const chart = path.join(ROOT, "helm", "udp");
+  const render = (...set) => {
+    const r = spawnSync("helm", ["template", "udp", chart, ...set.flatMap(s => ["--set", s])],
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const docs = r.stdout.replace(/\r\n/g, "\n").split(/\n---\n/);
+    const secret = docs.find(d => /\nkind: Secret\n/.test(d) && /\n  name: udp-dashboard-auth\n/.test(d));
+    const cockpit = docs.find(d => /\nkind: Deployment\n/.test(d) && /\n  name: cockpit\n/.test(d));
+    assert(cockpit, "cockpit Deployment not rendered");
+    const vol = cockpit.indexOf("- name: dashboard-auth\n          secret:");
+    const name = vol >= 0 ? /secretName: "([^"]+)"/.exec(cockpit.slice(vol))[1] : null;
+    assert.strictEqual(cockpit.includes("mountPath: /etc/nginx/udp-auth"), name !== null, "mount and volume disagree");
+    return { secret, mounted: name };
+  };
+  const def = render();
+  assert(def.secret, "no generated Secret by default");
+  assert.strictEqual(def.mounted, "udp-dashboard-auth");
+  assert.strictEqual(/\n  username: "([^"]+)"/.exec(def.secret)[1], "betrieb");
+  assert.match(/\n  password: "([^"]+)"/.exec(def.secret)[1], /^[A-Za-z0-9]{32}$/);
+  assert.match(def.secret, /\n  htpasswd: "betrieb:\$2a\$10\$[./A-Za-z0-9]{53}\\n"(\n|$)/,"htpasswd is not one bcrypt line for the username");
+
+  assert.match(render("cockpit.dashboardAuth.username=ops").secret, /\n  htpasswd: "ops:\$2a\$10\$/);
+
+  const off = render("cockpit.dashboardAuth.enabled=false");
+  assert(!off.secret && off.mounted === null, "enabled=false must render neither Secret nor mount");
+
+  const own = render("cockpit.dashboardAuth.existingSecret=dashboard-htpasswd");
+  assert(!own.secret, "existingSecret set, but the chart still generates one");
+  assert.strictEqual(own.mounted, "dashboard-htpasswd");
+
+  const bad = spawnSync("helm", ["template", "udp", chart, "--set", "cockpit.dashboardAuth.username=a:b"], { encoding: "utf8" });
+  assert.notStrictEqual(bad.status, 0, "a username with ':' must fail the render");
 };
 
 /* Runs the script itself with sh. The fixed path is swapped for a temporary

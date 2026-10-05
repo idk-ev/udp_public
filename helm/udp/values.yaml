@@ -1184,19 +1184,33 @@ cockpit:
   # Hauptdashboard /dashboard.html (Kommunen-Suche plus Betriebsdaten:
   # Konnektoren, TRoE-Ingestion, Serverlast, Speicher) nur mit Anmeldung –
   # HTTP Basic Auth im Cockpit-nginx. Die öffentliche Kommunen-Suche liegt auf
-  # der Startseite (/). existingSecret: Name eines Secrets im Release-Namespace
-  # mit dem Schlüssel "htpasswd" (eine Zeile "benutzer:hash" je Konto, bcrypt
-  # oder apr1), nur lesend gemountet unter /etc/nginx/udp-auth/htpasswd.
-  # Leer (Standard) -> die Seite antwortet mit 404.
-  #   kubectl -n <namespace> create secret generic udp-dashboard-auth \
-  #     --from-literal=htpasswd="$(htpasswd -nbB betrieb '<passwort>')"
-  #   ohne htpasswd (apache2-utils):
-  #     --from-literal=htpasswd="betrieb:$(openssl passwd -apr1 '<passwort>')"
-  # Geänderte Zugangsdaten im selben Secret gelten ohne Neustart (nginx liest
-  # die Datei bei jeder Anfrage, der kubelet gleicht sie binnen etwa einer
-  # Minute ab). Fehlt das Secret oder der Schlüssel, startet der Pod nicht.
+  # der Startseite (/).
+  #
+  # Standard: das Chart erzeugt das Secret udp-dashboard-auth mit den
+  # Schlüsseln username, password (Klartext, Zufallspasswort mit
+  # secrets.passwordLength Zeichen, über 'lookup' stabil wie die übrigen) und
+  # htpasswd (bcrypt). Passwort auslesen:
+  #   kubectl -n <namespace> get secret udp-dashboard-auth \
+  #     -o jsonpath='{.data.password}' | base64 -d
+  # Rotieren: Secret löschen und helm upgrade (neues Zufallspasswort) oder den
+  # Schlüssel password ändern (kubectl patch) und helm upgrade (neue
+  # htpasswd-Zeile). Mit secrets.create=false legt der Betreiber
+  # udp-dashboard-auth selbst an (Schlüssel htpasswd); fehlt es, bleibt die
+  # Seite bei 404.
+  #
+  # Geänderte Zugangsdaten gelten ohne Neustart (nginx liest die Datei bei
+  # jeder Anfrage, der kubelet gleicht sie binnen etwa einer Minute ab).
   # s. docs/betrieb.md
   dashboardAuth:
+    # false -> kein Secret, kein Mount: die Seite antwortet mit 404.
+    enabled: true
+    # Benutzername der erzeugten Anmeldung (Buchstaben, Ziffern, . _ @ -).
+    username: "betrieb"
+    # Eigenes Secret statt des erzeugten (Schlüssel "htpasswd", eine Zeile
+    # "benutzer:hash" je Konto, bcrypt empfohlen). Gesetzt -> das Chart erzeugt
+    # nichts; fehlt das Secret oder der Schlüssel, startet der Pod nicht.
+    #   kubectl -n <namespace> create secret generic dashboard-htpasswd \
+    #     --from-literal=htpasswd="$(htpasswd -nbB betrieb '<passwort>')"
     existingSecret: ""
   # Öffentliche Basis-Adresse der Plattform, wie sie im BROWSER steht. Daraus
   # erzeugt das Chart die Laufzeit-Konfiguration der SPA (ConfigMap

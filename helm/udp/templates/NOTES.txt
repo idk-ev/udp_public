@@ -54,8 +54,7 @@
    Öffentlich über Ingress:  https://{{ .Values.ingress.host }}/
      - Startseite: https://{{ .Values.ingress.host }}/ (Mitmachen-Angebot)
      - Cockpit:   https://{{ .Values.ingress.host }}/cockpit
-{{- $dashboardAuth := (.Values.cockpit.dashboardAuth | default dict).existingSecret | default "" | toString | trim }}
-     - Hauptdashboard: https://{{ .Values.ingress.host }}/dashboard.html {{ if $dashboardAuth }}(Anmeldung, Secret {{ $dashboardAuth }}){{ else }}(aus: 404, s. cockpit.dashboardAuth){{ end }}
+     - Hauptdashboard: https://{{ .Values.ingress.host }}/dashboard.html {{ if include "udp.dashboardAuthSecretName" . }}(Anmeldung, s. unten){{ else }}(aus: 404){{ end }}
      - NGSI-LD:   https://{{ .Values.ingress.host }}/ngsi-ld/v1/entities
      - Zeitreihen: https://{{ .Values.ingress.host }}/temporal/v1/entities
      - SensorThings: https://{{ .Values.ingress.host }}/FROST-Server/v1.1
@@ -73,6 +72,22 @@
 {{- else }}
    Ingress ist deaktiviert. Lokaler Test per port-forward:
      kubectl -n {{ .Release.Namespace }} port-forward svc/cockpit 8080:80
+{{- end }}
+{{- $dashboardAuth := include "udp.dashboardAuthSecretName" . }}
+{{- if not $dashboardAuth }}
+
+   Hauptdashboard /dashboard.html: aus (cockpit.dashboardAuth.enabled=false),
+   die Seite antwortet mit 404.
+{{- else if and .Values.secrets.create (eq $dashboardAuth "udp-dashboard-auth") }}
+
+   Hauptdashboard /dashboard.html: Basic Auth, Zugangsdaten im Secret
+   udp-dashboard-auth (vom Chart erzeugt):
+     kubectl -n {{ .Release.Namespace }} get secret udp-dashboard-auth -o jsonpath='{.data.username}' | base64 -d; echo
+     kubectl -n {{ .Release.Namespace }} get secret udp-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; echo
+{{- else }}
+
+   Hauptdashboard /dashboard.html: Basic Auth gegen den Schlüssel htpasswd im
+   Secret {{ $dashboardAuth }}{{ if not .Values.secrets.create }} (selbst anlegen; fehlt es, antwortet die Seite mit 404){{ end }}.
 {{- end }}
 
 {{- if .Values.networkPolicies.enabled }}
