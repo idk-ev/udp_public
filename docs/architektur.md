@@ -90,9 +90,9 @@ erreichbar; Pfade, Limits und Stabilitätszusage: [`api.md`](api.md).
 - Alle Daten liegen im **Standardmandanten** (ohne `NGSILD-Tenant`) und sind
   öffentliche, offene Daten. Die Auslieferung legt keine weiteren Mandanten an.
 - Die Mandantentrennung wird **nicht durchgesetzt**: Das Gateway wertet kein
-  Token aus und setzt keinen Tenant. Am öffentlichen Pfad ist eine
-  Mandantenwahl durch den Client nicht vorgesehen; der Cockpit-nginx lässt
-  dort ohnehin nur lesende Zugriffe durch.
+  Token aus und setzt keinen Tenant. Am öffentlichen Pfad verwirft der
+  Cockpit-nginx die Header `NGSILD-Tenant` und `Fiware-Service` und lässt
+  nur lesende Zugriffe durch.
 - Keycloak-Realm (Gruppen, Rollen, Tenant-Claim) und die Mandantenauswahl im
   Cockpit sind vorbereitet, wirken aber noch nicht auf die APIs.
 

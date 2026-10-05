@@ -66,6 +66,8 @@
       "diskTotalGb": "https://uri.etsi.org/ngsi-ld/default-context/diskTotalGb",
       "diskUsedPct": "https://uri.etsi.org/ngsi-ld/default-context/diskUsedPct",
       "dwdStationId": "https://uri.etsi.org/ngsi-ld/default-context/dwdStationId",
+      "efaOnDemandCallsToday": "https://uri.etsi.org/ngsi-ld/default-context/efaOnDemandCallsToday",
+      "efaOnDemandDailyCap": "https://uri.etsi.org/ngsi-ld/default-context/efaOnDemandDailyCap",
       "endDate": "https://uri.etsi.org/ngsi-ld/default-context/endDate",
       "evseCount": "https://uri.etsi.org/ngsi-ld/default-context/evseCount",
       "floodLevels": "https://uri.etsi.org/ngsi-ld/default-context/floodLevels",

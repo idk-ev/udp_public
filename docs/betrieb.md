@@ -120,8 +120,8 @@ DevTools → Application → Service Workers → Unregister.
   CORS-Regel von APISIX erlaubt nur `GET`. Schreibende Zugriffe laufen
   ausschließlich innerhalb der Plattform (Konnektordienst, Node-RED,
   IoT-Agent). Details: [`api.md`](api.md#zugriff-und-sicherheitsmodell).
-- APISIX: Rate-Limits je Client auf `/ngsi-ld` und `/temporal`
-  (`apisix.rateLimit`); die Routen zur IoT-Provisionierung und zum Ingest sind
+- APISIX: Rate-Limits je Client auf `/ngsi-ld`, `/temporal`, FROST, CKAN
+  und GeoServer (`apisix.rateLimit`); die Routen zur IoT-Provisionierung und zum Ingest sind
   standardmäßig aus (`iotAgentJson.exposeRoutes: false`).
 - Keycloak: Brute-Force-Schutz im Realm aktiv. Die Anmeldung im Cockpit ist
   standardmäßig aus (`cockpit.authEnabled: false`).

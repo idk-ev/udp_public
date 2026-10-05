@@ -29,20 +29,30 @@ curl 'https://udp.example.org/gateway/ngsi-ld/v1/entities?type=WeatherObserved&q
 # eine Entität
 curl 'https://udp.example.org/gateway/ngsi-ld/v1/entities/urn:ngsi-ld:Municipality:bw-08415061'
 
-# vorhandene Typen und Attribute
+# vorhandene Typen
 curl 'https://udp.example.org/gateway/ngsi-ld/v1/types'
-curl 'https://udp.example.org/gateway/ngsi-ld/v1/attributes'
 ```
 
+- Öffentlich erreichbar sind genau drei Endpunkte: `/entities`,
+  `/entities/{id}` und `/types`. Alle anderen Pfade des Brokers (u. a.
+  `/attributes`, Subscriptions, Registrierungen, `/ex/v1/…`) antworten mit
+  `404`.
+- **Listenabfragen brauchen genau einen `type`-Parameter** mit einfachen
+  Typnamen – ein Typ (`type=WeatherObserved`) oder eine kommagetrennte Liste
+  (`type=ParkingSite,BikeParking`), nur Buchstaben, Ziffern und `_`. Abfragen
+  ohne `type` (nur `q=…`, `idPattern=…`, `local=true`), mit zwei
+  `type`-Parametern oder mit vollständigen URIs, Präfixen oder
+  Typ-Ausdrücken (`|`, `;`, Klammern) beantwortet die Plattform mit `400`.
+  Die übrigen Parameter (`q`, `attrs`, `georel`/`geometry`/`coordinates`,
+  `options`, `limit`, `offset`, `count`) sind frei kombinierbar.
 - `limit` höchstens 1000, Blättern über `offset`; `count=true` liefert die
   Gesamtzahl im Header `NGSILD-Results-Count`.
 - Fast alle Typen tragen das Attribut `ags` (Amtlicher Gemeindeschlüssel,
   8-stellig) – der übliche Filter ist `q=ags=="<AGS>"`.
-- Ohne `Link`-Header antwortet der Broker mit den kurzen Namen aus der
-  Tabelle unten; ein eigener Kontext ist nicht nötig.
-- Vertrag sind die Entitäts-Endpunkte (`/entities`, `/entities/{id}`) sowie
-  `/types` und `/attributes`. Weitere Endpunkte des Brokers sind über den
-  Pfad technisch erreichbar, gehören aber nicht zum Vertrag.
+- Der Broker antwortet mit den kurzen Namen aus der Tabelle unten; einen
+  `Link`-Header (eigener `@context`) reicht der öffentliche Pfad nicht weiter.
+- Buchstaben und Ziffern im Query-String nicht prozentkodieren (`%41` statt
+  `A`): solche Anfragen weist die Plattform mit `403` ab.
 
 ### Temporal-API
 
@@ -54,7 +64,9 @@ Die Zeitreihen liefert Mintaka. Der doppelte Pfadteil ist kein Tippfehler:
 curl 'https://udp.example.org/gateway/temporal/temporal/entities/urn:ngsi-ld:WeatherObserved:bw-dwd-04160?attrs=temperature&timerel=after&timeAt=2026-10-01T00:00:00Z&options=temporalValues'
 ```
 
-Abgefragt wird je Entität (`/temporal/entities/{id}`). Wie weit die Historie
+Abgefragt wird je Entität (`/temporal/entities/{id}`); Listenabfragen über
+alle Entitäten (`/temporal/entities?…`) und die übrigen Mintaka-Pfade sind
+öffentlich nicht erreichbar (`404`). Wie weit die Historie
 zurückreicht, legt der Betreiber über die Retention fest
 ([`betrieb.md`](betrieb.md), „Zeitreihen-Retention (TRoE)“); unveränderte
 Wiederholungswerte können zusammengefasst sein.
@@ -104,13 +116,19 @@ So ist die Plattform **heute** ausgeliefert:
   öffentliche, offene Daten. Eine Mandantenwahl per `NGSILD-Tenant` ist am
   öffentlichen Pfad nicht vorgesehen. Getrennte, nicht öffentliche Mandanten
   setzen eine Durchsetzung am Gateway voraus, die noch fehlt – s.
-  [`architektur.md`](architektur.md#mandantenmodell).
+  [`architektur.md`](architektur.md#mandantenmodell). Die Header
+  `NGSILD-Tenant` und `Fiware-Service` verwirft der Cockpit-nginx.
+- **Betriebsdaten nicht öffentlich.** Entitäten vom Typ `PlatformStatus`
+  (Serverlast, Speicher, Datenbankkennzahlen) und ihre Historie liefert der
+  öffentliche Pfad nicht aus (`403`), auch nicht als Teil einer anderen
+  Abfrage.
 - **Schreiben nur intern.** Konnektordienst, Node-RED und IoT-Agent schreiben
   innerhalb der Plattform direkt in den Broker, nicht über den öffentlichen
   Pfad.
 - **CORS.** Die Gateway-Pfade erlauben Aufrufe aus dem Browser von beliebigen
   Origins (nur `GET`/`OPTIONS`).
-- **Betriebsdashboard.** `/dashboard.html` ist per HTTP Basic Auth geschützt
+- **Betriebsdashboard.** `/dashboard.html` und seine Daten unter `/ops/…`
+  sind per HTTP Basic Auth geschützt
   ([`betrieb.md`](betrieb.md#hauptdashboard-nur-mit-anmeldung)).
 
 Lokal unter Docker Compose ist das Gateway (`http://localhost:8780`) dagegen
@@ -124,8 +142,9 @@ Je Client-Adresse; über dem Limit antwortet die Plattform mit `429`.
 | Pfad | Limit | Einstellung |
 |---|---|---|
 | `/gateway/ngsi-ld/…`, `/gateway/temporal/…` | 30 Anfragen/s, Burst 150 | `apisix.rateLimit` (Helm); gezählt je APISIX-Replik |
-| `/abfahrten` | 30 Anfragen/min, Burst 30 | `platform/config/nginx/cockpit.conf.template` |
+| `/abfahrten` | 120 Anfragen/min, Burst 60 | `platform/config/nginx/cockpit.conf.template` |
 | `/warnungen.ics` | 10 Anfragen/min, Burst 10 | `platform/config/nginx/cockpit.conf.template` |
+| `/gateway/FROST-Server/…`, `/gateway/catalog/…`, `/gateway/geoserver/…`, `/gateway/portal/…` | 10 Anfragen/s, Burst 60, höchstens 10 gleichzeitige Verbindungen; FROST, CKAN und GeoServer zusätzlich wie oben | `platform/config/nginx/cockpit.conf.template`, `apisix.rateLimit` |
 
 Antworten aus dem Cache (s. unten) zählen nicht gegen das Gateway-Limit.
 Für Massenabzüge bitte `limit`/`offset` und eine moderate Abfragefrequenz
@@ -139,13 +158,14 @@ eine Antwort aus dem Cache kam, steht im Header `X-Cache`.
 | Pfad | Gültigkeit |
 |---|---|
 | `/gateway/ngsi-ld/…` | 60 s; leere Liste (`[]`) und `404` 10 s |
-| `/gateway/temporal/…` | 300 s |
+| `/gateway/temporal/…` | 60 s |
 | `/abfahrten` | 60 s; `404` 30 s |
 | `/warnungen.ics` | 300 s |
 
 Bei Störungen des Upstreams liefert der Cache die letzte gültige Antwort
-weiter aus (`X-Cache: STALE`). Der Cache-Schlüssel enthält neben der URL die
-Header `Accept` und `Link`.
+weiter aus (`X-Cache: STALE`). Der Cache-Schlüssel enthält neben der URL den
+Header `Accept`. Zeitreihen-Abfragen mit einem auf die volle Minute
+gerundeten `timeAt` teilen sich einen Cache-Eintrag.
 
 ## Stabilitätszusage
 
@@ -169,7 +189,8 @@ inkompatibel. Neue Typen und Attribute kommen jederzeit hinzu.
   `gemeinde-services.json`, `dashboards.json`, `connectors-status.json`,
   `bw-gemeinden.json`;
 - Aufbau und Inhalt der HTML-Seiten und Skripte (`smartcity-lib.js` u. a.);
-- die Entitäten vom Typ `PlatformStatus` (Betriebsdaten der Plattform);
+- die Entitäten vom Typ `PlatformStatus` (Betriebsdaten der Plattform,
+  öffentlich nicht abrufbar; ihre Namen stehen trotzdem im Vokabular);
 - Typen, die Betreiber selbst über Node-RED oder den IoT-Agenten anlegen;
 - Entitäts-IDs über das Präfix `urn:ngsi-ld:<Typ>:` hinaus. Sie sind aus den
   Schlüsseln der Quelle gebildet und bleiben stabil, solange die Quelle sie
@@ -198,9 +219,8 @@ Wer ihn verwendet, erhält also dieselbe Erweiterung wie der Broker.
 - **Brauche ich ihn?** Für die API nicht: Antworten ohne `Link`-Header
   enthalten bereits die kurzen Namen. Der Kontext dient der Dokumentation und
   der Verarbeitung als JSON-LD beim Abnehmer (Expansion zu vollständigen URIs,
-  Verknüpfung mit anderen Daten). Als `Link`-Header an die API geschickt,
-  ändert er die Antwort nicht; der Broker muss ihn dafür allerdings selbst
-  abrufen können.
+  Verknüpfung mit anderen Daten). Einen `Link`-Header reicht der öffentliche
+  Pfad nicht an den Broker weiter.
 - **Eingefroren.** Kein Name wird umbenannt, keine URI geändert, kein Eintrag
   entfernt – auch nicht, wenn ein Konnektor ein Attribut nicht mehr schreibt,
   denn die Historie steht weiter unter dieser URI. Neue Namen kommen hinzu.
@@ -213,7 +233,7 @@ Wer ihn verwendet, erhält also dieselbe Erweiterung wie der Broker.
 
 ### Typen und Attribute
 
-Stand: 26 Entitätstypen, 119 Attributnamen.
+Stand: 26 Entitätstypen, 121 Attributnamen.
 
 | Typ | Konnektor(en) | Attribute |
 |---|---|---|
@@ -232,7 +252,7 @@ Stand: 26 Entitätstypen, 119 Attributnamen.
 | `ParkingSite` | parken-bw | `ags`, `availableSpotNumber`, `category`, `dataProvider`, `dateObserved`, `location`, `name`, `originalUid`, `sourceId`, `totalSpotNumber` |
 | `ParkingSummary` | parken-bw | `ags`, `dateObserved`, `realtimeFree`, `realtimeSites`, `siteCount`, `totalCapacity` |
 | `PedestrianFlowObserved` | hystreet | `dailyTotal`, `dataProvider`, `dateObserved`, `location`, `name`, `pedestrianCount` |
-| `PlatformStatus` | ops-host, troe-stats | `cpuCores`, `cpuLoad1`, `cpuLoad15`, `cpuLoadPct`, `dateObserved`, `dbSizeBytes`, `diskTotalGb`, `diskUsedPct`, `ingestByHour`, `memTotalMb`, `memUsedPct`, `name`, `rowsByType`, `rowsByTypeAsOf`, `troeEntities`, `troeRows`, `troeRows1h`, `troeRows24h`, `uptimeDays` |
+| `PlatformStatus` | ops-host, troe-stats | `cpuCores`, `cpuLoad1`, `cpuLoad15`, `cpuLoadPct`, `dateObserved`, `dbSizeBytes`, `diskTotalGb`, `diskUsedPct`, `efaOnDemandCallsToday`, `efaOnDemandDailyCap`, `ingestByHour`, `memTotalMb`, `memUsedPct`, `name`, `rowsByType`, `rowsByTypeAsOf`, `troeEntities`, `troeRows`, `troeRows1h`, `troeRows24h`, `uptimeDays` |
 | `PollenForecast` | pollen-bw | `arten`, `dataProvider`, `dateObserved`, `kreise`, `name` |
 | `PublicAmenity` | poi-bw | `ags`, `amenities`, `counts`, `dataProvider`, `dateObserved`, `totalCount` |
 | `PublicTransportStop` | efa-abfahrten | `ags`, `avgDelayMinutes`, `dataProvider`, `dateObserved`, `delayDataQuality`, `departureCount`, `departures`, `location`, `name`, `stopCode` |
