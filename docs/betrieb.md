@@ -96,19 +96,21 @@ docker run --rm -e VUS=10 -e BASE=https://<host> \
   Anomalieerkennung der Fachanwendungen können als Module ergänzt werden;
   Basis-Plausibilisierung (Schema-Validierung NGSI-LD) erfolgt im Broker.
 
-**Ein Deploy allein macht die Dashboards nicht neu.** Die Seiten registrieren
-einen Service-Worker (`gui/public/sw.js`, PWA/Offline-Kiosk). Seiten und
-`/gateway`-Abfragen laufen netz-zuerst und sind sofort aktuell; die statische
-Shell (`smartcity-lib.js`, `smartcity-theme.css`, `dashboards.json`,
-`connectors-status.json`, Leaflet) kommt aus dem Cache und wird seit Sprint 2.9
-im Hintergrund aufgefrischt — sichtbar wird eine Änderung dort also erst beim
-**zweiten** Aufruf nach dem Deploy. Die Cacheversion `V` in `sw.js` ist an die
-Chart-Version gekoppelt (`tests/static/sw-cache.test.js` prüft das): Ein
-Release verwirft damit den Cache seines Vorgängers vollständig. Bis Sprint 2.9
-stand dort ein handgepflegtes `"udp-v2"`, das nie erhöht wurde und
-wiederkehrende Browser dauerhaft auf den Dateien ihres ersten Besuchs
-festhielt. Bei Verdacht auf einen hängenden Client: harter Reload, ersatzweise
-DevTools → Application → Service Workers → Unregister.
+**Service-Worker und Deploy.** Die Seiten registrieren einen Service-Worker
+(`gui/public/sw.js`, PWA/Offline-Kiosk). Alles, was er bearbeitet – Seiten,
+Skripte, Styles, `config.js`, Datendateien – läuft **netz-zuerst**: Nach einem
+Deploy kommt schon der erste Aufruf mit den neuen Dateien, der Cache ist nur
+der Rückfall ohne Netz (Seiten zuletzt die Startseite). Gespeichert werden nur
+Adressen ohne Query-String. Live-Daten (`/gateway/…`, `/abfahrten`,
+`/warnungen.ics`) beantwortet und speichert er nicht, ebenso wenig
+`/dashboard.html` und `/ops/…` hinter der Anmeldung. Bis 2026-10 lief die
+statische Shell stale-while-revalidate; nach einem Deploy kamen dabei einmal
+neue Seiten mit alten Skripten. Die Cacheversion `V` in `sw.js` ist an die
+Chart-Version gekoppelt (`tests/static/sw-cache.test.js` prüft das, ein
+Suffix `-swN` verwirft die Caches zwischen zwei Releases): Ein Release
+verwirft damit den Cache seines Vorgängers vollständig. Bei Verdacht auf
+einen hängenden Client: harter Reload, ersatzweise DevTools → Application →
+Service Workers → Unregister.
 
 ## Härtung (Auszug)
 

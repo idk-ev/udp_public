@@ -20,7 +20,8 @@ const path = require("path");
 
 const { JSDOM, ROOT, PUB, LIB, renderStadt, renderPage } = require("./page-harness");
 
-const read = f => fs.readFileSync(path.join(ROOT, f), "utf8");
+// CRLF from a Windows checkout (core.autocrlf) is not a difference.
+const read = f => fs.readFileSync(path.join(ROOT, f), "utf8").replace(/\r\n/g, "\n");
 
 /* A window with smartcity-lib loaded; fetch answers {} and records URLs. */
 function libWindow() {
@@ -238,7 +239,7 @@ exports["embed mode keeps a compact source line"] = async () => {
 exports["robots.txt keeps crawlers away from live queries, not from page assets"] = () => {
   const robots = read("gui/public/robots.txt");
   const rules = [...robots.matchAll(/^Disallow:\s*(\S+)\s*$/gm)].map(m => m[1]);
-  for (const p of ["/abfahrten", "/warnungen.ics", "/gateway/", "/cockpit", "/dashboard.html"])
+  for (const p of ["/abfahrten", "/warnungen.ics", "/gateway/", "/cockpit", "/dashboard.html", "/ops/"])
     assert(rules.includes(p), `robots.txt does not disallow ${p}`);
   const blocked = p => rules.some(r => r.endsWith("$") ? p === r.slice(0, -1) : p.startsWith(r));
   // Needed to render the pages (crawlers obey robots.txt for resources too).
@@ -282,4 +283,29 @@ exports["slug pages: canonical link, loader shows an error instead of a blank pa
     assert.match(w.document.body.textContent, /konnte gerade nicht geladen werden/, `${slug}: blank page on a failed template`);
     assert(w.document.querySelector("body a[href='/']"), `${slug}: no way back to the search`);
   }
+};
+
+/* ---------- cockpit SPA ---------- */
+
+exports["cockpit SPA: temporal window rounded to the minute, no query without a type"] = () => {
+  const api = read("gui/src/api.ts");
+  // Same rounding as smartcity-lib.js histSince: one cache entry per minute.
+  assert.match(api, /const TEMPORAL_STEP_MS = 60_000;/);
+  assert.match(api, /Math\.floor\(start \/ TEMPORAL_STEP_MS\) \* TEMPORAL_STEP_MS/);
+  assert.match(api, /const timeAt = temporalSince\(hours\);/);
+  assert(!/Date\.now\(\) - hours \* 3600_000\)\.toISOString/.test(api), "unrounded timeAt left");
+  // The public gateway answers list queries without a type with 400.
+  assert(!/local:\s*"true"/.test(api), "type-less local=true query left");
+};
+
+exports["slug pages: inline JSON cannot close its script element"] = () => {
+  const gen = read("scripts/generate-city-pages.py");
+  assert.match(gen, /def script_json\(value\):[\s\S]*?\.replace\("<", "\\\\u003c"\)/);
+  assert(!/_json=json\.dumps\(/.test(gen), "JSON inlined without script_json()");
+  const dir = path.join(PUB, "g");
+  const bad = fs.readdirSync(dir).filter(s => {
+    const m = /<script>window\.(?:STADT|KREIS) = ([\s\S]*?);<\/script>/.exec(fs.readFileSync(path.join(dir, s, "index.html"), "utf8"));
+    return !m || m[1].includes("<");
+  });
+  assert.deepStrictEqual(bad.slice(0, 5), [], `${bad.length} stubs with raw "<" in inline JSON – run scripts/generate-city-pages.py`);
 };

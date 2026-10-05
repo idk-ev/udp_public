@@ -163,6 +163,10 @@ exports["Fremde Origins und Schreibzugriffe bleiben unangetastet"] = async () =>
     { method: "POST", url: "https://udp.example/gateway/ngsi-ld/v1/entities", mode: "cors" },
     // Login-protected: the browser's own request must get the 401 (prompt).
     { method: "GET", url: "https://udp.example/dashboard.html", mode: "navigate" },
+    // Operations data behind the same login: neither answered nor stored.
+    { method: "GET", url: "https://udp.example/ops/connectors-status.json", mode: "cors" },
+    { method: "GET", url: "https://udp.example/ops/gateway/ngsi-ld/v1/entities?type=PlatformStatus", mode: "cors" },
+    { method: "GET", url: "https://udp.example/ops/gateway/temporal/temporal/entities/urn%3Ax?attrs=cpuLoadPct", mode: "cors" },
   ]) {
     let beantwortet = false;
     w.handler.fetch({ request: req, respondWith: () => { beantwortet = true; }, waitUntil: () => {} });

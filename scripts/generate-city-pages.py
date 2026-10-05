@@ -124,6 +124,13 @@ def write(path, text):
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+def script_json(value):
+    """JSON for an inline <script>: "<" as \\u003c, so no value (e.g. a
+    municipality website from gemeinde-services.json) can close the script
+    element ("</script>") or open a comment ("<!--"). Same value for JS."""
+    return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c")
+
+
 # Sitemaps need absolute URLs, but the public address of an installation is
 # only known where it is deployed. The placeholder is meant to be replaced per
 # request by the cockpit nginx (sub_filter on /sitemap.xml and /robots.txt,
@@ -143,7 +150,7 @@ for row in gem:
     write(OUT / slug / "index.html", TPL.format(
         name=name.replace('"', ""), ags=ags, slug=slug,
         ew=f"{ew:,}".replace(",", ".") if ew else "–",
-        stadt_json=json.dumps(stadt_obj, ensure_ascii=False)))
+        stadt_json=script_json(stadt_obj)))
     paths.append("/" + slug)
     n += 1
 
@@ -156,7 +163,7 @@ for krs, name, _, _, typ, gems, ew, slug in kreise:
     write(OUT / slug / "index.html", KREIS_TPL.format(
         name=anzeige.replace('"', ""), krs=krs, slug=slug, gems=gems,
         ew=f"{ew:,}".replace(",", ".") if ew else "–",
-        name_json=json.dumps(name, ensure_ascii=False)))
+        name_json=script_json(name)))
     paths.append("/" + slug)
     nk += 1
 

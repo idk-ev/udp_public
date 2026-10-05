@@ -3,7 +3,8 @@
 #
 # Public dashboards may be indexed. Kept out: live queries (a crawler that
 # renders JavaScript would otherwise send ~1,100 municipality pages' worth of
-# live upstream queries), the operator cockpit and the main dashboard.
+# live upstream queries), the operator cockpit and the main dashboard with
+# its operations data (/ops/, behind the same login).
 # Templates, scripts and data files stay allowed – crawlers need them to
 # render the pages. /g/ holds the same pages as /<slug> (canonical).
 
@@ -18,6 +19,7 @@ Disallow: /zeitreihen$
 Disallow: /module$
 Disallow: /verwaltung$
 Disallow: /dashboard.html
+Disallow: /ops/
 Disallow: /g/
 Allow: /
 

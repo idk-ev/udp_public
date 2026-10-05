@@ -30,10 +30,12 @@ const SHELL = [
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
-/* Pages the worker never touches: login-protected, so neither a cached copy
-   nor the network-first branch may stand between the browser and the
-   server's 401 (the browser shows its login prompt only for its own request). */
+/* Addresses the worker never touches: login-protected, so neither a cached
+   copy nor the network-first branch may stand between the browser and the
+   server's 401 (the browser shows its login prompt only for its own request).
+   /ops/… is the main dashboard's operations data behind the same login. */
 const PRIVATE = ["/dashboard.html"];
+const isPrivate = p => PRIVATE.includes(p) || p.startsWith("/ops/");
 /* Live data: neither answered nor stored by the worker. */
 const LIVE = ["/gateway", "/abfahrten", "/warnungen.ics"];
 const isLive = p => LIVE.some(x => p === x || p.startsWith(x + "/"));
@@ -47,7 +49,7 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   const u = new URL(e.request.url);
-  if (e.request.method !== "GET" || u.origin !== location.origin || PRIVATE.includes(u.pathname)) return;
+  if (e.request.method !== "GET" || u.origin !== location.origin || isPrivate(u.pathname)) return;
   if (isLive(u.pathname)) return;
   // Network first; a good answer refreshes the offline copy. Only addresses
   // without a query are stored – the set of them is finite (the files and
