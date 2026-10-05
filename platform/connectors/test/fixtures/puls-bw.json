@@ -1,7 +1,7 @@
 {
   "source": "http://orion-ld:1026/ngsi-ld/v1/entities?type=<type>&...&options=keyValues",
   "recordedAt": "2026-09-28T05:30:00Z",
-  "note": "SCRIPTED, not recorded: the city pulse fetches no source, it reads what the other connectors wrote to Orion-LD. These are keyValues listings as Orion returns them for the seven queries of the node, shaped after the entities of the connectors concerned, for municipalities of the geo fixture. Instead of a dateObserved each record carries ageHours (null = no dateObserved) and dateForm (\"string\" or \"typed\" = {\"@type\": \"DateTime\", \"@value\": ...}, both forms keyValues produces); the test materialises them relative to the run time, because the node judges freshness against the clock. Cases: fresh and stale medians (2 h), a median above 400, PM2.5 null falling back to PM10, UBA index with and without value, stale and static bike parking, zero capacity, sharing in municipalities without population (08317971, 08415971), zero live charge points, roadworks fresh and 30-40 h old, a roadworks id outside the SVZ pattern, alert levels 0-5 and missing, records without ags.",
+  "note": "SCRIPTED, not recorded: the city pulse fetches no source, it reads what the other connectors wrote to Orion-LD. These are keyValues listings as Orion returns them for the seven queries of the node, shaped after the entities of the connectors concerned, for municipalities of the geo fixture. Instead of a dateObserved each record carries ageHours (null = no dateObserved) and dateForm (\"string\" or \"typed\" = {\"@type\": \"DateTime\", \"@value\": ...}, both forms keyValues produces); the test materialises them relative to the run time, because the node judges freshness against the clock. Cases: fresh and stale medians (2 h), a median above 400, PM2.5 null falling back to PM10, UBA index (0-4 scale) with and without value, several UBA stations per municipality (worst current one counts), a UBA index 5 h old and one without dateObserved (both left out), stale and static bike parking, zero capacity, sharing in municipalities without population (08317971, 08415971), zero live charge points, roadworks fresh and 30-40 h old, a roadworks id outside the SVZ pattern, alert levels 0-5 and missing, records without ags.",
   "statusCode": 200,
   "headers": {"content-type": "application/json"},
   "format": "json",
@@ -30,13 +30,16 @@
       {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08317096", "type": "AirQualityObserved", "ags": "08317096", "pm25": 430, "pm10": 480, "ageHours": 1, "dateForm": "string"},
       {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08336050", "type": "AirQualityObserved", "ags": "08336050", "pm25": 31.6, "ageHours": 1.5, "dateForm": "string"},
       {"id": "urn:ngsi-ld:AirQualityObserved:bw-sc-08316011", "type": "AirQualityObserved", "ags": "08316011", "pm10": 4, "ageHours": 0.1, "dateForm": "string"},
-      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW084", "type": "AirQualityObserved", "ags": "08311000", "airQualityIndex": 1, "pm10": 11},
-      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW005", "type": "AirQualityObserved", "ags": "08222000", "airQualityIndex": 3},
-      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW019", "type": "AirQualityObserved", "ags": "08421000", "airQualityIndex": 2},
-      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW022", "type": "AirQualityObserved", "ags": "08317057", "airQualityIndex": 4},
-      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW023", "type": "AirQualityObserved", "ags": "08336091"},
-      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW031", "type": "AirQualityObserved", "ags": "08317971", "airQualityIndex": 2},
-      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW999", "type": "AirQualityObserved", "ags": "08415971", "airQualityIndex": 1}
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW084", "type": "AirQualityObserved", "ags": "08311000", "airQualityIndex": 1, "pm10": 11, "ageHours": 1.5, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW085", "type": "AirQualityObserved", "ags": "08311000", "airQualityIndex": 4, "ageHours": null},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW005", "type": "AirQualityObserved", "ags": "08222000", "airQualityIndex": 3, "ageHours": 2, "dateForm": "typed"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW007", "type": "AirQualityObserved", "ags": "08222000", "airQualityIndex": 4, "ageHours": 5, "dateForm": "typed"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW006", "type": "AirQualityObserved", "ags": "08222000", "airQualityIndex": 1, "ageHours": 1, "dateForm": "typed"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW019", "type": "AirQualityObserved", "ags": "08421000", "airQualityIndex": 2, "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW022", "type": "AirQualityObserved", "ags": "08317057", "airQualityIndex": 4, "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW023", "type": "AirQualityObserved", "ags": "08336091", "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW031", "type": "AirQualityObserved", "ags": "08317971", "airQualityIndex": 2, "ageHours": 1, "dateForm": "string"},
+      {"id": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW999", "type": "AirQualityObserved", "ags": "08415971", "airQualityIndex": 0, "ageHours": 1, "dateForm": "string"}
     ],
     "SharingSummary": [
       {"id": "urn:ngsi-ld:SharingSummary:bw-08311000-nextbike", "type": "SharingSummary", "ags": "08311000", "availableVehicles": 412},

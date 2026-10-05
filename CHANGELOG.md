@@ -2,6 +2,18 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — UBA-Luftqualitätsindex
+
+- Index auf der UBA-Skala 0–4 (0 = sehr gut … 4 = sehr schlecht): Kachel,
+  Gauge und Kartenpopup im Stadt-Dashboard; 0 ist ein Wert, keine
+  Datenlücke. Bei mehreren Stationen zählt die am stärksten belastete
+  aktuelle Station; ein Index älter als 4 h ist mit Stand markiert.
+- Puls: Luftindex `(4 − Index) · 25` statt `(5 − Index) · 25`, höchster
+  Index der Gemeinde, nur Werte bis 4 h.
+- `uba-bw`: Messzeit statt Abrufzeit (`dateObserved`, `observedAt`; MEZ →
+  UTC), getrennte Signaturen für Stammdaten und Messwerte statt stündlichem
+  Vollschrieb, neue API-Adresse `luftdaten.umweltbundesamt.de`.
+
 ## 1.5.1 — Lizenzen und Quellenvermerke
 
 > **Upgrade bestehender Installationen:**

@@ -15,6 +15,15 @@
  * the change signature hashes — so besides old-against-new, one municipality
  * is scored by hand along docs/framework-dashboards.md.
  *
+ * DELIBERATE DEVIATION (module header): the UBA index is scored on its real
+ * 0–4 scale, only if current, and the worst station of a municipality counts.
+ * The old node is therefore fed {@link legacyView} of the listings: only the
+ * current, worst UBA station per municipality, its index raised by one — on
+ * that input its `(5 − index) · 25` is exactly the port's `(4 − index) · 25`,
+ * so everything else is still compared old against new.
+ * {@link luftindexOnTheUbaScale} and {@link worstCurrentStationCounts} pin
+ * the difference.
+ *
  * Fixture: test/fixtures/puls-bw.json — SCRIPTED listings (the pulse reads
  * other connectors' entities, there is no source to record); ages are
  * materialised relative to the run time, see its note.
@@ -22,7 +31,8 @@
 
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
-import { GATE_KEY, run } from "../../src/connectors/puls-bw.js";
+import { GATE_KEY, run, summarize, UBA_MAX_AGE_MS } from "../../src/connectors/puls-bw.js";
+import type { AirRecord, PulseListings } from "../../src/connectors/puls-bw.js";
 import { SignatureStore } from "../../src/kernel/change-gate.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
 import {
@@ -87,6 +97,37 @@ function broker(mutate?: Mutation): Broker {
   return new Broker([...listings(Date.now(), mutate).values()].flat());
 }
 
+/** `dateObserved` of a keyValues record in ms, either form; `null` without one. */
+function observedMs(entity: Record<string, unknown>): number | null {
+  const value = entity.dateObserved;
+  const raw = isRecord(value) ? value["@value"] : value;
+  return typeof raw === "string" ? Date.parse(raw) : null;
+}
+
+/**
+ * The listings as the old node must see them to score like the port (see the
+ * header): of the UBA stations only the current one with the highest index
+ * per municipality, its index raised by one onto the old 1–5 reading. UBA
+ * records without an index are kept as they are (both ignore them).
+ */
+function legacyView(source: Broker): void {
+  const nowMs = Date.now();
+  const worst = new Map<string, Record<string, unknown>>();
+  for (const [id, entity] of source.entities) {
+    if (!id.includes(":AirQualityObserved:bw-uba-") || typeof entity.airQualityIndex !== "number") continue;
+    source.entities.delete(id);
+    const at = observedMs(entity);
+    if (at === null || nowMs - at > UBA_MAX_AGE_MS) continue;
+    const ags = String(entity.ags);
+    const before = worst.get(ags);
+    if (before === undefined || Number(before.airQualityIndex) < entity.airQualityIndex)
+      worst.set(ags, entity);
+  }
+  for (const entity of worst.values()) {
+    source.add({ ...entity, airQualityIndex: Number(entity.airQualityIndex) + 1 });
+  }
+}
+
 interface Sides {
   readonly legacy: FunctionNodeRun;
   readonly legacySeen: SeenRequest[];
@@ -108,6 +149,7 @@ async function bothSides(
 ): Promise<Sides> {
   const geo = options.geo ?? fixtureGeo();
   const legacyBroker = source.clone();
+  legacyView(legacyBroker);
   const legacySeen: SeenRequest[] = [];
   const legacyClock = openClock();
   const legacy = await runFunctionNode(NODE_ID, {
@@ -208,17 +250,17 @@ async function normalRunAndTheMethodByHand(): Promise<void> {
 
   // Freiburg by hand, along the table in docs/framework-dashboards.md:
   //  feinstaub  100 − 6.3·4 = 74.8 → 75            ×0.3
-  //  luftindex  (5 − 1)·25 = 100                   ×0.2
+  //  luftindex  (4 − 1)·25 = 75 (index 4 without dateObserved left out) ×0.2
   //  sharing    (412+380)/237,244·1000·20 → 67     ×0.1
   //  laden      45/120 → 37.5 → 38                 ×0.15
   //  baustellen 100 − 3·5 = 85 (svz ids only)      ×0.15
   //  oepnv      100 − 2.5·8 = 80                   ×0.2
   //  br         (30+7)/(120+40) → 23 (9 h old one left out) ×0.05
   //  warnungen  level 2 → 60                       ×0.2
-  //  index      96.8 / 1.35 = 71.7 → 72
+  //  index      91.8 / 1.35 = 68.0 → 68
   assert.deepEqual(componentsOf(sides, "08311000"), [
     ["feinstaub", 75, 0.3],
-    ["luftindex", 100, 0.2],
+    ["luftindex", 75, 0.2],
     ["sharing", 67, 0.1],
     ["laden", 38, 0.15],
     ["baustellen", 85, 0.15],
@@ -230,11 +272,12 @@ async function normalRunAndTheMethodByHand(): Promise<void> {
     .flat()
     .find((e) => isRecord(e) && e.id === "urn:ngsi-ld:CityPulse:bw-08311000");
   assert.ok(isRecord(freiburg) && isRecord(freiburg.pulseIndex));
-  assert.equal(freiburg.pulseIndex.value, 72);
+  assert.equal(freiburg.pulseIndex.value, 68);
   // Mannheim: its median is 3 h old (no feinstaub), its 5 h old stop is ignored,
-  // warning level 5 does not exist → 0.
+  // warning level 5 does not exist → 0. Of its UBA stations (3, 4 but 5 h old,
+  // 1) the worst current one counts: (4 − 3)·25 = 25.
   assert.deepEqual(componentsOf(sides, "08222000"), [
-    ["luftindex", 50, 0.2],
+    ["luftindex", 25, 0.2],
     ["sharing", 40, 0.1],
     ["laden", 86, 0.15],
     ["baustellen", 90, 0.15],
@@ -246,7 +289,8 @@ async function normalRunAndTheMethodByHand(): Promise<void> {
   assert.ok(Array.isArray(ulm));
   assert.deepEqual(ulm[0], ["feinstaub", 26, 0.3]);
   assert.deepEqual(ulm[ulm.length - 1], ["warnungen", 30, 0.2]);
-  // Gutsbezirk Münsingen: no population → no sharing, still three components.
+  // Gutsbezirk Münsingen: no population → no sharing, still three components;
+  // UBA index 0 ("sehr gut") → 100.
   assert.deepEqual(componentsOf(sides, "08415971"), [
     ["luftindex", 100, 0.2],
     ["laden", 100, 0.15],
@@ -258,6 +302,89 @@ async function normalRunAndTheMethodByHand(): Promise<void> {
   // sharing without population dropped → below the minimum too.
   assert.equal(componentsOf(sides, "08317096"), undefined);
   assert.equal(componentsOf(sides, "08317971"), undefined);
+}
+
+/** Freiburg with three other components and the given UBA records. */
+function scoreFreiburg(aq: readonly AirRecord[], now: string): unknown {
+  const ags = "08311000";
+  const raw: PulseListings = {
+    pt: [{ ags, observedMs: Date.parse(now), delay: 0 }],
+    br: [],
+    aq,
+    sh: [{ ags, vehicles: 10 }],
+    ch: [{ ags, live: 10, available: 5 }],
+    rw: [],
+    al: [],
+  };
+  const entity = summarize(raw, sharedGeo(fixtureGeo()).index(), now).entities.find(
+    (e) => e.id === `urn:ngsi-ld:CityPulse:bw-${ags}`,
+  );
+  return entity?.components.value.find(([name]) => name === "luftindex")?.[1];
+}
+
+function uba(index: number | undefined, ageMs: number | null, nowMs: number): AirRecord {
+  // observedMs 0 is what parse() makes of a record without dateObserved.
+  return {
+    ags: "08311000",
+    observedMs: ageMs === null ? 0 : nowMs - ageMs,
+    median: false,
+    pm: undefined,
+    index,
+  };
+}
+
+function luftindexOnTheUbaScale(): void {
+  const now = new Date().toISOString();
+  const nowMs = Date.parse(now);
+  // Deliberate deviation: 0 (sehr gut) … 4 (sehr schlecht) → 100 … 0; the old
+  // node scored (5 − index)·25 and gave 0 and 1 both 100.
+  const scores = [0, 1, 2, 3, 4].map((index) => scoreFreiburg([uba(index, HOUR, nowMs)], now));
+  assert.deepEqual(scores, [100, 75, 50, 25, 0]);
+  // Current means at most UBA_MAX_AGE_MS old; without dateObserved (before
+  // uba-bw wrote one) the component is left out, not scored and not an error.
+  assert.equal(scoreFreiburg([uba(2, UBA_MAX_AGE_MS, nowMs)], now), 50);
+  assert.equal(scoreFreiburg([uba(2, UBA_MAX_AGE_MS + 1, nowMs)], now), undefined);
+  assert.equal(scoreFreiburg([uba(2, null, nowMs)], now), undefined);
+  assert.equal(scoreFreiburg([uba(undefined, HOUR, nowMs)], now), undefined);
+}
+
+async function worstCurrentStationCounts(): Promise<void> {
+  const now = new Date().toISOString();
+  const nowMs = Date.parse(now);
+  // Order does not matter, the stale and the undated station do not count.
+  const stations = [
+    uba(1, HOUR, nowMs),
+    uba(3, 2 * HOUR, nowMs),
+    uba(4, 5 * HOUR, nowMs),
+    uba(4, null, nowMs),
+  ];
+  assert.equal(scoreFreiburg(stations, now), 25);
+  assert.equal(scoreFreiburg([...stations].reverse(), now), 25);
+
+  // Against the old node on the UNADAPTED listings: it took the last
+  // Mannheim station in the listing (index 1 → (5 − 1)·25 = 100), stale or not.
+  const raw = broker();
+  const legacy = await runFunctionNode(NODE_ID, {
+    msg: { _msgid: "parity", payload: Date.now() },
+    global: legacyGlobal(fixtureGeo()),
+    flow: {},
+    modules: { http: fakeHttpModule(raw.respond) },
+  });
+  const mannheim = legacyEntities(legacy).find(
+    (entity) => isRecord(entity) && entity.id === "urn:ngsi-ld:CityPulse:bw-08222000",
+  );
+  assert.ok(isRecord(mannheim) && isRecord(mannheim.components));
+  const components = normalize(mannheim.components.value);
+  assert.ok(Array.isArray(components));
+  assert.deepEqual(
+    components[0],
+    ["luftindex", 100, 0.2],
+    "the old node's answer changed – revisit the deviation",
+  );
+  const sides = await bothSides(broker());
+  const ported = componentsOf(sides, "08222000");
+  assert.ok(Array.isArray(ported));
+  assert.deepEqual(ported[0], ["luftindex", 25, 0.2]);
 }
 
 async function roadworksFeedStaleOrEmpty(): Promise<void> {
@@ -490,6 +617,8 @@ async function unknownResponseForRouting(): Promise<void> {
 
 export {
   normalRunAndTheMethodByHand as "puls-bw: old node and run(ctx) write identical pulses; Freiburg scored by hand along the documented method",
+  luftindexOnTheUbaScale as "puls-bw: luftindex on the UBA's 0–4 scale (0 → 100, 4 → 0), only from a current index (deliberate deviation)",
+  worstCurrentStationCounts as "puls-bw: the worst current UBA station of a municipality counts, not the last one listed (deliberate deviation)",
   roadworksFeedStaleOrEmpty as "puls-bw: a stale or empty roadworks feed drops the component everywhere, on both sides",
   missingPopulation as "puls-bw: without a population figure there is no sharing component, on both sides",
   noMunicipalityWithThreeComponents as "puls-bw: fewer than three components everywhere warns and writes nothing, as before",

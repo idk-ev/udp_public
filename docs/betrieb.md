@@ -931,6 +931,10 @@ zielten nur auf den kleineren Teil des Volumens:
    ändert sich nur ein Messwert, schreibt der Dienst die geänderten Attribute
    plus `dateObserved` (`options=update` ersetzt nur die gesendeten Attribute).
    Vorher schrieb jede Statusänderung eines Ladepunkts alle 12 Attribute.
+   Ebenso die UBA-Luftmessstationen (`uba-bw`; Stammdaten AGS, Name, Lage;
+   Messwerte Index und Schadstoffe), die vorher stündlich voll geschrieben
+   wurden. Ihr `dateObserved` ist die Messstunde, nicht der Abrufzeitpunkt;
+   hat das UBA noch keine neue Stunde veröffentlicht, bleibt es unverändert.
    Einmal je Woche geht jede dieser Entitäten trotzdem voll heraus: Fehlt
    sie im Broker (gelöscht, Wiederherstellung), entstünde sonst aus den
    Teilschreibvorgängen ein Gerippe ohne Name und Lage.

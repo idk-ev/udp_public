@@ -283,6 +283,40 @@ exports["stadt.html: Parken shows free spaces while realtime is current, else th
   none.w.close();
 };
 
+/* ---------- Luftqualität (UBA index 0–4) ---------- */
+
+// A UBA station as uba-bw writes it: dateObserved = the hour of the index.
+const ubaStation = (code, name, index, ageH) => {
+  const at = new Date(Date.now() - ageH * 3600e3).toISOString();
+  return { id: "urn:ngsi-ld:AirQualityObserved:bw-uba-" + code, type: "AirQualityObserved", ags: P(AGS),
+    stationName: P(name), location: { type: "GeoProperty", value: { type: "Point", coordinates: [9.21, 48.49] } },
+    ...(index == null ? { no2: P(20, { unitCode: "GQ", observedAt: at }) } : { airQualityIndex: P(index, { unitCode: "", observedAt: at }) }),
+    dateObserved: P({ "@type": "DateTime", "@value": at }) };
+};
+const luftTile = async stations => {
+  const { w, d } = await renderStadt(base({ types: { AirQualityObserved: stations } }));
+  const t = tileOf(d, "Luftqualität");
+  w.close();
+  return t && { value: t.value, hint: t.hint };
+};
+
+exports["stadt.html: Luftqualität on the UBA 0–4 scale — worst current station, 0 is 'sehr gut', stale marked"] = async () => {
+  if (!JSDOM) return;
+  // The worst current station of the municipality; a worse one 6 h old does not count.
+  assert.deepStrictEqual(await luftTile([ubaStation("DEBW001", "Nord", 1, 1), ubaStation("DEBW002", "Süd", 2, 1.5),
+    ubaStation("DEBW003", "Alt", 4, 6)]), { value: "mäßig", hint: "Süd" });
+  // Index 0 is a value ("sehr gut"), not a data gap; 4 is "sehr schlecht".
+  assert.deepStrictEqual(await luftTile([ubaStation("DEBW001", "Nord", 0, 1)]), { value: "sehr gut", hint: "Nord" });
+  assert.deepStrictEqual(await luftTile([ubaStation("DEBW001", "Nord", 4, 1)]), { value: "sehr schlecht", hint: "Nord" });
+  // Only an old index: shown with its stand instead of as current.
+  const stale = await luftTile([ubaStation("DEBW001", "Nord", 3, 6)]);
+  assert.strictEqual(stale.value, "schlecht");
+  assert.match(stale.hint, /^Nord · Stand: \d{2}\.\d{2}\. \d{2}:\d{2}$/);
+  // No index at all: a data gap.
+  assert.deepStrictEqual(await luftTile([ubaStation("DEBW001", "Nord", null, 1)]),
+    { value: "–", hint: "Nord · aktuell kein Messwert (UBA)" });
+};
+
 exports["stadt.html: district names match bw-gemeinden.json"] = () => {
   const html = fs.readFileSync(path.join(PUB, "stadt.html"), "utf8");
   const names = new Function(`return ${html.match(/const KREIS_NAME = (\{[\s\S]*?\});/)[1]}`)();
