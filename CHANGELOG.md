@@ -2,7 +2,21 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht — Hauptdashboard nur mit Anmeldung
+## 1.4.0 — Datenbank-Backup nach S3, TRoE als Hypertable, Hauptdashboard mit Anmeldung
+
+> **Upgrade bestehender Kubernetes-Installationen:**
+>
+> - Das Upgrade bricht ab, bis ein S3-Backup konfiguriert oder
+>   `backup.acknowledgeNoBackup` gesetzt ist (DEPLOY.md §2); `db-backup`
+>   (pg_dump) entfällt.
+> - Neue PostgreSQL-Parameter und 2Gi Speicheranforderung starten die
+>   Datenbank einmal neu (Switchover).
+> - `/dashboard.html` verlangt eine Anmeldung (Secret `udp-dashboard-auth`);
+>   Compose ohne `udp-auth/htpasswd` liefert 404.
+> - Weitere Hinweise unter „TRoE als Hypertable“ und „Konnektordienst:
+>   Zustand und Schreibvolumen“.
+
+### Hauptdashboard nur mit Anmeldung
 
 - `/dashboard.html` (Kommunen-Suche plus Betriebsdaten) nur noch mit HTTP
   Basic Auth im Cockpit-nginx. Helm erzeugt die Anmeldung selbst (Secret
@@ -15,7 +29,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   führen auf die Startseite `/` mit ihrer Kommunen-Suche. Der Service-Worker
   speichert das Hauptdashboard nicht mehr und fällt offline auf `/` zurück.
 
-## Unveröffentlicht — ÖPNV-Halte und Rathäuser
+### ÖPNV-Halte und Rathäuser
 
 - `oepnv-halte.json` neu erzeugt: nur BW-Halte im eigenen Kreis (bis 5 km
   von der Ortsmitte laut Wikidata, Nachbarkreis nur ohne eigenen und bis
@@ -39,7 +53,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   EFA die Abfahrten eines erratenen Orts — jetzt „gestört“ statt falscher
   Tafel. „no matching departure“ (-4030) zeigt „Derzeit keine Abfahrten“.
 
-## Unveröffentlicht — Kachelwerte
+### Kachelwerte
 
 - Kachel „E-Scooter“ heißt „Sharing“: alle frei flottierenden Fahrzeuge, im
   Hinweis nach Art aufgeteilt (neues Attribut `vehiclesByFormFactor` aus GBFS
@@ -63,7 +77,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - Leere „Noch nicht verfügbar“-Kacheln stehen hinter allen Datenkacheln.
 - `.gitattributes`: `*.template` mit LF (nginx-Test auf Windows-Checkouts).
 
-## Unveröffentlicht — Fehler sichtbar statt stiller Lücken
+### Fehler sichtbar statt stiller Lücken
 
 - Dashboards: fehlgeschlagene Abfragen (5xx, Netzfehler, 429) werden einmal
   wiederholt (`Retry-After` beachtet; nicht bei 504 und Zeitüberschreitung,
@@ -80,7 +94,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   liefert oder `dashboards.json` es für die Kommune freischaltet
   (`"fuellstand": true`).
 
-## Unveröffentlicht — Wetter: Open-Meteo-Kontingent
+### Wetter: Open-Meteo-Kontingent
 
 - Wetter und Vorhersage laufen auf festen Slots (Registry
   `intervalOffsetSeconds`): Wetter 00:10/06:10/12:10/18:10 UTC, Vorhersage
@@ -101,7 +115,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   korrigiert.
 - `sharing-bw` meldet jeden Lauf mit einer Info-Zeile.
 
-## Unveröffentlicht — TRoE als Hypertable
+### TRoE als Hypertable
 
 > **Upgrade:**
 >
@@ -138,7 +152,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - `migrate-timescale-cnpg.sh` nimmt auch `connectors` vom Netz und nennt bei
   Hypertables die richtige Reihenfolge.
 
-## Unveröffentlicht — Webanalyse, Impressum, Datenschutz und Logo
+### Webanalyse, Impressum, Datenschutz und Logo
 
 - Helm: `cockpit.analytics.headHtml` bindet den Einbettungscode einer beliebigen
   Webanalyse auf allen öffentlichen Seiten ein (Cockpit nur mit
@@ -148,7 +162,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - Helm: `cockpit.branding` liefert Logo (Seitenkopf, Cockpit) und Favicon des
   Betreibers selbst aus; alle Seiten verweisen dafür auf `/favicon`.
 
-## Unveröffentlicht — Konnektordienst: Zustand und Schreibvolumen
+### Konnektordienst: Zustand und Schreibvolumen
 
 - Schreib-Lock: gilt nur noch als verloren, wenn die Datenbank das bestätigt
   (kein clientseitiges Query-Timeout mehr, Abgleich über `pg_locks`). Nach
@@ -195,7 +209,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 >   danach höchstens 1.000 Löschungen je Prune und Lauf; ein großer
 >   Altbestand ist so bei stündlichen Läufen nach wenigen Stunden abgebaut.
 
-## Unveröffentlicht — Cockpit-Durchsatz
+### Cockpit-Durchsatz
 
 - Cockpit-nginx liefert vorkomprimierte statische Dateien aus (`gzip_static`),
   puffert das Access-Log und hält Dateien offen – ein Mehrfaches an
@@ -204,7 +218,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - Gecachte Gateway-Routen reichen `Fiware-Service` nicht mehr durch – der
   Mandant stand nicht im Cache-Schlüssel (Mandant nur per `NGSILD-Tenant`).
 
-## Unveröffentlicht — Datenbank-Backup nach S3
+### Datenbank-Backup nach S3
 
 Das pg_dump-Backup lag auf einem PVC im selben Cluster – bei dessen Verlust
 wären auch die Sicherungen weg.
