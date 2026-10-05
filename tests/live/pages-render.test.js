@@ -57,8 +57,10 @@ exports["Routing: Permalinks, Redirects, 404"] = async () => {
   };
   assert.strictEqual(await code("/reutlingen"), 200);
   assert.strictEqual(await code("/kreis-reutlingen"), 200);
-  assert.strictEqual(await code("/dashboard.html"), 200);
-  assert.strictEqual(await code("/kommunen.html", "/dashboard.html"), 301);
+  // Main dashboard: login (401) with an htpasswd file, else 404 - never open.
+  assert([401, 404].includes(await code("/dashboard.html")), "/dashboard.html ohne Anmeldung erreichbar");
+  assert.strictEqual(await code("/dashboard.html.gz"), 404);
+  assert.strictEqual(await code("/kommunen.html", "/"), 301);
   assert.strictEqual(await code("/kreis-ulm", "/ulm"), 301);
   assert.strictEqual(await code("/gibtsnicht-xyz"), 404);
 };

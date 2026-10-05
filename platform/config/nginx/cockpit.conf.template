@@ -18,6 +18,8 @@
 #   UDP_CONNECTORS_UPSTREAM host:port des Konnektordienstes (/abfahrten,
 #                           /warnungen.ics); geprüft von
 #                           gui/docker/17-udp-upstreams.envsh
+#   UDP_DASHBOARD_ACCESS    Zugriffsregel für /dashboard.html (Basic Auth oder
+#                           404); gesetzt von gui/docker/18-udp-dashboard-auth.envsh
 #
 # In Kubernetes MÜSSEN die Upstreams voll qualifiziert sein
 # (apisix.<ns>.svc.cluster.local): nginx wendet auf Namen, die es über den
@@ -175,6 +177,33 @@ server {
     location = /kreis-pforzheim { return 301 /pforzheim; }
     location = /kreis-freiburg-im-breisgau { return 301 /freiburg-im-breisgau; }
     location = /kreis-ulm { return 301 /ulm; }
+
+    # Precompressed copies (gui/Dockerfile) exist for gzip_static only, which
+    # opens them itself without a location lookup. Requested by name they
+    # would skip the rules of the original: /dashboard.html.gz through
+    # "location /" without a login.
+    location ~* \.gz$ {
+        return 404;
+    }
+    # Main dashboard (Kommunen-Suche plus operations data): operators only.
+    # UDP_DASHBOARD_ACCESS comes from gui/docker/18-udp-dashboard-auth.envsh:
+    # HTTP basic auth against the mounted htpasswd file, or "return 404;" when
+    # there is none (fail closed). nginx normalises the URI before matching
+    # (//, /./, ../, %-encoding); the regex is case-insensitive and open-ended
+    # because a case-insensitive file system (a Compose bind mount on macOS or
+    # Windows) also serves /DASHBOARD.HTML. Being the first regex location for
+    # it, it wins over the .html location below and over "location /". Never
+    # stored by browsers or shared caches; the service worker leaves the page
+    # alone (gui/public/sw.js).
+    location ~* ^/dashboard\.html {
+        ${UDP_DASHBOARD_ACCESS}
+        # add_header here drops the server-level headers, so they are repeated.
+        add_header Cache-Control "private, no-store" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files $uri =404;
+    }
 
     # Statische Assets immer revalidieren (expires -1 => Cache-Control: no-cache):
     # Palette-/Template-Änderungen kommen so ohne Hard-Reload an; ETag greift,

@@ -54,6 +54,8 @@
    Öffentlich über Ingress:  https://{{ .Values.ingress.host }}/
      - Startseite: https://{{ .Values.ingress.host }}/ (Mitmachen-Angebot)
      - Cockpit:   https://{{ .Values.ingress.host }}/cockpit
+{{- $dashboardAuth := (.Values.cockpit.dashboardAuth | default dict).existingSecret | default "" | toString | trim }}
+     - Hauptdashboard: https://{{ .Values.ingress.host }}/dashboard.html {{ if $dashboardAuth }}(Anmeldung, Secret {{ $dashboardAuth }}){{ else }}(aus: 404, s. cockpit.dashboardAuth){{ end }}
      - NGSI-LD:   https://{{ .Values.ingress.host }}/ngsi-ld/v1/entities
      - Zeitreihen: https://{{ .Values.ingress.host }}/temporal/v1/entities
      - SensorThings: https://{{ .Values.ingress.host }}/FROST-Server/v1.1

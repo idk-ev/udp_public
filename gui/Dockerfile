@@ -38,6 +38,9 @@ RUN sed -i 's/^\(\s*worker_connections\s*\)1024;/\14096;/' /etc/nginx/nginx.conf
 COPY --chmod=755 gui/docker/16-udp-realip.envsh /docker-entrypoint.d/16-udp-realip.envsh
 # Upstream of /abfahrten and /warnungen.ics (the connector service), checked.
 COPY --chmod=755 gui/docker/17-udp-upstreams.envsh /docker-entrypoint.d/17-udp-upstreams.envsh
+# Access rule of /dashboard.html: basic auth if an htpasswd file is mounted at
+# /etc/nginx/udp-auth/htpasswd, else 404.
+COPY --chmod=755 gui/docker/18-udp-dashboard-auth.envsh /docker-entrypoint.d/18-udp-dashboard-auth.envsh
 
 # Der Entrypoint liest die Nameserver aus /etc/resolv.conf nach
 # NGINX_LOCAL_RESOLVERS – so stimmt der resolver in Docker (127.0.0.11) wie in

@@ -25,7 +25,10 @@ Uptime Kuma {{ .Chart.AppVersion }} – Release "{{ .Release.Name }}" im Namespa
    HTTP(s)  https://<udp-host>/geoserver/web/            GeoServer
    HTTP(s)  https://<udp-host>/                          Cockpit
    HTTP(s)  https://<keycloak-host>/realms/udp/.well-known/openid-configuration
-   HTTP(s)  https://<udp-host>/dashboard.html                Dashboard
+   HTTP(s)  https://<udp-host>/<kommune>                 Gemeinde-Dashboard (z. B. /reutlingen)
+
+   Das Hauptdashboard (/dashboard.html) braucht eine Anmeldung: als Monitor
+   nur mit Basic Auth (Zugangsdaten im Monitor) oder mit erwartetem Status 401.
 
    Danach Benachrichtigungen einrichten (E-Mail/Webhook/MS Teams) und je
    Endpunkt zuweisen – ohne Notification meldet kein Monitor etwas.

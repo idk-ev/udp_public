@@ -230,6 +230,7 @@ spec:
         # Neue Adressen in config.js sollen die Pods auch wirklich neu ausrollen.
         checksum/config: {{ include "udp.cockpitConfigJs" . | sha256sum }}
         {{- $branding := include "udp.branding" . | fromJson }}
+        {{- $dashboardAuth := (.Values.cockpit.dashboardAuth | default dict).existingSecret | default "" | toString | trim }}
         {{- if $branding.files }}
         # Logo/favicon (ConfigMap cockpit-branding): a new image rolls the pods
         # instead of waiting for the kubelet to sync the mounted directory.
@@ -293,6 +294,13 @@ spec:
               mountPath: /usr/share/nginx/html/branding
               readOnly: true
             {{- end }}
+            {{- if $dashboardAuth }}
+            # htpasswd of /dashboard.html; without it the page answers 404
+            # (gui/docker/18-udp-dashboard-auth.envsh).
+            - name: dashboard-auth
+              mountPath: /etc/nginx/udp-auth
+              readOnly: true
+            {{- end }}
           resources:
             {{- toYaml .Values.cockpit.resources | nindent 12 }}
           {{- include "udp.probes" .Values.cockpit.probes | nindent 10 }}
@@ -303,6 +311,15 @@ spec:
         {{- if $branding.files }}
         - name: branding
           configMap: { name: cockpit-branding }
+        {{- end }}
+        {{- if $dashboardAuth }}
+        - name: dashboard-auth
+          secret:
+            secretName: {{ $dashboardAuth | quote }}
+            # Only this key; a missing one keeps the pod from starting
+            # instead of silently disabling the page. Readable by nginx (101).
+            items: [{ key: htpasswd, path: htpasswd }]
+            defaultMode: 0444
         {{- end }}
 ---
 apiVersion: v1

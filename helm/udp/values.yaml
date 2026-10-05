@@ -1181,6 +1181,23 @@ cockpit:
   # themselves come from private addresses (intranet, VPN) – otherwise they
   # could pick their own rate-limit bucket. Example: ["10.42.0.0/16"]
   trustedProxies: []
+  # Hauptdashboard /dashboard.html (Kommunen-Suche plus Betriebsdaten:
+  # Konnektoren, TRoE-Ingestion, Serverlast, Speicher) nur mit Anmeldung –
+  # HTTP Basic Auth im Cockpit-nginx. Die öffentliche Kommunen-Suche liegt auf
+  # der Startseite (/). existingSecret: Name eines Secrets im Release-Namespace
+  # mit dem Schlüssel "htpasswd" (eine Zeile "benutzer:hash" je Konto, bcrypt
+  # oder apr1), nur lesend gemountet unter /etc/nginx/udp-auth/htpasswd.
+  # Leer (Standard) -> die Seite antwortet mit 404.
+  #   kubectl -n <namespace> create secret generic udp-dashboard-auth \
+  #     --from-literal=htpasswd="$(htpasswd -nbB betrieb '<passwort>')"
+  #   ohne htpasswd (apache2-utils):
+  #     --from-literal=htpasswd="betrieb:$(openssl passwd -apr1 '<passwort>')"
+  # Geänderte Zugangsdaten im selben Secret gelten ohne Neustart (nginx liest
+  # die Datei bei jeder Anfrage, der kubelet gleicht sie binnen etwa einer
+  # Minute ab). Fehlt das Secret oder der Schlüssel, startet der Pod nicht.
+  # s. docs/betrieb.md
+  dashboardAuth:
+    existingSecret: ""
   # Öffentliche Basis-Adresse der Plattform, wie sie im BROWSER steht. Daraus
   # erzeugt das Chart die Laufzeit-Konfiguration der SPA (ConfigMap
   # cockpit-config) und die Redirect-URIs im Keycloak-Realm. Leer (empfohlen)

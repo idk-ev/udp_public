@@ -1,0 +1,36 @@
+#!/bin/sh
+# SPDX-License-Identifier: EUPL-1.2
+# © 2024–2026 Thomas Kieß and contributors
+#
+# Sourced by the nginx entrypoint before the templates are rendered: the
+# access rule of /dashboard.html (cockpit.conf.template, UDP_DASHBOARD_ACCESS).
+# The main dashboard shows operations data and is for operators only.
+#
+#   /etc/nginx/udp-auth/htpasswd  htpasswd file (bcrypt or apr1 hashes),
+#                                 mounted read-only (Helm:
+#                                 cockpit.dashboardAuth.existingSecret,
+#                                 Compose: platform/config/nginx/udp-auth/)
+#
+# File present, readable and non-empty -> HTTP basic auth against it.
+# Anything else -> the page answers 404 (fail closed). nginx reads the file on
+# every request, so changed credentials apply without a restart; a file that
+# appears only later needs one.
+#
+# UDP_DASHBOARD_ACCESS is always set here: a value from the environment never
+# reaches the configuration.
+udp_htpasswd=/etc/nginx/udp-auth/htpasswd
+if [ -f "$udp_htpasswd" ] && [ -r "$udp_htpasswd" ] && [ -s "$udp_htpasswd" ]; then
+    export UDP_DASHBOARD_ACCESS="auth_basic \"UDP-Hauptdashboard\"; auth_basic_user_file $udp_htpasswd;"
+    echo "18-udp-dashboard-auth: /dashboard.html requires a login ($udp_htpasswd)"
+else
+    if [ ! -e "$udp_htpasswd" ]; then
+        udp_reason="$udp_htpasswd not mounted"
+    elif [ ! -r "$udp_htpasswd" ]; then
+        udp_reason="$udp_htpasswd not readable by uid $(id -u)"
+    else
+        udp_reason="$udp_htpasswd is empty or not a file"
+    fi
+    export UDP_DASHBOARD_ACCESS="return 404;"
+    echo "18-udp-dashboard-auth: /dashboard.html disabled (404): $udp_reason" >&2
+fi
+unset udp_htpasswd udp_reason
