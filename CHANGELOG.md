@@ -2,6 +2,53 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## 1.5.0 — Härtung für den öffentlichen Betrieb, Einbettung, API-Vertrag
+
+> **Upgrade bestehender Installationen:**
+>
+> - Der öffentliche Pfad `/gateway/` lässt nur noch die von den Seiten
+>   genutzten Abfragen durch: Listen nur mit genau einem `type`, kein
+>   `idPattern`/`local`, nur `/entities`, `/entities/{id}` und `/types`;
+>   Temporal nur je Entität. Mandanten-, `Link`- und `Authorization`-Header
+>   werden verworfen (docs/api.md).
+> - `PlatformStatus` und die vollständige Konnektor-Übersicht liegen hinter
+>   der Anmeldung des Hauptdashboards (`/ops/`); `connectors-status.json`
+>   ist öffentlich nur noch ein Auszug.
+
+### Gateway und Cockpit-nginx
+
+- Parameter-Allowlist für NGSI-LD und Temporal, Sperre von `PlatformStatus`,
+  Subscriptions, Versions- und Management-Endpunkten.
+- Öffentliche Seiten einbettbar (`frame-ancestors`, `cockpit.embed.frameAncestors`),
+  Cockpit und Hauptdashboard nicht.
+- Rate-Limits auch für FROST/CKAN/GeoServer, `/abfahrten` großzügiger für NAT.
+- Temporal-Cache 60 s, Statement-Timeout für Mintaka (`mintaka.statementTimeout`),
+  längere Probe-Timeouts, `server_tokens off`.
+- `robots.txt` und `sitemap.xml` mit dem öffentlichen Host.
+
+### Dashboards
+
+- Zeitreihen-Abfragen auf die Minute gerundet (cachebar).
+- Service-Worker: Netz zuerst, keine API-Antworten im Cache.
+- Werte aus Fremdquellen (OSM, Wikidata u. a.) durchgehend escaped.
+- Blockierter Browser-Speicher bricht die Seite nicht mehr; Einbettung
+  behält eine Quellenzeile.
+- Hintergrund-Tabs aktualisieren nicht; kein OSM-Kachel-Fallback mehr.
+- Quellenangaben auf den Kreisseiten; kanonische URLs der Gemeindeseiten.
+
+### Konnektordienst
+
+- Tageskontingent für Abfahrten auf Anfrage (`UDP_EFA_ON_DEMAND_DAILY_CAP`,
+  Standard 20 000) mit Warnung ab 80 % und längerem Cache bei hoher Auslastung.
+- Cron-Zeiten außerhalb der Zeitumstellung, Scheduler ohne Doppellauf.
+- Unbehandelte Fehler werden protokolliert und beenden den Dienst geordnet.
+
+### Dokumentation
+
+- `docs/api.md`: öffentliche API, Grenzen, eingefrorenes Vokabular
+  (`/ngsi-ld/udp-context.json`).
+- Sicherheits- und Mandantenmodell so beschrieben, wie es umgesetzt ist.
+
 ## 1.4.0 — Datenbank-Backup nach S3, TRoE als Hypertable, Hauptdashboard mit Anmeldung
 
 > **Upgrade bestehender Kubernetes-Installationen:**
