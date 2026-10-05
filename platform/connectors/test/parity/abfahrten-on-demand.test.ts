@@ -30,16 +30,21 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CAP_LOG_PREFIX,
+  CAPPED_TEXT,
   clock,
+  DAILY_CAP_ENV,
+  DEFAULT_DAILY_CAP,
   DIRECTORY,
   DIRECTORY_URL,
   ROUTE_PATH,
   run,
   routes,
 } from "../../src/connectors/abfahrten-on-demand.js";
-import { EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor } from "../../src/connectors/efa.js";
+import { EFA_HOST, EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor } from "../../src/connectors/efa.js";
 import { isArray } from "../../src/kernel/parse.js";
-import type { HttpResponse } from "../../src/kernel/types.js";
+import { memoryQuota } from "../../src/kernel/quota.js";
+import type { Ctx, HttpResponse, RouteDefinition, RouteRequest } from "../../src/kernel/types.js";
 import { readFixture, repositoryRoot } from "../harness/fixtures.js";
 import type { WireResponse } from "../harness/g-transport.js";
 import {
@@ -54,6 +59,7 @@ import {
 } from "../harness/g-transport.js";
 import { httpResponse } from "../harness/kernel.js";
 import { isRecord } from "../harness/normalize.js";
+import { recordEnv } from "../harness/operations-ctx.js";
 import { runFunctionNode } from "../harness/vm-runner.js";
 
 const FIXTURE = "abfahrten-on-demand-08115003";
@@ -540,7 +546,136 @@ async function directoryIsReloadedConditionally(): Promise<void> {
   assert.deepEqual(g.log.warnings(), []);
 }
 
+/* ------------------------------------------------------------------ daily cap */
+
+/** Eight municipalities `0811000x`, each with a stop `de:08111:900x` named `Halt x`. */
+function capDirectory(): Record<string, unknown> {
+  const halte: Record<string, unknown> = {};
+  for (let i = 0; i < 8; i += 1) {
+    halte[`0811000${String(i)}`] = { stopId: `de:08111:900${String(i)}`, stopName: `Halt ${String(i)}` };
+  }
+  return halte;
+}
+
+function capRequest(i: number): RouteRequest {
+  return {
+    method: "GET",
+    path: ROUTE_PATH,
+    query: new URLSearchParams(`ags=0811000${String(i)}`),
+    params: {},
+    headers: {},
+    body: "",
+  };
+}
+
+interface CapRig {
+  readonly ctx: Ctx;
+  readonly route: RouteDefinition;
+  readonly efaRequests: () => number;
+  readonly lines: () => readonly { level: string; text: string }[];
+  /** Moves the clock of the route, the counter and the reuse window. */
+  readonly at: (iso: string) => void;
+}
+
+/** The endpoint with a cap from the environment and one clock for everything. */
+async function capRig(env: Record<string, string>): Promise<CapRig> {
+  let nowMs = Date.parse("2026-10-05T10:00:00.000Z");
+  const network = recordingFetcher((request) => {
+    if (request.url === DIRECTORY_URL) return jsonHttp(200, { halte: capDirectory() });
+    const stopId = new URL(request.url).searchParams.get("name_dm") ?? "";
+    return jsonHttp(200, { stopEvents: [], locations: [{ id: stopId, type: "stop", isBest: true }] });
+  });
+  const g = rig(registryEntry("abfahrten-on-demand"), network.fetcher);
+  const ctx: Ctx = {
+    ...g.ctx,
+    env: recordEnv(env),
+    quota: memoryQuota("abfahrten-on-demand", () => nowMs),
+    now: () => new Date(nowMs).toISOString(),
+  };
+  await run(ctx);
+  const [route] = routes(ctx);
+  assert.ok(route !== undefined);
+  return {
+    ctx,
+    route,
+    efaRequests: () => network.seen.filter((request) => request.url !== DIRECTORY_URL).length,
+    lines: () => g.log.lines,
+    at: (iso) => {
+      nowMs = Date.parse(iso);
+    },
+  };
+}
+
+function capLines(r: CapRig, level: string): string[] {
+  return r
+    .lines()
+    .filter((line) => line.level === level && line.text.startsWith(CAP_LOG_PREFIX))
+    .map((line) => line.text);
+}
+
+async function dailyCapRefusesAndIsVisible(): Promise<void> {
+  const r = await capRig({ [DAILY_CAP_ENV]: "5" });
+  const statuses: number[] = [];
+  for (let i = 0; i < 7; i += 1) statuses.push((await r.route.handle(capRequest(i))).status);
+  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 503, 503]);
+  assert.equal(r.efaRequests(), 5, "no EFA request beyond the cap");
+  assert.equal(r.ctx.quota.used(EFA_HOST), 5);
+
+  // The 503 names the stop (the city page shows "gestört") and when to come back.
+  const refused = await r.route.handle(capRequest(6));
+  assert.equal(refused.status, 503);
+  assert.deepEqual(JSON.parse(refused.body), { fehler: CAPPED_TEXT, halt: "Halt 6" });
+  assert.equal(refused.headers?.["Retry-After"], String(14 * 3600), "seconds until 00:00 UTC");
+  // A stop asked for within the reuse window is answered from its flight: no charge.
+  assert.equal((await r.route.handle(capRequest(0))).status, 200);
+  assert.equal(r.efaRequests(), 5);
+
+  // Once a day each, greppable: [warn] at 80 %, [error] when reached.
+  assert.deepEqual(capLines(r, "warn"), [`${CAP_LOG_PREFIX} at 80%: used=4 cap=5 day=2026-10-05 (UTC)`]);
+  assert.deepEqual(capLines(r, "error"), [
+    `${CAP_LOG_PREFIX} reached: used=5 cap=5 day=2026-10-05 (UTC) — /abfahrten answers 503 until ` +
+      `2026-10-06T00:00:00.000Z; raise ${DAILY_CAP_ENV} only with the provider's consent`,
+  ]);
+  assert.ok(r.lines().some((line) => line.level === "debug" && line.text.includes("daily cap used up, 503")));
+
+  // The hourly run repeats it as a [warn] while the cap stays used up.
+  await run(r.ctx);
+  assert.equal(capLines(r, "warn").length, 2);
+  assert.match(capLines(r, "warn")[1] ?? "", /reached: used=5 cap=5/);
+
+  // The next UTC day starts over, and so do the log lines.
+  r.at("2026-10-06T00:00:01.000Z");
+  assert.equal((await r.route.handle(capRequest(7))).status, 200);
+  assert.equal(r.ctx.quota.used(EFA_HOST), 1);
+  for (let i = 1; i < 5; i += 1) await r.route.handle(capRequest(i));
+  assert.equal(capLines(r, "error").length, 2, "reached again on the new day");
+}
+
+async function dailyCapCountsWhatWasStoredAndHasADefault(): Promise<void> {
+  // The day's count is the quota's: after a restart the stored count applies.
+  const r = await capRig({});
+  r.ctx.quota.charge(EFA_HOST, DEFAULT_DAILY_CAP - 1);
+  assert.equal((await r.route.handle(capRequest(0))).status, 200);
+  assert.equal((await r.route.handle(capRequest(1))).status, 503);
+  assert.equal(capLines(r, "error").length, 1);
+  assert.deepEqual(capLines(r, "warn"), [], "the 80 % mark passed before the restart");
+
+  // A cap that is not a positive number: the default, with one [warn].
+  const bad = await capRig({ [DAILY_CAP_ENV]: "0" });
+  assert.equal((await bad.route.handle(capRequest(0))).status, 200);
+  await bad.route.handle(capRequest(1));
+  assert.deepEqual(
+    bad
+      .lines()
+      .filter((line) => line.level === "warn")
+      .map((line) => line.text),
+    [`${DAILY_CAP_ENV}=0 is not a positive whole number, using ${String(DEFAULT_DAILY_CAP)}`],
+  );
+}
+
 export {
+  dailyCapRefusesAndIsVisible as "abfahrten-on-demand: the daily cap answers 503 without an EFA request, warns at 80 %, errors once when reached",
+  dailyCapCountsWhatWasStoredAndHasADefault as "abfahrten-on-demand: the daily cap counts the stored calls of the day; a bad value falls back to the default",
   directoryIsReloadedConditionally as "abfahrten-on-demand: the stop directory is reloaded hourly with a conditional GET (deviation)",
   misresolvedStopIs502 as "abfahrten-on-demand: departures of a place EFA guessed for the stop id are a 502 (deliberate deviation)",
   noMatchingDepartureIsEmpty as "abfahrten-on-demand: -4030 for the resolved stop is an empty list, like -4050",
