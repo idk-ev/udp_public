@@ -18,8 +18,11 @@
  *   > Timeout-Schwelle; fällt eine aus, retten die anderen den Lauf
  *   > (toleranter Teilausfall).
  *
- * The cron (Sunday 02:40) is offset from `ausflug-bw` (05:10) and `rathaus-bw`
- * (04:40) so the three do not compete for the scarce Overpass slots. Pacing,
+ * The cron (Sunday 01:40) is offset from `ausflug-bw` (05:10) and `rathaus-bw`
+ * (04:40) so the three do not compete for the scarce Overpass slots; the
+ * flows' 02:40 ran twice on the Sunday the clocks go back and not at all on
+ * the one they go forward (src/kernel/scheduler.ts, "Cron and daylight
+ * saving time"). Pacing,
  * serialisation and the decision on the join timeout (1,500 s in the flow)
  * are in overpass.ts.
  *

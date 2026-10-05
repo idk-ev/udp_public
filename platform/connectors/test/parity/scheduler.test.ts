@@ -27,15 +27,20 @@ import {
   ROUTE_STARTUP_DELAY_SECONDS,
   MAX_TIMER_MS,
   createScheduler,
+  cronDue,
+  cronInDstHour,
+  parseCron,
   planStart,
   scheduleOf,
   slotBounds,
+  wallClockMinute,
 } from "../../src/kernel/scheduler.js";
-import { parseRegistry } from "../../src/kernel/registry.js";
+import { loadRegistry, parseRegistry, resolveRegistryPath } from "../../src/kernel/registry.js";
+import type { Schedule } from "../../src/kernel/types.js";
 import { recordingLog } from "../harness/kernel.js";
 import { registryEntry } from "../harness/g-transport.js";
 import { VirtualClock } from "../harness/virtual-clock.js";
-import { weatherCtx, weatherFetcher } from "../harness/weather-ctx.js";
+import { weatherCtx, weatherFetcher, withTimeZone } from "../harness/weather-ctx.js";
 
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
@@ -415,6 +420,80 @@ async function runConnectorRecordsTheLastRun(): Promise<void> {
   assert.equal(lastRunOf(plain.ctx.state), null);
 }
 
+/* ------------------------------------------------------------------ DST */
+
+/** What the cron tick (every 20 s) fires for `cron` between two instants, as UTC ISO times. */
+function firings(cron: string, fromIso: string, toIso: string): string[] {
+  const fields = parseCron(cron);
+  let last: number | null = null;
+  const fired: string[] = [];
+  for (let t = Date.parse(fromIso); t < Date.parse(toIso); t += 20_000) {
+    const now = new Date(t);
+    if (!cronDue(fields, now, last)) continue;
+    last = wallClockMinute(now);
+    fired.push(now.toISOString());
+  }
+  return fired;
+}
+
+async function cronRunsOnceWhenTheClocksGoBack(): Promise<void> {
+  await withTimeZone("Europe/Berlin", () => {
+    // Sunday 25 Oct 2026, 03:00 CEST -> 02:00 CET: 02:40 local is 00:40 and 01:40 UTC.
+    const night = ["2026-10-24T22:00:00Z", "2026-10-25T04:00:00Z"] as const;
+    assert.deepEqual(firings("40 02 * * 0", ...night), ["2026-10-25T00:40:00.000Z"]);
+    assert.deepEqual(firings("20 02 * * *", ...night), ["2026-10-25T00:20:00.000Z"]);
+    // The moved schedules of poi-bw and mastr-bw: once, outside the repeated hour.
+    assert.deepEqual(firings("40 01 * * 0", ...night), ["2026-10-24T23:40:00.000Z"]);
+    assert.deepEqual(firings("20 01 * * *", ...night), ["2026-10-24T23:20:00.000Z"]);
+    // An ordinary Sunday, and a cron on every hour, run as usual.
+    assert.deepEqual(firings("40 02 * * 0", "2026-10-31T22:00:00Z", "2026-11-01T04:00:00Z"), [
+      "2026-11-01T01:40:00.000Z",
+    ]);
+    assert.equal(firings("0 * * * *", ...night).length, 5, "the repeated 02:00 is left out");
+    // A wall clock set back by days (a wrong clock corrected) does not hold the cron off.
+    const fields = parseCron("40 02 * * 0");
+    const later = wallClockMinute(new Date("2026-11-01T01:40:00Z"));
+    assert.equal(cronDue(fields, new Date("2026-10-25T01:40:00Z"), later), true);
+  });
+}
+
+async function cronInHourTwoIsFlagged(): Promise<void> {
+  const schedule = (cron: string): Schedule => ({
+    kind: "cron",
+    intervalSeconds: null,
+    cron,
+    fireOnStart: false,
+    startupDelaySeconds: 0,
+  });
+  await withTimeZone("Europe/Berlin", () => {
+    // Sunday 29 Mar 2026, 02:00 CET -> 03:00 CEST: 02:40 does not exist, nothing fires.
+    assert.deepEqual(firings("40 02 * * 0", "2026-03-28T22:00:00Z", "2026-03-29T04:00:00Z"), []);
+    assert.ok(cronInDstHour("40 02 * * 0"));
+    assert.ok(cronInDstHour("20 02 * * *"));
+    assert.ok(cronInDstHour("0 1-3 * * *"));
+    assert.ok(!cronInDstHour("40 01 * * 0"));
+    assert.ok(!cronInDstHour("40 03 * * *"));
+    assert.ok(!cronInDstHour("*/15 * * * *"));
+
+    const log = recordingLog();
+    const scheduler = createScheduler(log);
+    scheduler.add("night", schedule("40 02 * * 0"), () => Promise.resolve());
+    scheduler.add("fine", schedule("40 01 * * 0"), () => Promise.resolve());
+    assert.equal(log.warnings().length, 1);
+    assert.match(log.warnings()[0] ?? "", /^night: cron "40 02 \* \* 0" fires between 02:00 and 02:59/);
+  });
+  await withTimeZone("UTC", () => {
+    const log = recordingLog();
+    createScheduler(log).add("night", schedule("40 02 * * 0"), () => Promise.resolve());
+    assert.deepEqual(log.warnings(), [], "no daylight saving time, no warning");
+  });
+  // The shipped registry keeps every cron out of hour 2.
+  const offending = loadRegistry(resolveRegistryPath())
+    .entries.filter((entry) => entry.cron !== null && entry.cron !== "" && cronInDstHour(entry.cron))
+    .map((entry) => `${entry.id} "${entry.cron ?? ""}"`);
+  assert.deepEqual(offending, [], "crons between 02:00 and 02:59 local time");
+}
+
 function registryChecksTheOffset(): void {
   const entry = (extra: Record<string, unknown>): unknown => ({
     connectors: [{ id: "x", name: "X", scope: "land", ...extra }],
@@ -444,6 +523,8 @@ function registryChecksTheOffset(): void {
 }
 
 export {
+  cronRunsOnceWhenTheClocksGoBack as "scheduler: a cron in the hour the clocks go back fires once (25 Oct 2026), the moved crons too",
+  cronInHourTwoIsFlagged as "scheduler: a cron in hour 2 is skipped in spring, so it warns at startup and the registry has none",
   wallClockSetBackReplans as "scheduler: a wall clock set back by 30 days re-plans the slots instead of waiting or spinning",
   longDelaysAreChained as "scheduler: delays beyond Node's timer range are chained, not clamped",
   forecastOffsetSurvivesRestarts as "scheduler: wall-clock slots keep the forecast 3 h after the weather across any restart",
