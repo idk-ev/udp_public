@@ -70,6 +70,13 @@ networkPolicies:
 cockpit:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+  # Hauptdashboard /dashboard.html: die Anmeldung erzeugt das Chart (Secret
+  # udp-dashboard-auth, s. docs/betrieb.md). Eigenes Secret (Schlüssel
+  # htpasswd, muss vorher existieren) oder Seite ganz aus (404):
+  # dashboardAuth:
+  #   username: "betrieb"
+  #   existingSecret: "dashboard-htpasswd"
+  #   enabled: false
   # Impressum und Datenschutzerklärung des Betreibers (Fußzeile aller Seiten).
   # legal:
   #   impressumUrl: "https://www.example.org/impressum"

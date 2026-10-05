@@ -10,6 +10,8 @@ gui/tsconfig.tsbuildinfo
 helm/udp/values-prod.yaml
 # Operator logo/favicon for Compose (docs/betrieb.md) – per installation.
 gui/public/branding/
+# htpasswd of the main dashboard for Compose (docs/betrieb.md) – per installation.
+platform/config/nginx/udp-auth/
 platform/connectors/dist/
 platform/connectors/tsconfig.tsbuildinfo
 

@@ -131,6 +131,97 @@ schreibt der Hop eine eigene Zeile (`hop "…" 502 upstream=<APISIX-Adresse>
 upstream_status=… upstream_time=…`); weiter geht es im Log von APISIX.
 Ob eine Antwort aus dem Cache kam, zeigt der Header `X-Cache`.
 
+### Hauptdashboard nur mit Anmeldung
+
+Das Hauptdashboard `/dashboard.html` (Kommunen-Suche plus Betriebsdaten:
+Konnektoren, TRoE-Ingestion, Serverlast, Speicher) ist für den Betrieb da und
+nicht öffentlich. Der Cockpit-nginx schützt es mit HTTP Basic Auth gegen eine
+htpasswd-Datei unter `/etc/nginx/udp-auth/htpasswd`. Fehlt die Datei oder ist
+sie leer (0 Byte), antwortet die Seite mit **404**. Die öffentlichen Seiten
+(404-Seite, Fußzeilen, PWA-Manifest) verweisen auf die Startseite `/` mit
+ihrer Kommunen-Suche; `/kommunen.html` leitet dorthin um.
+
+**Kubernetes (Helm), Standard:** das Chart erzeugt beim ersten Install das
+Secret `udp-dashboard-auth` mit den Schlüsseln `username` (Standard
+`betrieb`, `cockpit.dashboardAuth.username`), `password` (Zufallspasswort mit
+`secrets.passwordLength` Zeichen) und `htpasswd` (bcrypt). Wie die übrigen
+Chart-Secrets bleibt es über `lookup` stabil und trägt
+`helm.sh/resource-policy: keep`. Zugangsdaten auslesen:
+
+```bash
+kubectl -n <namespace> get secret udp-dashboard-auth \
+  -o jsonpath='{.data.username}' | base64 -d; echo
+kubectl -n <namespace> get secret udp-dashboard-auth \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+Rotieren:
+
+- neues Zufallspasswort: `kubectl -n <namespace> delete secret
+  udp-dashboard-auth`, danach `helm upgrade` – das Chart erzeugt es neu;
+- eigenes Passwort: `kubectl -n <namespace> patch secret udp-dashboard-auth
+  -p '{"stringData":{"password":"<neu>"}}'`, danach `helm upgrade` – das Chart
+  erzeugt die htpasswd-Zeile neu. Ein geänderter `username` in den Werten
+  wirkt ebenso beim nächsten `helm upgrade`, das Passwort bleibt.
+
+Solange Benutzer und Passwort gleich bleiben, übernimmt das Chart die
+vorhandene htpasswd-Zeile (Annotation `checksum/htpasswd`); ein `helm upgrade`
+ändert das Secret also nicht. Wie bei den übrigen Passwörtern gilt: `lookup`
+greift nur bei `helm install/upgrade` gegen den Cluster. `helm template` und
+`--dry-run=client` zeigen ein neues Zufallspasswort, ein GitOps-Flow mit
+`helm template | kubectl apply` würde es bei jedem Lauf wechseln – dort ein
+eigenes Secret verwenden (unten).
+
+**Eigenes Secret:** `cockpit.dashboardAuth.existingSecret` auf ein Secret mit
+dem Schlüssel `htpasswd` setzen; das Chart erzeugt dann nichts. Fehlt das
+Secret oder der Schlüssel, startet der Pod nicht.
+
+```bash
+kubectl -n <namespace> create secret generic dashboard-htpasswd \
+  --from-literal=htpasswd="$(htpasswd -nbB betrieb '<passwort>')"
+```
+
+```yaml
+cockpit:
+  dashboardAuth:
+    existingSecret: dashboard-htpasswd
+```
+
+Mit `secrets.create: false` (Secrets extern verwaltet) legt der Betreiber
+`udp-dashboard-auth` mit dem Schlüssel `htpasswd` selbst an; fehlt es, bleibt
+die Seite bei 404 (nach dem Anlegen das Cockpit neu starten).
+`cockpit.dashboardAuth.enabled: false` schaltet die Seite ganz ab (404, kein
+Secret, kein Mount).
+
+- Eine Zeile `benutzer:hash` je Konto; bcrypt (`htpasswd -B`) empfohlen, apr1
+  nur als Notbehelf (schwächer).
+- Basic Auth überträgt die Zugangsdaten im Klartext: nur über HTTPS nutzen
+  (der Compose-Port 3700 ohne TLS taugt nur lokal). Mehr als 20 Anfragen je
+  Minute und Adresse (Spitze 10) beantwortet nginx mit 429.
+- Geänderte Zugangsdaten im gemounteten Secret gelten ohne Neustart (nginx
+  liest die Datei bei jeder Anfrage, der kubelet gleicht sie binnen etwa einer
+  Minute ab).
+- Beim Start schreibt der Container eine Zeile ins Log:
+  `18-udp-dashboard-auth: /dashboard.html requires a login (…)` bzw.
+  `… disabled (404): <Grund>`.
+- Die Kachel „UDP-Hauptdashboard“ auf der Cockpit-Seite „Module“ führt weiter
+  dorthin; der Browser fragt nach den Zugangsdaten. Die Seite wird weder vom
+  Browser noch vom Service-Worker zwischengespeichert.
+- Die Daten, die das Dashboard anzeigt (`connectors-status.json`,
+  PlatformStatus über `/gateway/…`), bleiben öffentlich lesbar – geschützt
+  ist die Betriebsübersicht als Seite.
+
+Docker Compose: die Datei nach `platform/config/nginx/udp-auth/htpasswd`
+legen (das Verzeichnis ist in `.gitignore`) und das Cockpit neu starten:
+
+```bash
+mkdir -p platform/config/nginx/udp-auth
+htpasswd -nbB betrieb '<passwort>' > platform/config/nginx/udp-auth/htpasswd
+docker compose -f platform/docker-compose.yml restart cockpit
+```
+
+Die Datei muss für den nginx-Benutzer (UID 101) lesbar sein (`chmod 644`).
+
 ## Webanalyse, Impressum und Datenschutz
 
 Betreiber binden eine Webanalyse ihrer Wahl (z. B. Rybbit, Plausible, Umami,

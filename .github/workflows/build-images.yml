@@ -551,6 +551,12 @@ jobs:
           helm lint "$CHART_DIR"
           helm template udp "$CHART_DIR" >/dev/null
           helm template udp "$CHART_DIR" -f "$CHART_DIR/values-prod.example.yaml" >/dev/null
+          # Login of /dashboard.html: generated bcrypt line by default, the
+          # other two cases must render as well.
+          helm template udp "$CHART_DIR" --show-only templates/secrets.yaml \
+            | grep -E '^  htpasswd: "betrieb:\$2a\$10\$[./A-Za-z0-9]{53}[\]n"$' >/dev/null
+          helm template udp "$CHART_DIR" --set cockpit.dashboardAuth.enabled=false >/dev/null
+          helm template udp "$CHART_DIR" --set cockpit.dashboardAuth.existingSecret=dashboard-htpasswd >/dev/null
 
       - name: Digests der Images holen
         # Fehlen bei Fork-PRs: dort wird nicht gepusht, es gibt also keine

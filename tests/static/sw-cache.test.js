@@ -31,7 +31,7 @@ function ladeWorker({ imCache = null, netz = { ok: true } } = {}) {
     clients: { claim: () => Promise.resolve() },
   };
   const caches_ = {
-    open: name => { spur.geoeffnet.push(name); return Promise.resolve({ put: (rq, rs) => { spur.abgelegt.push([rq.url, rs]); return Promise.resolve(); }, addAll: () => Promise.resolve() }); },
+    open: name => { spur.geoeffnet.push(name); return Promise.resolve({ put: (rq, rs) => { spur.abgelegt.push([rq.url, rs]); return Promise.resolve(); }, addAll: () => Promise.resolve(), delete: () => Promise.resolve(true) }); },
     match: () => Promise.resolve(imCache),
     keys: () => Promise.resolve([]),
     delete: () => Promise.resolve(true),
@@ -73,9 +73,10 @@ exports["Jede Datei der Shell existiert"] = () => {
   const pfade = (liste[1].match(/"([^"]+)"/g) || []).map(s => s.slice(1, -1));
   assert(pfade.length >= 8, `SHELL wirkt unvollständig (${pfade.length} Einträge)`);
   // Addresses nginx answers without a file of that name: /favicon falls back
-  // to /icon.svg (platform/config/nginx/cockpit.conf.template).
+  // to /icon.svg, the start page / is mitmachen.html
+  // (platform/config/nginx/cockpit.conf.template).
   const conf = fs.readFileSync(path.join(ROOT, "platform/config/nginx/cockpit.conf.template"), "utf8");
-  const served = { "/favicon": "/icon.svg" };
+  const served = { "/favicon": "/icon.svg", "/": "/mitmachen.html" };
   for (const p of pfade) {
     if (served[p]) {
       assert(conf.includes(`location = ${p} {`) && conf.includes(` ${served[p]} =404;`),
@@ -121,6 +122,8 @@ exports["Fremde Origins und Schreibzugriffe bleiben unangetastet"] = async () =>
   for (const req of [
     { method: "GET", url: "https://fremd.example/x.js", mode: "cors" },
     { method: "POST", url: "https://udp.example/gateway/ngsi-ld/v1/entities", mode: "cors" },
+    // Login-protected: the browser's own request must get the 401 (prompt).
+    { method: "GET", url: "https://udp.example/dashboard.html", mode: "navigate" },
   ]) {
     let beantwortet = false;
     w.handler.fetch({ request: req, respondWith: () => { beantwortet = true; }, waitUntil: () => {} });

@@ -2,6 +2,19 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Hauptdashboard nur mit Anmeldung
+
+- `/dashboard.html` (Kommunen-Suche plus Betriebsdaten) nur noch mit HTTP
+  Basic Auth im Cockpit-nginx. Helm erzeugt die Anmeldung selbst (Secret
+  `udp-dashboard-auth` mit `username`, `password`, `htpasswd`; über `lookup`
+  stabil), `cockpit.dashboardAuth.existingSecret` ersetzt sie,
+  `enabled: false` schaltet die Seite ab (404). Compose:
+  `platform/config/nginx/udp-auth/htpasswd`, ohne Datei 404. Direkter Abruf
+  von `.gz`-Dateien gesperrt.
+- Öffentliche Verweise (404-Seite, Fußzeilen, PWA-Start, `/kommunen.html`)
+  führen auf die Startseite `/` mit ihrer Kommunen-Suche. Der Service-Worker
+  speichert das Hauptdashboard nicht mehr und fällt offline auf `/` zurück.
+
 ## Unveröffentlicht — ÖPNV-Halte und Rathäuser
 
 - `oepnv-halte.json` neu erzeugt: nur BW-Halte im eigenen Kreis (bis 5 km

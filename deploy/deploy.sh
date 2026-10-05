@@ -114,18 +114,24 @@ for i in $(seq 1 60); do
     sleep 6
 done
 [ "$bereit" = 1 ] || warn "Kontext-API nach 6 min noch nicht bereit — Prüfungen unten sind entsprechend zu lesen."
-# curl liefert 000, wenn gar keine Verbindung zustande kam — das als Klartext zeigen
+# curl liefert 000, wenn gar keine Verbindung zustande kam — das als Klartext zeigen.
+# Optionales drittes Argument: erwartete Codes statt 2xx/3xx (z. B. "401 404").
 check() {
     code="$(curl -s -o /dev/null -w '%{http_code}' -m 15 "$2" || true)"
     [ "$code" = "000" ] && code="nicht erreichbar"
     printf '    %-46s %s\n' "$1" "$code"
-    case "$code" in 2*|3*) ;; *) fail=$((fail + 1)) ;; esac
+    if [ -n "${3:-}" ]; then
+        case " $3 " in *" $code "*) ;; *) fail=$((fail + 1)) ;; esac
+    else
+        case "$code" in 2*|3*) ;; *) fail=$((fail + 1)) ;; esac
+    fi
 }
 fail=0
 check "Kontext-API (Orion-LD)"  "http://localhost:$PROXY_PORT/ngsi-ld/v1/entities?type=CityPulse&limit=1"
 check "Temporal-API (Mintaka)"  "http://localhost:$PROXY_PORT/temporal/health"
 check "Open-Data-Portal (CKAN)" "http://localhost:$PROXY_PORT/catalog/api/3/action/status_show"
-check "Hauptdashboard"          "http://localhost:$UI_PORT/dashboard.html"
+# Ohne Anmeldedaten: 401 mit htpasswd (platform/config/nginx/udp-auth/), sonst 404.
+check "Hauptdashboard (ohne Anmeldung)" "http://localhost:$UI_PORT/dashboard.html" "401 404"
 check "Referenz-Dashboard"      "http://localhost:$UI_PORT/reutlingen"
 echo
 docker ps --filter "name=udp-" --format '{{.Names}}\t{{.Status}}' | sed 's/^/    /'

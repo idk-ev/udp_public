@@ -532,6 +532,13 @@ services:
       # Upstream der beiden Endpunkte. Ohne sie bricht nginx -t ab.
       - ../gui/docker/16-udp-realip.envsh:/docker-entrypoint.d/16-udp-realip.envsh:ro
       - ../gui/docker/17-udp-upstreams.envsh:/docker-entrypoint.d/17-udp-upstreams.envsh:ro
+      # Hauptdashboard (/dashboard.html) nur mit Anmeldung: liegt in diesem
+      # Verzeichnis eine Datei "htpasswd", fragt nginx nach Benutzer und
+      # Passwort, sonst antwortet die Seite mit 404 (s. docs/betrieb.md).
+      #   mkdir -p platform/config/nginx/udp-auth
+      #   htpasswd -nbB admin '<passwort>' > platform/config/nginx/udp-auth/htpasswd
+      - ../gui/docker/18-udp-dashboard-auth.envsh:/docker-entrypoint.d/18-udp-dashboard-auth.envsh:ro
+      - ./config/nginx/udp-auth:/etc/nginx/udp-auth:ro
     ports:
       - "${UI_PORT:-3700}:8080"         # UI-Slot gem. PORTS.md
     restart: unless-stopped

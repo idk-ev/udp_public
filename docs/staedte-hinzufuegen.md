@@ -40,7 +40,7 @@ Tübingen 14 + 7 + 4 (automatisch, ohne je konfiguriert worden zu sein), Böllen
 Jede der 1.103 BW-Gemeinden hat schon ein vorgeladenes Dashboard unter `/<slug>`
 (z. B. `/tuebingen`, `/boellen`). Der Slug steht als 9. Feld in
 `gui/public/bw-gemeinden.json`. Auffindbar über die Kommunen-Suche
-im Hauptdashboard (`/dashboard.html`); Landkreise haben eine aggregierte
+auf der Startseite (`/`); Landkreise haben eine aggregierte
 Kreissicht unter `/kreis-<slug>` (z. B. `/kreis-reutlingen`). Kennzeichnung: „inoffizielles Angebot aus offenen Daten",
 Standard-Theme, Lücken-Hinweis. **Kein Schritt nötig.**
 
