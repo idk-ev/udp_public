@@ -53,6 +53,16 @@
  * onto a host callback pair instead. That keeps the result on this side as
  * plain `unknown` — no `await` on an untyped value, no assertion, no hole in
  * the type discipline.
+ *
+ * ## Corrected credit texts
+ *
+ * The old nodes wrote licence labels into `dataProvider` that were wrong
+ * (DWD under GeoNutzV, PEGELONLINE under dl-de/by, EFA-BW credited to
+ * naldo/bwegt). The ports write the corrected ones (docs/api.md, "Lizenzen
+ * der Datenquellen"). So that the parity tests keep comparing everything
+ * else, {@link loadFunctionNode} swaps exactly these string literals in the
+ * old body for the corrected ones ({@link CREDIT_CORRECTIONS}) — in memory;
+ * the frozen file stays as it is.
  */
 
 import { readFileSync } from "node:fs";
@@ -130,6 +140,21 @@ export function listFunctionNodes(flowsFile?: string): { id: string; name: strin
   return found;
 }
 
+/**
+ * Old credit literal -> the corrected one the ports write, as quoted string
+ * literals of the old bodies. Deliberate deviation (licences), see above.
+ */
+export const CREDIT_CORRECTIONS: readonly (readonly [old: string, corrected: string])[] = [
+  ["'DWD Pollenflug-Gefahrenindex (GeoNutzV)'", "'DWD Pollenflug-Gefahrenindex (CC BY 4.0)'"],
+  ["'DWD Thermischer Gefahrenindex (GeoNutzV)'", "'DWD Thermischer Gefahrenindex (CC BY 4.0)'"],
+  ["'WSV/PEGELONLINE (dl-de/by-2-0)'", "'WSV/PEGELONLINE (DL-DE→Zero-2.0)'"],
+  ["'EFA-BW (naldo/bwegt)'", "'MobiData BW; NVBW – EFA-BW (dl-de/by-2-0)'"],
+];
+
+function withCorrectedCredits(func: string): string {
+  return CREDIT_CORRECTIONS.reduce((body, [old, corrected]) => body.split(old).join(corrected), func);
+}
+
 /** Reads one function node out of the frozen flows. The file is never modified. */
 export function loadFunctionNode(nodeId: string, flowsFile?: string): FunctionNodeDefinition {
   const file = flowsFile ?? legacyFlowsPath();
@@ -147,7 +172,7 @@ export function loadFunctionNode(nodeId: string, flowsFile?: string): FunctionNo
     return {
       id: nodeId,
       name: typeof name === "string" ? name : "",
-      func,
+      func: withCorrectedCredits(func),
       outputs: typeof outputs === "number" ? outputs : 1,
       libs: readLibs(node.libs, `${file}: node "${nodeId}"`),
     };

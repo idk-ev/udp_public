@@ -215,33 +215,51 @@ Gebraucht wird die Erweiterung, weil Mintaka für typ-skopierte Temporal-Abfrage
 
 | Quelle | Nutzung | Lizenz / Bedingungen |
 |---|---|---|
-| **basemap.de (BKG)** | aktive Basiskarte aller Dashboards (WMS) | dl-de/by-2-0 — Attribution „© basemap.de / BKG (dl-de/by-2-0)" im Code gesetzt |
-| OpenStreetMap-Kacheln | nur Rückfallebene bei Ausfall von basemap.de | Daten **ODbL**; Attribution „© OpenStreetMap contributors" gesetzt. Die OSMF-Tile-Policy untersagt produktive Nutzung — deshalb bewusst nur Fallback. |
+| **basemap.de (BKG)** | einzige Basiskarte aller Dashboards (WMS) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — Vermerk „© GeoBasis-DE / BKG (2026) CC BY 4.0“ mit Links auf basemap.de und die Lizenz (`gui/public/smartcity-lib.js`, `gui/src/pages/Karte.tsx`) |
+| OpenStreetMap-Daten | Marker aus OSM (Ausflugsziele, Familie & Versorgung, Rathaus) | **ODbL** — solange solche Marker zu sehen sind, ergänzt die Karte „© OpenStreetMap-Mitwirkende (ODbL)“ mit Link auf openstreetmap.org/copyright. OSM-Kacheln werden nicht geladen (OSMF-Tile-Policy). |
 
 ### 7.2 Datenquellen
 
+Maßgeblich ist die Registry `platform/config/connectors.json` (`attribution`,
+`attributionLinks`, `license`, `licenseUrl` je Konnektor); die Tabelle mit
+Quellenvermerken und Hinweisen steht in [`docs/api.md`](docs/api.md),
+Abschnitt „Lizenzen der Datenquellen“.
+
 | Quelle | Nutzung | Lizenz / Bedingungen |
 |---|---|---|
-| DWD via BrightSky | Warnungen, Stationsdaten | GeoNutzV / dl-de/by-2-0 |
-| DWD Pollenflug-Gefahrenindex | Pollenflug je Teilregion | GeoNutzV |
-| WSV/PEGELONLINE | Pegelstände Bundeswasserstraßen | dl-de/by-2-0 |
-| LUBW / HVZ Baden-Württemberg | Pegelstände Landesgewässer, Meldestufen | dl-de/by-2-0 |
+| Open-Meteo | Wetter und Vorhersage | CC BY 4.0, freie API-Stufe — **REVIEW NEEDED** (§8.3) |
+| Deutscher Wetterdienst | Pollenflug, Hitzebelastung | CC BY 4.0 |
+| DWD über Bright Sky | Warnungen, Stationsdaten | CC BY 4.0 — Vermerk „Datenbasis: Deutscher Wetterdienst, via Bright Sky“; Warnungen nur unverändert |
+| BBK/NINA (warnung.bund.de) | Bevölkerungsschutz-Warnungen | Nutzungsbedingungen des BBK — nur unverändert, mit Quelle und Link auf die Originalmeldung |
+| WSV/PEGELONLINE | Pegelstände Bundeswasserstraßen | DL-DE→Zero-2.0 |
+| LUBW Hochwasservorhersagezentrale | — (Konnektor `pegel-lubw` abgeschaltet) | Weiterverbreitung aktueller Mess- und Vorhersagedaten nicht gestattet; die Dashboards verlinken auf die HVZ |
 | Umweltbundesamt (Luft-API) | Luftqualitätsindex, NO₂/O₃/PM | dl-de/by-2-0 |
-| MobiData BW (ParkAPI, GBFS, OCPDB, Eco-Counter, SVZ-BW) | Parken, Sharing, Laden, Rad, Baustellen | dl-de/by-2-0 |
-| Marktstammdatenregister | PV-Leistung | dl-de/by-2-0 |
-| BBK/NINA | Bevölkerungsschutz-Warnungen | offene Warn-API des Bundes |
-| Wikidata | Einwohnerzahlen | CC0-1.0 |
-| opendatasoft georef (BKG/EuroGeographics) | Gemeindegrenzen und -stammdaten | © EuroGeographics/BKG |
-| OpenStreetMap via Overpass API | Rathäuser, Ausflugsziele, Versorgungs-POIs | **ODbL** — Abfragen bewusst selten und mit kennzeichnendem User-Agent gemäß Overpass-Nutzungsrichtlinie |
 | sensor.community | Feinstaub (Median und Einzelsensoren) | **ODbL** |
-| Open-Meteo | Wetter und Vorhersage | CC-BY 4.0, freie API-Stufe — **REVIEW NEEDED** (§8.3) |
-| EFA-BW (NVBW) | ÖPNV-Abfahrten | kein formal offenes Lizenzmodell — **REVIEW NEEDED** (§8.4) |
-| hystreet.com | Passantenfrequenz (optional, Token nötig) | **proprietär** — Nutzungsvereinbarung erforderlich; von der Weitergabe über CKAN ausgenommen |
+| OpenStreetMap via Overpass API | Rathäuser, Ausflugsziele, Versorgungs-POIs | **ODbL** — Abfragen bewusst selten und mit kennzeichnendem User-Agent gemäß Overpass-Nutzungsrichtlinie |
+| MobiData BW (Datenpaket der NVBW: ParkAPI, GBFS, OCPDB, Eco-Counter) | Parken, Sharing, Carsharing, Laden, Rad | dl-de/by-2-0; Parken zusätzlich Stadt Karlsruhe (CC BY 4.0), Stadt Freiburg, Verband Region Stuttgart (dl-de/by-2-0); Ladepunkte zusätzlich Bundesnetzagentur, EnBW AG (CC BY 4.0). GBFS von **Lime und Bird ausgeschlossen** (Lime-Bedingungen untersagen Speicherung, Bird ungeklärt) |
+| Verkehrsministerium BW (BEMaS) via MobiData BW | Baustellen | dl-de/by-2-0 |
+| EFA-BW der NVBW via MobiData BW | ÖPNV-Abfahrten, Haltestellenverzeichnis | dl-de/by-2-0 (§8.4) |
+| Marktstammdatenregister (Bundesnetzagentur) | PV-Leistung | dl-de/by-2-0 |
+| BKG über opendatasoft georef | Gemeindegrenzen und -stammdaten | dl-de/by-2-0 — „© GeoBasis-DE / BKG (2026) dl-de/by-2-0, Geometrien vereinfacht“ |
+| Wikidata | Einwohnerzahlen, Ortsmitten, Gemeinde-Websites | CC0-1.0 |
+| hystreet.com | Passantenfrequenz (Konnektor abgeschaltet) | **proprietär** — nur mit schriftlicher Zustimmung; bis dahin weder abgefragt noch gezeigt |
 
-**ODbL-Hinweis:** OSM-, Overpass- und sensor.community-Daten stehen unter ODbL. Werden
-abgeleitete Datenbanken öffentlich bereitgestellt (z. B. über den CKAN-Katalog), gilt
-die Share-alike-Pflicht der ODbL für diese Datenbank. Das betrifft die Daten, nicht
-den EUPL-lizenzierten Programmcode.
+**Eingecheckte Datendateien:**
+
+| Datei | Inhalt | Herkunft | Lizenz |
+|---|---|---|---|
+| `gui/public/bw-gemeinden.json` | Gemeinden und Kreise BW: Namen, Schlüssel, Mittelpunkte, Einwohner | BKG-Verwaltungsgebiete über opendatasoft georef; Einwohner aus Wikidata | dl-de/by-2-0 (© GeoBasis-DE / BKG 2026); Einwohner CC0 |
+| `gui/public/bw-grenzen.json` | Gemeindegrenzen, vereinfacht | BKG-Verwaltungsgebiete über opendatasoft georef | dl-de/by-2-0 — © GeoBasis-DE / BKG (2026), Geometrien vereinfacht |
+| `gui/public/oepnv-halte.json` | zentraler ÖPNV-Halt je Gemeinde | EFA-BW der NVBW (`scripts/efa-haltestellen.py`), teils kuratiert | dl-de/by-2-0 (Datenpaket MobiData BW; NVBW) |
+| `gui/public/gemeinde-services.json` | amtliche Website je Gemeinde | Wikidata (P856) | CC0-1.0 |
+| `scripts/ortsmitten.json` | Ortsmitte je Gemeinde | Wikidata (P625) | CC0-1.0 |
+
+**ODbL-Hinweis:** Die Entitäten aus OSM und sensor.community sind abgeleitete
+Datenbanken; für sie gilt über die API die ODbL (Namensnennung, Share-alike bei
+öffentlicher Weitergabe einer daraus erzeugten Datenbank, z. B. über den
+CKAN-Katalog). Die übrigen Daten liegen als getrennte Typen daneben
+(Collective Database) und behalten ihre eigene Lizenz. Das betrifft die Daten,
+nicht den EUPL-lizenzierten Programmcode.
 
 ### 7.3 Grafiken und Symbole
 
@@ -288,12 +306,13 @@ kommerziellen Betrieb der Plattform ist ein kostenpflichtiger API-Zugang nötig.
 bisherige Doku führte dies als „Annahme" — das sollte verbindlich geklärt und im
 Betriebskonzept festgehalten werden.
 
-### 8.4 EFA-BW ohne formales Lizenzmodell
+### 8.4 EFA-BW: Lizenz geklärt, Nutzung der Live-Schnittstelle
 
-Die ÖPNV-Abfahrtsdaten der NVBW werden über eine öffentlich erreichbare Schnittstelle
-bezogen, für die kein offenes Lizenzmodell veröffentlicht ist. Die Nutzungsbedingungen
-der NVBW sind einzuholen und zu dokumentieren, bevor Dritte die Plattform auf dieser
-Basis produktiv betreiben.
+Die EFA-BW-Daten der NVBW gehören zum Datenpaket von MobiData BW und stehen unter
+dl-de/by-2-0 (Vermerk „Datenpaket: MobiData BW; NVBW – EFA-BW (dl-de/by-2-0)“). Offen
+bleibt nur, ob der Abruf über die öffentliche Live-Schnittstelle in diesem Umfang
+(Abfahrten auf Anfrage, Tageskontingent) mit der NVBW abgestimmt werden sollte, bevor
+Dritte die Plattform produktiv betreiben.
 
 ### 8.5 Eigenständigkeit der Karten-Piktogramme bestätigen
 

@@ -96,6 +96,10 @@
  *    src/connectors/gbfs.ts (https, no private IP literal, no internal host
  *    name, the same for every redirect hop); refused feeds are skipped and
  *    counted in one `[warn]` per run. The old node fetched them as given.
+ *  * Systems matching the registry's `excludeSystems` (licence terms, see
+ *    src/connectors/gbfs.ts) are dropped from the list before the run: never
+ *    fetched, their zero tables dropped, their summaries removed by the
+ *    age-based prune after 24 h like those of a system that left the list.
  *  * Log texts are English.
  */
 
@@ -126,6 +130,7 @@ import {
   SkippedFeeds,
   SYSTEMS_URL,
   systemKey,
+  withoutExcluded,
 } from "./gbfs.js";
 
 export const ID = "sharing-bw";
@@ -498,15 +503,23 @@ async function runSystem(ctx: Ctx, system: GbfsSystem, skipped: SkippedFeeds): P
 }
 
 export async function run(ctx: Ctx): Promise<void> {
-  let systems: ReturnType<typeof parseSystems> = null;
+  let listed: ReturnType<typeof parseSystems> = null;
   try {
     const response = await ctx.fetch.json(SYSTEMS_URL);
-    if (response.status < 400) systems = parseSystems(response.body);
+    if (response.status < 400) listed = parseSystems(response.body);
   } catch {
-    systems = null;
+    listed = null;
   }
-  if (systems === null) {
+  if (listed === null) {
     ctx.log.warn("GBFS-BW: system list not loadable");
+    return;
+  }
+  // Systems excluded by the registry (licence terms) count as not listed: no
+  // request, no write, their zero tables go, and their summaries age out
+  // through the prune below.
+  const { kept: systems, excluded } = withoutExcluded(listed, ctx.entry.excludeSystems);
+  if (systems.length === 0 && listed.length > 0) {
+    ctx.log.warn("GBFS-BW: every listed system is excluded by the registry — nothing to do");
     return;
   }
 
@@ -541,7 +554,9 @@ export async function run(ctx: Ctx): Promise<void> {
   skipped.report(ctx.log, "GBFS-BW");
   // The one line that confirms a run in the log; the old node logged nothing.
   ctx.log.info(
-    `GBFS-BW: ${String(systems.length)} systems, ${String(written)} summaries written ` +
+    `GBFS-BW: ${String(systems.length)} systems` +
+      (excluded.length > 0 ? ` (${String(excluded.length)} excluded by the registry)` : "") +
+      `, ${String(written)} summaries written ` +
       `(${String(zeroed)} of them zeroed), prune: ` +
       (pruned.skipped === null ? `${String(pruned.deleted)} deleted` : `skipped (${pruned.skipped})`),
   );

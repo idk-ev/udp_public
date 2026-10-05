@@ -5,8 +5,8 @@
 
 /**
  * `efa-abfahrten` — live departure monitor of one central stop per
- * municipality (EFA-BW, naldo/bwegt) as a `PublicTransportStop` entity with a
- * `departures` compound.
+ * municipality (EFA-BW of the NVBW, via MobiData BW) as a
+ * `PublicTransportStop` entity with a `departures` compound.
  *
  * Port of FN_OEPNV and the per-municipality loop in
  * the former Node-RED flow generator (see git history). The generator stamped the whole pipeline
@@ -122,7 +122,7 @@ export const ID = "efa-abfahrten";
 /** Prefix of the per-stop signature tables, unchanged from the flow. */
 export const SIGNATURE_PREFIX = "oepnvSig:";
 
-const DATA_PROVIDER = "EFA-BW (naldo/bwegt)";
+const DATA_PROVIDER = "MobiData BW; NVBW – EFA-BW (dl-de/by-2-0)";
 
 /** `_pp("stopName", "Zentraler Halt")` of the generator. */
 const DEFAULT_STOP_NAME = "Zentraler Halt";

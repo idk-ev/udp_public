@@ -1081,6 +1081,22 @@ export interface RegistryEntry {
    */
   readonly sensorDetailFor: "*" | readonly Ags[];
   readonly params: ConnectorParams;
+  /**
+   * `excludeSystems` (read by the GBFS connectors `sharing-bw` and
+   * `carsharing-bw`): systems of the source list that are never fetched nor
+   * written, each with the reason (licence terms of the provider). Missing
+   * means none.
+   */
+  readonly excludeSystems: readonly SystemExclusion[];
+}
+
+/**
+ * One exclusion rule of `excludeSystems`: a system id pattern (letters,
+ * digits, `_`, `-`; `*` matches any run of characters) and why it is excluded.
+ */
+export interface SystemExclusion {
+  readonly pattern: string;
+  readonly reason: string;
 }
 
 export interface Registry {

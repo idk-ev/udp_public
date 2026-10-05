@@ -70,7 +70,7 @@ export const GATE_KEY = "pegelSig";
 /** As FN_PEGEL: `emitChunks(node, msg, geaendert, 50)`. */
 export const CHUNK_SIZE = 50;
 
-const DATA_PROVIDER = "WSV/PEGELONLINE (dl-de/by-2-0)";
+const DATA_PROVIDER = "WSV/PEGELONLINE (DL-DE→Zero-2.0)";
 
 /** Label of the geo skip warning and of this connector's own warnings. */
 const LABEL = "PEGELONLINE";

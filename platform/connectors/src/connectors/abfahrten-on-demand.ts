@@ -176,7 +176,7 @@ export const DIRECTORY_URL = `${COCKPIT_URL}/oepnv-halte.json`;
 
 export const ROUTE_PATH = "/abfahrten";
 
-const SOURCE = "EFA-BW (naldo/bwegt)";
+const SOURCE = "MobiData BW; NVBW – EFA-BW (dl-de/by-2-0)";
 
 /** What `res.jsonp` sets on an object payload (Express adds the charset). */
 export const JSON_CONTENT_TYPE = "application/json; charset=utf-8";

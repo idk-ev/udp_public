@@ -261,7 +261,7 @@ Stand: 26 Entitätstypen, 121 Attributnamen.
 | `Municipality` | stammdaten-bw | `ags`, `dashboardUrl`, `dateObserved`, `kreisCode`, `location`, `municipalityType`, `name`, `population` |
 | `ParkingSite` | parken-bw | `ags`, `availableSpotNumber`, `category`, `dataProvider`, `dateObserved`, `location`, `name`, `originalUid`, `sourceId`, `totalSpotNumber` |
 | `ParkingSummary` | parken-bw | `ags`, `dateObserved`, `realtimeFree`, `realtimeSites`, `siteCount`, `totalCapacity` |
-| `PedestrianFlowObserved` | hystreet | `dailyTotal`, `dataProvider`, `dateObserved`, `location`, `name`, `pedestrianCount` |
+| `PedestrianFlowObserved` | hystreet (abgeschaltet) | `dailyTotal`, `dataProvider`, `dateObserved`, `location`, `name`, `pedestrianCount` |
 | `PlatformStatus` | ops-host, troe-stats | `cpuCores`, `cpuLoad1`, `cpuLoad15`, `cpuLoadPct`, `dateObserved`, `dbSizeBytes`, `diskTotalGb`, `diskUsedPct`, `efaOnDemandCallsToday`, `efaOnDemandDailyCap`, `ingestByHour`, `memTotalMb`, `memUsedPct`, `name`, `rowsByType`, `rowsByTypeAsOf`, `troeEntities`, `troeRows`, `troeRows1h`, `troeRows24h`, `uptimeDays` |
 | `PollenForecast` | pollen-bw | `arten`, `dataProvider`, `dateObserved`, `kreise`, `name` |
 | `PublicAmenity` | poi-bw | `ags`, `amenities`, `counts`, `dataProvider`, `dateObserved`, `totalCount` |
@@ -270,7 +270,7 @@ Stand: 26 Entitätstypen, 121 Attributnamen.
 | `SharingSummary` | sharing-bw | `ags`, `availableVehicles`, `system`, `vehiclePositions`, `vehiclesByFormFactor` |
 | `TouristDestination` | ausflug-bw | `ags`, `dataProvider`, `dateObserved`, `zielCount`, `ziele` |
 | `TrafficFlowObserved` | eco-bw | `ags`, `dailyTotal`, `dateObserved`, `location`, `name`, `siteCount`, `vehicleType` |
-| `WaterLevelObserved` | pegel-bw, pegel-lubw | `ags`, `dataProvider`, `dateObserved`, `discharge`, `floodLevels`, `gemeindeName`, `level`, `levelState`, `location`, `meanLevel`, `meanLowLevel`, `measuredAt`, `name`, `water` |
+| `WaterLevelObserved` | pegel-bw (pegel-lubw abgeschaltet) | `ags`, `dataProvider`, `dateObserved`, `discharge`, `floodLevels`, `gemeindeName`, `level`, `levelState`, `location`, `meanLevel`, `meanLowLevel`, `measuredAt`, `name`, `water` |
 | `WeatherForecast` | vorhersage-bw | `ags`, `apparentTemperature`, `dataProvider`, `dateObserved`, `days`, `sunrise`, `sunset`, `tomorrowPrecipitation`, `tomorrowTempMax`, `tomorrowTempMin`, `uvIndex` |
 | `WeatherObserved` | wetter-bw, wetter-dwd-station | `ags`, `atmosphericPressure`, `dataProvider`, `dateObserved`, `dwdStationId`, `gemeindeName`, `location`, `precipitation`, `relativeHumidity`, `stationName`, `tempMax`, `tempMin`, `temperature`, `uvIndexMax`, `windDirection`, `windSpeed` |
 
@@ -319,16 +319,66 @@ nicht geplant. Sie wäre eine **inkompatible Änderung** und hieße:
 
 ## Lizenzen der Datenquellen
 
-> **Wird ergänzt.** Die Daten stammen von Dritten und stehen unter deren
-> eigenen Lizenzen; die Plattform-Lizenz (EUPL-1.2) gilt für den Programmcode,
-> nicht für die Daten. Weiterverwendung nur mit der Namensnennung, die die
-> jeweilige Quelle verlangt.
+Die Daten stammen von Dritten und stehen unter deren eigenen Lizenzen; die
+Plattform-Lizenz (EUPL-1.2) gilt für den Programmcode, nicht für die Daten.
+Wer Daten über die API weiterverwendet, übernimmt die Namensnennung, die die
+jeweilige Quelle verlangt (Spalte „Quellenvermerk“), und beachtet die
+Hinweise.
 
-Bis dahin gelten:
+Maschinenlesbar steht dasselbe im öffentlichen Statusexport
+`/connectors-status.json`: je Konnektor `attribution` (Quellenvermerk),
+`attributionLinks` (Linkziele im Vermerk), `license` und `licenseUrl`.
+Gepflegt wird es an einer Stelle, in `platform/config/connectors.json`; die
+Dashboards zeigen die Vermerke in der Fußzeile. Viele Entitäten tragen ihre
+Quelle zusätzlich im Attribut `dataProvider`.
 
-- die Übersicht der Datenquellen und ihrer Lizenzen in
-  [`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md) (Abschnitt 7.2);
-- die Quellenangabe je Konnektor (`attribution` in
-  `platform/config/connectors.json`), die auch die Dashboards in der Fußzeile
-  zeigen;
-- das Attribut `dataProvider`, das viele Entitäten mit ihrer Quelle tragen.
+| Quelle | Konnektor → Typ | Lizenz | Quellenvermerk | Hinweise |
+|---|---|---|---|---|
+| Open-Meteo | wetter-bw, vorhersage-bw → `WeatherObserved` (`bw-<AGS>`), `WeatherForecast` | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Wetterdaten: Open-Meteo.com (CC BY 4.0) | Link auf [open-meteo.com](https://open-meteo.com/). Freie API-Stufe nur nicht-kommerziell (THIRD-PARTY-NOTICES §8.3). |
+| Deutscher Wetterdienst (DWD) | pollen-bw → `PollenForecast`, hitze-bw → `HeatHealthWarning` | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Quelle: Deutscher Wetterdienst (CC BY 4.0) | |
+| DWD über Bright Sky | wetter-dwd-station → `WeatherObserved` (`bw-dwd-<Station>`), warnungen-bw → `Alert` (`…-dwd`) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Datenbasis: Deutscher Wetterdienst, via Bright Sky | Warnungen nur unverändert weitergeben (siehe unten). |
+| BBK / NINA (warnung.bund.de) | warnungen-bw → `Alert` (`…-nina`) | Nutzungsbedingungen des BBK | Warnungen: BBK/warnung.bund.de (unverändert) | Amtliche Warnungen nur unverändert weitergeben (siehe unten). |
+| WSV / PEGELONLINE | pegel-bw → `WaterLevelObserved` (`bw-pegel-<Nr>`) | [DL-DE→Zero-2.0](https://www.govdata.de/dl-de/zero-2-0) | Pegel: WSV/PEGELONLINE (DL-DE→Zero-2.0) | Namensnennung nicht verlangt, aber gegeben. |
+| LUBW Hochwasservorhersagezentrale | pegel-lubw (**abgeschaltet**) | — | — | Die HVZ bittet Dritte, aktuelle Mess- und Vorhersagedaten nicht weiterzuverbreiten. Die Dashboards verlinken stattdessen auf [hvz.lubw.baden-wuerttemberg.de](https://hvz.lubw.baden-wuerttemberg.de/). Ältere `WaterLevelObserved:bw-hvz-*` werden nicht mehr gezeigt und vom Betrieb gelöscht. |
+| Umweltbundesamt | uba-bw → `AirQualityObserved` (`bw-uba-<Station>`) | [dl-de/by-2-0](https://www.govdata.de/dl-de/by-2-0) | Umweltbundesamt mit Daten der Messnetze der Länder und des Bundes (dl-de/by-2-0) | |
+| sensor.community | feinstaub-bw → `AirQualityObserved` (`bw-sc-<AGS>`, `bw-sensor-<Id>`) | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) | Feinstaub: sensor.community (ODbL) | Abgeleitete Datenbank, siehe ODbL unten. |
+| OpenStreetMap (Overpass) | poi-bw → `PublicAmenity`, ausflug-bw → `TouristDestination`, rathaus-bw → `CivicStructure` | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) | © OpenStreetMap-Mitwirkende (ODbL) | Link auf [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright). Abgeleitete Datenbank, siehe ODbL unten. |
+| MobiData BW (Datenpaket der NVBW) | parken-bw → `ParkingSite`, `BikeParking`, `ParkingSummary`; sharing-bw → `SharingSummary`; carsharing-bw → `CarSharingStation`, `FleetStatus`; eco-bw → `TrafficFlowObserved`; ladesaeulen-bw → `EVChargingStation`, `ChargingSummary` | [dl-de/by-2-0](https://www.govdata.de/dl-de/by-2-0) | Datenpaket: MobiData BW; NVBW (dl-de/by-2-0) | Parken zusätzlich: Stadt Karlsruhe (CC BY 4.0), Stadt Freiburg, Verband Region Stuttgart (dl-de/by-2-0). Ladepunkte zusätzlich: Bundesnetzagentur, EnBW AG (CC BY 4.0). GBFS-Systeme von Lime und Bird sind ausgeschlossen (siehe unten). |
+| Verkehrsministerium BW (BEMaS) über MobiData BW | baustellen-bw → `RoadWork` | [dl-de/by-2-0](https://www.govdata.de/dl-de/by-2-0) | Verkehrsministerium BW (BEMaS) via MobiData BW (dl-de/by-2-0) | |
+| EFA-BW der NVBW über MobiData BW | efa-abfahrten → `PublicTransportStop`, `/abfahrten` | [dl-de/by-2-0](https://www.govdata.de/dl-de/by-2-0) | Datenpaket: MobiData BW; NVBW – EFA-BW (dl-de/by-2-0) | |
+| Marktstammdatenregister | mastr-bw → `EnergyMonitor` | [dl-de/by-2-0](https://www.govdata.de/dl-de/by-2-0) | Marktstammdatenregister – © Bundesnetzagentur (dl-de/by-2-0) | |
+| BKG (Verwaltungsgrenzen) | stammdaten-bw → `Municipality`; Gemeindezuordnung (`ags`) aller Konnektoren | [dl-de/by-2-0](https://www.govdata.de/dl-de/by-2-0) | © GeoBasis-DE / BKG (2026) dl-de/by-2-0, Geometrien vereinfacht | Gemeinden und Grenzen über opendatasoft georef. |
+| Wikidata | stammdaten-bw → `Municipality` (`population`) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Wikidata (CC0) | |
+| hystreet.com | hystreet (**abgeschaltet**) → `PedestrianFlowObserved` | proprietär | — | Nur mit schriftlicher Zustimmung; bis dahin weder abgefragt noch gezeigt. |
+| — (eigene Berechnung) | puls-bw → `CityPulse`; `PlatformStatus` | — | — | Aus den übrigen Daten berechnet bzw. Betriebsdaten der Plattform. |
+
+**Kartengrundlage der Dashboards:** basemap.de, © GeoBasis-DE / BKG (2026),
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Zeigt eine Karte
+Marker aus OpenStreetMap-Daten, ergänzt sie „© OpenStreetMap-Mitwirkende
+(ODbL)“ in ihrer Quellenzeile.
+
+**ODbL.** Die Entitäten aus OpenStreetMap (`PublicAmenity`,
+`TouristDestination`, `CivicStructure`) und aus sensor.community
+(`AirQualityObserved` mit `bw-sc-` und `bw-sensor-`) sind abgeleitete
+Datenbanken: Für sie gilt über die API die ODbL, einschließlich
+Namensnennung und Share-alike, wenn daraus eine Datenbank öffentlich
+weitergegeben wird. Die übrigen Daten liegen als getrennte Typen daneben; die
+Plattform ist insoweit eine Sammlung (Collective Database), deren Teile ihre
+eigene Lizenz behalten — die ODbL erstreckt sich nicht auf sie.
+
+**Amtliche Warnungen** (`Alert`) dürfen nur unverändert weitergegeben werden.
+`headlines` enthält die Überschrift der Warnung vollständig (höchstens drei
+Einträge, `activeCount` nennt die tatsächliche Zahl); einzige technische
+Anpassung ist der typografische Apostroph (’ statt '), ohne den Orion-LD die
+Zeitreihe nicht schreibt. Warnungen von NINA tragen in `url` den Link auf die
+Originalmeldung bei warnung.bund.de; der Kalender `/warnungen.ics` gibt ihn als
+`URL` des Termins aus. Wer Warnungen kürzt oder umformuliert, darf sie nicht
+als amtliche Warnung ausgeben.
+
+**Ausgeschlossene Anbieter.** Die GBFS-Nutzungsbedingungen von Lime untersagen
+das Speichern und den Aufbau eigener Datensätze, die von Bird sind ungeklärt.
+Beide sind in der Registry (`excludeSystems` von sharing-bw und carsharing-bw,
+mit Begründung) von der Ingestion ausgeschlossen.
+
+**Noch offen:** eine Lizenzangabe je Entität (Attribut `license`). Bis dahin
+gilt die Lizenz des Konnektors laut Tabelle und Statusexport.

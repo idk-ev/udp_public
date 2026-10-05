@@ -4,7 +4,7 @@
  */
 
 /**
- * `baustellen-bw` — road works state-wide (SVZ-BW via MobiData BW).
+ * `baustellen-bw` — road works state-wide (BEMaS of the BW transport ministry, via MobiData BW).
  *
  * Port of two chains of the old flow that shared a registry entry:
  *
