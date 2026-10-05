@@ -39,12 +39,16 @@ curl 'https://udp.example.org/gateway/ngsi-ld/v1/types'
   `404`.
 - **Listenabfragen brauchen genau einen `type`-Parameter** mit einfachen
   Typnamen – ein Typ (`type=WeatherObserved`) oder eine kommagetrennte Liste
-  (`type=ParkingSite,BikeParking`), nur Buchstaben, Ziffern und `_`. Abfragen
-  ohne `type` (nur `q=…`, `idPattern=…`, `local=true`), mit zwei
-  `type`-Parametern oder mit vollständigen URIs, Präfixen oder
-  Typ-Ausdrücken (`|`, `;`, Klammern) beantwortet die Plattform mit `400`.
-  Die übrigen Parameter (`q`, `attrs`, `georel`/`geometry`/`coordinates`,
-  `options`, `limit`, `offset`, `count`) sind frei kombinierbar.
+  (`type=ParkingSite,BikeParking`), nur Buchstaben, Ziffern, `_`, `.` und
+  `-`, ohne leere Einträge. Abfragen ohne `type` (nur `q=…`, `idPattern=…`,
+  `local=true`), mit zwei `type`-Parametern oder mit vollständigen URIs,
+  Präfixen oder Typ-Ausdrücken (`|`, `;`, Klammern) beantwortet die
+  Plattform mit `400`.
+- **Erlaubte Parameter:** bei Listenabfragen `type`, `q`, `attrs`, `limit`,
+  `offset`, `count`, `options`, `georel`, `geometry`, `coordinates`,
+  `geoproperty` und `lang`; beim Einzelabruf und bei `/types` nur `attrs`,
+  `options`, `lang` und `details`. Jeder Parameter als `name=wert`; andere
+  Parameter (z. B. `jsonldContext`, `idPattern`, `local`) ergeben `400`.
 - `limit` höchstens 1000, Blättern über `offset`; `count=true` liefert die
   Gesamtzahl im Header `NGSILD-Results-Count`.
 - Fast alle Typen tragen das Attribut `ags` (Amtlicher Gemeindeschlüssel,
@@ -66,7 +70,9 @@ curl 'https://udp.example.org/gateway/temporal/temporal/entities/urn:ngsi-ld:Wea
 
 Abgefragt wird je Entität (`/temporal/entities/{id}`); Listenabfragen über
 alle Entitäten (`/temporal/entities?…`) und die übrigen Mintaka-Pfade sind
-öffentlich nicht erreichbar (`404`). Wie weit die Historie
+öffentlich nicht erreichbar (`404`). Erlaubte Parameter: `attrs`,
+`timerel`, `timeAt`, `endTimeAt`, `timeproperty`, `options`, `lastN`,
+`aggrMethods`, `aggrPeriodDuration`; andere ergeben `400`. Wie weit die Historie
 zurückreicht, legt der Betreiber über die Retention fest
 ([`betrieb.md`](betrieb.md), „Zeitreihen-Retention (TRoE)“); unveränderte
 Wiederholungswerte können zusammengefasst sein.
@@ -85,8 +91,11 @@ Bedarf:
 
 Status: `200` (auch mit leerer Liste, wenn gerade nichts fährt), `404` für
 eine Gemeinde ohne hinterlegten Halt, `502` bei gestörter Auskunft, `503`
-solange das Haltestellenverzeichnis noch nicht geladen oder der Dienst
-ausgelastet ist. Alle Parameter außer `ags` werden ignoriert.
+solange das Haltestellenverzeichnis noch nicht geladen, der Dienst
+ausgelastet oder das Tageskontingent der Auskunft aufgebraucht ist (mit
+`Retry-After`). Alle Parameter außer `ags` werden ignoriert. Wird das
+Tageskontingent knapp, bleiben Antworten bis zu 20 Minuten im Cache; ihr
+Alter steht in `stand`.
 
 ### `/warnungen.ics`
 
@@ -99,7 +108,7 @@ Parameter `400`; solange der Broker nicht erreichbar ist `503`.
 Unter `/gateway/` sind auch FROST (SensorThings), CKAN, GeoServer und – falls
 eingeschaltet – das Masterportal lesend erreichbar. Das sind die
 Standard-Schnittstellen der jeweiligen Komponenten; dieser Vertrag deckt sie
-nicht ab.
+nicht ab. Der IoT-Agent (Geräteverwaltung) ist öffentlich nicht erreichbar.
 
 ## Zugriff und Sicherheitsmodell
 
@@ -108,7 +117,8 @@ So ist die Plattform **heute** ausgeliefert:
 - **Anonym und nur lesend.** Öffentlich erreichbar ist die API nur über den
   Cockpit-nginx. Er lässt auf `/gateway/…`, `/abfahrten` und `/warnungen.ics`
   nur `GET`, `HEAD` und `OPTIONS` durch; alles andere endet mit `403`. Eine
-  Anmeldung oder ein Token gibt es nicht.
+  Anmeldung oder ein Token gibt es nicht; einen `Authorization`-Header reicht
+  der öffentliche Pfad nicht weiter.
 - **Kein OIDC am Gateway.** Die APISIX-Routen werten keine Tokens aus; Keycloak
   ist deployt, wirkt aber auf die APIs nicht. Die Anmeldung im Cockpit ist im
   Helm-Chart standardmäßig aus (`cockpit.authEnabled: false`).
