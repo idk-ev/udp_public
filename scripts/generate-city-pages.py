@@ -5,21 +5,23 @@
 """SSG (F2): erzeugt je Kommune gui/public/g/<slug>/index.html — ein kleiner
 Stub mit korrektem Title/OG, der das gemeinsame stadt.html-Bundle lädt.
 Zusätzlich je Landkreis g/kreis-<slug>/index.html auf Basis von kreis.html;
-Stadtkreise haben keine eigene Seite (ihr Slug zeigt auf das Stadt-Dashboard)."""
+Stadtkreise haben keine eigene Seite (ihr Slug zeigt auf das Stadt-Dashboard).
+Außerdem gui/public/sitemap.xml mit allen diesen Seiten (siehe SITEMAP_ORIGIN)."""
 import json
 import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / "gui" / "public"
 OUT = ROOT / "g"
-_data = json.loads((ROOT / "bw-gemeinden.json").read_text())
+# Explicit UTF-8: the platform default (cp1252 on Windows) garbles every umlaut.
+_data = json.loads((ROOT / "bw-gemeinden.json").read_text(encoding="utf-8"))
 gem = _data["gemeinden"]
 kreise = _data.get("kreise", [])
-stadt = (ROOT / "stadt.html").read_text()
+stadt = (ROOT / "stadt.html").read_text(encoding="utf-8")
 # Amtliche Websites je AGS, um sie in die Seite zu inlinen (spart je Seite die
 # 70-KB-Katalogdatei; s. gemeinde-services.json / Audit Frage 2).
 _svc_path = ROOT / "gemeinde-services.json"
-_services = json.loads(_svc_path.read_text())["dienste"] if _svc_path.exists() else {}
+_services = json.loads(_svc_path.read_text(encoding="utf-8"))["dienste"] if _svc_path.exists() else {}
 
 if OUT.exists():
     shutil.rmtree(OUT)
@@ -39,13 +41,14 @@ TPL = """<!DOCTYPE html>
 <meta property="og:title" content="Smart City {name}">
 <meta property="og:description" content="Offene Live-Daten für {name} ({ew} Einwohner): Wetter, Luft, Mobilität, Energie.">
 <meta property="og:type" content="website">
+<link rel="canonical" href="/{slug}">
 <meta name="theme-color" content="#0074e8">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon">
 <script>window.STADT = {stadt_json};</script>
 <script>
 // Bundle-Loader: gemeinsames Template übernimmt ab hier (Skripte sequenziell!)
-fetch("/stadt.html").then(r => r.text()).then(async html => {{
+fetch("/stadt.html").then(r => {{ if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }}).then(async html => {{
   const doc = new DOMParser().parseFromString(html, "text/html");
   document.body.innerHTML = doc.body.innerHTML;
   for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
@@ -58,6 +61,11 @@ fetch("/stadt.html").then(r => r.text()).then(async html => {{
       if (!s.src) res();
     }});
   }}
+}}).catch(() => {{
+  // Template not loadable (offline, deploy in progress): say so instead of a blank page.
+  document.body.innerHTML = '<p role="alert" style="max-width:640px;margin:12vh auto;padding:0 16px;font:16px/1.5 system-ui,sans-serif">' +
+    'Das Dashboard konnte gerade nicht geladen werden. Bitte die Seite in einigen Augenblicken neu laden. ' +
+    '<a href="/">Zur Kommunen-Suche</a></p>';
 }});
 </script>
 </head>
@@ -79,13 +87,14 @@ KREIS_TPL = """<!DOCTYPE html>
 <meta property="og:title" content="{name}">
 <meta property="og:description" content="Offene Live-Daten für {name} ({ew} Einwohner, {gems} Gemeinden).">
 <meta property="og:type" content="website">
+<link rel="canonical" href="/{slug}">
 <meta name="theme-color" content="#0074e8">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon">
 <script>window.KREIS = {{"krs": "{krs}", "slug": "{slug}", "name": {name_json}}};</script>
 <script>
 // Bundle-Loader: gemeinsames Kreis-Template übernimmt ab hier (Skripte sequenziell!)
-fetch("/kreis.html").then(r => r.text()).then(async html => {{
+fetch("/kreis.html").then(r => {{ if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }}).then(async html => {{
   const doc = new DOMParser().parseFromString(html, "text/html");
   document.body.innerHTML = doc.body.innerHTML;
   for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
@@ -98,12 +107,29 @@ fetch("/kreis.html").then(r => r.text()).then(async html => {{
       if (!s.src) res();
     }});
   }}
+}}).catch(() => {{
+  // Template not loadable (offline, deploy in progress): say so instead of a blank page.
+  document.body.innerHTML = '<p role="alert" style="max-width:640px;margin:12vh auto;padding:0 16px;font:16px/1.5 system-ui,sans-serif">' +
+    'Das Dashboard konnte gerade nicht geladen werden. Bitte die Seite in einigen Augenblicken neu laden. ' +
+    '<a href="/">Zur Kommunen-Suche</a></p>';
 }});
 </script>
 </head>
 <body></body>
 </html>
 """
+
+
+def write(path, text):
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
+# Sitemaps need absolute URLs, but the public address of an installation is
+# only known where it is deployed. The placeholder is meant to be replaced per
+# request by the cockpit nginx (sub_filter on /sitemap.xml and /robots.txt,
+# with the scheme and host of the request); unreplaced, crawlers ignore it.
+SITEMAP_ORIGIN = "__PUBLIC_ORIGIN__"
+paths = ["/"]
 
 n = 0
 for row in gem:
@@ -114,10 +140,11 @@ for row in gem:
     # 70 KB) je Seitenaufruf aus.
     stadt_obj = {"ags": ags, "slug": slug, "name": name, "row": row[:9],
                  "website": _services.get(ags, {}).get("website")}
-    (OUT / slug / "index.html").write_text(TPL.format(
+    write(OUT / slug / "index.html", TPL.format(
         name=name.replace('"', ""), ags=ags, slug=slug,
         ew=f"{ew:,}".replace(",", ".") if ew else "–",
         stadt_json=json.dumps(stadt_obj, ensure_ascii=False)))
+    paths.append("/" + slug)
     n += 1
 
 nk = 0
@@ -126,9 +153,17 @@ for krs, name, _, _, typ, gems, ew, slug in kreise:
         continue
     (OUT / slug).mkdir(exist_ok=True)
     anzeige = name if name.lower().endswith("kreis") else "Landkreis " + name
-    (OUT / slug / "index.html").write_text(KREIS_TPL.format(
+    write(OUT / slug / "index.html", KREIS_TPL.format(
         name=anzeige.replace('"', ""), krs=krs, slug=slug, gems=gems,
         ew=f"{ew:,}".replace(",", ".") if ew else "–",
         name_json=json.dumps(name, ensure_ascii=False)))
+    paths.append("/" + slug)
     nk += 1
-print(f"OK: {n} City-Pages + {nk} Kreis-Pages -> {OUT}")
+
+# Slugs are ASCII ([a-z0-9-]); nothing to escape in the XML.
+write(ROOT / "sitemap.xml",
+      '<?xml version="1.0" encoding="UTF-8"?>\n'
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+      + "".join(f"  <url><loc>{SITEMAP_ORIGIN}{p}</loc></url>\n" for p in paths)
+      + "</urlset>\n")
+print(f"OK: {n} City-Pages + {nk} Kreis-Pages -> {OUT}, sitemap.xml: {len(paths)} URLs")

@@ -12,13 +12,14 @@
 <meta property="og:title" content="Landkreis Emmendingen">
 <meta property="og:description" content="Offene Live-Daten für Landkreis Emmendingen (172.392 Einwohner, 24 Gemeinden).">
 <meta property="og:type" content="website">
+<link rel="canonical" href="/kreis-emmendingen">
 <meta name="theme-color" content="#0074e8">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon">
 <script>window.KREIS = {"krs": "08316", "slug": "kreis-emmendingen", "name": "Emmendingen"};</script>
 <script>
 // Bundle-Loader: gemeinsames Kreis-Template übernimmt ab hier (Skripte sequenziell!)
-fetch("/kreis.html").then(r => r.text()).then(async html => {
+fetch("/kreis.html").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }).then(async html => {
   const doc = new DOMParser().parseFromString(html, "text/html");
   document.body.innerHTML = doc.body.innerHTML;
   for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
@@ -31,6 +32,11 @@ fetch("/kreis.html").then(r => r.text()).then(async html => {
       if (!s.src) res();
     });
   }
+}).catch(() => {
+  // Template not loadable (offline, deploy in progress): say so instead of a blank page.
+  document.body.innerHTML = '<p role="alert" style="max-width:640px;margin:12vh auto;padding:0 16px;font:16px/1.5 system-ui,sans-serif">' +
+    'Das Dashboard konnte gerade nicht geladen werden. Bitte die Seite in einigen Augenblicken neu laden. ' +
+    '<a href="/">Zur Kommunen-Suche</a></p>';
 });
 </script>
 </head>
