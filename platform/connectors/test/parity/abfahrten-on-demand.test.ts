@@ -40,6 +40,7 @@ import {
   ROUTE_PATH,
   run,
   routes,
+  stretchedCacheSeconds,
 } from "../../src/connectors/abfahrten-on-demand.js";
 import { EFA_HOST, EFA_MIN_INTERVAL_MS, isEmptyDepartureMonitor } from "../../src/connectors/efa.js";
 import { isArray } from "../../src/kernel/parse.js";
@@ -673,7 +674,34 @@ async function dailyCapCountsWhatWasStoredAndHasADefault(): Promise<void> {
   );
 }
 
+async function dailyCapStretchesTheCache(): Promise<void> {
+  // Cap 8, one EFA request per stop: 50 % at 4 calls, 75 % at 6, 90 % at 7.2.
+  const r = await capRig({ [DAILY_CAP_ENV]: "8" });
+  const ttl: (string | null)[] = [];
+  for (let i = 0; i < 8; i += 1) {
+    const answer = await r.route.handle(capRequest(i));
+    assert.equal(answer.status, 200);
+    ttl.push(answer.headers?.["X-Accel-Expires"] ?? null);
+  }
+  assert.deepEqual(ttl, [null, null, null, "300", "300", "600", "600", "1200"]);
+  // Only departures: the 503 of the used-up cap and a 404 stay as they are.
+  r.at("2026-10-05T10:05:00.000Z");
+  const capped = await r.route.handle(capRequest(0));
+  assert.equal(capped.status, 503);
+  assert.equal(capped.headers?.["X-Accel-Expires"], undefined);
+  const unknown = await r.route.handle({ ...capRequest(0), query: new URLSearchParams("ags=08999999") });
+  assert.equal(unknown.status, 404);
+  assert.equal(unknown.headers?.["X-Accel-Expires"], undefined);
+
+  assert.equal(stretchedCacheSeconds(9999, 20_000), null);
+  assert.equal(stretchedCacheSeconds(10_000, 20_000), 300);
+  assert.equal(stretchedCacheSeconds(15_000, 20_000), 600);
+  assert.equal(stretchedCacheSeconds(18_000, 20_000), 1200);
+  assert.equal(stretchedCacheSeconds(25_000, 20_000), 1200);
+}
+
 export {
+  dailyCapStretchesTheCache as "abfahrten-on-demand: from half the daily cap on, departures may be cached longer (X-Accel-Expires)",
   dailyCapRefusesAndIsVisible as "abfahrten-on-demand: the daily cap answers 503 without an EFA request, warns at 80 %, errors once when reached",
   dailyCapCountsWhatWasStoredAndHasADefault as "abfahrten-on-demand: the daily cap counts the stored calls of the day; a bad value falls back to the default",
   directoryIsReloadedConditionally as "abfahrten-on-demand: the stop directory is reloaded hourly with a conditional GET (deviation)",

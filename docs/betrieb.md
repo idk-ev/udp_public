@@ -541,6 +541,10 @@ Open-Meteo-Kontingent).
   Wert, der keine positive Zahl ist, ergibt die Vorgabe und eine Warnung).
   Gezählt wird jeder gestartete Abruf; zusammengefasste Anfragen kosten
   nichts. Nur mit Zustimmung des Anbieters anheben.
+- **Gestreckt:** Ab der Hälfte des Kontingents dürfen Abfahrten länger im
+  Cockpit-Cache bleiben (Header `X-Accel-Expires`): ab 50 % 5 min, ab 75 %
+  10 min, ab 90 % 20 min statt 60 s. Wer reihum alle Halte abfragt, verbraucht
+  das Restkontingent so deutlich langsamer; das Alter zeigt der „Stand“.
 - **Ausgeschöpft:** HTTP 503 mit `Retry-After` bis 00:00 UTC und dem Namen
   des Halts, ohne EFA-Abruf. Die Cockpit-nginx liefert dann die letzte gute
   Antwort des Halts (bis 24 h alt, mit „Stand“); ohne sie zeigt die

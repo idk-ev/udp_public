@@ -121,6 +121,10 @@
  *    stop's last good answer stale on a 503 (`proxy_cache_use_stale`); a
  *    stop without one gets the 503, which the city page shows as
  *    "Fahrplanauskunft derzeit gestört" because the answer names the stop.
+ *  * Stretched: from half the cap on, departure answers carry
+ *    `X-Accel-Expires` ({@link CACHE_STRETCH}: 5, 10, then 20 minutes), so
+ *    the cockpit asks EFA-BW less often per stop and the remaining budget
+ *    lasts longer, e.g. against one actor cycling through all stops.
  *  * Visible: once a day a `[warn]` at {@link CAP_WARN_SHARE} of the cap and
  *    an `[error]` when it is reached, both starting with
  *    {@link CAP_LOG_PREFIX} — what a log-based alert matches. While it stays
@@ -544,6 +548,35 @@ function reportCap(ctx: Ctx): void {
   else ctx.log.status(`EFA-BW on demand: ${String(used)}/${String(cap)} calls today (UTC)`);
 }
 
+/**
+ * How long the cockpit may cache a departure answer once the day's cap fills:
+ * [share of the cap used, seconds], highest share first. Below the first
+ * share the cockpit's own 60 s apply. The nginx in front honours
+ * `X-Accel-Expires` over its proxy_cache_valid (and never passes it on), so
+ * one actor cycling through all stops costs fewer EFA requests per hour and
+ * the rest of the day's budget lasts longer; the `stand` of each answer shows
+ * its age.
+ */
+export const CACHE_STRETCH: readonly (readonly [number, number])[] = [
+  [0.9, 1200],
+  [0.75, 600],
+  [0.5, 300],
+];
+
+/** Cache lifetime in seconds for `used` of `cap` calls, `null` = the cockpit's default. */
+export function stretchedCacheSeconds(used: number, cap: number): number | null {
+  for (const [share, seconds] of CACHE_STRETCH) if (used >= cap * share) return seconds;
+  return null;
+}
+
+/** A 200 answer, with `X-Accel-Expires` while the day's cap is half used or more. */
+function withStretchedCache(ctx: Ctx, response: RouteResponse): RouteResponse {
+  if (response.status !== 200) return response;
+  const seconds = stretchedCacheSeconds(ctx.quota.used(EFA_HOST), ctx.state.slot(DAILY_CAP).get().cap(ctx));
+  if (seconds === null) return response;
+  return { ...response, headers: { ...response.headers, "X-Accel-Expires": String(seconds) } };
+}
+
 /** 503 while the cap is used up: the stop's name, as the 502, and when to come back. */
 export function cappedResponse(halt: Halt, nowMs: number): RouteResponse {
   const response = nodeRedJson(503, { fehler: CAPPED_TEXT, halt: halt.stopName ?? "" });
@@ -724,7 +757,7 @@ async function answer(ctx: Ctx, request: RouteRequest): Promise<RouteResponse> {
     ctx.log.debug(`EFA-BW on demand ${resolution.stopId}: client gone, request dropped`);
     return busy();
   }
-  return departuresResponse(resolution.halt, result.upstream, result.stand);
+  return withStretchedCache(ctx, departuresResponse(resolution.halt, result.upstream, result.stand));
 }
 
 /** 503 of the shed load, with a hint when to come back. */
