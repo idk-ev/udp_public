@@ -2,6 +2,25 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## 1.5.1 — Lizenzen und Quellenvermerke
+
+> **Upgrade bestehender Installationen:**
+>
+> - `pegel-lubw` ist abgeschaltet; seine Entitäten (`WaterLevelObserved:bw-hvz-*`)
+>   bleiben im Broker, bis sie gelöscht werden (docs/framework-dashboards.md).
+> - Lime- und Bird-Systeme werden nicht mehr abgerufen; ihre Entitäten baut
+>   der Prune ab (ggf. `scripts/release-prunes.sh sharing-bw`).
+
+- Quellenvermerke nach den Nutzungsbedingungen korrigiert (DWD CC BY 4.0,
+  GeoBasis-DE/BKG, PEGELONLINE DL-DE→Zero, MobiData BW/NVBW u. a.), mit
+  Links zu Quelle und Lizenz; `license`/`licenseUrl` je Konnektor.
+- `pegel-lubw` abgeschaltet (keine Weiterveröffentlichung gewünscht),
+  stattdessen Verweis auf die Hochwasservorhersagezentrale.
+- Lime/Bird per `excludeSystems` ausgeschlossen.
+- Warnungen unverändert (keine Kürzung), mit Link zur Originalmeldung.
+- hystreet inaktiv bis zur Zustimmung des Anbieters.
+- Lizenztabelle in docs/api.md und THIRD-PARTY-NOTICES.
+
 ## 1.5.0 — Härtung für den öffentlichen Betrieb, Einbettung, API-Vertrag
 
 > **Upgrade bestehender Installationen:**
