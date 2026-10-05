@@ -26,6 +26,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseBoundaries } from "../../src/connectors/grenzen-bw.js";
+import { exclusionOf } from "../../src/connectors/gbfs.js";
 import { parse as parseMunicipalities } from "../../src/connectors/stammdaten-bw.js";
 import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.js";
 import type { SignatureScope } from "../../src/kernel/change-gate.js";
@@ -243,6 +244,24 @@ export function registryEntry(id: string): RegistryEntry {
   const entry = cachedEntries.get(id);
   if (entry === undefined) throw new Error(`registry: no entry ${id}`);
   return entry;
+}
+
+/**
+ * A GBFS system list without the systems the registry entry of `id` excludes
+ * (`excludeSystems`, licence terms). Deliberate deviation of both GBFS ports:
+ * the old list nodes saw every system; the parity tests hand them the list
+ * the port actually works on, so the rest stays comparable.
+ */
+export function withoutExcludedSystems(id: string, payload: unknown): unknown {
+  if (!isRecord(payload) || !isArray(payload.systems)) return payload;
+  const rules = registryEntry(id).excludeSystems;
+  return {
+    ...payload,
+    systems: payload.systems.filter(
+      (system) =>
+        !(isRecord(system) && typeof system.id === "string" && exclusionOf(system.id, rules) !== null),
+    ),
+  };
 }
 
 export interface WorldOptions {

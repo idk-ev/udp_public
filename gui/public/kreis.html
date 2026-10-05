@@ -126,7 +126,7 @@ async function render(krow, members) {
   tiles += failed(ID.dwd) || failed(ID.nina) ? errorTile("Warnungen") : tile("Warnungen", warnCount, "", { status: warnCount === 0 ? css("--status-good") : maxSev >= 3 ? css("--status-serious") : css("--status-warn"),
     hint: "DWD + NINA, kreisweit", explain: "Amtliche Warnungen gelten auf Kreisebene (DWD-Wetterwarnungen und NINA-Bevölkerungsschutz)." });
   if (val(rwSum, "activeCount") != null)
-    tiles += tile("Baustellen", val(rwSum, "activeCount"), "", { hint: "im Kreisgebiet (SVZ-BW)",
+    tiles += tile("Baustellen", val(rwSum, "activeCount"), "", { hint: "im Kreisgebiet (BEMaS via MobiData BW)",
       explain: "Aktive Baustellen im gesamten Kreisgebiet laut Straßenverkehrszentrale BW." });
   if (pv.length)
     tiles += tile("PV installiert", (sum(pv, "installedCapacityKw") / 1000).toFixed(1).replace(".", ","), "MW",
@@ -170,12 +170,11 @@ async function render(krow, members) {
   SC.loadBanner("#loadwarn", mark);
 
   // Warn-Banner
-  const heads = [];
-  for (const [q, a] of [["DWD", alertDwd], ["NINA", alertNina]])
-    for (const h of asArray(val(a, "headlines"))) heads.push(`<b>${q}</b>: ${esc(h.h || h)}`);
+  // Official warnings unaltered: full headline (one line by CSS), source, link.
+  const heads = SC.warnHeads(alertDwd, alertNina);
   const wb = $("#wbanner");
   wb.className = "wbanner" + (heads.length ? (maxSev >= 3 ? " serious" : " warn") : "");
-  wb.innerHTML = heads.join("<br>");
+  wb.innerHTML = SC.warnBannerHtml(heads);
 
   // Gemeinde-Tabelle (Puls je Gemeinde, sofern vorhanden)
   const pulsByAgs = {};
@@ -203,7 +202,7 @@ async function render(krow, members) {
     pv.length && "pv", laden.length && "laden", parken.length && "parken", sharing.length && "sharing",
     radSums.length && "radverkehr"].filter(Boolean);
   $("#footer").innerHTML = "Kreissicht der Urbanen Datenplattform · Datenquellen: " +
-    esc(SC.attributions(sourcesFor(shown)).join(" · ")) + " · " + SC.MAP_CREDIT + " · <a href='/'>Kommunen-Suche</a>";
+    SC.attributionHtml(sourcesFor(shown)) + " · " + SC.MAP_CREDIT + " · <a href='/'>Kommunen-Suche</a>";
   $("#stand").textContent = "Stand: " + new Date().toLocaleTimeString("de-DE") + " · Auto-Refresh 120 s";
 }
 

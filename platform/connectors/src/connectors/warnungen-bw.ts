@@ -58,6 +58,15 @@
  *    string (or an entry that is null) is skipped; the old node threw, and the
  *    request hung without an answer until the proxy gave up.
  *
+ * ## Deliberate deviation (licence): headlines in full, with a link
+ *
+ * Official warnings may only be passed on unaltered. The old nodes cut every
+ * headline to 60 characters; now it is stored in full ({@link AlertHeadline}),
+ * a NINA headline carries the link to its warning on warnung.bund.de
+ * (`url`), and the calendar adds it as the event's `URL`. To stay below the
+ * TRoE compound limit, the list (at most three, as before) is shortened by
+ * entries, never inside a headline ({@link boundedHeadlines}).
+ *
  * ## Deliberate deviations of the calendar (security review)
  *
  *  * TEXT escaping turns a lone `\r` into `\n` as well and drops the other
@@ -320,8 +329,44 @@ export async function fanIn<T>(
 
 /* ------------------------------------------------------------------ parse */
 
-/** One headline as it is written into `headlines` — `{ h, sev }`, in that key order. */
-export type AlertHeadline = Readonly<Record<"h" | "sev", string>>;
+/**
+ * One headline as it is written into `headlines` — `{ h, sev }`, in that key
+ * order, plus `url` (the original warning) where the source has one.
+ *
+ * `h` is the headline of the issuing service IN FULL: official warnings may
+ * only be passed on unaltered (DWD, BBK). The old nodes cut it to 60
+ * characters; a page that needs a short line shortens it for display only
+ * (CSS), with the full text one click away. The only change left is the
+ * apostrophe swap of {@link cleanText}, which keeps the TRoE insert alive
+ * (docs/betrieb.md, Orion-LD pitfalls).
+ */
+// A type alias, not an interface: only an alias is assignable to the JSON value type of a Property.
+export type AlertHeadline = Readonly<Record<"h" | "sev", string>> & { readonly url?: string };
+
+/** Page of a NINA warning on warnung.bund.de, by the warning's identifier. */
+export const NINA_WARNING_URL = "https://warnung.bund.de/meldungen/";
+
+/** A NINA warning id as the dashboard lists it (`mow.DE-BW-…`, `dwdmap.…`); anything else gets no link. */
+const NINA_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+
+/**
+ * Budget for the serialised `headlines` value. Orion-LD drops compound values
+ * over ~2 KB from TRoE without a word (docs/betrieb.md); with full headlines
+ * the list is cut by ENTRIES to stay below it, never inside a headline.
+ * `activeCount` keeps the true number.
+ */
+export const HEADLINES_MAX_BYTES = 1800;
+
+/** At most three headlines, fewer if their JSON would exceed {@link HEADLINES_MAX_BYTES}; at least one. */
+export function boundedHeadlines(headlines: readonly AlertHeadline[]): readonly AlertHeadline[] {
+  const out: AlertHeadline[] = [];
+  for (const headline of headlines.slice(0, 3)) {
+    const next = [...out, headline];
+    if (out.length > 0 && Buffer.byteLength(JSON.stringify(next), "utf8") > HEADLINES_MAX_BYTES) break;
+    out.push(headline);
+  }
+  return out;
+}
 
 export interface WarnItem {
   readonly headline: AlertHeadline;
@@ -341,7 +386,7 @@ export interface WarnParts {
   readonly skipped: number;
 }
 
-/** `(x || '').slice(0, 60)` of a text field — anything but text there made the old node throw. */
+/** `x || ''` of a text field — anything but text there made the old node throw. */
 function textField(value: unknown, at: string): string {
   if (!isTruthy(value)) return "";
   if (!isString(value)) throw new ParseError(at, "string", value);
@@ -369,7 +414,7 @@ function dwdItems(body: unknown, at: string): WarnItem[] {
     const expires = field(alert, "expires");
     return {
       headline: {
-        h: cleanText(text.slice(0, 60)),
+        h: cleanText(text),
         sev: textField(field(alert, "severity"), `${where}.severity`).toLowerCase(),
       },
       expiresMs: isTruthy(expires) ? epochMs(expires) : null,
@@ -385,11 +430,14 @@ function ninaItems(body: unknown, at: string): WarnItem[] {
     // `(w.payload && w.payload.data) || {}`
     const payload = field(warning, "payload");
     const data = isTruthy(payload) ? field(payload, "data") : undefined;
+    const id = field(warning, "id");
+    const headline: AlertHeadline = {
+      h: cleanText(textField(field(data, "headline"), `${where}.payload.data.headline`)),
+      sev: textField(field(data, "severity"), `${where}.payload.data.severity`).toLowerCase(),
+    };
     return {
-      headline: {
-        h: cleanText(textField(field(data, "headline"), `${where}.payload.data.headline`).slice(0, 60)),
-        sev: textField(field(data, "severity"), `${where}.payload.data.severity`).toLowerCase(),
-      },
+      headline:
+        isString(id) && NINA_ID.test(id) ? { ...headline, url: `${NINA_WARNING_URL}${id}` } : headline,
       expiresMs: null,
     };
   });
@@ -462,7 +510,7 @@ export function build(raw: WarnParts, _geo: GeoIndex | null, now: IsoTime): read
       category: { type: "Property", value: part.quelle === "dwd" ? "weather" : "safety" },
       activeCount: { type: "Property", value: headlines.length, unitCode: "C62", observedAt: now },
       maxSeverity: { type: "Property", value: maxSeverity, observedAt: now },
-      headlines: { type: "Property", value: headlines.slice(0, 3), observedAt: now },
+      headlines: { type: "Property", value: boundedHeadlines(headlines), observedAt: now },
       dateObserved: dateObserved(now),
       "@context": NGSI_CONTEXT,
     };
@@ -623,6 +671,17 @@ export function foldLine(line: string): string {
   return parts.join("\r\n ");
 }
 
+/**
+ * The `url` of a headline as an iCalendar URL value (RFC 5545, 3.3.13, not
+ * TEXT-escaped): only a link to a warning page on warnung.bund.de, and only
+ * characters of an id ({@link NINA_ID}) — anything else is dropped, so a
+ * value read back from Orion cannot break the line or point elsewhere.
+ */
+export function calendarUrl(value: unknown): string | null {
+  if (!isString(value) || !value.startsWith(NINA_WARNING_URL)) return null;
+  return NINA_ID.test(value.slice(NINA_WARNING_URL.length)) ? value : null;
+}
+
 /** `a.headlines || []` iterated as the old `for…of` did: a list, or a string's characters. */
 function headlinesOf(alert: Readonly<Record<string, unknown>>): readonly unknown[] {
   const headlines = alert.headlines;
@@ -658,6 +717,7 @@ export function renderCalendar(kreis: string, alerts: readonly unknown[], now: I
       n += 1;
       const title = [field(headline, "h"), field(headline, "headline")].find(isTruthy) ?? "Warnung";
       const description = [field(headline, "desc"), field(headline, "description")].find(isTruthy) ?? "";
+      const link = calendarUrl(field(headline, "url"));
       lines.push(
         "BEGIN:VEVENT",
         `UID:${kreis}-${String(n)}-${stamp}@udp`,
@@ -665,6 +725,7 @@ export function renderCalendar(kreis: string, alerts: readonly unknown[], now: I
         `DTSTART:${stamp}`,
         `SUMMARY:${esc(`${quelle}: ${text(title)}`)}`,
         `DESCRIPTION:${esc(`${text(description)} (Quelle: ${quelle}, amtliche Warnung)`)}`,
+        ...(link === null ? [] : [`URL:${link}`]),
         "END:VEVENT",
       );
     }

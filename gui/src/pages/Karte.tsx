@@ -16,7 +16,7 @@ const typeColors = [
   "var(--series-4)", "var(--series-5)", "var(--series-6)",
 ];
 
-// basemap.de (BKG, dl-de/by-2-0) statt OSM-Kacheln — die OSMF-Tile-Policy
+// basemap.de (© GeoBasis-DE / BKG, CC BY 4.0) statt OSM-Kacheln — die OSMF-Tile-Policy
 // untersagt produktive Nutzung. WMS-Quelle, weil basemap.de die ADV-Kachel-
 // matrix mit eigenem Ursprung verwendet und damit nicht XYZ-kompatibel ist.
 const basemapStyle: maplibregl.StyleSpecification = {
@@ -30,7 +30,9 @@ const basemapStyle: maplibregl.StyleSpecification = {
           "&TRANSPARENT=false&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}",
       ],
       tileSize: 256,
-      attribution: "© basemap.de / BKG (dl-de/by-2-0)",
+      attribution:
+        '<a href="https://basemap.de/" target="_blank" rel="noopener">basemap.de</a>: © GeoBasis-DE / BKG (2026) ' +
+        '<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>',
     },
   },
   layers: [{ id: "basemapde", type: "raster", source: "basemapde" }],

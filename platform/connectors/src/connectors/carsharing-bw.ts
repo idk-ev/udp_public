@@ -98,6 +98,9 @@
  *    src/connectors/gbfs.ts (https, no private IP literal, no internal host
  *    name, the same for every redirect hop); refused feeds are skipped and
  *    counted in one `[warn]` per run. The old nodes fetched them as given.
+ *  * Systems matching the registry's `excludeSystems` (licence terms, see
+ *    src/connectors/gbfs.ts) are dropped from the list before the run and
+ *    never requested.
  *  * Log texts are English.
  */
 
@@ -151,6 +154,7 @@ import {
   SkippedFeeds,
   SYSTEMS_URL,
   systemKey,
+  withoutExcluded,
 } from "./gbfs.js";
 import type { GbfsSystem } from "./gbfs.js";
 
@@ -765,17 +769,20 @@ export function ownGbfs(_id: string, entity: Readonly<Record<string, unknown>>):
 }
 
 export async function run(ctx: Ctx): Promise<void> {
-  let systems: readonly GbfsSystem[] | null = null;
+  let listed: readonly GbfsSystem[] | null = null;
   try {
     const response = await ctx.fetch.json(SYSTEMS_URL);
-    if (response.status < 400) systems = parseSystems(response.body);
+    if (response.status < 400) listed = parseSystems(response.body);
   } catch {
-    systems = null;
+    listed = null;
   }
-  if (systems === null) {
+  if (listed === null) {
     ctx.log.warn("Carsharing: system list not loadable");
     return;
   }
+  // Systems excluded by the registry (licence terms) are not requested at
+  // all; whatever they wrote before ages out through the prunes below.
+  const systems = withoutExcluded(listed, ctx.entry.excludeSystems).kept;
   // Master data: two feeds per system, stations and vehicle types.
   ctx.log.status(`${String(systems.length)} systems, ${String(systems.length * 2)} requests`);
   const skipped = new SkippedFeeds();

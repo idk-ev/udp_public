@@ -1,12 +1,20 @@
 {
- "stand": "2026-10-01T06:24:45+00:00",
+ "stand": "2026-10-05T09:59:33+00:00",
  "connectors": [
   {
    "id": "stammdaten-bw",
    "name": "Gemeinde-Stammdaten (georef/Wikidata)",
    "enabledFor": "*",
    "provides": [],
-   "attribution": "© EuroGeographics/BKG via opendatasoft · Wikidata",
+   "attribution": "© GeoBasis-DE / BKG (2026) dl-de/by-2-0, Geometrien vereinfacht · Wikidata (CC0)",
+   "attributionLinks": {
+    "GeoBasis-DE / BKG": "https://gdz.bkg.bund.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0",
+    "Wikidata": "https://www.wikidata.org/",
+    "CC0": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:Municipality:bw-08111000"
   },
@@ -15,7 +23,13 @@
    "name": "Gemeindegrenzen-Cache (Punkt-in-Polygon)",
    "enabledFor": "*",
    "provides": [],
-   "attribution": "© EuroGeographics/BKG via opendatasoft",
+   "attribution": "© GeoBasis-DE / BKG (2026) dl-de/by-2-0, Geometrien vereinfacht",
+   "attributionLinks": {
+    "GeoBasis-DE / BKG": "https://gdz.bkg.bund.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": null
   },
@@ -26,7 +40,13 @@
    "provides": [
     "wetter"
    ],
-   "attribution": "Open-Meteo (CC-BY 4.0)",
+   "attribution": "Wetterdaten: Open-Meteo.com (CC BY 4.0)",
+   "attributionLinks": {
+    "Open-Meteo.com": "https://open-meteo.com/",
+    "CC BY 4.0": "https://creativecommons.org/licenses/by/4.0/"
+   },
+   "license": "CC BY 4.0",
+   "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:WeatherObserved:bw-08111000"
   },
@@ -38,7 +58,13 @@
     "vorhersage-basis",
     "vorhersage"
    ],
-   "attribution": "Open-Meteo (CC-BY 4.0)",
+   "attribution": "Wetterdaten: Open-Meteo.com (CC BY 4.0)",
+   "attributionLinks": {
+    "Open-Meteo.com": "https://open-meteo.com/",
+    "CC BY 4.0": "https://creativecommons.org/licenses/by/4.0/"
+   },
+   "license": "CC BY 4.0",
+   "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:WeatherForecast:bw-08111000"
   },
@@ -49,7 +75,13 @@
    "provides": [
     "pollen"
    ],
-   "attribution": "DWD (GeoNutzV)",
+   "attribution": "Quelle: Deutscher Wetterdienst (CC BY 4.0)",
+   "attributionLinks": {
+    "Deutscher Wetterdienst": "https://www.dwd.de/",
+    "CC BY 4.0": "https://creativecommons.org/licenses/by/4.0/"
+   },
+   "license": "CC BY 4.0",
+   "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:PollenForecast:bw-region-112"
   },
@@ -60,7 +92,13 @@
    "provides": [
     "hitze"
    ],
-   "attribution": "DWD Thermischer Gefahrenindex (GeoNutzV)",
+   "attribution": "Quelle: Deutscher Wetterdienst (CC BY 4.0)",
+   "attributionLinks": {
+    "Deutscher Wetterdienst": "https://www.dwd.de/",
+    "CC BY 4.0": "https://creativecommons.org/licenses/by/4.0/"
+   },
+   "license": "CC BY 4.0",
+   "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:HeatHealthWarning:bw-stuttgart"
   },
@@ -71,7 +109,13 @@
    "provides": [
     "pegel"
    ],
-   "attribution": "WSV/PEGELONLINE (dl-de/by-2-0)",
+   "attribution": "Pegel: WSV/PEGELONLINE (DL-DE→Zero-2.0)",
+   "attributionLinks": {
+    "WSV/PEGELONLINE": "https://www.pegelonline.wsv.de/",
+    "DL-DE→Zero-2.0": "https://www.govdata.de/dl-de/zero-2-0"
+   },
+   "license": "DL-DE→Zero-2.0",
+   "licenseUrl": "https://www.govdata.de/dl-de/zero-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:WaterLevelObserved:bw-pegel-23800900"
   },
@@ -82,8 +126,13 @@
    "provides": [
     "pegel"
    ],
-   "attribution": "LUBW / Hochwasservorhersagezentrale BW",
-   "active": true,
+   "attribution": "Pegelstände und Hochwasservorhersage: LUBW Hochwasservorhersagezentrale",
+   "attributionLinks": {
+    "LUBW Hochwasservorhersagezentrale": "https://hvz.lubw.baden-wuerttemberg.de/"
+   },
+   "license": null,
+   "licenseUrl": null,
+   "active": false,
    "sampleEntity": "urn:ngsi-ld:WaterLevelObserved:bw-hvz-00092"
   },
   {
@@ -93,7 +142,13 @@
    "provides": [
     "rathaus"
    ],
-   "attribution": "© OpenStreetMap contributors (ODbL)",
+   "attribution": "© OpenStreetMap-Mitwirkende (ODbL)",
+   "attributionLinks": {
+    "OpenStreetMap-Mitwirkende": "https://www.openstreetmap.org/copyright",
+    "ODbL": "https://opendatacommons.org/licenses/odbl/1-0/"
+   },
+   "license": "ODbL",
+   "licenseUrl": "https://opendatacommons.org/licenses/odbl/1-0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:CivicStructure:bw-08415061-rathaus"
   },
@@ -104,7 +159,13 @@
    "provides": [
     "ausflug"
    ],
-   "attribution": "© OpenStreetMap contributors (ODbL)",
+   "attribution": "© OpenStreetMap-Mitwirkende (ODbL)",
+   "attributionLinks": {
+    "OpenStreetMap-Mitwirkende": "https://www.openstreetmap.org/copyright",
+    "ODbL": "https://opendatacommons.org/licenses/odbl/1-0/"
+   },
+   "license": "ODbL",
+   "licenseUrl": "https://opendatacommons.org/licenses/odbl/1-0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:TouristDestination:bw-08415061"
   },
@@ -116,6 +177,12 @@
     "versorgung"
    ],
    "attribution": "© OpenStreetMap-Mitwirkende (ODbL)",
+   "attributionLinks": {
+    "OpenStreetMap-Mitwirkende": "https://www.openstreetmap.org/copyright",
+    "ODbL": "https://opendatacommons.org/licenses/odbl/1-0/"
+   },
+   "license": "ODbL",
+   "licenseUrl": "https://opendatacommons.org/licenses/odbl/1-0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:PublicAmenity:bw-08212000"
   },
@@ -126,18 +193,31 @@
    "provides": [
     "warnungen"
    ],
-   "attribution": "DWD via BrightSky (GeoNutzV) · BBK/NINA",
+   "attribution": "Datenbasis: Deutscher Wetterdienst, via Bright Sky · Warnungen: BBK/warnung.bund.de (unverändert)",
+   "attributionLinks": {
+    "Deutscher Wetterdienst": "https://www.dwd.de/",
+    "Bright Sky": "https://brightsky.dev/",
+    "BBK/warnung.bund.de": "https://warnung.bund.de/"
+   },
+   "license": "CC BY 4.0 (DWD); NINA: unveränderte Weitergabe (BBK)",
+   "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:Alert:bw-kreis-08111-dwd"
   },
   {
    "id": "baustellen-bw",
-   "name": "Baustellen landesweit (SVZ-BW)",
+   "name": "Baustellen landesweit (BEMaS via MobiData BW)",
    "enabledFor": "*",
    "provides": [
     "baustellen"
    ],
-   "attribution": "MobiData BW / SVZ-BW",
+   "attribution": "Verkehrsministerium BW (BEMaS) via MobiData BW (dl-de/by-2-0)",
+   "attributionLinks": {
+    "MobiData BW": "https://mobidata-bw.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:RoadWork:bw-kreis-08111-summary"
   },
@@ -148,7 +228,13 @@
    "provides": [
     "luft-uba"
    ],
-   "attribution": "Umweltbundesamt",
+   "attribution": "Umweltbundesamt mit Daten der Messnetze der Länder und des Bundes (dl-de/by-2-0)",
+   "attributionLinks": {
+    "Umweltbundesamt": "https://www.umweltbundesamt.de/daten/luft/luftdaten",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:AirQualityObserved:bw-uba-DEBW249"
   },
@@ -159,7 +245,13 @@
    "provides": [
     "feinstaub"
    ],
-   "attribution": "sensor.community",
+   "attribution": "Feinstaub: sensor.community (ODbL)",
+   "attributionLinks": {
+    "sensor.community": "https://sensor.community/",
+    "ODbL": "https://opendatacommons.org/licenses/odbl/1-0/"
+   },
+   "license": "ODbL",
+   "licenseUrl": "https://opendatacommons.org/licenses/odbl/1-0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:AirQualityObserved:bw-sc-08111000"
   },
@@ -171,7 +263,14 @@
     "parken",
     "br"
    ],
-   "attribution": "MobiData BW ParkAPI",
+   "attribution": "Datenpaket: MobiData BW; NVBW (dl-de/by-2-0) · Stadt Karlsruhe (CC BY 4.0), Stadt Freiburg, Verband Region Stuttgart (dl-de/by-2-0)",
+   "attributionLinks": {
+    "MobiData BW": "https://mobidata-bw.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0",
+    "CC BY 4.0": "https://creativecommons.org/licenses/by/4.0/"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:ParkingSummary:bw-08111000"
   },
@@ -182,7 +281,13 @@
    "provides": [
     "sharing"
    ],
-   "attribution": "MobiData BW GBFS",
+   "attribution": "Datenpaket: MobiData BW; NVBW (dl-de/by-2-0)",
+   "attributionLinks": {
+    "MobiData BW": "https://mobidata-bw.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:SharingSummary:bw-08111000-ff-stella"
   },
@@ -193,7 +298,13 @@
    "provides": [
     "carsharing-detail"
    ],
-   "attribution": "MobiData BW GBFS (Anbieter-Feeds)",
+   "attribution": "Datenpaket: MobiData BW; NVBW (dl-de/by-2-0)",
+   "attributionLinks": {
+    "MobiData BW": "https://mobidata-bw.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:FleetStatus:stuttgart-stadtmobil_stuttgart"
   },
@@ -206,7 +317,14 @@
     "laden-detail",
     "laden-live"
    ],
-   "attribution": "MobiData BW OCPDB / Bundesnetzagentur (DATEX II)",
+   "attribution": "Datenpaket: MobiData BW; NVBW (dl-de/by-2-0) · Bundesnetzagentur, EnBW AG (CC BY 4.0)",
+   "attributionLinks": {
+    "MobiData BW": "https://mobidata-bw.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0",
+    "CC BY 4.0": "https://creativecommons.org/licenses/by/4.0/"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:ChargingSummary:bw-08111000"
   },
@@ -217,7 +335,13 @@
    "provides": [
     "radverkehr"
    ],
-   "attribution": "MobiData BW / Eco-Counter",
+   "attribution": "Datenpaket: MobiData BW; NVBW (dl-de/by-2-0)",
+   "attributionLinks": {
+    "MobiData BW": "https://mobidata-bw.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:TrafficFlowObserved:bw-08111000-summary"
   },
@@ -228,7 +352,13 @@
    "provides": [
     "pv"
    ],
-   "attribution": "Marktstammdatenregister (dl-de/by-2-0)",
+   "attribution": "Marktstammdatenregister – © Bundesnetzagentur (dl-de/by-2-0)",
+   "attributionLinks": {
+    "Marktstammdatenregister": "https://www.marktstammdatenregister.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:EnergyMonitor:bw-08111000"
   },
@@ -240,6 +370,9 @@
     "puls"
    ],
    "attribution": null,
+   "attributionLinks": null,
+   "license": null,
+   "licenseUrl": null,
    "active": true,
    "sampleEntity": "urn:ngsi-ld:CityPulse:bw-08111000"
   },
@@ -250,7 +383,13 @@
    "provides": [
     "amtliche-station"
    ],
-   "attribution": "Deutscher Wetterdienst über BrightSky (CC BY 4.0)",
+   "attribution": "Datenbasis: Deutscher Wetterdienst, via Bright Sky",
+   "attributionLinks": {
+    "Deutscher Wetterdienst": "https://www.dwd.de/",
+    "Bright Sky": "https://brightsky.dev/"
+   },
+   "license": "CC BY 4.0",
+   "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:WeatherObserved:bw-dwd-04928"
   },
@@ -285,7 +424,13 @@
    "provides": [
     "departures"
    ],
-   "attribution": "EFA-BW (naldo/bwegt)",
+   "attribution": "Datenpaket: MobiData BW; NVBW – EFA-BW (dl-de/by-2-0)",
+   "attributionLinks": {
+    "MobiData BW": "https://mobidata-bw.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": "urn:ngsi-ld:PublicTransportStop:reutlingen-hbf"
   },
@@ -296,7 +441,13 @@
    "provides": [
     "abfahrten-live"
    ],
-   "attribution": "EFA-BW (naldo/bwegt)",
+   "attribution": "Datenpaket: MobiData BW; NVBW – EFA-BW (dl-de/by-2-0)",
+   "attributionLinks": {
+    "MobiData BW": "https://mobidata-bw.de/",
+    "dl-de/by-2-0": "https://www.govdata.de/dl-de/by-2-0"
+   },
+   "license": "dl-de/by-2-0",
+   "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
    "active": true,
    "sampleEntity": null
   },
@@ -310,7 +461,10 @@
     "passanten"
    ],
    "attribution": "hystreet.com",
-   "active": true,
+   "attributionLinks": null,
+   "license": null,
+   "licenseUrl": null,
+   "active": false,
    "sampleEntity": "urn:ngsi-ld:PedestrianFlowObserved:reutlingen-wilhelmstrasse"
   }
  ]

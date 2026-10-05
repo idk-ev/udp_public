@@ -62,7 +62,7 @@ export const ID = "hitze-bw";
 
 export const SOURCE_URL = "https://opendata.dwd.de/climate_environment/health/alerts/gt.json";
 
-const DATA_PROVIDER = "DWD Thermischer Gefahrenindex (GeoNutzV)";
+const DATA_PROVIDER = "DWD Thermischer Gefahrenindex (CC BY 4.0)";
 
 /** Representative cities of the DWD index with fixed coordinates; slug for the id. */
 const CITIES = new Map<string, readonly [lat: number, lon: number]>([

@@ -1119,6 +1119,8 @@ connectors:
   # connector hystreet skips its runs, everything else keeps working. Set ->
   # the chart renders the secret udp-hystreet (key HYSTREET_API_TOKEN).
   # (Former place nodeRed.hystreetApiToken is still read as a fallback.)
+  # The registry ships the connector switched off (active: false) until the
+  # data owner has consented in writing; a token alone does not start it.
   hystreetApiToken: ""
   # Alternatively an existing secret with the key HYSTREET_API_TOKEN
   # (SealedSecrets / External Secrets); set -> hystreetApiToken must stay empty

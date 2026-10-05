@@ -80,11 +80,12 @@ exports["Neue Bürger-Datenquellen liefern (Pollen, Pegel, Rathaus, Ausflug)"] =
   assert.strictEqual(await count("PollenForecast"), 3, "3 DWD-Teilregionen erwartet");
   assert(await count("CivicStructure") > 500, "Rathäuser: zu wenige");
   assert(await count("TouristDestination") > 500, "Ausflugsziel-Gemeinden: zu wenige");
-  // Pegel: nur Bundeswasserstraßen — tolerant, aber > 0
-  assert(await count("WaterLevelObserved") > 100, "Pegel: LUBW-Landespegel fehlen");
-  // Reutlingen hat keinen eigenen Pegel — der nächste (Echaz/Wannweil) muss gefunden werden
+  // Pegel: nur Bundeswasserstraßen (WSV/PEGELONLINE). Die LUBW-Landespegel
+  // (pegel-lubw) sind abgeschaltet — die HVZ untersagt die Weiterverbreitung.
   const all = await (await fetch(`${BASE}/gateway/ngsi-ld/v1/entities?type=WaterLevelObserved&limit=1000&options=keyValues`)).json();
-  assert(all.some(e => e.id.includes("bw-hvz-") && e.water === "Echaz"), "kein Echaz-Pegel (LUBW)");
+  assert(all.some(e => e.id.includes("bw-pegel-")), "Pegel: keine PEGELONLINE-Pegel");
+  const hvz = all.filter(e => e.id.includes("bw-hvz-")).length;
+  if (hvz) console.log(`    Hinweis: noch ${hvz} LUBW/HVZ-Pegel im Broker — Alt-Entitäten löschen (docs/framework-dashboards.md)`);
 };
 
 exports["ÖPNV in allen konfigurierten Städten"] = async () => {

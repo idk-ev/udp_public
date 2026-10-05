@@ -33,9 +33,12 @@ const PUBLIC = path.join(ROOT, "gui", "public", "connectors-status.json");
 
 /* Read by gui/public/dashboard.html and scripts/healthcheck.sh. */
 const FIELDS = ["id", "name", "scope", "enabledFor", "sollMinutes", "sampleEntity", "provides",
-  "attribution", "requiresSecret", "active", "supersededBy", "pending", "refireOnRestart", "healthUrl"];
-/* Read by gui/public/stadt.html – nothing more is published. */
-const PUBLIC_FIELDS = ["id", "name", "enabledFor", "provides", "attribution", "active", "sampleEntity"];
+  "attribution", "attributionLinks", "license", "licenseUrl", "requiresSecret", "active", "supersededBy",
+  "pending", "refireOnRestart", "healthUrl"];
+/* Read by gui/public/stadt.html, plus the licence of every source – nothing
+   more is published. */
+const PUBLIC_FIELDS = ["id", "name", "enabledFor", "provides", "attribution", "attributionLinks",
+  "license", "licenseUrl", "active", "sampleEntity"];
 
 /* python3 on Linux/CI, the py launcher on Windows (python/python3 there are
    often store aliases that start nothing). PYTHON overrides, e.g. "py -3". */
@@ -107,4 +110,40 @@ exports["status export: the script reproduces the checked-in files"] = () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+};
+
+/* Licences (docs/api.md, "Lizenzen der Datenquellen"): every active source
+   of the public pages names its licence with a link; every link of a credit
+   text points at a part of that text. */
+exports["registry: every active public source has a credit, a licence and https links"] = () => {
+  const registry = JSON.parse(fs.readFileSync(REGISTRY, "utf8")).connectors;
+  const https = u => typeof u === "string" && /^https:\/\/[^\s"'<>]+$/.test(u);
+  for (const c of registry) {
+    if (c.scope === "betrieb") {
+      assert.strictEqual(c.attribution ?? null, null, `${c.id}: an operations connector credits no source`);
+      continue;
+    }
+    if (c.active === false || c.attribution === null) continue; // switched off, or derived data (puls-bw)
+    assert(typeof c.license === "string" && c.license.trim(), `${c.id}: license missing`);
+    assert(https(c.licenseUrl), `${c.id}: licenseUrl missing or not https`);
+    assert(c.attribution.split(" · ").every(p => p.trim()), `${c.id}: empty part in the credit text`);
+    for (const [text, url] of Object.entries(c.attributionLinks || {})) {
+      assert(c.attribution.includes(text), `${c.id}: attributionLinks "${text}" is not part of the credit text`);
+      assert(https(url), `${c.id}: attributionLinks "${text}" is not an https link`);
+    }
+  }
+};
+
+/* Licence decisions (docs/api.md): sources whose terms do not allow
+   republishing stay switched off; excluded GBFS systems carry their reason,
+   and both GBFS connectors exclude the same systems. */
+exports["registry: licence decisions — HVZ and hystreet off, Lime and Bird excluded in both GBFS connectors"] = () => {
+  const registry = JSON.parse(fs.readFileSync(REGISTRY, "utf8")).connectors;
+  const byId = Object.fromEntries(registry.map(c => [c.id, c]));
+  assert.strictEqual(byId["pegel-lubw"].active, false, "pegel-lubw must stay off (HVZ: no republication)");
+  assert.strictEqual(byId["hystreet"].active, false, "hystreet must stay off until written consent");
+  const rules = byId["sharing-bw"].excludeSystems;
+  assert.deepStrictEqual(byId["carsharing-bw"].excludeSystems, rules, "the GBFS connectors exclude different systems");
+  assert.deepStrictEqual(rules.map(r => r.pattern), ["lime_*", "bird-*"]);
+  for (const r of rules) assert(/Lizenz/.test(r.reason), `exclusion ${r.pattern} without its licence reason`);
 };

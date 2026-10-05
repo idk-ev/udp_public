@@ -206,6 +206,11 @@ td.num { text-align: right; }
                 border: 1px solid var(--status-warn); }
 .wbanner.serious { display: block; background: color-mix(in srgb, var(--status-serious) 16%, var(--surface-1));
                    border: 1px solid var(--status-serious); }
+/* Official warnings are stored and linked in full; one line each is a matter
+   of display only (full text in the title and behind the link). */
+.wbanner .wline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wbanner .wline a { color: inherit; }
+.wbanner .wsrc { margin-top: 4px; font-size: .75rem; color: var(--text-secondary); }
 
 /* ---------- Status-Listen (Betrieb) ---------- */
 .sdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 7px; vertical-align: -1px; }

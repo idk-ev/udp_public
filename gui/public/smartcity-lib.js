@@ -452,16 +452,22 @@
   }
 
   /* ---------- Basiskarte ---------- */
-  // basemap.de (BKG, dl-de/by-2-0) is the only background map. WMS rather
+  // basemap.de (© GeoBasis-DE / BKG, CC BY 4.0) is the only background map. WMS rather
   // than WMTS because basemap.de uses the ADV tile matrix with its own origin
   // (not XYZ compatible). There is deliberately no fallback to OpenStreetMap
   // tiles: the OSMF tile usage policy rules out production sites (no SLA), and
   // it would hand the visitors' addresses to a further third party that the
   // privacy policy does not name. On repeated tile errors the markers stay and
   // a short note says the background map is missing.
-  const BM_ATTR = '© <a href="https://basemap.de/">basemap.de</a> / BKG (dl-de/by-2-0)';
+  // Credit as the BKG asks for it: source, year of the data, licence, each linked.
+  const CC_BY = "https://creativecommons.org/licenses/by/4.0/";
+  const BM_ATTR = '<a href="https://basemap.de/" target="_blank" rel="noopener">basemap.de</a>: © GeoBasis-DE / BKG (2026) ' +
+    `<a href="${CC_BY}" target="_blank" rel="noopener">CC BY 4.0</a>`;
   // The same credit as markup for page footers.
-  const MAP_CREDIT = "Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0)";
+  const MAP_CREDIT = "Karte: " + BM_ATTR;
+  // Map markers derived from OpenStreetMap (ODbL, poi-bw/ausflug-bw/rathaus-bw):
+  // pages add this to the map's credit line while such markers are shown.
+  const OSM_CREDIT = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> (ODbL)';
   const TILE_ERR_TXT = "Hintergrundkarte derzeit nicht verfügbar";
   const TILE_ERR_LIMIT = 6;                      // single dropouts are ignored
   function baseLayer(map) {
@@ -1079,6 +1085,61 @@
   const attributions = conns => [...new Set((conns || [])
     .filter(c => c && c.active !== false && c.attribution)
     .flatMap(c => String(c.attribution).split(" · ").map(x => x.trim()).filter(Boolean)))];
+  // The same credits as markup: the text parts named in a connector's
+  // attributionLinks ({"Open-Meteo.com": "https://open-meteo.com/"}) become
+  // links (source, licence). Everything is escaped; a link target that is not
+  // https stays plain text. Overlapping parts: the longer one wins.
+  const attributionHtml = conns => {
+    const live = (conns || []).filter(c => c && c.active !== false && c.attribution);
+    return attributions(live).map(part => {
+      const links = [];
+      for (const c of live) {
+        if (!String(c.attribution).split(" · ").map(x => x.trim()).includes(part)) continue;
+        for (const [text, url] of Object.entries(c.attributionLinks || {}))
+          if (text && /^https:\/\//i.test(String(url)) && part.includes(text)) links.push([text, String(url)]);
+      }
+      links.sort((a, b) => b[0].length - a[0].length);
+      const spans = [];
+      for (const [text, url] of links) {
+        const at = part.indexOf(text);
+        if (spans.some(([s, e]) => at < e && at + text.length > s)) continue;
+        spans.push([at, at + text.length, url]);
+      }
+      spans.sort((a, b) => a[0] - b[0]);
+      let out = "", pos = 0;
+      for (const [s, e, url] of spans) {
+        out += esc(part.slice(pos, s)) +
+          `<a href="${esc(safeUrl(url))}" target="_blank" rel="noopener">${esc(part.slice(s, e))}</a>`;
+        pos = e;
+      }
+      return out + esc(part.slice(pos));
+    }).join(" · ");
+  };
+
+  // Official warnings (Alert, warnungen-bw) are passed on unaltered: the
+  // headline in full, a short display only by CSS (.wline, full text in the
+  // title), the source named and, where the source has one, the original
+  // warning linked. DWD warnings carry no per-warning link; theirs is the
+  // DWD warning page.
+  const DWD_WARN_URL = "https://www.dwd.de/DE/wetter/warnungen_landkreise/warnWetter_node.html";
+  const WARN_SOURCE = { DWD: "Quelle: Deutscher Wetterdienst", NINA: "Warnungen: BBK/warnung.bund.de" };
+  const warnHeads = (alertDwd, alertNina) => {
+    const out = [];
+    for (const [q, a] of [["DWD", alertDwd], ["NINA", alertNina]])
+      for (const h of asArray(val(a, "headlines"))) {
+        if (h == null) continue;
+        const text = typeof h === "string" ? h : String(h.h || "Warnung");
+        const own = typeof h.url === "string" && /^https:\/\/warnung\.bund\.de\//.test(h.url) ? h.url : null;
+        out.push({ q, text, sev: h.sev, url: own || (q === "DWD" ? DWD_WARN_URL : "https://warnung.bund.de/"), own: !!own });
+      }
+    return out;
+  };
+  const warnLink = (x, label) =>
+    `<a href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener">${esc(label || (x.own ? "Originalmeldung" : x.q === "DWD" ? "Warnungen beim DWD" : "warnung.bund.de"))}</a>`;
+  // Banner lines: one line each, cut by CSS, the full headline as title and link.
+  const warnBannerHtml = heads => heads.map(x =>
+    `<div class="wline" title="${esc(x.text)}"><b>${x.q}</b>: <a href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener">${esc(x.text)}</a></div>`).join("") +
+    (heads.length ? `<div class="wsrc">${[...new Set(heads.map(x => WARN_SOURCE[x.q]))].map(esc).join(" · ")} · amtliche Warnungen unverändert</div>` : "");
 
   // PWA: Service-Worker registrieren (installierbar, Offline-Kiosk). Läuft auf
   // jeder Seite, die die Lib lädt; Fehler still ignorieren (z. B. ohne HTTPS).
@@ -1089,7 +1150,8 @@
   // Modal-Innereien, navLinks) bleiben privat.
   w.SC = { GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
            jget, fetchRetry, entities, entity, byAgs, jlist, hist, histSince, series, asRows, store,
-           autoRefresh, attributions, MAP_CREDIT,
+           autoRefresh, attributions, attributionHtml, MAP_CREDIT, OSM_CREDIT,
+           warnHeads, warnLink, warnBannerHtml, WARN_SOURCE,
            failed, loadMark, loadSince, bannerDue, loadBanner, errorTile, tileMemory, errorTiles, LOAD_ERR_TXT,
            tile, grade, sharingSplit, chart, barSvg, stackBar, popupHtml, groupColor, pos, baseLayer,
            themeSelector, modalOpen, wireTileDetails, openDetailByKey, markerIcon,

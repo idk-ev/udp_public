@@ -19,7 +19,8 @@
  * It is external JSON, so it is narrowed, never asserted. The guard below is
  * long-winded on purpose: every field the service acts on is checked once, here,
  * and everything downstream is typed. Fields the service does not read
- * (`supersededBy`, `_doc`) are ignored rather than rejected — the same file is
+ * (`supersededBy`, `_doc`, the licence metadata `license`, `licenseUrl` and
+ * `attributionLinks`) are ignored rather than rejected — the same file is
  * exported to the frontend and carries members this service does not care
  * about. That includes the two fields of the migration from Node-RED
  * (`runtime`, `nodePrefixes`): a fork that still carries them loses nothing,
@@ -50,6 +51,7 @@ import type {
   Registry,
   RegistryEntry,
   RowBudget,
+  SystemExclusion,
 } from "./types.js";
 
 /** Env var pointing at the registry; set to /app/config/connectors.json in the image. */
@@ -182,6 +184,31 @@ function params(raw: unknown, at: string): ConnectorParams {
   return byName;
 }
 
+/** Pattern of an exclusion rule: a system id with `*` as the only wildcard. */
+const EXCLUSION_PATTERN = /^[A-Za-z0-9_*-]+$/;
+
+/**
+ * `excludeSystems`: `[{ pattern, reason }]`; missing means none. The reason
+ * is required and must not be blank — an exclusion without one would be the
+ * hard-coded magic the field exists to avoid. A pattern of `*` alone would
+ * exclude every system and is rejected as a typo.
+ */
+function excludeSystems(raw: unknown, at: string): readonly SystemExclusion[] {
+  if (raw === undefined || raw === null) return [];
+  if (!isArray(raw)) throw new Error(`${at}: expected a list of { pattern, reason }`);
+  return raw.map((item, index) => {
+    const where = `${at}[${String(index)}]`;
+    if (!isRecord(item)) throw new Error(`${where}: expected an object { pattern, reason }`);
+    const pattern = requireString(item.pattern, `${where}.pattern`);
+    if (!EXCLUSION_PATTERN.test(pattern) || pattern.replace(/\*/g, "") === "") {
+      throw new Error(`${where}.pattern: expected a system id, * as wildcard, not * alone`);
+    }
+    const reason = requireString(item.reason, `${where}.reason`);
+    if (reason.trim() === "") throw new Error(`${where}.reason: an exclusion needs its reason`);
+    return { pattern, reason };
+  });
+}
+
 /**
  * `fireOnStart` (missing = `true`). `false` on an entry without an interval or
  * cron would never run — rejected rather than scheduled into silence.
@@ -259,6 +286,7 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
     rowBudget24h: rowBudget(raw.rowBudget24h, `${at}.rowBudget24h`),
     sensorDetailFor: sensorDetailFor(raw.sensorDetailFor, `${at}.sensorDetailFor`),
     params: params(raw.params, `${at}.params`),
+    excludeSystems: excludeSystems(raw.excludeSystems, `${at}.excludeSystems`),
   };
 }
 

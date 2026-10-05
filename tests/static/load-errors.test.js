@@ -194,17 +194,31 @@ exports["stadt.html: a healthy page shows no error state and no banner"] = async
 
 exports["stadt.html: pending connector is still asked, its 404 is no data"] = async () => {
   if (!JSDOM) return;
-  // hystreet is "pending" in the image, but its token arrives at runtime
-  // (reverted e6bed5c): the sample entity must still be asked for, and its
-  // 404 must neither produce an error tile nor count for the banner.
-  // "pending" is only in the operations export; the page sees the public one.
+  // A connector "pending" in the image whose token arrives at runtime (reverted
+  // e6bed5c): its sample entity must still be asked for, and its 404 must
+  // neither produce an error tile nor count for the banner. hystreet was that
+  // connector; it is switched off now (licence, see the next test), so it
+  // stands in here as an active one. "pending" is only in the operations
+  // export; the page sees the public one.
   const hystreet = CONN.connectors.find(c => c.id === "hystreet");
   const opsHystreet = OPS_CONN.connectors.find(c => c.id === "hystreet");
   assert(hystreet && opsHystreet.pending && hystreet.enabledFor.includes("08415061"), "fixture assumption changed");
-  const { w, d, calls } = await renderStadt({ entities: { [WX.id]: WX }, storage: { "sc-tiles:stadt:08415061": '["passanten"]' } });
+  const conn = { connectors: CONN.connectors.map(c => c.id === "hystreet" ? { ...c, active: true } : c) };
+  const { w, d, calls } = await renderStadt({ conn, entities: { [WX.id]: WX }, storage: { "sc-tiles:stadt:08415061": '["passanten"]' } });
   assert(calls.some(u => u.includes(hystreet.sampleEntity)), "pending connector not asked – the tile would stay hidden with a runtime token");
   assert(!errorLabels(d).includes("Passanten"), "a 404 of a pending connector became an error tile");
   assert.strictEqual(d.getElementById("loadwarn").textContent, "");
+  w.close();
+};
+
+exports["stadt.html: a switched-off connector (hystreet, no consent yet) is neither asked nor credited"] = async () => {
+  if (!JSDOM) return;
+  const hystreet = CONN.connectors.find(c => c.id === "hystreet");
+  assert.strictEqual(hystreet.active, false, "hystreet must stay off until written consent");
+  const { w, d, calls } = await renderStadt({ entities: { [WX.id]: WX }, storage: { "sc-tiles:stadt:08415061": '["passanten"]' } });
+  assert(!calls.some(u => u.includes("PedestrianFlowObserved")), "the page asks for hystreet data");
+  assert(!labels(d).includes("Passanten") && !errorLabels(d).includes("Passanten"), "a Passanten tile without a source");
+  assert(!d.getElementById("footer").textContent.includes("hystreet"), "hystreet credited although off");
   w.close();
 };
 

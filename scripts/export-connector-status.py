@@ -28,12 +28,17 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # The exported fields; a field missing in the registry is exported as null.
 FIELDS = ("id", "name", "scope", "enabledFor", "sollMinutes", "sampleEntity",
-          "provides", "attribution", "requiresSecret", "active", "supersededBy",
-          "pending", "refireOnRestart", "healthUrl")
+          "provides", "attribution", "attributionLinks", "license", "licenseUrl",
+          "requiresSecret", "active", "supersededBy", "pending", "refireOnRestart",
+          "healthUrl")
 # What the public pages read (gui/public/stadt.html; sampleEntity: the
-# Passanten tile asks for it). Secret names, health URLs, schedules and the
-# pending/superseded states stay in the operations export.
-PUBLIC_FIELDS = ("id", "name", "enabledFor", "provides", "attribution", "active", "sampleEntity")
+# Passanten tile asks for it), plus the licence of every source
+# (attributionLinks link the credit texts in the page footers; license and
+# licenseUrl state the licence machine-readably, docs/api.md). Secret names,
+# health URLs, schedules and the pending/superseded states stay in the
+# operations export.
+PUBLIC_FIELDS = ("id", "name", "enabledFor", "provides", "attribution", "attributionLinks",
+                 "license", "licenseUrl", "active", "sampleEntity")
 # Operations connectors (host metrics, database statistics): no public use.
 PRIVATE_SCOPES = ("betrieb",)
 
