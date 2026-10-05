@@ -239,13 +239,19 @@ erreichbar, den die öffentlichen Seiten und das Cockpit nutzen:
 - **Kontext-API:** `GET /gateway/ngsi-ld/v1/entities?type=…`,
   `/gateway/ngsi-ld/v1/entities/<id>` und `/gateway/ngsi-ld/v1/types`.
   Listenabfragen brauchen genau einen `type`-Parameter mit einfachen
-  Typnamen (`type=A` oder `type=A,B`); Abfragen ohne Typ (`idPattern=.*`,
-  `local=true`, nur `q=…`) beantwortet der Cockpit-nginx mit 400. Alles
-  andere von Orion-LD (`/ngsi-ld/ex/v1/version`, `/ex/v1/tenants`,
+  Typnamen (Buchstaben, Ziffern, `_`, `.`, `-`; `type=A` oder `type=A,B`).
+  Erlaubt sind nur die Parameter `type`, `q`, `attrs`, `limit`, `offset`,
+  `count`, `options`, `georel`, `geometry`, `coordinates`, `geoproperty` und
+  `lang` (Einzelabruf und Typliste: `attrs`, `options`, `lang`, `details`),
+  jeweils als `name=wert`. Abfragen ohne Typ (`idPattern=.*`, `local=true`,
+  nur `q=…`) oder mit anderen Parametern (z. B. `jsonldContext`)
+  beantwortet der Cockpit-nginx mit 400. Alles andere von Orion-LD (`/ngsi-ld/ex/v1/version`, `/ex/v1/tenants`,
   Subscriptions, Registrierungen, `@context`-Cache) antwortet mit 404.
 - **Temporal-API:** nur `/gateway/temporal/temporal/entities/<id>` (Verlauf
   einer Entität) und `/gateway/temporal/health`; `/info`, Metriken und
-  Listenabfragen bleiben intern.
+  Listenabfragen bleiben intern. Parameter nur `attrs`, `timerel`, `timeAt`,
+  `endTimeAt`, `timeproperty`, `options`, `lastN`, `aggrMethods`,
+  `aggrPeriodDuration`; sonst 400.
 - **Betriebsdaten:** Entitäten vom Typ `PlatformStatus` (Serverlast,
   Speicher, Datenbankkennzahlen) gibt es öffentlich nicht (403), weder per
   Typ, ID noch Verlauf – nur über `/ops/gateway/…` hinter der Anmeldung des
@@ -260,11 +266,17 @@ erreichbar, den die öffentlichen Seiten und das Cockpit nutzen:
 - **`@context`:** einen `Link`-Header des Clients reicht der Cockpit-nginx
   nicht weiter (Orion-LD lädt sonst jede genannte URL aus dem Cluster heraus
   und speichert sie unbegrenzt). Begriffe gelten gegen den Core-Kontext.
+  Ebenso wenig einen `Authorization`-Header: der öffentliche Pfad ist anonym.
 - **FROST, CKAN, GeoServer, Masterportal** (`/gateway/FROST-Server/…`,
   `/gateway/catalog/…`, `/gateway/geoserver/…`, `/gateway/portal/…`): lesend,
   ohne Cache, je Adresse höchstens 10 Anfragen/s (Spitze 60) und 10
   gleichzeitige Verbindungen; zusätzlich das Rate-Limit von APISIX
-  (`apisix.rateLimit`). Andere Pfade unter `/gateway/` antworten mit 404.
+  (`apisix.rateLimit`). Viele WMS-Nutzer hinter einer gemeinsamen
+  NAT-Adresse können an die 10 Verbindungen stoßen (429); dann `limit_conn`
+  in `platform/config/nginx/cockpit.conf.template` anheben. Andere Pfade unter
+  `/gateway/` antworten mit 404 – auch der IoT-Agent (`/gateway/iot/…`): seine
+  Nordschnittstelle ist die Geräteverwaltung und bleibt intern, unabhängig
+  von `iotAgentJson.exposeRoutes`.
 - `/abfahrten`: 120 Anfragen je Minute und Adresse (Spitze 60), damit Ämter
   und Schulen hinter einer gemeinsamen Adresse nicht an das Limit stoßen.
   IPv6-Clients mit eigenem /64-Netz können die Adresse wechseln; vor den
@@ -298,8 +310,11 @@ das Einbetten wieder.
 
 `/sitemap.xml` und `/robots.txt` tragen den Platzhalter `__PUBLIC_ORIGIN__`;
 der Cockpit-nginx ersetzt ihn durch die öffentliche Adresse (Helm:
-`cockpit.publicUrl` bzw. `ingress.host`, Compose: `UDP_PUBLIC_ORIGIN`, leer =
-aus Host und `X-Forwarded-Proto` der Anfrage).
+`cockpit.publicUrl` bzw. `ingress.host`, Compose: `UDP_PUBLIC_ORIGIN`). Leer
+nimmt er den `Host`-Header der Anfrage samt Port – nur in der Form
+`hostname[:port]`, sonst 400 – und `X-Forwarded-Proto` nur von einem Proxy
+aus `UDP_TRUSTED_PROXIES`. Beide Dateien gehen mit `Cache-Control: no-cache`
+hinaus, damit kein Cache eine vom Host abhängige Antwort weiterreicht.
 
 ### Datenbank-Zeitlimit der Temporal-API
 

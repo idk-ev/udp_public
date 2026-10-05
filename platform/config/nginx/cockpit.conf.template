@@ -105,15 +105,28 @@ map $udp_embeddable $udp_frame_ancestors {
 }
 
 # Origin for the absolute URLs in /sitemap.xml and /robots.txt (placeholder
-# __PUBLIC_ORIGIN__ in the files): UDP_PUBLIC_ORIGIN if set, else the request's
-# host with the scheme the ingress saw (TLS ends there, $scheme is http here).
-map $http_x_forwarded_proto $udp_request_scheme {
-    https    https;
-    http     http;
+# __PUBLIC_ORIGIN__ in the files): UDP_PUBLIC_ORIGIN if set (Helm always sets
+# it). Else, e.g. under Compose, the request's Host header including the port
+# – only a plain hostname[:port], anything else gets no origin and a 400 – with
+# the scheme the ingress saw (TLS ends there, $scheme is http here); that
+# X-Forwarded-Proto counts only from a trusted proxy (UDP_TRUSTED_PROXIES, the
+# same networks as for the client address; gui/docker/16-udp-realip.envsh).
+geo $realip_remote_addr $udp_from_trusted_proxy {
+    default  0;
+    ${UDP_TRUSTED_PROXIES_GEO}
+}
+map "$udp_from_trusted_proxy:$http_x_forwarded_proto" $udp_request_scheme {
+    1:https  https;
+    1:http   http;
     default  $scheme;
 }
-map "${UDP_PUBLIC_ORIGIN}" $udp_public_origin {
-    ""       $udp_request_scheme://$host;
+map $http_host $udp_request_host {
+    "~^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$"  $http_host;
+    default  "";
+}
+map "${UDP_PUBLIC_ORIGIN}|$udp_request_host" $udp_public_origin {
+    "|"      "";
+    "~^\|"   $udp_request_scheme://$udp_request_host;
     default  "${UDP_PUBLIC_ORIGIN}";
 }
 
@@ -135,19 +148,31 @@ map $uri $udp_ngsild_path {
     /gateway/ngsi-ld/v1/types           types;
     default                             "";
 }
-# A public list query must name its entity types: exactly one type parameter
-# of plain type names (letters, digits, _, comma-separated list). Without one,
-# Orion-LD would answer idPattern=.*, q=… or local=true across all types –
-# including the operations data (PlatformStatus) that only the main dashboard
-# may read. Plain names also rule out full IRIs, prefixes and type
-# expressions (|, ;, parentheses), so the check below on the name
-# "PlatformStatus" cannot be dodged by spelling the type differently. The
-# cockpit's "all entities" view falls back to one query per type (api.ts).
+# Query parameters of the public context API: an allowlist of parameter
+# NAMES (what the pages and the cockpit send, plus paging and count), each as
+# name=value and nothing else – no jsonldContext, local or idPattern, no
+# percent-encoded or empty names, no bare "type".
+# A list query must also name its entity types: exactly one type parameter
+# of plain type names (letters, digits, _ . -; a comma-separated list without
+# empty items). Without one, Orion-LD would answer idPattern=.*, q=… or
+# local=true across all types – including the operations data
+# (PlatformStatus) that only the main dashboard may read. Plain names also
+# rule out full IRIs, prefixes and type expressions (|, ;, parentheses), so
+# the check below on the name "PlatformStatus" cannot be dodged by spelling
+# the type differently. The cockpit's "all entities" view asks one query per
+# type (api.ts). Entity by id and the type list take a few options only.
+# Anything else: 400.
 map "$udp_ngsild_path:$args" $udp_ngsild_query_ok {
-    "~^list:(.*&)?type=[^&]*&(.*&)?type="    0;
-    "~^list:(.*&)?type=[A-Za-z0-9_,]+(&|$)"  1;
-    "~^list:"                                0;
-    default                                  1;
+    "~^list:(?=(?:[^&]*&)*type=[A-Za-z0-9_.-]+(?:,[A-Za-z0-9_.-]+)*(?:&|$))(?!(?:[^&]*&)*type=[^&]*&(?:[^&]*&)*type=)(?:type|q|attrs|limit|offset|count|options|georel|geometry|coordinates|geoproperty|lang)=[^&]*(?:&(?:type|q|attrs|limit|offset|count|options|georel|geometry|coordinates|geoproperty|lang)=[^&]*)*$"  1;
+    "~^(?:entity|types):(?:(?:attrs|options|lang|details)=[^&]*(?:&(?:attrs|options|lang|details)=[^&]*)*)?$"  1;
+    default  0;
+}
+# The same for the temporal API (smartcity-lib.js histUrl, api.ts
+# fetchTemporal): history parameters by name only; /health takes none.
+map $args $udp_temporal_query_ok {
+    ""  1;
+    "~^(?:attrs|timerel|timeAt|endTimeAt|timeproperty|options|lastN|aggrMethods|aggrPeriodDuration)=[^&]*(?:&(?:attrs|timerel|timeAt|endTimeAt|timeproperty|options|lastN|aggrMethods|aggrPeriodDuration)=[^&]*)*$"  1;
+    default  0;
 }
 
 # Empty answers of the context API ([]) are cached for 10 s only, not 60 s:
@@ -206,11 +231,13 @@ server {
         proxy_set_header X-Forwarded-For $http_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
         # Already emptied by the public location; again here in case another
-        # route ever uses the hop (no tenant, no client @context).
+        # route ever uses the hop (no tenant, no client @context, no
+        # credentials).
         proxy_set_header Fiware-Service "";
         proxy_set_header Fiware-ServicePath "";
         proxy_set_header NGSILD-Tenant "";
         proxy_set_header Link "";
+        proxy_set_header Authorization "";
         add_header X-Accel-Expires $udp_empty_ttl;
     }
 }
@@ -414,11 +441,14 @@ server {
     # deploy time: the files carry __PUBLIC_ORIGIN__, replaced here per
     # response ($udp_public_origin). Exact locations, so neither the .json/
     # .html regex nor gzip_static (no .gz copies of these files) interferes;
-    # a missing file is a plain 404. add_header here drops the server-level
-    # headers, so they are repeated.
+    # a missing file is a plain 404. Without UDP_PUBLIC_ORIGIN the body
+    # depends on the request's Host header: never stored by shared caches
+    # (expires -1 = no-cache), and an unusable Host gets a 400. add_header
+    # here drops the server-level headers, so they are repeated.
     location = /sitemap.xml {
+        if ($udp_public_origin = "") { return 400; }
         types { } default_type application/xml;
-        expires 1h;
+        expires -1;
         sub_filter_types application/xml;
         sub_filter '__PUBLIC_ORIGIN__' $udp_public_origin;
         sub_filter_once off;
@@ -428,8 +458,9 @@ server {
         try_files $uri =404;
     }
     location = /robots.txt {
+        if ($udp_public_origin = "") { return 400; }
         types { } default_type text/plain;
-        expires 1h;
+        expires -1;
         sub_filter_types text/plain;
         sub_filter '__PUBLIC_ORIGIN__' $udp_public_origin;
         sub_filter_once off;
@@ -554,6 +585,9 @@ server {
         # an unbounded context cache). The pages never send one; terms resolve
         # against the core context.
         proxy_set_header Link "";
+        # A client's credentials never reach the platform (APISIX, Orion-LD);
+        # the public path is anonymous by design.
+        proxy_set_header Authorization "";
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
         # 60 s; an empty result ([]) only 10 s (X-Accel-Expires of the hop).
@@ -631,6 +665,7 @@ server {
         if ($uri !~ "^/gateway/temporal/(temporal/entities/.|health$)") { return 404; }
         if ($uri ~* "platformstatus") { return 403; }
         if ($args ~* "platformstatus|%(3[0-9]|[46][1-9a-f]|[57][0-9a])") { return 403; }
+        if ($udp_temporal_query_ok = 0) { return 400; }
         set $gateway http://${UDP_GATEWAY_UPSTREAM};
         rewrite ^/gateway/(.*)$ /$1 break;
         # Directly, not through the loopback hop: Mintaka has no 2-byte
@@ -642,11 +677,13 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # Default tenant only, no client @context – s. /gateway/ngsi-ld/.
+        # Default tenant only, no client @context, no client credentials –
+        # s. /gateway/ngsi-ld/.
         proxy_set_header NGSILD-Tenant "";
         proxy_set_header Fiware-Service "";
         proxy_set_header Fiware-ServicePath "";
         proxy_set_header Link "";
+        proxy_set_header Authorization "";
         proxy_cache udpapi;
         proxy_cache_methods GET HEAD;
         # 60 s: the pages refresh every 2 min and round timeAt to the full
@@ -673,19 +710,24 @@ server {
     # Schreibende Nutzung läuft bis dahin cluster-intern gegen apisix:9080.
     #
     # The rest of /gateway/: only the read APIs of the other components –
-    # FROST (SensorThings, also the cockpit's module link), CKAN, GeoServer,
-    # Masterportal and, with iotAgentJson.exposeRoutes, the IoT agent. APISIX
-    # answers 404 for a component that is switched off. Anything else (e.g.
-    # /gateway/ngsi-ld without the slash, which would miss the locations
-    # above) ends here. No cache: per-client request and connection limits
-    # instead (zones udp_gateway, udp_gateway_conn).
+    # FROST (SensorThings, also the cockpit's module link), CKAN, GeoServer and
+    # the Masterportal. APISIX answers 404 for a component that is switched
+    # off. Not the IoT agent: its north port (/iot/…) is the device
+    # provisioning API – even read-only it lists services, API keys and
+    # devices; it stays inside the platform (iotAgentJson.exposeRoutes only
+    # concerns APISIX). Anything else (e.g. /gateway/ngsi-ld without the
+    # slash, which would miss the locations above) ends here. No cache:
+    # per-client request and connection limits instead (zones udp_gateway,
+    # udp_gateway_conn). 10 parallel connections per address suit a browser
+    # (6 per host) and a WMS client loading tiles; many WMS users behind one
+    # NAT address may need a higher value here.
     location ^~ /gateway/ {
         limit_except GET HEAD OPTIONS { deny all; }
         limit_req zone=udp_gateway burst=60 nodelay;
         limit_req_status 429;
         limit_conn udp_gateway_conn 10;
         limit_conn_status 429;
-        if ($uri !~ "^/gateway/(FROST-Server|catalog|geoserver|portal|iot)(/|$)") { return 404; }
+        if ($uri !~ "^/gateway/(FROST-Server|catalog|geoserver|portal)(/|$)") { return 404; }
         set $gateway http://${UDP_GATEWAY_UPSTREAM};
         rewrite ^/gateway/(.*)$ /$1 break;
         proxy_pass $gateway;
@@ -697,5 +739,6 @@ server {
         proxy_set_header NGSILD-Tenant "";
         proxy_set_header Fiware-Service "";
         proxy_set_header Fiware-ServicePath "";
+        proxy_set_header Authorization "";
     }
 }

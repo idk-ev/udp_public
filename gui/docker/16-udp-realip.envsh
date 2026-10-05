@@ -9,7 +9,11 @@
 # set the client address that keys the per-client rate limit in APISIX, so
 # narrow the default (all private ranges) to your ingress network if clients
 # themselves can come from private addresses (intranet, VPN).
+# The same networks as entries of a geo block (UDP_TRUSTED_PROXIES_GEO): only
+# their X-Forwarded-Proto counts for the origin in /sitemap.xml and
+# /robots.txt.
 udp_realip=""
+udp_geo=""
 for udp_cidr in ${UDP_TRUSTED_PROXIES:-10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}; do
     case "$udp_cidr" in
         *[!0-9a-fA-F:./]*)
@@ -17,6 +21,8 @@ for udp_cidr in ${UDP_TRUSTED_PROXIES:-10.0.0.0/8 172.16.0.0/12 192.168.0.0/16};
             continue ;;
     esac
     udp_realip="$udp_realip set_real_ip_from $udp_cidr;"
+    udp_geo="$udp_geo $udp_cidr 1;"
 done
 export UDP_REALIP_FROM="$udp_realip"
-unset udp_realip udp_cidr
+export UDP_TRUSTED_PROXIES_GEO="$udp_geo"
+unset udp_realip udp_geo udp_cidr

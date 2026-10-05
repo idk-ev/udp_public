@@ -31,6 +31,26 @@ const map = name => {
   assert(m, `map ${name} missing`);
   return m[1];
 };
+/* Evaluates a map like nginx: exact strings first, then the regexes in
+   order, else default. Returns the value as written in the template. */
+const mapValue = name => {
+  const entries = [...map(name).matchAll(/^\s+("[^"]*"|\S+)\s+(\S+);$/gm)].map(m => [m[1].replace(/^"|"$/g, ""), m[2]]);
+  const exact = entries.filter(([k]) => !k.startsWith("~") && k !== "default");
+  const regex = entries.filter(([k]) => k.startsWith("~")).map(([k, v]) => [new RegExp(k.slice(1)), v]);
+  const def = (entries.find(([k]) => k === "default") || [])[1];
+  assert(def !== undefined, `map ${name} without default`);
+  return input => {
+    const e = exact.find(([k]) => k === input);
+    if (e) return e[1];
+    for (const [r, v] of regex) if (r.test(input)) return v;
+    return def;
+  };
+};
+/* A check map (value 1 = allowed). */
+const queryCheck = name => {
+  const value = mapValue(name);
+  return input => value(input) === "1";
+};
 
 exports["public context API: only entities, entity by id and types"] = () => {
   const paths = map("$udp_ngsild_path");
@@ -47,14 +67,27 @@ exports["public context API: only entities, entity by id and types"] = () => {
     'if ($args ~* "platformstatus|%(3[0-9]|[46][1-9a-f]|[57][0-9a])") { return 403; }',
     "if ($udp_ngsild_query_ok = 0) { return 400; }"])
     assert(at(s) > 0 && at(s) < at("rewrite ^/gateway/(.*)$ /$1 break;"), `${s} missing or after the rewrite`);
-  // A list query names exactly one parameter of plain type names.
-  const query = map("$udp_ngsild_query_ok");
-  const re = [...query.matchAll(/"~(\^list:[^"]*)"\s+(\d);/g)].map(m => [new RegExp(m[1]), m[2]]);
-  const ok = args => { for (const [r, v] of re) if (r.test(`list:${args}`)) return v === "1"; return true; };
-  for (const good of ["type=CityPulse&limit=1", "type=RoadWork&q=ags~%3D%5E08415&limit=1000", "limit=1&type=A,B"])
+  // Allowlisted parameter names only; a list query names exactly one
+  // parameter of plain type names. nginx (PCRE) and JS agree on this syntax.
+  const ok = queryCheck("$udp_ngsild_query_ok");
+  const list = args => ok(`list:${args}`);
+  // What the pages and the cockpit send (smartcity-lib.js, stadt.html,
+  // kreis.html, api.ts), plus paging.
+  for (const good of ["type=CityPulse&limit=1", "type=RoadWork&q=ags~%3D%5E08415&limit=1000",
+    "limit=1&type=A,B", "type=ParkingSite&q=ags%3D%3D%2208415061%22&limit=1000&attrs=name,ags",
+    "type=WaterLevelObserved&georel=near%3BmaxDistance%3D%3D20000&geometry=Point&coordinates=%5B9.2%2C48.5%5D&limit=200&attrs=name",
+    "type=HeatHealthWarning&limit=10&options=keyValues", "type=WeatherObserved&limit=100",
+    "type=Foo-Bar.v2&offset=100&limit=100&count=true", "type=UdpProbe&limit=1"])
+    assert(list(good), `rejected: ${good}`);
+  for (const bad of ["", "idPattern=.*", "local=true&limit=500", "type=*", "type=https://x.org/T", "type=A%7CB",
+    "type=A;B", "type=A&type=B", "Type=A", "atype=A", "type=", "type=,", "type=A,", "type=A,,B", "type=,A",
+    "type=X&type", "type%00=X&type=A", "ty%70e=A", "type=A&jsonldContext=https://x.org/c", "type=A&local=true",
+    "type=A&idPattern=.*", "type=A&", "type=A&&limit=1", "type=A&limit", "q=ags==%2208415061%22",
+    "type=A&id=urn:x"])
+    assert(!list(bad), `accepted: ${bad}`);
+  for (const good of ["entity:", "entity:options=keyValues&attrs=name", "types:", "types:details=true"])
     assert(ok(good), `rejected: ${good}`);
-  for (const bad of ["idPattern=.*", "local=true&limit=500", "type=*", "type=https://x.org/T", "type=A%7CB",
-    "type=A;B", "type=A&type=B", "Type=A", "atype=A", "type="])
+  for (const bad of ["entity:jsonldContext=x", "entity:type=A", "types:local=true", "entity:attrs"])
     assert(!ok(bad), `accepted: ${bad}`);
   // The cockpit's version probe gets an empty query, never the version banner.
   const probe = location("location = /gateway/ngsi-ld/ex/v1/version {");
@@ -65,7 +98,17 @@ exports["public temporal API: entity history and health only, 60 s"] = () => {
   const body = location("location ^~ /gateway/temporal/ {");
   assert(body.includes('if ($uri !~ "^/gateway/temporal/(temporal/entities/.|health$)") { return 404; }'));
   assert(body.includes('if ($uri ~* "platformstatus") { return 403; }'));
+  assert(body.indexOf("if ($udp_temporal_query_ok = 0) { return 400; }") > 0 &&
+    body.indexOf("if ($udp_temporal_query_ok = 0) { return 400; }") < body.indexOf("rewrite ^/gateway/"));
   assert(body.includes("proxy_cache_valid 200 60s;"));
+  // History parameters by name only (smartcity-lib.js histUrl, api.ts fetchTemporal).
+  const ok = queryCheck("$udp_temporal_query_ok");
+  for (const good of ["", "attrs=dailyTotal&timerel=after&timeAt=2026-10-05T07:00:00.000Z&options=temporalValues",
+    "attrs=temperature&timerel=after&timeAt=2026-10-05T07%3A00%3A00.000Z", "attrs=a&lastN=10",
+    "attrs=a&timerel=between&timeAt=x&endTimeAt=y"])
+    assert(ok(good), `rejected: ${good}`);
+  for (const bad of ["type=X", "attrs", "attrs=a&jsonldContext=x", "attrs=a&", "att%72s=a", "idPattern=.*", "attrs=a&local=true"])
+    assert(!ok(bad), `accepted: ${bad}`);
   // smartcity-lib.js and api.ts ask exactly this path.
   assert(read("gui/public/smartcity-lib.js").includes("${GW}/temporal/temporal/entities/${encodeURIComponent(id)}"));
 };
@@ -74,7 +117,7 @@ exports["gateway: no tenant, no @context, neither in the cache key"] = () => {
   for (const head of ["location ^~ /gateway/ngsi-ld/ {", "location ^~ /gateway/temporal/ {", "location ^~ /gateway/ {",
     "location ^~ /ops/gateway/ {"]) {
     const body = location(head);
-    for (const h of ["Link", "NGSILD-Tenant", "Fiware-Service", "Fiware-ServicePath"])
+    for (const h of ["Link", "NGSILD-Tenant", "Fiware-Service", "Fiware-ServicePath", "Authorization"])
       assert(body.includes(`proxy_set_header ${h} "";`), `${head}: ${h} passed through`);
   }
   for (const head of ["location ^~ /gateway/ngsi-ld/ {", "location ^~ /gateway/temporal/ {"])
@@ -82,11 +125,14 @@ exports["gateway: no tenant, no @context, neither in the cache key"] = () => {
   assert(!/\$http_(link|ngsild_tenant)/.test(NGINX), "Link or tenant header still read");
   const hop = /server \{\n    listen 127\.0\.0\.1:8081;([\s\S]*?)\n\}/.exec(NGINX)[1];
   assert(hop.includes('proxy_set_header Link "";') && hop.includes('proxy_set_header NGSILD-Tenant "";'));
+  assert(hop.includes('proxy_set_header Authorization "";'));
 };
 
 exports["gateway catch-all: component allowlist, request and connection limits"] = () => {
   const body = location("location ^~ /gateway/ {");
-  assert(body.includes('if ($uri !~ "^/gateway/(FROST-Server|catalog|geoserver|portal|iot)(/|$)") { return 404; }'));
+  // Not the IoT agent: its north port is the provisioning API.
+  assert(body.includes('if ($uri !~ "^/gateway/(FROST-Server|catalog|geoserver|portal)(/|$)") { return 404; }'));
+  assert(!/gatewayUrl\}\/iot\//.test(read("gui/src/api.ts")), "the cockpit still probes the IoT agent through /gateway/");
   assert.match(body, /limit_req zone=udp_gateway burst=\d+ nodelay;/);
   assert.match(body, /limit_conn udp_gateway_conn \d+;/);
   assert.match(NGINX, /limit_req_zone \$binary_remote_addr zone=udp_abfahrten:10m rate=120r\/m;/);
@@ -151,8 +197,29 @@ exports["sitemap and robots: placeholder replaced with the public origin"] = () 
     assert(body.includes("sub_filter '__PUBLIC_ORIGIN__' $udp_public_origin;"));
     assert(body.includes("sub_filter_once off;"));
     assert(body.includes("add_header X-Content-Type-Options nosniff always;"));
+    // Host-derived body: no shared caching, unusable Host -> 400.
+    assert(body.includes("expires -1;") && !/expires \d/.test(body), `${loc} cached although host-derived`);
+    assert(body.indexOf('if ($udp_public_origin = "") { return 400; }') > 0);
   }
-  assert.match(map("$udp_public_origin"), /""\s+\$udp_request_scheme:\/\/\$host;/);
+  const origin = map("$udp_public_origin");
+  assert.match(origin, /"\|"\s+"";/);
+  assert.match(origin, /"~\^\\\|"\s+\$udp_request_scheme:\/\/\$udp_request_host;/);
+  assert.match(origin, /default\s+"\$\{UDP_PUBLIC_ORIGIN\}";/);
+  // Host header: hostname[:port] only, port kept ($http_host, not $host).
+  const host = mapValue("$udp_request_host");
+  for (const good of ["udp.example.org", "localhost:8080", "10.0.0.5:443", "a-b.example.de"])
+    assert.strictEqual(host(good), "$http_host", `rejected host ${good}`);
+  for (const bad of ["", "a b", "x<y", "evil.org/path", "-a.org", "a.org:", "a.org:123456", "[::1]:8080", "a.org\"x"])
+    assert.strictEqual(host(bad), '""', `accepted host ${bad}`);
+  // X-Forwarded-Proto only from trusted proxies (geo from 16-udp-realip.envsh).
+  assert.match(NGINX, /geo \$realip_remote_addr \$udp_from_trusted_proxy \{\n\s+default\s+0;\n\s+\$\{UDP_TRUSTED_PROXIES_GEO\}\n\}/);
+  assert.match(map("$udp_request_scheme"), /1:https\s+https;\s+1:http\s+http;\s+default\s+\$scheme;/);
+  const probe = spawnSync("sh", ["-c", "exit 0"]);
+  if (probe.error) { console.log("    (skipped: no sh)"); return; }
+  const script = path.join(ROOT, "gui/docker/16-udp-realip.envsh").replace(/\\/g, "/");
+  const run = proxies => spawnSync("sh", ["-c", `set -u; . '${script}' 2>/dev/null; printf '%s' "$UDP_TRUSTED_PROXIES_GEO"`],
+    { env: Object.assign({}, process.env, { UDP_TRUSTED_PROXIES: proxies }), encoding: "utf8" }).stdout;
+  assert.strictEqual(run("10.42.0.0/16 fd00::/8 bad;x"), " 10.42.0.0/16 1; fd00::/8 1;");
 };
 
 exports["entrypoint: frame-ancestors and public origin are checked"] = () => {

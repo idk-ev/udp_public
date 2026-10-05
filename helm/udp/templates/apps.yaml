@@ -286,7 +286,7 @@ spec:
             - { name: UDP_TRUSTED_PROXIES, value: {{ join " " . | quote }} }
             {{- end }}
             # Who may embed the public municipality pages (CSP frame-ancestors).
-            # Same rule as gui/docker/19-udp-embed.envsh, checked here already
+            # Same rule as gui/docker/19-udp-public.envsh, checked here already
             # at render time: *, 'self', 'none' or host/scheme sources.
             {{- $frameAncestors := (dig "embed" "frameAncestors" "*" (.Values.cockpit | default dict)) | toString | trim | default "*" }}
             {{- range $src := splitList " " $frameAncestors }}
