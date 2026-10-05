@@ -112,7 +112,10 @@ exports["Stufe-3-Bausteine sind landesweit (Laden, Carsharing, DWD, Vorhersage)"
   assert(flotten.some(e => e.vehicleType === "bicycle"), "keine Rad-Flotte");
 
   // Amtliche DWD-Stationen als eigene Entitäten (Dashboard wählt die nächste)
-  const dwd = await hole("WeatherObserved", "&idPattern=" + encodeURIComponent("urn:ngsi-ld:WeatherObserved:bw-dwd-.*"));
+  // The public gateway rejects idPattern, so page through the type and filter here.
+  const wetter = [...await hole("WeatherObserved", "&attrs=dateObserved"),
+                  ...await hole("WeatherObserved", "&attrs=dateObserved&offset=1000")];
+  const dwd = wetter.filter(e => e.id.startsWith("urn:ngsi-ld:WeatherObserved:bw-dwd-"));
   assert(dwd.length > 50, `nur ${dwd.length} DWD-Stationen`);
 
   // Vorhersage: Stufe-3-Werte für praktisch alle Gemeinden
