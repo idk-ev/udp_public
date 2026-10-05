@@ -11,14 +11,16 @@
  * behind its upsert in the former Node-RED flow generator (see git history). It fetches no source:
  * it reads what the other connectors wrote to Orion-LD. The method is
  * documented in docs/framework-dashboards.md ("Gemeinde-Puls") and is ported
- * byte for byte — the scoring below must produce the same numbers as before:
+ * byte for byte — the scoring below must produce the same numbers as before,
+ * except for the UBA index (deliberate deviations below):
  *
  *  * every query is paginated (count + limit/offset, deduplicated by id); a
  *    failed or incomplete query skips the whole run instead of silently
  *    scoring on a partial picture (`limit=1000` used to cut off
  *    ChargingSummary, ~1,100 entities);
  *  * feinstaub: citizen sensor median, only if observed within 2 h (as the
- *    dashboard), and not above the plausibility limit of 400; luftindex: UBA;
+ *    dashboard), and not above the plausibility limit of 400; luftindex: the
+ *    worst current UBA index of the municipality (see the deviations);
  *    laden: share of free live charge points; oepnv: median delay (only if
  *    observed within 2 h); br: free share of realtime bike parking of any
  *    connector (observed within 6 h);
@@ -53,6 +55,23 @@
  *    `keyValues` renders the numbers of the other connectors as numbers.
  *  * The prune runs after the upsert instead of concurrently before it; it
  *    keeps every pulse of the run, so both touch disjoint ids.
+ *
+ * ## Deliberate deviations (decided with the data review)
+ *
+ *  * **luftindex on the UBA's 0–4 scale.** The UBA total index runs from 0
+ *    (sehr gut) to 4 (sehr schlecht); the old node scored `(5 − index) · 25`
+ *    as if it ran from 1 to 5, so every level scored 25 points too high —
+ *    "sehr gut" and "gut" both 100, "sehr schlecht" still 25. Now
+ *    `(4 − index) · 25`: 0 → 100, 4 → 0.
+ *  * **The worst station counts.** With several UBA stations in a
+ *    municipality the old node took whichever came last in the listing; now
+ *    the highest index wins, as on the dashboard tile.
+ *  * **Only a current index** ({@link UBA_MAX_AGE_MS}): `uba-bw` stamps
+ *    `dateObserved` with the hour of the index; an older index, or an entity
+ *    without `dateObserved`, leaves the component out. The latter covers the
+ *    first hour after the rollout, before `uba-bw` has rewritten its stations
+ *    — the component is simply missing then, as for a municipality without
+ *    a station.
  */
 
 import { isArray, isRecord, isString, isTruthy } from "../kernel/parse.js";
@@ -87,6 +106,17 @@ const HOUR_MS = 3_600_000;
 
 /** Components needed besides the warning level. */
 const MINIMUM_COMPONENTS = 3;
+
+/**
+ * Maximum age of a UBA index (its `dateObserved`, the end of its measurement
+ * hour). UBA publishes an hour roughly half an hour to an hour after it ends
+ * (checked 2026-10-05: at 09:11 UTC the newest hour ended at 08:00 UTC), and
+ * `uba-bw` fetches hourly, so in normal operation the newest index is up to
+ * 2 h plus that lag — about 3 h — old. One hour of margin on top: beyond
+ * 4 h, UBA has missed a publication and the index no longer describes the
+ * air of now.
+ */
+export const UBA_MAX_AGE_MS = 4 * HOUR_MS;
 
 /** Score of the district warning level 0–4. */
 const WARNING_SCORES: readonly number[] = [100, 80, 60, 30, 0];
@@ -331,7 +361,11 @@ export function summarize(raw: PulseListings, geo: GeoIndex | null, now: IsoTime
       // Same plausibility limit as on ingest (an SDS011 in saturation reports
       // ~500 µg/m³); only current medians (the dashboard uses 2 h too).
       if (e.pm !== undefined && e.pm <= 400 && fresh(e.observedMs, 2 * HOUR_MS)) at(e.ags).pm25 = e.pm;
-    } else if (e.index !== undefined) at(e.ags).aqi = e.index;
+    } else if (e.index !== undefined && fresh(e.observedMs, UBA_MAX_AGE_MS)) {
+      // The worst current station of the municipality (deliberate deviation, see the header).
+      const aggregates = at(e.ags);
+      if (aggregates.aqi === undefined || e.index > aggregates.aqi) aggregates.aqi = e.index;
+    }
   }
   for (const e of raw.sh) {
     if (e.ags === null) continue;
@@ -357,7 +391,7 @@ export function summarize(raw: PulseListings, geo: GeoIndex | null, now: IsoTime
     const x = byAgs.get(ags) ?? {};
     const components: PulseComponent[] = [];
     if (x.pm25 !== undefined) components.push(["feinstaub", Math.round(clamp(100 - x.pm25 * 4)), 0.3]);
-    if (x.aqi !== undefined) components.push(["luftindex", Math.round(clamp((5 - x.aqi) * 25)), 0.2]);
+    if (x.aqi !== undefined) components.push(["luftindex", Math.round(clamp((4 - x.aqi) * 25)), 0.2]);
     if (x.sharing !== undefined && population !== null && population > 0) {
       components.push(["sharing", Math.round(clamp((x.sharing / population) * 1000 * 20)), 0.1]);
     }

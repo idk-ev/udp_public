@@ -120,7 +120,7 @@ Index 0–100 je Gemeinde (`CityPulse:bw-<ags>`, gewichtetes Mittel):
 | Komponente | Wert = 100 bei | Gewicht |
 |---|---|---|
 | Feinstaub (Bürgersensoren, nur Werte < 2 h) | PM2,5 = 0 | 0,3 |
-| Luftindex (UBA) | Index 1 | 0,2 |
+| Luftindex (UBA-Index 0–4, höchstens 4 h alt; bei mehreren Stationen die am stärksten belastete) | Index 0 (sehr gut) | 0,2 |
 | ÖPNV (Median-Verspätung, < 2 h) | 0 min | 0,2 |
 | Laden (freie Live-Ladepunkte) | alle frei | 0,15 |
 | Baustellen (SVZ-BW, landesweit) | keine Baustelle | 0,15 |

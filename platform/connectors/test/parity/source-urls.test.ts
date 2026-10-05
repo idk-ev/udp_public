@@ -19,6 +19,9 @@
  * `rathaus-bw`/`ausflug-bw`/`poi-bw` (Overpass), `mastr-bw` (pages),
  * `parken-bw` (cursor pages, fetched by a function node), the Open-Meteo
  * batches, the per-district warning requests and the UBA station requests.
+ *
+ * DELIBERATE DEVIATION: a source that moved is compared at the target of the
+ * old URL's 301 ({@link MOVED}) — `uba-bw` (see its module header).
  */
 
 import assert from "node:assert/strict";
@@ -67,6 +70,23 @@ const SOURCES: readonly (readonly [connector: string, consumer: string, ported: 
   ["hystreet", "udp-rt-hy-find", LOCATIONS_URL],
 ];
 
+/** Connector → [old base, new base]: the old URL redirects to the new one, the rest unchanged. */
+const MOVED: ReadonlyMap<string, readonly [from: string, to: string]> = new Map([
+  [
+    "uba-bw",
+    [
+      "https://www.umweltbundesamt.de/api/air_data/v3/",
+      "https://luftdaten.umweltbundesamt.de/api/air-data/v3/",
+    ],
+  ],
+]);
+
+/** The old URL, moved where its connector moved (an old URL outside the old base stays as it is and fails). */
+function movedUrl(connector: string, old: string): string {
+  const move = MOVED.get(connector);
+  return move !== undefined && old.startsWith(move[0]) ? move[1] + old.slice(move[0].length) : old;
+}
+
 function flowNodes(): readonly Record<string, unknown>[] {
   const parsed: unknown = JSON.parse(readFileSync(legacyFlowsPath(), "utf8"));
   if (!Array.isArray(parsed)) throw new Error("legacy-flows.json is not an array");
@@ -103,7 +123,7 @@ function everySourceUrlIsTheOldOne(): void {
   const nodes = flowNodes();
   const mismatches: string[] = [];
   for (const [connector, consumer, ported] of SOURCES) {
-    const old = oldSourceUrl(nodes, consumer);
+    const old = movedUrl(connector, oldSourceUrl(nodes, consumer));
     if (old !== ported) mismatches.push(`  ${connector} (${consumer}):\n    old ${old}\n    new ${ported}`);
   }
   assert.equal(

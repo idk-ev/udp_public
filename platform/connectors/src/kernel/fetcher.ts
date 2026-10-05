@@ -38,8 +38,8 @@
  *    old `http request` nodes read without a limit.
  *  * **Redirects are refused by default** ({@link FetchRedirectError}); the
  *    nodes followed every one. A call opts in with `redirect: "follow"` where
- *    a source is known to redirect (`uba-bw`: www.umweltbundesamt.de answers
- *    301 to luftdaten.umweltbundesamt.de; the GBFS feeds of third parties).
+ *    a source is known to redirect (the GBFS feeds of third parties; `uba-bw`
+ *    did until it moved to the target of its 301).
  *    Followed hop by hop here (at most {@link MAX_REDIRECTS}), http(s) only,
  *    every target checked against `allowUrl`, and every header except content
  *    negotiation and User-Agent dropped when the origin changes. Credentials

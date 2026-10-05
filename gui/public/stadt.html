@@ -311,7 +311,12 @@ const applySymbols = groups => (groups || []).forEach(g => {
 
 // Farbstufen der Halbkreis-Tachos — von Kachel-Miniatur und Detailkarte geteilt.
 const UV_STOPS = [[0, 3, "var(--status-good)", "niedrig"], [3, 6, "var(--status-warn)", "mäßig"], [6, 8, "#f97316", "hoch"], [8, 11, "var(--status-serious)", "sehr hoch"]];
-const AQI_STOPS = [[1, 2, "var(--status-good)", "sehr gut"], [2, 3, "#65a30d", "gut"], [3, 4, "var(--status-warn)", "mäßig"], [4, 5, "#f97316", "schlecht"], [5, 5.9, "var(--status-serious)", "sehr schlecht"]];
+// UBA air quality index: 0 = very good … 4 = very bad (UBA API v3).
+const AQI_LABEL = ["sehr gut", "gut", "mäßig", "schlecht", "sehr schlecht"];
+// Five equal bands over 0–4, so that every level, "sehr schlecht" included, has a visible arc.
+const AQI_STOPS = [[0, 0.8, "var(--status-good)", "sehr gut"], [0.8, 1.6, "#65a30d", "gut"], [1.6, 2.4, "var(--status-warn)", "mäßig"], [2.4, 3.2, "#f97316", "schlecht"], [3.2, 4.01, "var(--status-serious)", "sehr schlecht"]];
+// Index of a UBA entity on the 0–4 scale, null when missing (a data gap, not a value).
+const aqiOf = e => { const v = val(e, "airQualityIndex"); return Number.isInteger(v) && v >= 0 && v <= 4 ? v : null; };
 const NO2_STOPS = [[0, 40, "var(--status-good)", "unter Grenzwert"], [40, 60, "var(--status-warn)", "erhöht"], [60, 100, "var(--status-serious)", "hoch"]];
 // Konvention: grün links, rot rechts. Skalen mit „hoch = gut“ (Puls) werden dafür
 // per flip:true gedreht, sodass das Maximum links steht.
@@ -474,13 +479,20 @@ async function render() {
   // Open-Meteo weather and forecast (wetter-bw, vorhersage-bw) refresh every
   // OM_TAKT_H hours; current until two runs are missing, plus an hour of margin.
   const OM_TAKT_H = 6;
-  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 6 * 3600e3, wetter: (2 * OM_TAKT_H + 1) * 3600e3 };
+  // UBA: dateObserved is the end of the measurement hour; UBA publishes it up to
+  // an hour late and uba-bw fetches hourly — older than 4 h means UBA missed a
+  // publication (the same limit as the city pulse).
+  const STALE = { parken: 6 * 3600e3, station: 6 * 3600e3, laden: 6 * 3600e3, uba: 4 * 3600e3, wetter: (2 * OM_TAKT_H + 1) * 3600e3 };
   const scAlle = luft.find(e => e.id.includes("bw-sc-"));
   const scZeit = Date.parse(dObs(scAlle) || "");
   const sc = (scAlle && scZeit && Date.now() - scZeit < 2 * 3600e3) ? scAlle : null;
-  // UBA: Station mit gültigem Index (>=1) bevorzugen — Index 0 heißt "aktuell kein Messwert"
+  // UBA: the station with the worst (highest) index of the municipality, current
+  // stations first. Freshness from dateObserved (the hour of the index); an entity
+  // written before uba-bw set it falls back to its newest observedAt.
   const ubaCands = luft.filter(e => e.id.includes("bw-uba-"));
-  const uba = ubaCands.find(e => val(e, "airQualityIndex") >= 1) || ubaCands[0];
+  const ubaStand = e => staleStand(e.dateObserved ? { dateObserved: e.dateObserved } : e, STALE.uba);
+  const ubaRank = e => (aqiOf(e) == null ? -10 : aqiOf(e)) + (ubaStand(e) ? -5 : 0);
+  const uba = ubaCands.slice().sort((a, b) => ubaRank(b) - ubaRank(a))[0] || null;
   const pk = parken[0], ch = laden[0];
   const radSum = rad.find(e => e.id.endsWith("-summary"));
   // Free-floating sharing vehicles: total of all providers, split by form factor
@@ -669,17 +681,17 @@ async function render() {
         hint: esc(val(sc, "sensorCount") || "?") + (val(sc, "sensorCount") === 1 ? " Bürgersensor" : " Bürgersensoren"), explain: "Median der sensor.community-Sensoren in dieser Gemeinde (15 min). Klick: Schwellenband und Verlauf." });
   }
   if (uba) {
-    const AQI = { 1: "sehr gut", 2: "gut", 3: "mäßig", 4: "schlecht", 5: "sehr schlecht" };
-    const aqiV = val(uba, "airQualityIndex");
-    D.luft = { kind: "chart", title: "Luftqualitätsindex (UBA)", noSpark: true, explain: "Amtlicher UBA-Index (1 = sehr gut … 5 = sehr schlecht); 0 = aktuell kein Messwert.", series: [{ id: uba.id, attr: "airQualityIndex", name: "AQI" }] };
+    const aqiV = aqiOf(uba);
+    const aqiStand = aqiV == null ? "" : ubaStand(uba);
+    D.luft = { kind: "chart", title: "Luftqualitätsindex (UBA)", noSpark: true, explain: "Amtlicher UBA-Index (0 = sehr gut … 4 = sehr schlecht).", series: [{ id: uba.id, attr: "airQualityIndex", name: "AQI" }] };
     // Kopfgrafik: amtlicher UBA-Index als 5-Stufen-Gauge
-    if (aqiV >= 1) D.luft.head = { type: "gauge", label: "Luftqualität", v: aqiV, min: 1, max: 5, unit: "", state: AQI[aqiV] || String(aqiV), stops: AQI_STOPS };
-    tiles += tile("Luftqualität", aqiV >= 1 ? (AQI[aqiV] || aqiV) : "–", "",
+    if (aqiV != null) D.luft.head = { type: "gauge", label: "Luftqualität", v: aqiV, min: 0, max: 4, unit: "", state: AQI_LABEL[aqiV] + (aqiStand ? " · " + aqiStand : ""), stops: AQI_STOPS };
+    tiles += tile("Luftqualität", aqiV != null ? AQI_LABEL[aqiV] : "–", "",
       { topic: "umwelt", detail: "luft",
-        status: aqiV >= 1 ? (aqiV <= 2 ? css("--status-good") : aqiV === 3 ? css("--status-warn") : css("--status-serious")) : null,
-        mini: aqiV >= 1 ? { v: aqiV, min: 1, max: 5, stops: AQI_STOPS } : null,
-        hint: esc(val(uba, "stationName")) + (aqiV >= 1 ? "" : " · aktuell kein Messwert (UBA)"),
-        explain: "Amtlicher UBA-Index (1 = sehr gut … 5 = sehr schlecht). Index 0 bedeutet: Station liefert gerade keinen Wert — das ist eine Datenlücke, kein Messwert." });
+        status: aqiV == null ? null : aqiStand ? css("--text-muted") : aqiV <= 1 ? css("--status-good") : aqiV === 2 ? css("--status-warn") : css("--status-serious"),
+        mini: aqiV != null ? { v: aqiV, min: 0, max: 4, stops: AQI_STOPS } : null,
+        hint: esc(val(uba, "stationName")) + (aqiV == null ? " · aktuell kein Messwert (UBA)" : aqiStand ? " · " + aqiStand : ""),
+        explain: "Amtlicher UBA-Index (0 = sehr gut … 4 = sehr schlecht) der am stärksten belasteten UBA-Station der Gemeinde. Fehlt der Index, liefert die Station gerade keinen Wert — eine Datenlücke." });
   }
   // NO₂/O₃ je UBA-Station (verkehrsnahe Station = höchster NO₂-Wert für die Kachel)
   const noStations = ubaCands.filter(e => val(e, "no2") != null);
@@ -1377,7 +1389,7 @@ async function render() {
     stop ? { ...pos(stop), name: val(stop, "name") || "ÖPNV-Knoten" } : null,
     w2 ? { ...pos(w2), name: "DWD-Wetterstation" } : null,
     // extra is markup: upstream text (OSM opening hours – anyone can edit OSM) is escaped.
-    ...ubaCands.map(e => ({ ...pos(e), name: "UBA " + (val(e, "stationName") || "Station"), extra: "Luftqualitätsindex: " + esc(val(e, "airQualityIndex") ?? "–") })),
+    ...ubaCands.map(e => ({ ...pos(e), name: "UBA " + (val(e, "stationName") || "Station"), extra: "Luftqualitätsindex: " + (aqiOf(e) == null ? "–" : aqiOf(e) + " (" + AQI_LABEL[aqiOf(e)] + ")") })),
     rathaus ? { ...pos(rathaus), name: val(rathaus, "name") || "Rathaus", extra: esc(val(rathaus, "openingHours") || "") } : null,
   ].filter(i => i && i.lat);
   // Ladepunkte als zwei getrennte, ein-/ausblendbare Ebenen (online/offline).

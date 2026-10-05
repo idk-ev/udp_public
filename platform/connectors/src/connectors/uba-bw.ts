@@ -46,20 +46,50 @@
  * stations goes into the status line, not into a warning — the old flow did
  * not warn for them either, and the health check counts warnings.
  *
- * No change gate and no prune: the old build node wrote every station in full
- * every hour and carried no `dateObserved` (freshness comes from `observedAt`).
+ * ## Deliberate deviations (decided with the data review)
  *
- * ## Redirects
+ *  * **Measurement time instead of fetch time.** The old build node stamped
+ *    every value with the run time and carried no `dateObserved`, so an
+ *    hourly value looked one to two hours fresher than it was. Each value now
+ *    carries the end of its own measurement hour as `observedAt` (column 0 of
+ *    its row, see {@link cetToUtc}), and the entity a `dateObserved`: the hour
+ *    of its index — the value the dashboard tile and the city pulse read —
+ *    or, without an index, of its newest component. A row stamped later than
+ *    the run time is skipped; it cannot be a measurement.
+ *  * **Split change gate instead of a full write every hour**
+ *    (src/kernel/split-gate.ts): master data (`ags`, `stationName`,
+ *    `location`) and the measured values are signed apart, so a run sends
+ *    only the values that changed plus `dateObserved`, and a station whose
+ *    newest row is unchanged (UBA has not published the next hour yet) only
+ *    its unchanged `dateObserved`. The old full write cost about nine TRoE
+ *    rows per station and hour; the new `dateObserved` is paid for many
+ *    times over. Replace mode only when every station request was answered;
+ *    otherwise the tables are merged, so the signatures of an unanswered
+ *    station survive. An index that leaves the 24 h window is deleted from
+ *    the broker ({@link indexVanished}) — an upsert cannot remove it, and it
+ *    would pass for current next to the newer `dateObserved`.
+ *  * **The new base URL.** www.umweltbundesamt.de/api/air_data/v3 answers
+ *    with a 301 to luftdaten.umweltbundesamt.de/api/air-data/v3 (checked
+ *    2026-10-05); both requests go there directly, with the same parameters,
+ *    and no longer follow redirects. The old URLs are pinned in the parity
+ *    tests as the redirect source of the new ones.
  *
- * The one source that redirects today: www.umweltbundesamt.de answers both
- * URLs with a 301 to luftdaten.umweltbundesamt.de (checked 2026-09-28). The
- * fetcher refuses redirects by default, so both requests opt in with
- * `redirect: "follow"`; they carry no credentials. The URLs stay the old
- * ones, byte for byte, as the parity tests pin them.
+ * The total index is the UBA's 0–4 scale (0 = sehr gut … 4 = sehr schlecht,
+ * uba_api_v3.yml); column 2 of a row flags that not all components were
+ * available, not an incomplete hour; the index is passed on unchanged and the
+ * flag is not read, as before.
  */
 
-import { cleanText, observed } from "../kernel/ngsi.js";
+import { cleanText, dateObserved, observed } from "../kernel/ngsi.js";
 import { isArray, isRecord, isTruthy } from "../kernel/parse.js";
+import {
+  applySplit,
+  pointOf,
+  propertyValue,
+  reportSplit,
+  staticSignatureOf,
+  totalsOf,
+} from "../kernel/split-gate.js";
 import { NGSI_CONTEXT } from "../kernel/types.js";
 import type {
   ConnectorModule,
@@ -70,16 +100,23 @@ import type {
   JsonResponse,
   JsonValue,
   MunicipalityRow,
+  NgsiDateTime,
   NgsiEntity,
   Property,
 } from "../kernel/types.js";
 
 export const ID = "uba-bw";
 
-export const STATIONS_URL =
-  "https://www.umweltbundesamt.de/api/air_data/v3/stations/json?use=airquality&lang=de";
+/** Base of the UBA air data API v3 (the old www.umweltbundesamt.de path redirects here). */
+const API_BASE = "https://luftdaten.umweltbundesamt.de/api/air-data/v3";
 
-const AIRQUALITY_URL = "https://www.umweltbundesamt.de/api/air_data/v3/airquality/json";
+export const STATIONS_URL = `${API_BASE}/stations/json?use=airquality&lang=de`;
+
+const AIRQUALITY_URL = `${API_BASE}/airquality/json`;
+
+/** Gate tables of the split gate: master data and measured values apart. */
+export const STATIC_KEY = "ubaStatic";
+export const LIVE_KEY = "ubaLive";
 
 /** Log prefix, as the old warnings read (`UBA-BW: …`). */
 const LABEL = "UBA-BW";
@@ -93,6 +130,16 @@ const CHUNK_SIZE = 100;
  * starts the same way, and this caps the overlap.
  */
 const MAX_IN_FLIGHT = 8;
+
+/**
+ * UBA timestamps are CET all year round — UTC+1, no summer time. Checked
+ * 2026-10-05: the days of the clock changes (2025-10-26, 2026-03-29) both
+ * have 24 rows including the hour 02:00 that local time skips, and the
+ * forecast's creation stamp read as UTC would lie in the future.
+ */
+const CET_OFFSET_MS = 3_600_000;
+
+const CET_STAMP = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
 
 /** UBA component ids of the airquality rows, as the build node's `COMP`. */
 const COMPONENTS: ReadonlyMap<string, string> = new Map([
@@ -136,9 +183,12 @@ export interface UbaPart {
 
 /**
  * A row of the airquality series: `[dateEnd, totalIndex, incomplete,
- * [componentId, value, index, yValue], …]` — only what the build node reads.
+ * [componentId, value, index, yValue], …]` — what the build node read, plus
+ * the end of the measurement hour.
  */
 interface SeriesRow {
+  /** Column 0 in UTC, or the start key + 1 h where column 0 is unreadable. */
+  readonly observedAt: IsoTime;
   /** Column 1, the total index; `undefined` for null/absent (the node skipped both). */
   readonly index: JsonValue | undefined;
   readonly components: readonly (readonly [componentId: string, value: JsonValue | undefined])[];
@@ -157,6 +207,7 @@ export interface UbaEntity extends NgsiEntity {
   readonly stationName: Property<string>;
   readonly location: { readonly type: "GeoProperty"; readonly value: GeoJsonPoint };
   readonly airQualityIndex?: Property | undefined;
+  readonly dateObserved: Property<NgsiDateTime>;
   readonly "@context": string;
 }
 
@@ -203,6 +254,42 @@ function jsonValue(value: unknown): JsonValue | undefined {
     return out;
   }
   return undefined;
+}
+
+/**
+ * A UBA timestamp (`"2026-10-05 09:00:00"`, CET) as UTC ISO time, or `null`.
+ * `24:00:00` is the end of the day, as the API writes the last hour's end.
+ */
+export function cetToUtc(stamp: unknown): IsoTime | null {
+  if (typeof stamp !== "string") return null;
+  const match = CET_STAMP.exec(stamp);
+  if (match === null) return null;
+  const [year, month, day, hour, minute, second] = match.slice(1).map(Number);
+  if (
+    year === undefined ||
+    month === undefined ||
+    day === undefined ||
+    hour === undefined ||
+    minute === undefined ||
+    second === undefined
+  ) {
+    return null;
+  }
+  if (minute > 59 || second > 59 || hour > 24 || (hour === 24 && (minute > 0 || second > 0))) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  // Rejects 2026-02-30 and month 13, which Date.UTC would roll over.
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
+  }
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, second) - CET_OFFSET_MS).toISOString();
+}
+
+/** End of the measurement hour of a row: column 0, else the start key + 1 h. */
+function rowTime(end: unknown, start: string): IsoTime | null {
+  const fromEnd = cetToUtc(end);
+  if (fromEnd !== null) return fromEnd;
+  const fromStart = cetToUtc(start);
+  return fromStart === null ? null : new Date(Date.parse(fromStart) + 3_600_000).toISOString();
 }
 
 /** `d.toISOString().slice(0, 10)` of the old node. */
@@ -282,8 +369,11 @@ function parseStation(raw: unknown): UbaStation | null {
   };
 }
 
-function parseRow(raw: unknown): SeriesRow | null {
+function parseRow(raw: unknown, start: string): SeriesRow | null {
   if (!isArray(raw)) return null;
+  // A row without a readable time cannot be dated; it is skipped (deviation, see the header).
+  const observedAt = rowTime(raw[0], start);
+  if (observedAt === null) return null;
   const index = raw[1];
   const components: (readonly [componentId: string, value: JsonValue | undefined])[] = [];
   for (let i = 3; i < raw.length; i += 1) {
@@ -296,7 +386,7 @@ function parseRow(raw: unknown): SeriesRow | null {
     // (the node would have stored undefined, which JSON cannot carry).
     components.push([String(component[0]), value === null ? undefined : jsonValue(value)]);
   }
-  return { index: index === null ? undefined : jsonValue(index), components };
+  return { observedAt, index: index === null ? undefined : jsonValue(index), components };
 }
 
 /**
@@ -319,7 +409,7 @@ export function parse(raw: unknown): readonly StationSeries[] {
     const stamps = Object.keys(series).sort().reverse();
     const rows: SeriesRow[] = [];
     for (const stamp of stamps) {
-      const row = parseRow(series[stamp]);
+      const row = parseRow(series[stamp], stamp);
       if (row !== null) rows.push(row);
     }
     out.push({ station, rows });
@@ -352,30 +442,41 @@ export function nearestOrCentroid(geo: GeoIndex, lat: number, lon: number): Muni
 
 /**
  * Pure: the newest total index and the newest value of each component per
- * station, walking the rows from the newest start time backwards. A station
- * with neither is left out. `geo` null (not a case `run` produces) means no
- * assignment: `ags` is empty, as for an empty master data list.
+ * station, walking the rows from the newest start time backwards, each with
+ * the end of its own hour as `observedAt`. Rows ending after `now` are
+ * skipped. A station with neither is left out. `geo` null (not a case `run`
+ * produces) means no assignment: `ags` is empty, as for an empty master data
+ * list.
  */
 export function build(
   raw: readonly StationSeries[],
   geo: GeoIndex | null,
   now: IsoTime,
 ): readonly UbaEntity[] {
+  const nowMs = Date.parse(now);
   const entities: UbaEntity[] = [];
   for (const { station, rows } of raw) {
-    const latest = new Map<string, JsonValue>();
-    let index: JsonValue | undefined;
+    const latest = new Map<string, readonly [value: JsonValue, observedAt: IsoTime]>();
+    let index: readonly [value: JsonValue, observedAt: IsoTime] | undefined;
     for (const row of rows) {
-      if (index === undefined && row.index !== undefined) index = row.index;
+      if (Date.parse(row.observedAt) > nowMs) continue;
+      if (index === undefined && row.index !== undefined) index = [row.index, row.observedAt];
       for (const [componentId, value] of row.components) {
         const name = COMPONENTS.get(componentId);
-        if (name !== undefined && !latest.has(name) && value !== undefined) latest.set(name, value);
+        if (name !== undefined && !latest.has(name) && value !== undefined) {
+          latest.set(name, [value, row.observedAt]);
+        }
       }
     }
-    if (index === undefined && latest.size === 0) continue;
+    // The hour of the index; without one, the newest component's (same format, so max by string).
+    let stamp = index?.[1];
+    if (stamp === undefined) {
+      for (const [, at] of latest.values()) if (stamp === undefined || at > stamp) stamp = at;
+    }
+    if (stamp === undefined) continue;
     const municipality = geo === null ? null : nearestOrCentroid(geo, station.lat, station.lon);
     const components: Record<string, Property> = {};
-    for (const [name, value] of latest) components[name] = observed(value, "GQ", now);
+    for (const [name, [value, at]] of latest) components[name] = observed(value, "GQ", at);
     entities.push({
       id: `urn:ngsi-ld:AirQualityObserved:bw-uba-${station.code}`,
       type: "AirQualityObserved",
@@ -384,11 +485,51 @@ export function build(
       location: { type: "GeoProperty", value: { type: "Point", coordinates: [station.lon, station.lat] } },
       "@context": NGSI_CONTEXT,
       // `P(aqi, '')`: an empty unit code, not an absent one.
-      ...(index === undefined ? {} : { airQualityIndex: observed(index, "", now) }),
+      ...(index === undefined ? {} : { airQualityIndex: observed(index[0], "", index[1]) }),
       ...components,
+      dateObserved: dateObserved(stamp),
     });
   }
   return entities;
+}
+
+/* ------------------------------------------------------------------ write */
+
+/** The measured attributes, in the order of the dynamic signature. */
+export const LIVE_ATTRIBUTES: readonly string[] = ["airQualityIndex", ...COMPONENTS.values()];
+
+/** Master data of a station: municipality, name and position — never a measured value. */
+export function stationStatic(entity: UbaEntity): string {
+  return (
+    staticSignatureOf([
+      propertyValue(entity, "ags"),
+      propertyValue(entity, "stationName"),
+      pointOf(entity),
+    ]) ?? ""
+  );
+}
+
+/**
+ * Stations that carry no index any more although their stored dynamic
+ * signature (the broker's state, {@link LIVE_ATTRIBUTES} order) holds one.
+ */
+export function indexVanished(
+  entities: readonly UbaEntity[],
+  live: ReadonlyMap<string, unknown>,
+): readonly UbaEntity["id"][] {
+  const out: UbaEntity["id"][] = [];
+  for (const entity of entities) {
+    if (entity.airQualityIndex !== undefined) continue;
+    const signature = live.get(entity.id);
+    if (typeof signature !== "string") continue;
+    try {
+      const values: unknown = JSON.parse(signature);
+      if (isArray(values) && values[0] !== null && values[0] !== undefined) out.push(entity.id);
+    } catch {
+      // Not a signature this connector wrote: nothing known about the broker.
+    }
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ run */
@@ -422,7 +563,7 @@ async function inOrder<T, R>(
 export async function run(ctx: Ctx): Promise<void> {
   let list: JsonResponse;
   try {
-    list = await ctx.fetch.json(STATIONS_URL, { redirect: "follow" });
+    list = await ctx.fetch.json(STATIONS_URL);
   } catch (error) {
     ctx.log.warn(
       `${LABEL}: station list not loadable (${error instanceof Error ? error.message : String(error)})`,
@@ -436,18 +577,23 @@ export async function run(ctx: Ctx): Promise<void> {
   }
   ctx.log.status(`${String(requests.length)} BW stations`);
 
+  let unanswered = 0;
   const answers = await inOrder(requests, MAX_IN_FLIGHT, ctx.signal, async (request) => {
     try {
-      const response = await ctx.fetch.json(request.url, { retries: 0, redirect: "follow" });
+      const response = await ctx.fetch.json(request.url, { retries: 0 });
+      if (!response.ok) unanswered += 1;
       return wrapResponse(request.station, response.status, response.body);
     } catch {
       // Timeout, refused connection, or a body that is not JSON: the old
       // part then had no usable `data` and was skipped by the build node.
+      unanswered += 1;
       return wrapResponse(request.station, null, null);
     }
   });
   const parts = answers.filter((part): part is UbaPart => part !== undefined);
   const failed = parts.filter((part) => !part.ok || part.data === null).length;
+  // Every station answered (an empty series is an answer): this run saw the whole stock.
+  const complete = unanswered === 0 && parts.length === requests.length;
 
   // As the build node: the master data are required, the boundaries are not —
   // without them every station goes by centroid (see the module header).
@@ -459,8 +605,28 @@ export async function run(ctx: Ctx): Promise<void> {
   ctx.log.status(
     `${String(entities.length)} stations` + (failed > 0 ? ` (${String(failed)} requests without data)` : ""),
   );
-  // Written in full every hour, as before: the old flow had no gate here.
-  await ctx.orion.upsert(ctx.gate.ungated(entities), { chunkSize: CHUNK_SIZE });
+  // Read before the gate drops what goes out: which stations the broker holds an index for.
+  const vanished = indexVanished(entities, ctx.gate.table(LIVE_KEY));
+  // Split gate (deviation, see the header): changed values and `dateObserved`
+  // only; in full when the master data changed, for a new station, and once a week.
+  const plan = applySplit(
+    ctx.gate,
+    entities,
+    {
+      staticKey: STATIC_KEY,
+      dynamicKey: LIVE_KEY,
+      staticSignature: stationStatic,
+      dynamic: LIVE_ATTRIBUTES,
+      replace: complete,
+      periodMs: ctx.intervalMs(),
+    },
+    Date.parse(ctx.now()),
+  );
+  reportSplit(ctx.log, LABEL, totalsOf(plan));
+  await ctx.orion.upsert(plan, { chunkSize: CHUNK_SIZE });
+  // An upsert cannot remove an attribute: an index that left the 24 h window
+  // would stay in the broker next to a newer `dateObserved` and pass for current.
+  for (const id of vanished) await ctx.orion.deleteAttribute(id, "airQualityIndex", LABEL);
 }
 
 /** Checked against the contract by the compiler, as every ported module is. */
