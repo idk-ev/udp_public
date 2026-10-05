@@ -70,6 +70,11 @@ networkPolicies:
 cockpit:
   image:
     tag: "1.0.0@sha256:REPLACE_WITH_DIGEST"
+  # Hauptdashboard /dashboard.html nur mit Anmeldung (Secret mit Schlüssel
+  # htpasswd, s. docs/betrieb.md); ohne Secret antwortet die Seite mit 404.
+  # Das Secret muss vorher existieren, sonst startet das Cockpit nicht.
+  # dashboardAuth:
+  #   existingSecret: "udp-dashboard-auth"   # htpasswd
   # Impressum und Datenschutzerklärung des Betreibers (Fußzeile aller Seiten).
   # legal:
   #   impressumUrl: "https://www.example.org/impressum"

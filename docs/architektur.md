@@ -63,8 +63,8 @@ zyklisch ein und upsertet Smart-Data-Model-Entitäten nach Orion-LD. Takt,
 Aktivierung und Monitoring stehen in der Registry
 `platform/config/connectors.json`; je Konnektor gibt es ein Modul mit
 Paritäts- bzw. Unit-Test. Darstellung über die Cockpit-Dashboards
-(`/<kommune>` je Gemeinde, `/kreis-<slug>` je Landkreis, Kommunen-Suche und
-Betrieb unter `/dashboard.html`); Betriebs- und TRoE-Statistiken liefert der
+(`/<kommune>` je Gemeinde, `/kreis-<slug>` je Landkreis, Kommunen-Suche auf
+der Startseite `/`, Betrieb unter `/dashboard.html` nur mit Anmeldung); Betriebs- und TRoE-Statistiken liefert der
 Konnektordienst als PlatformStatus-Entitäten, Zeitreihen die Temporal-API
 (Mintaka). Node-RED bleibt als Low-Code-Werkzeug mit einem Beispielfluss
 (Open Data → NGSI-LD → Orion-LD) für eigene Datenflüsse.

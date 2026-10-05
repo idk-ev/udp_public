@@ -174,9 +174,10 @@ NGSI-LD → Orion-LD/TRoE. Node-RED bleibt als Low-Code-Werkzeug mit einem
 Beispielfluss für eigene Datenflüsse.
 Darstellung: ein Dashboard je Gemeinde unter `/<slug>` (Referenz `/reutlingen`
 mit Live-Kacheln, Klick-Zeitreihen, Stadtkarte, Abfahrtstafel), ein Kreis-Dashboard
-je Landkreis unter `/kreis-<slug>`, Kommunen-Suche im Hauptdashboard
-(`/dashboard.html`), Betriebs- und TRoE-Metriken direkt im Hauptdashboard
-(PlatformStatus via Konnektordienst, Lastverlauf via Mintaka).
+je Landkreis unter `/kreis-<slug>`, öffentliche Kommunen-Suche auf der
+Startseite (`/`). Betriebs- und TRoE-Metriken (PlatformStatus via
+Konnektordienst, Lastverlauf via Mintaka) zeigt das Hauptdashboard
+`/dashboard.html` – nur mit Anmeldung, s. [`docs/betrieb.md`](docs/betrieb.md).
 Neue Städte hinzufügen: [`docs/staedte-hinzufuegen.md`](docs/staedte-hinzufuegen.md).
 
 ## Mandantenfähigkeit

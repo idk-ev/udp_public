@@ -54,6 +54,7 @@ den Context Broker).
 | Pfad | Ziel | Standard |
 |------|------|----------|
 | `/` | Cockpit (SPA + generierte Kommunenseiten) | offen |
+| `/dashboard.html` | Hauptdashboard (Kommunen-Suche + Betriebsdaten), Basic Auth im Cockpit-nginx | 404 ohne `cockpit.dashboardAuth.existingSecret` (Secret mit Schlüssel `htpasswd`, s. `docs/betrieb.md`) |
 | `/gateway/…` | Cockpit-nginx → APISIX, **nur GET/HEAD/OPTIONS** (Micro-Cache) | offen |
 | `/abfahrten`, `/warnungen.ics` | Cockpit-nginx → Konnektordienst (exakte Pfade, `cockpit.connectorsUpstream`) | offen |
 | `/ngsi-ld`, `/temporal`, `/FROST-Server` | APISIX | aus (`ingress.apiPaths: []`) |

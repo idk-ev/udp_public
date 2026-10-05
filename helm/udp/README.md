@@ -133,6 +133,7 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `mongo.indexes.entities` | `udp_type_ags` | Indizes auf `entities` (`name`, `key` als Liste von `[feld, richtung]`); geänderte Schlüssel brauchen einen neuen Namen |
 | `apisix.rateLimit.rate` / `burst` | `30` / `150` | Anfragen/s je Client auf `/ngsi-ld` und `/temporal`, darüber HTTP 429 |
 | `cockpit.trustedProxies` | `[]` | Proxy-Netze, deren X-Forwarded-For für die Client-IP gilt (leer = alle privaten Netze) |
+| `cockpit.dashboardAuth.existingSecret` | `""` | Secret mit Schlüssel `htpasswd` (`htpasswd -nbB …` oder `openssl passwd -apr1`): Hauptdashboard `/dashboard.html` nur mit Basic Auth; leer → die Seite antwortet mit 404, s. `docs/betrieb.md` |
 | `global.priorityClassName` / `nodeSelector` / `tolerations` | leer | Scheduling-Vorgaben für alle Pods |
 | `global.imageRegistry` | `""` | Registry-Prefix für Upstream-Images (Mirror) |
 | `global.udpRegistry` | `ghcr.io/idk-ev/udp` | Registry der eigenen Images |

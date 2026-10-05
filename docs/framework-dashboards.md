@@ -102,7 +102,8 @@ aktivierten Konnektoren.
 
 - `scripts/healthcheck.sh`: registry-getrieben, Frische je Konnektor gegen
   `sollMinutes` (OK/SPÄT/ROT/WARTET). Läuft standalone; Muster für Alarme.
-- Hauptdashboard (`dashboard.html`) liest `connectors-status.json` — ein Pflegeort.
+- Hauptdashboard (`dashboard.html`, nur mit Anmeldung, s. `docs/betrieb.md`)
+  liest `connectors-status.json` — ein Pflegeort.
 - nginx-Micro-Cache (`proxy_cache udpapi`): NGSI-LD 60 s, Temporal 300 s,
   `X-Cache: HIT/MISS`-Header als Nachweis. Schützt Orion bei öffentlichem Traffic
   (Lasttest 50 parallel: 0 Fehler).
