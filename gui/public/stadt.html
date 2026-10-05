@@ -102,12 +102,12 @@
 <div class="grid">
   <div class="card span-4" data-topic="wetter" id="fc-card" style="display:none">
     <h2>Vorhersage</h2>
-    <div class="desc">Open-Meteo (CC-BY 4.0)</div>
+    <div class="desc">Wetterdaten: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>)</div>
     <div class="fc" id="fc"></div>
   </div>
   <div class="card span-4" data-topic="mobilitaet" id="dep-card" style="display:none">
     <h2 id="dep-title">Abfahrten</h2>
-    <div class="desc" id="dep-desc">Echtzeit (naldo/bwegt via EFA-BW)</div>
+    <div class="desc" id="dep-desc">Echtzeit (EFA-BW)</div>
     <div style="max-height:380px;overflow-y:auto">
       <table id="deps"><thead><tr><th>Linie</th><th>Ziel</th><th>Abfahrt</th><th style="text-align:right">+min</th></tr></thead><tbody></tbody></table>
     </div>
@@ -318,13 +318,15 @@ const NO2_STOPS = [[0, 40, "var(--status-good)", "unter Grenzwert"], [40, 60, "v
 const PULS_STOPS = [[0, 50, "var(--status-serious)", "schlecht"], [50, 75, "var(--status-warn)", "mäßig"], [75, 100, "var(--status-good)", "gut"]];
 const HUM_STOPS = [[0, 30, "var(--status-warn)", "trocken"], [30, 65, "var(--status-good)", "behaglich"], [65, 100, "var(--status-warn)", "feucht"]];
 
+// Hochwasservorhersagezentrale der LUBW: replaces the state gauges (pegel-lubw is off).
+const HVZ_URL = "https://hvz.lubw.baden-wuerttemberg.de/";
 // Service-Kachel, die auf ein externes kommunales Angebot verlinkt. Die Hauptinfo
 // ist eine klare Aktion (nicht die rohe URL); die Beschreibung steht als Hinweis,
 // die genaue Adresse im Tooltip.
-function linkTile(label, url, hintTxt, topic = "service", plain = false) {
+function linkTile(label, url, hintTxt, topic = "service", plain = false, explainTxt = null) {
   let host = url; try { host = new URL(url).hostname.replace(/^www\./, ""); } catch (e) {}
   return `<a class="tile tile-link${plain ? " tile-plain" : ""}" data-topic="${topic}" href="${esc(safeUrl(url))}" target="_blank" rel="noopener"
-    title="${esc(host)}" data-explain="Offizielles Angebot der Kommune — öffnet extern (${esc(host)}).">
+    title="${esc(host)}" data-explain="${esc(explainTxt || "Offizielles Angebot der Kommune — öffnet extern (" + host + ").")}">
     <div class="label">${esc(label)}</div><div class="value">Öffnen →</div>
     <div class="hint">${esc(hintTxt)}</div></a>`;
 }
@@ -426,7 +428,11 @@ async function render() {
           `&attrs=name,ags,gemeindeName,endDate,description,location`),
     // Pegel im 20-km-Umkreis (Gewässer enden nicht an Gemeindegrenzen); der eigene
     // Pegel wird per ags aus dieser Liste abgeleitet, keine zweite Abfrage.
-    near("WaterLevelObserved", 20000, "name,water,level,levelState,floodLevels,measuredAt,dataProvider,ags,location"),
+    // Only WSV/PEGELONLINE gauges: the LUBW flood centre (HVZ) asks third
+    // parties not to republish its current readings, so pegel-lubw is off and
+    // gauges it wrote before (bw-hvz-*) are never shown, until they are deleted.
+    near("WaterLevelObserved", 20000, "name,water,level,levelState,floodLevels,measuredAt,dataProvider,ags,location")
+      .then(list => failed(list) ? list : list.filter(e => !String(e.id).includes(":bw-hvz-"))),
     jlist(`${SC.GW}/ngsi-ld/v1/entities?type=PollenForecast&limit=5`),
     entity(ID.rathaus), entity(ID.ausflug),
     // Amtliche DWD-Stationen im 30-km-Umkreis (statt aller ~183 landesweit).
@@ -626,14 +632,14 @@ async function render() {
   // liegt nichts vor, zeigt die Karte eine ruhige „keine Warnungen"-Stufenanzeige.
   const SEV_WORT = { minor: "gering", moderate: "mittel", severe: "schwer", extreme: "extrem" };
   const districtName = KREIS_NAME[krs] || "Kreis " + krs;
-  const warnHeads = [];
-  for (const [q, a] of [["DWD", alertDwd], ["NINA", alertNina]])
-    for (const h of asArray(val(a, "headlines"))) warnHeads.push([q, h]);
+  // Official warnings unaltered: full headline, source, link to the original.
+  const warnHeads = SC.warnHeads(alertDwd, alertNina);
   D.warnungen = warnHeads.length
     ? { kind: "table", title: "Amtliche Warnungen — " + districtName,
-        header: ["Quelle", "Stufe", "Warnung"],
-        rows: warnHeads.map(([q, h]) => [q, SEV_WORT[h.sev] || esc(h.sev || "–"), esc(h.h || "Warnung")]),
-        note: "Amtliche Warnungen für den Landkreis (DWD-Wetterwarnungen und Bevölkerungswarnungen über NINA)." }
+        header: ["Quelle", "Stufe", "Warnung", ""],
+        rows: warnHeads.map(x => [x.q, SEV_WORT[x.sev] || esc(x.sev || "–"), esc(x.text), SC.warnLink(x)]),
+        note: "Amtliche Warnungen für den Landkreis, unverändert übernommen (DWD-Wetterwarnungen und Bevölkerungswarnungen über NINA). " +
+          esc(SC.WARN_SOURCE.DWD) + " (CC BY 4.0) · " + esc(SC.WARN_SOURCE.NINA) + "." }
     : { kind: "info",
         head: { type: "steps", level: warnCount > 0 ? Math.min(4, maxSev) : 0,
           labels: ["keine", "gering", "mittel", "hoch", "extrem"],
@@ -645,7 +651,7 @@ async function render() {
   tiles += failed(ID.dwd) || failed(ID.nina) ? errorTile("Warnungen") : tile("Warnungen", warnCount === 0 ? "keine" : warnCount, "", { detail: "warnungen",
     status: warnCount === 0 ? css("--status-good") : maxSev >= 3 ? css("--status-serious") : css("--status-warn"),
     hint: "DWD + NINA, " + esc(districtName), explain: "Amtliche Warnungen gelten auf Kreisebene. Klick: aktuelle Warnungen." });
-  if (rw.length || rwUmland.length) D.baustellen = { kind: "stations", title: "Baustellen", explain: "Baustellen im Gemeindegebiet und im übrigen Kreis (SVZ-BW, Punkt-in-Polygon).", center: [lat, lon],
+  if (rw.length || rwUmland.length) D.baustellen = { kind: "stations", title: "Baustellen", explain: "Baustellen im Gemeindegebiet und im übrigen Kreis (Verkehrsministerium BW, BEMaS, via MobiData BW; Punkt-in-Polygon).", center: [lat, lon],
     groups: [
       { name: "Baustellen", color: MAP_C.baustellen, detail: D.baustellen ? "baustellen" : null, items: rw.map(e => ({ ...pos(e), name: val(e, "name"), extra: val(e, "endDate") ? "bis " + esc(String(val(e, "endDate")).slice(0, 10)) : "" })).filter(i => i.lat) },
       { name: "Baustellen Umland (Kreis)", color: MAP_C.umland, items: rwUmland.map(e => ({ ...pos(e), name: val(e, "name"), extra: esc((val(e, "gemeindeName") || "") + (val(e, "endDate") ? " · bis " + String(val(e, "endDate")).slice(0, 10) : "")) })).filter(i => i.lat) },
@@ -746,7 +752,7 @@ async function render() {
     D.pollen = { kind: "table", title: "Pollenflug — " + (val(pollenReg, "name") || ""),
       header: ["Pollenart", "heute", "morgen"],
       rows: arten.map(a => [pollenGlyph(a[0]) + esc(String(a[0]).replace("Graeser", "Gräser").replace("Beifuss", "Beifuß")), POLLEN_WORT[a[1]] || esc(a[1]), POLLEN_WORT[a[2]] || esc(a[2])]),
-      note: "DWD-Pollenflug-Gefahrenindex (GeoNutzV), Teilregion " + esc(val(pollenReg, "name") || "") + "." };
+      note: "DWD-Pollenflug-Gefahrenindex, Teilregion " + esc(val(pollenReg, "name") || "") + ". Quelle: Deutscher Wetterdienst (CC BY 4.0)." };
     const POLLEN_COL = ["var(--status-good)", "#a3b18a", "var(--status-warn)", "var(--status-serious)"];
     // Main value: level of the strongest species; the species in the hint.
     const speciesName = a => String(a[0]).replace("Graeser", "Gräser").replace("Beifuss", "Beifuß");
@@ -765,32 +771,8 @@ async function render() {
     const dy = (p.lat - lat) * 111, dx = (p.lon - lon) * 111 * Math.cos(lat * Math.PI / 180);
     return Math.sqrt(dy * dy + dx * dx);
   };
-  // WSV/PEGELONLINE und LUBW/HVZ betreiben an Rhein und Neckar teils dieselbe
-  // Messstelle. Die Plattform hält bewusst beide Quellen vor; im Dashboard wäre
-  // ein Ort mit zwei Pegeln gleichen Namens aber nur verwirrend. Deshalb hier
-  // zusammenführen — Vorrang hat die LUBW als zuständiger Landesdienst mit den
-  // Hochwasser-Meldestufen.
-  const entdoppeln = liste => {
-    const norm = e => String(val(e, "name") || "").toLowerCase().replace(/[^a-zäöüß]+/g, "");
-    const raus = new Set();
-    for (const a of liste) {
-      if (!String(a.id).includes("bw-pegel-")) continue; // nur PEGELONLINE kann weichen
-      const na = norm(a), pa = pos(a);
-      for (const b of liste) {
-        if (a === b || !String(b.id).includes("bw-hvz-")) continue;
-        const nb = norm(b), pb = pos(b);
-        if (!na || !nb || !pa || !pb) continue;
-        const dy = (pa.lat - pb.lat) * 111, dx = (pa.lon - pb.lon) * 111 * Math.cos(pa.lat * Math.PI / 180);
-        const km = Math.sqrt(dy * dy + dx * dx);
-        // Gleiche Stelle nur, wenn Name und Ort zusammenpassen — Ober- und
-        // Unterpegel einer Schleuse bleiben getrennt, sie messen Verschiedenes.
-        if (km <= 0.5 && (na === nb || na.includes(nb) || nb.includes(na))) { raus.add(a.id); break; }
-      }
-    }
-    return liste.filter(e => !raus.has(e.id));
-  };
-  const eigene = entdoppeln(pegel.filter(e => pos(e)));
-  const nahe = entdoppeln(allePegel.filter(e => pos(e) && kmVon(e) <= 20)).sort((a, b) => kmVon(a) - kmVon(b));
+  const eigene = pegel.filter(e => pos(e));
+  const nahe = allePegel.filter(e => pos(e) && kmVon(e) <= 20).sort((a, b) => kmVon(a) - kmVon(b));
   const pegelListe = eigene.length ? eigene : nahe.slice(0, 3);
   if (pegelListe.length) {
     const pg = pegelListe[0];
@@ -799,10 +781,14 @@ async function render() {
     const stufen = asArray(val(pg, "floodLevels"));
     D.pegel = { kind: "chart", title: "Pegel " + (val(pg, "name") || ""), unit: " cm",
       explain: "Wasserstand" + (stufen.length ? " · erste Hochwasser-Meldestufe bei " + stufen[0] + " cm" : "") +
-        " (" + (String(pg.id).includes("hvz") ? "LUBW/HVZ" : "WSV/PEGELONLINE") + ").",
+        " (Bundeswasserstraßen, WSV/PEGELONLINE). Landespegel und Hochwasservorhersage: LUBW Hochwasservorhersagezentrale.",
       series: pegelListe.map(e => ({ id: e.id, attr: "level", name: (val(e, "name") || "") + " (" + (val(e, "water") || "") + ")" })) };
     // Pegel-Kachel entfernt; die Pegel-Kartenebene bleibt (Popup öffnet den Verlauf).
   }
+  // State gauges and flood forecasts are not republished here (HVZ terms):
+  // a link to the LUBW flood centre takes their place, on every page.
+  tiles += linkTile("Pegel & Hochwasser", HVZ_URL, "Pegelstände und Hochwasservorhersage: LUBW Hochwasservorhersagezentrale",
+    "umwelt", false, "Amtliches Angebot des Landes — öffnet extern (hvz.lubw.baden-wuerttemberg.de).");
   // === Verwaltung & Bürgerservice: die vier Pflicht-Kacheln IMMER rendern ===
   // Wo die Kommune nichts bereitstellt, bleibt die Kachel als sichtbares
   // Ausbaupotenzial stehen (emptyTile) statt zu verschwinden.
@@ -1273,14 +1259,12 @@ async function render() {
   //  Ladepunkte-Kartenebene bzw. im Ladepunkte-Detail.)
 
   // Warn-Banner
-  const heads = [];
-  for (const [q, a] of [["DWD", alertDwd], ["NINA", alertNina]])
-    for (const h of asArray(val(a, "headlines"))) heads.push(`<b>${q}</b>: ${esc(h.h)}`);
+  const heads = SC.warnHeads(alertDwd, alertNina);
   const wb = $("#wbanner");
   // Nur bei tatsächlichen Warnungen sichtbar; ohne Warnlage bleibt der Banner leer.
   wb.className = "wbanner " + (heads.length ? (maxSev >= 3 ? "serious" : "warn") : "info");
   wb.style.display = heads.length ? "" : "none";
-  wb.innerHTML = heads.length ? heads.join("<br>") : "";
+  wb.innerHTML = SC.warnBannerHtml(heads);
 
   // Vorhersage-Karte (nur wenn kommunenspezifische Vorhersage vorhanden; Entität oben geladen)
   {
@@ -1333,7 +1317,7 @@ async function render() {
   }
 
   // Baustellen-Liste + Karte
-  $("#rw-desc").textContent = failed(kreisRw) ? SC.LOAD_ERR_TXT : rw.length ? "SVZ-BW, Punkt-in-Polygon" : "Keine Baustellen im Gemeindegebiet.";
+  $("#rw-desc").textContent = failed(kreisRw) ? SC.LOAD_ERR_TXT : rw.length ? "Verkehrsministerium BW (BEMaS) via MobiData BW, Punkt-in-Polygon" : "Keine Baustellen im Gemeindegebiet.";
   $("#rwtable tbody").innerHTML = rw.slice(0, 25).map(e =>
     `<tr><td>${esc(val(e, "name"))}</td><td style="color:var(--text-muted)">${val(e, "endDate") ? "bis " + esc(String(val(e, "endDate")).slice(0, 10)) : ""}</td></tr>`).join("");
 
@@ -1455,12 +1439,19 @@ async function render() {
     window._groupLayers[g.name] = lg;
     if (!window._groupOff[g.name]) lg.addTo(map);
   });
+  // Markers from OpenStreetMap (Ausflugsziele, Familie & Versorgung, Rathaus):
+  // the ODbL credit joins the map's credit line while any of them is shown.
+  const osmShown = !!rathaus || groups.some(g => g.name === "Ausflugsziele" || g.name === "Familie & Versorgung");
+  if (map.attributionControl) {
+    if (osmShown && !window._osmCredit) { map.attributionControl.addAttribution(SC.OSM_CREDIT); window._osmCredit = true; }
+    if (!osmShown && window._osmCredit) { map.attributionControl.removeAttribution(SC.OSM_CREDIT); window._osmCredit = false; }
+  }
   $("#mapdesc").textContent = "Standorte aller eingebundenen Datenquellen — Legende klickbar zum Ein-/Ausblenden."
     + (eingeklappt.length ? " Dichte Ebenen (" + eingeklappt.map(g => g.name).join(", ") + ") sind zunächst ausgeblendet." : "");
 
   // Footer: attribution from the registry. Embedded, the source credits stay
   // visible; the navigation links (.footer-nav) do not.
-  $("#footer").innerHTML = "Datenquellen: " + esc(SC.attributions(CONN).join(" · ")) + " · " + SC.MAP_CREDIT +
+  $("#footer").innerHTML = "Datenquellen: " + SC.attributionHtml(CONN) + " · " + SC.MAP_CREDIT +
     "<span class='footer-nav'> · <a href='/'>Kommunen-Suche</a>" +
     (dashUrl && dashUrl.startsWith("http") ? ` · <a href="${esc(safeUrl(dashUrl))}" target="_blank" rel="noopener">Eigenes Angebot der Kommune</a>` : "") + "</span>";
 

@@ -325,7 +325,7 @@
     },
     {
       "id": "baustellen-bw",
-      "name": "Baustellen landesweit (SVZ-BW)",
+      "name": "Baustellen landesweit (BEMaS via MobiData BW)",
       "scope": "land",
       "enabledFor": "*",
       "intervalSeconds": 21600,

@@ -26,15 +26,33 @@ Modul aus. Felder je Eintrag:
 `id`, `name`, `scope` (land|kreis|kommune|betrieb), `enabledFor` (AGS-Liste oder `"*"`),
 `params` (je AGS, z. B. EFA-Stop-IDs), `intervalSeconds` (optional mit `intervalOffsetSeconds`: feste Uhrzeiten ab 00:00 UTC) **oder** `cron`,
 `sollMinutes` (Monitoring-Ampel), `sampleEntity`, `provides` (steuert Frontend-Kacheln),
-`attribution` (Fußzeile), `requiresSecret` (z. B. `HYSTREET_API_TOKEN` — Healthcheck
+`attribution` (Quellenvermerk in der Fußzeile, Teile mit » · « getrennt),
+`attributionLinks` (Textstelle → Link, z. B. Quelle und Lizenz), `license` und
+`licenseUrl` (Lizenz der Quelle; Pflicht für jede aktive öffentliche Quelle,
+docs/api.md „Lizenzen der Datenquellen“), `requiresSecret` (z. B. `HYSTREET_API_TOKEN` — Healthcheck
 meldet „WARTET" statt Fehler), `active`, optional `refireOnRestart`, `healthUrl`,
-`rowBudget24h`, `sensorDetailFor`, `pending`, `supersededBy`.
+`rowBudget24h`, `sensorDetailFor`, `pending`, `supersededBy`, `excludeSystems`
+(nur GBFS: `[{ "pattern": "lime_*", "reason": "…" }]`, schließt Systeme der
+Quelle mit Begründung von der Ingestion aus).
 
 Regeln:
 - Neuer Konnektor = Registry-Eintrag + Modul im Konnektordienst mit Test
   (`docs/staedte-hinzufuegen.md`, Stufe 3); Takt/Aktivierung kommen IMMER aus
   der Registry.
-- `active: false` nimmt den Konnektor aus dem Zeitplan.
+- `active: false` nimmt den Konnektor aus dem Zeitplan, aus den öffentlichen
+  Seiten (keine Abfrage, kein Quellenvermerk) und aus dem Statusexport als
+  aktive Quelle. Die Entitäten, die er schon geschrieben hat, bleiben im
+  Broker — ein abgeschalteter Konnektor räumt nicht mehr selbst auf.
+- **Abschalten aus Lizenzgründen** (Beispiel `pegel-lubw`): `active: false`,
+  Seiten prüfen, ob sie die Entitäten noch direkt abfragen (der Pegel-Filter in
+  `stadt.html` blendet `bw-hvz-*` aus), dann die Alt-Entitäten im Broker
+  löschen — gezielt über ihr Id-Präfix, per NGSI-LD `DELETE` bzw.
+  `POST /ngsi-ld/v1/entityOperations/delete` mit der Id-Liste aus
+  `GET /ngsi-ld/v1/entities?type=<Typ>&idPattern=<Präfix>` (intern, am
+  Broker, nicht über das öffentliche Gateway). Die TRoE-Historie bleibt davon
+  unberührt und läuft mit der Retention aus (12 Monate). Für ausgeschlossene
+  GBFS-Systeme (`excludeSystems`) braucht es das nicht: Ihre Entitäten
+  veralten und der Prune des Konnektors löscht sie nach 24 h.
 - Vollständiges Entfernen eines Konnektors = Registry-Eintrag, Modul samt Zeile
   in `src/connectors/index.ts` und Test löschen (`test/parity/registry.test.ts`
   hält beide Listen gleich). Anschließend die verwaisten Alt-Entitäten aus
@@ -123,7 +141,7 @@ Index 0–100 je Gemeinde (`CityPulse:bw-<ags>`, gewichtetes Mittel):
 | Luftindex (UBA) | Index 1 | 0,2 |
 | ÖPNV (Median-Verspätung, < 2 h) | 0 min | 0,2 |
 | Laden (freie Live-Ladepunkte) | alle frei | 0,15 |
-| Baustellen (SVZ-BW, landesweit) | keine Baustelle | 0,15 |
+| Baustellen (BEMaS via MobiData BW, landesweit) | keine Baustelle | 0,15 |
 | Sharing (frei flottierende Fahrzeuge aller Arten je 1.000 Einwohner) | ≥ 5 | 0,1 |
 | B+R (freie Plätze aller Konnektoren, < 6 h) | alle frei | 0,05 |
 | Warnlage (Kreis) | keine Warnung | 0,2 |

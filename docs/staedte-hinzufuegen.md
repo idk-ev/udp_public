@@ -24,7 +24,7 @@ im Code — Reutlingen hat nur die vollständigste Datenlage.
 | Kacheln B+R, Passanten | weiterhin kommunenspezifisch (Datenquelle der Kommune bzw. Vertrag, s. Bauanleitung) |
 | **Sichtbare Chart-Karten** (24 h, Klick → 24 h/48 h/7 Tage): Temperatur & Wind (mit DWD-Vergleich), Feinstaub amtlich vs. Bürgersensoren, NO₂/O₃ je UBA-Station, Sharing, Freie Parkplätze, Radverkehr-Tagessummen, PV-Zubau, B+R, Carsharing, Passanten | jeweilige Zeitreihe vorhanden — Reihenfolge/Auswahl in `CHART_ORDER` in `stadt.html` |
 | **Karte mit abschaltbaren Ebenen** (Legende klickbar): Stationen (ÖPNV/Wetter/UBA), Ladestationen (Markerfarbe = Livestatus: grün frei / gelb belegt / rot defekt / grau ohne Livedaten), Carsharing, B+R, Feinstaubsensoren, Baustellen, Radzählstellen. Kräftige, ebenenweise unterscheidbare Farben (`MAP_C` in `stadt.html`); deckungsgleiche Pins werden im Kreis aufgefächert; sehr dichte Ebenen (> 80 Marker) starten eingeklappt | Standort-Entitäten zur Stadt vorhanden; Stations-IDs tragen den Slug als Präfix (`…:<slug>-…`) |
-| Kacheln **Pollenflug** (DWD-Teilregion), **Pegel** (Messstelle im Ort, sonst die nächstgelegene bis 20 km — Gewässer enden nicht an Gemeindegrenzen; LUBW/HVZ + WSV), **Ausflugsziele** (OSM), **CO₂ vermieden** (aus PV berechnet) | Landesbasis — erscheinen automatisch, sobald zur AGS Daten vorliegen |
+| Kacheln **Pollenflug** (DWD-Teilregion), **Pegel** (Messstelle im Ort, sonst die nächstgelegene bis 20 km — Gewässer enden nicht an Gemeindegrenzen; Bundeswasserstraßen über WSV/PEGELONLINE — Landespegel der LUBW nur als Link auf die Hochwasservorhersagezentrale, deren Daten nicht weiterverbreitet werden dürfen), **Ausflugsziele** (OSM), **CO₂ vermieden** (aus PV berechnet) | Landesbasis — erscheinen automatisch, sobald zur AGS Daten vorliegen |
 | Kachel **Hitzebelastung** (DWD Thermischer Gefahrenindex) | Landesbasis — nächstgelegene von 5 Vertreterstädten, erscheint nur bei Belastung |
 | Kachel + Kartenebene **Familie & Versorgung** (Apotheke, Arzt, Kita, Spielplatz, AED, Trinkwasser) | Landesbasis `poi-bw` (OSM/ODbL), sobald Overpass-Ingest gelaufen |
 | **Vier Bürgerservice-Kacheln** Rathaus & Bürgerbüro · Mängel melden · Müllabfuhr · Veranstaltungen | **immer, auf jeder Gemeinde.** Rathaus: OSM-Öffnungszeiten (»geöffnet«, sonst »ab 14:00« bzw. »heute zu«), sonst amtliche Website (Wikidata P856, `gemeinde-services.json`). Die übrigen drei: kuratierter Link aus `dashboards.json` (`links{}`), sonst leere **Potenzial-Kachel** (gestrichelt, Klick → `mitmachen.html`) als sichtbarer Ausbau-Hinweis |
@@ -139,7 +139,7 @@ sich nicht landesweit ausrollen:
 | Baustein | Schaltet frei | Was zu tun ist |
 |---|---|---|
 | **B+R Fahrradparken** (`br-…`) | B+R-Kachel + -Chart + Kartenebene | Datenquelle der Kommune (z. B. DB-/Kommunal-API); Block `br-hbf` als Vorlage |
-| **Passantenfrequenz** (`hystreet`) | Passanten-Kachel + -Chart | AGS in `enabledFor`, Standort-Slug in `params`, Token in `.env` (`requiresSecret`) — proprietäre Quelle, Vertrag nötig |
+| **Passantenfrequenz** (`hystreet`) | Passanten-Kachel + -Chart | AGS in `enabledFor`, Standort-Slug in `params`, Token in `.env` (`requiresSecret`) — proprietäre Quelle, schriftliche Zustimmung nötig; bis dahin steht der Konnektor auf `active: false` |
 | **Müllabfuhr-Termine** | Kachel »nächste Abfuhr« je Fraktion | iCal/JSON-Feed des Entsorgers (viele bieten `.ics` je Straße) → Konnektor `abfall-<kommune>`, Entität `WasteCollection:<slug>`. Ohne Feed: Link-Kachel (s. Stufe 2) |
 | **Wartezeit Bürgerbüro** | Kachel »aktuelle Wartezeit / freie Termine« | Terminsystem der Kommune (tevis, netcall, Qmatic u. a.) bietet meist eine JSON-Statusabfrage — Zugang über die Kommune erfragen |
 | **Bäderauslastung** | Kachel »Auslastung« + Verlauf | Betreiber-Sensorik (Drehkreuz-/Kassensystem) — Vertrag mit Stadtwerken/Bäderbetrieb |
@@ -163,7 +163,10 @@ Modul. Aufbau und verbindliche Typdisziplin: `platform/connectors/README.md`.
      "params": { "stopId": { "08415061": "de:08415:22006" } },
      "intervalSeconds": 300, "sollMinutes": 5,
      "sampleEntity": "urn:ngsi-ld:PublicTransportStop:reutlingen-hbf",
-     "provides": ["departures"], "attribution": "EFA-BW (naldo/bwegt)",
+     "provides": ["departures"],
+     "attribution": "Datenpaket: MobiData BW; NVBW – EFA-BW (dl-de/by-2-0)",
+     "attributionLinks": { "MobiData BW": "https://mobidata-bw.de/" },
+     "license": "dl-de/by-2-0", "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
      "requiresSecret": null, "active": true
    }
    ```

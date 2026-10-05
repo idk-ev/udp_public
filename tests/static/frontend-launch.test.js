@@ -212,8 +212,9 @@ exports["district page credits the sources of the data it shows"] = async () => 
     { KREIS: { krs: "08416", slug: "kreis-tuebingen" } },
     { EnergyMonitor: [{ id: "urn:ngsi-ld:EnergyMonitor:bw-08416041", ags: "08416041", installedCapacityKw: 1000, plantCount: 3 }] });
   const footer = w.document.getElementById("footer").textContent;
-  for (const s of ["Marktstammdatenregister (dl-de/by-2-0)", "DWD via BrightSky (GeoNutzV)", "BBK/NINA",
-    "© EuroGeographics/BKG via opendatasoft", "basemap.de"])
+  for (const s of ["Marktstammdatenregister – © Bundesnetzagentur (dl-de/by-2-0)",
+    "Datenbasis: Deutscher Wetterdienst, via Bright Sky", "Warnungen: BBK/warnung.bund.de (unverändert)",
+    "© GeoBasis-DE / BKG (2026) dl-de/by-2-0, Geometrien vereinfacht", "basemap.de", "© GeoBasis-DE / BKG (2026) CC BY 4.0"])
     assert(footer.includes(s), `footer lacks "${s}": ${footer}`);
   for (const s of ["Open-Meteo", "sensor.community", "hystreet"])
     assert(!footer.includes(s), `footer credits "${s}" although the page shows none of its data`);

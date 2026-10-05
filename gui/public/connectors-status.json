@@ -1,5 +1,5 @@
 {
- "stand": "2026-10-05T09:41:14+00:00",
+ "stand": "2026-10-05T09:59:33+00:00",
  "connectors": [
   {
    "id": "stammdaten-bw",
@@ -206,7 +206,7 @@
   },
   {
    "id": "baustellen-bw",
-   "name": "Baustellen landesweit (SVZ-BW)",
+   "name": "Baustellen landesweit (BEMaS via MobiData BW)",
    "enabledFor": "*",
    "provides": [
     "baustellen"
