@@ -60,21 +60,23 @@ export async function fetchEntities(type?: string, limit = 100): Promise<NgsiEnt
       { headers: headers() },
     );
   }
-  // Ohne Typfilter: erst "local=true" versuchen, sonst über die Typliste sammeln
-  // (ältere Broker lehnen zu breite Abfragen ab).
-  try {
-    const q = new URLSearchParams({ local: "true", limit: String(limit) });
-    return await fetchJson<NgsiEntity[]>(
-      `${config.gatewayUrl}/ngsi-ld/v1/entities?${q}`,
-      { headers: headers() },
-    );
-  } catch {
-    const types = await fetchEntityTypes();
-    const perType = await Promise.all(
-      types.slice(0, 20).map((t) => fetchEntities(t, limit).catch(() => [])),
-    );
-    return perType.flat().slice(0, limit);
-  }
+  // Without a type filter: one query per type from the type list. The public
+  // gateway answers queries without a type (local=true, idPattern) with 400
+  // (cockpit.conf.template), and older brokers reject them as too broad.
+  const types = await fetchEntityTypes();
+  const perType = await Promise.all(
+    types.slice(0, 20).map((t) => fetchEntities(t, limit).catch(() => [])),
+  );
+  return perType.flat().slice(0, limit);
+}
+
+// Start of a temporal window, rounded down to the full minute like the public
+// pages (smartcity-lib.js histSince): the cockpit nginx caches temporal
+// answers by request URI, so all views of a minute share one cache entry.
+const TEMPORAL_STEP_MS = 60_000;
+export function temporalSince(hours: number, now = Date.now()): string {
+  const start = now - hours * 3600_000;
+  return new Date(Math.floor(start / TEMPORAL_STEP_MS) * TEMPORAL_STEP_MS).toISOString();
 }
 
 export async function fetchTemporal(
@@ -82,7 +84,7 @@ export async function fetchTemporal(
   attr: string,
   hours = 24,
 ): Promise<TemporalPoint[]> {
-  const timeAt = new Date(Date.now() - hours * 3600_000).toISOString();
+  const timeAt = temporalSince(hours);
   const q = new URLSearchParams({
     attrs: attr,
     timerel: "after",

@@ -12,13 +12,14 @@
 <meta property="og:title" content="Smart City Althütte">
 <meta property="og:description" content="Offene Live-Daten für Althütte (4.239 Einwohner): Wetter, Luft, Mobilität, Energie.">
 <meta property="og:type" content="website">
+<link rel="canonical" href="/althuette">
 <meta name="theme-color" content="#0074e8">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon">
 <script>window.STADT = {"ags": "08119004", "slug": "althuette", "name": "Althütte", "row": ["08119004", "Althütte", 48.92894, 9.56442, "08119", "G", 4239, null, "althuette"], "website": "http://www.althuette.de/"};</script>
 <script>
 // Bundle-Loader: gemeinsames Template übernimmt ab hier (Skripte sequenziell!)
-fetch("/stadt.html").then(r => r.text()).then(async html => {
+fetch("/stadt.html").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }).then(async html => {
   const doc = new DOMParser().parseFromString(html, "text/html");
   document.body.innerHTML = doc.body.innerHTML;
   for (const l of doc.querySelectorAll("link[rel=stylesheet], style")) document.head.appendChild(l.cloneNode(true));
@@ -31,6 +32,11 @@ fetch("/stadt.html").then(r => r.text()).then(async html => {
       if (!s.src) res();
     });
   }
+}).catch(() => {
+  // Template not loadable (offline, deploy in progress): say so instead of a blank page.
+  document.body.innerHTML = '<p role="alert" style="max-width:640px;margin:12vh auto;padding:0 16px;font:16px/1.5 system-ui,sans-serif">' +
+    'Das Dashboard konnte gerade nicht geladen werden. Bitte die Seite in einigen Augenblicken neu laden. ' +
+    '<a href="/">Zur Kommunen-Suche</a></p>';
 });
 </script>
 </head>

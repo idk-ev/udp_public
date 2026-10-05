@@ -53,10 +53,16 @@ const TEMPORAL = `${BASE}/gateway/temporal/temporal/entities/`;
 const byId = id => `${GW}/${encodeURIComponent(id)}`;
 const byAgs = (type, ags, attrs) =>
   `${GW}?type=${type}&q=ags%3D%3D%22${ags}%22&limit=1000` + (attrs ? `&attrs=${attrs}` : '');
+// Start of a temporal window, rounded down to the full minute exactly like
+// SC.histSince in gui/public/smartcity-lib.js (the pages' temporal URLs repeat
+// within a minute and share the cockpit cache entry).
+const TEMPORAL_STEP_MS = 60e3;
+const histSince = hours =>
+  new Date(Math.floor((Date.now() - hours * 3600e3) / TEMPORAL_STEP_MS) * TEMPORAL_STEP_MS).toISOString();
 
 export default function () {
   const { ags, krs, lat, lon } = gemeinden[Math.floor(Math.random() * gemeinden.length)];
-  const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+  const since = histSince(24);
   const urls = [
     byId(`urn:ngsi-ld:WeatherObserved:bw-${ags}`),
     byId(`urn:ngsi-ld:Alert:bw-kreis-${krs}-dwd`),

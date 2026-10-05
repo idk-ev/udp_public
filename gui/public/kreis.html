@@ -63,12 +63,27 @@
 "use strict";
 const { $, css, esc, val, asArray, jget, jlist, entity, tile, errorTile, failed, sharingSplit, fmtN } = SC;
 
-let KREIS = window.KREIS || null;
+let KREIS = window.KREIS || null, CONN = [];
+
+// Registry keys ("provides", connectors-status.json) behind each tile: the
+// footer credits exactly the sources whose data the page shows. The pulse is
+// a derived index; its inputs are credited with it (puls-bw.ts).
+const TILE_SOURCES = {
+  puls: ["warnungen", "baustellen", "luft-uba", "feinstaub", "departures", "br", "sharing", "laden"],
+  warnungen: ["warnungen"], baustellen: ["baustellen"], pv: ["pv"], laden: ["laden"],
+  parken: ["parken"], sharing: ["sharing"], radverkehr: ["radverkehr"],
+};
+// Names, population and positions of the municipalities (bw-gemeinden.json).
+const BASE_SOURCES = ["stammdaten-bw"];
+const sourcesFor = shown => {
+  const keys = new Set(shown.flatMap(t => TILE_SOURCES[t] || []));
+  return CONN.filter(c => BASE_SOURCES.includes(c.id) || (c.provides || []).some(p => keys.has(p)));
+};
 
 // Regex-Query: alle Entitäten eines Typs, deren ags mit dem Kreisschlüssel beginnt
 const byKreis = (type, krs) =>
   jlist(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&q=ags~%3D%5E${krs}&limit=200&options=keyValues`);
-const sum = (list, attr) => list.reduce((s, e) => s + (e[attr] || 0), 0);
+const sum = (list, attr) => list.reduce((s, e) => s + (Number(e[attr]) || 0), 0);
 
 async function render(krow, members) {
   const [krs, name, lat, lon, typ, gemCount, ew] = krow;
@@ -182,14 +197,23 @@ async function render(krow, members) {
       .bindPopup(`<b>${esc(g[1])}</b><br>${fmtN(g[6])} Einwohner<br><a href="/${encodeURIComponent(g[8])}">Dashboard öffnen →</a>`)
       .addTo(window._layers));
 
-  $("#footer").innerHTML = "Kreissicht der Urbanen Datenplattform · Datenquellen siehe Gemeinde-Dashboards · " +
-    "Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0) · <a href='/'>Kommunen-Suche</a>";
+  // Source credits (CC BY / dl-de/by-2-0 require them where the data is
+  // shown): the connectors behind the tiles on the page, warnings always.
+  const shown = ["warnungen", pulsAvg != null && "puls", val(rwSum, "activeCount") != null && "baustellen",
+    pv.length && "pv", laden.length && "laden", parken.length && "parken", sharing.length && "sharing",
+    radSums.length && "radverkehr"].filter(Boolean);
+  $("#footer").innerHTML = "Kreissicht der Urbanen Datenplattform · Datenquellen: " +
+    esc(SC.attributions(sourcesFor(shown)).join(" · ")) + " · " + SC.MAP_CREDIT + " · <a href='/'>Kommunen-Suche</a>";
   $("#stand").textContent = "Stand: " + new Date().toLocaleTimeString("de-DE") + " · Auto-Refresh 120 s";
 }
 
 (async () => {
   try {
-    const gdata = await jget("/bw-gemeinden.json");
+    const [gdata, conn] = await Promise.all([
+      jget("/bw-gemeinden.json"),
+      jget("/connectors-status.json").catch(() => ({ connectors: [] })),
+    ]);
+    CONN = conn.connectors || [];
     const slug = (KREIS && KREIS.slug) || location.pathname.replace(/^\/|\/$/g, "");
     const krow = (gdata.kreise || []).find(k => k[7] === slug || (KREIS && k[0] === KREIS.krs));
     if (!krow) throw new Error("Kreis nicht gefunden");
@@ -201,7 +225,8 @@ async function render(krow, members) {
     const renderOnce = () => rendering || (rendering = render(krow, members).finally(() => { rendering = null; }));
     document.addEventListener("sc-theme-changed", () => { window._layers && renderOnce().catch(() => {}); });
     await renderOnce();
-    setInterval(() => renderOnce().catch(() => {}), 120e3);
+    // Hidden tabs skip the refresh and catch up once visible again.
+    SC.autoRefresh(renderOnce, 120e3);
   } catch (e) {
     const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
   }

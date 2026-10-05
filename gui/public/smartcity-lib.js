@@ -14,7 +14,12 @@
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const SLOT = () => [css("--series-1"), css("--series-2"), css("--series-3"), css("--series-4"), css("--series-5")];
   let _gcnt = 0;
-  const fmtN = n => n == null ? "–" : n.toLocaleString("de-DE");
+  // Numbers only: a non-numeric value from upstream becomes "–" instead of
+  // passing through as a string (the result is interpolated into markup).
+  const fmtN = n => {
+    const x = n == null || n === "" ? NaN : Number(n);
+    return Number.isFinite(x) ? x.toLocaleString("de-DE") : "–";
+  };
   const fmtT = t => new Date(t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
   const fmtDay = d => d ? new Date(String(d).slice(0, 10) + "T12:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) : "–";
   const val = (e, a) => (e && e[a] && e[a].value != null) ? e[a].value : null;
@@ -55,6 +60,13 @@
     if (!s) return "";
     if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return /^https?:/i.test(s) ? s : "";
     return /^\s*[/.?#]/.test(s) || !s.includes(":") ? s : "";
+  };
+  // localStorage may be unavailable – merely touching it throws in a
+  // third-party iframe with blocked storage and in some privacy modes. Every
+  // access goes through here, so a page works without it (nothing remembered).
+  const store = {
+    get: k => { try { return w.localStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { w.localStorage.setItem(k, v); } catch (e) { /* no storage */ } },
   };
   const asArray = v => Array.isArray(v) ? v : (v == null ? [] : [v]); // Orion-LD entpackt 1-elementige Arrays
   // Tupel-Compounds ([[a,b,c], ...]): Orion-LD entpackt eine einzelne Zeile zu
@@ -157,10 +169,16 @@
   const byAgs = (type, ags, attrs) =>
     jlist(`${GW}/ngsi-ld/v1/entities?type=${type}&q=ags%3D%3D%22${ags}%22&limit=1000` +
           (attrs ? `&attrs=${attrs}` : ""));
-  const histUrl = (id, attrs, hours) => {
-    const t = new Date(Date.now() - hours * 3600e3).toISOString();
-    return `${GW}/temporal/temporal/entities/${encodeURIComponent(id)}?attrs=${attrs}&timerel=after&timeAt=${t}&options=temporalValues`;
-  };
+  // Start of a temporal window, rounded down to the full minute. The cockpit
+  // nginx caches temporal answers by request URI: with millisecond precision
+  // no two views ever asked the same URL and every chart went to Mintaka.
+  // Rounded, all views of a minute share one cache entry; the window starts
+  // at most a minute early (charts cut at their own start anyway).
+  const TEMPORAL_STEP_MS = 60e3;
+  const histSince = (hours, now = Date.now()) =>
+    new Date(Math.floor((now - hours * 3600e3) / TEMPORAL_STEP_MS) * TEMPORAL_STEP_MS).toISOString();
+  const histUrl = (id, attrs, hours) =>
+    `${GW}/temporal/temporal/entities/${encodeURIComponent(id)}?attrs=${attrs}&timerel=after&timeAt=${histSince(hours)}&options=temporalValues`;
   const hist = (id, attrs, hours = 24) => soft(histUrl(id, attrs, hours), () => ({}));
 
   /* ---------- Failed queries on the page ---------- */
@@ -194,7 +212,7 @@
   function tileMemory(scope) {
     const key = "sc-tiles:" + scope;
     let seen = new Set();
-    try { seen = new Set(JSON.parse(localStorage.getItem(key) || "[]")); } catch (e) { /* no storage */ }
+    try { seen = new Set(JSON.parse(store.get(key) || "[]")); } catch (e) { /* unreadable entry */ }
     return {
       has: k => seen.has(k),
       // shown: keys rendered with data now; a failed key keeps its old state.
@@ -202,7 +220,7 @@
         const next = new Set(shown);
         for (const k of failedKeys) if (seen.has(k)) next.add(k);
         seen = next;
-        try { localStorage.setItem(key, JSON.stringify([...next])); } catch (e) { /* no storage */ }
+        store.set(key, JSON.stringify([...next]));
       },
     };
   }
@@ -224,11 +242,11 @@
   /* ---------- KPI-Kachel ---------- */
   function tile(label, value, unit, opts = {}) {
     const status = opts.status ? `<span class="dot" style="background:${opts.status}"></span>` : "";
-    const topic = opts.topic ? ` data-topic="${opts.topic}"` : "";
+    const topic = opts.topic ? ` data-topic="${esc(opts.topic)}"` : "";
     const explain = opts.explain ? ` data-explain="${esc(opts.explain)}"` : "";
     // Klickbare Kacheln sind per Tastatur bedienbar (BITV): role+tabindex, die
     // Enter/Space-Behandlung sitzt in wireTileDetails.
-    const detail = opts.detail ? ` data-detail="${opts.detail}" data-title="${esc(label)}" role="button" tabindex="0"` : "";
+    const detail = opts.detail ? ` data-detail="${esc(opts.detail)}" data-title="${esc(label)}" role="button" tabindex="0"` : "";
     // Zahlen einheitlich deutsch darstellen (Tausenderpunkt, Dezimalkomma):
     // aus 22.4 wird 22,4, aus 1234 wird 1.234. Bereits formatierte Strings
     // (Bereiche wie „25–30“, Uhrzeiten) bleiben unangetastet.
@@ -399,6 +417,8 @@
     const host = typeof el === "string" ? $(el) : el;
     if (!rows || !rows.length) { host.innerHTML = `<div class="desc">Noch keine Daten</div>`; return; }
     const W = 640, H = 190, m = { l: 8, r: 8, t: 12, b: 22 };
+    // Values are interpolated into the SVG: numbers only (upstream data).
+    rows = rows.map(r => [r[0], Number(r[1]) || 0]);
     const hi = Math.max(...rows.map(r => r[1])) || 1;
     const bw = (W - m.l - m.r) / rows.length;
     const gid = "bg" + (_gcnt++);
@@ -432,24 +452,43 @@
   }
 
   /* ---------- Basiskarte ---------- */
-  // basemap.de (BKG, dl-de/by-2-0) statt OSM-Kacheln: die OSMF-Tile-Policy
-  // untersagt produktive Nutzung. WMS statt WMTS, weil basemap.de die
-  // ADV-Kachelmatrix mit eigenem Ursprung nutzt (nicht XYZ-kompatibel).
-  // Fällt bei wiederholten Kachelfehlern auf OSM zurück, damit die Karte
-  // nie leer bleibt.
+  // basemap.de (BKG, dl-de/by-2-0) is the only background map. WMS rather
+  // than WMTS because basemap.de uses the ADV tile matrix with its own origin
+  // (not XYZ compatible). There is deliberately no fallback to OpenStreetMap
+  // tiles: the OSMF tile usage policy rules out production sites (no SLA), and
+  // it would hand the visitors' addresses to a further third party that the
+  // privacy policy does not name. On repeated tile errors the markers stay and
+  // a short note says the background map is missing.
   const BM_ATTR = '© <a href="https://basemap.de/">basemap.de</a> / BKG (dl-de/by-2-0)';
-  const OSM_ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)';
+  // The same credit as markup for page footers.
+  const MAP_CREDIT = "Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0)";
+  const TILE_ERR_TXT = "Hintergrundkarte derzeit nicht verfügbar";
+  const TILE_ERR_LIMIT = 6;                      // single dropouts are ignored
   function baseLayer(map) {
     const bm = L.tileLayer.wms("https://sgx.geodatenzentrum.de/wms_basemapde", {
       layers: "de_basemapde_web_raster_farbe", format: "image/png",
       transparent: false, version: "1.3.0", maxZoom: 19, attribution: BM_ATTR,
     });
-    let fehler = 0;
+    let errors = 0, note = null;
     bm.on("tileerror", () => {
-      if (++fehler !== 6) return;               // vereinzelte Aussetzer ignorieren
-      map.removeLayer(bm);
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        { maxZoom: 19, attribution: OSM_ATTR }).addTo(map);
+      if (++errors < TILE_ERR_LIMIT || note) return;
+      note = L.control({ position: "bottomleft" });
+      note.onAdd = () => {
+        const el = document.createElement("div");
+        el.className = "map-note";
+        el.setAttribute("role", "status");
+        el.textContent = TILE_ERR_TXT;
+        // CSSOM, not a style attribute: stays within a strict CSP.
+        el.style.cssText = "background:var(--surface-1);color:var(--text-secondary);font-size:.75rem;" +
+          "padding:3px 8px;border-radius:6px;border:1px solid var(--border);opacity:.92";
+        return el;
+      };
+      note.addTo(map);
+    });
+    // Tiles arrive again: the note goes, the count starts over.
+    bm.on("tileload", () => {
+      if (!note) return;
+      note.remove(); note = null; errors = 0;
     });
     return bm.addTo(map);
   }
@@ -468,10 +507,13 @@
   // Kartenebene delegiert abgefangen (openDetailByKey).
   // it.extra bleibt bewusst roh: die Aufrufer bauen dort mehrzeiliges Markup
   // (<br>, farbige Spans) und maskieren die Broker-Anteile an der Baustelle.
+  // That includes every upstream text (OSM opening hours, kinds, measured
+  // values): tests/static/frontend-launch.test.js renders popups with markup
+  // in all of them.
   // gr.name wird mitmaskiert: seit der E-Scooter-Ebene stammen Gruppennamen
   // (Anbieter) aus dem Broker und nicht mehr nur aus Literalen im Code.
   const popupHtml = (gr, it) => `<b>${esc(it.name)}</b><br>${esc(gr.name)}${it.extra ? "<br>" + it.extra : ""}<br>${navLinks(it)}` +
-    (gr.detail ? `<br><a class="pop-detail" href="#d=${gr.detail}" data-detail="${gr.detail}">📈 Verlauf/Details ansehen →</a>` : "");
+    (gr.detail ? `<br><a class="pop-detail" href="#d=${esc(gr.detail)}" data-detail="${esc(gr.detail)}">📈 Verlauf/Details ansehen →</a>` : "");
   const openDetailByKey = key => { if (_detailReg[key]) openDetail(_detailReg[key], key); };
   const groupColor = (gr, i) => gr.color || SLOT()[i % SLOT().length];
   // Symbol-Marker: das Symbol DIREKT auf der Karte (kein farbiger Kreis darunter).
@@ -503,8 +545,8 @@
   }
   function initTheme(kommuneDefault) {
     const urlTheme = new URLSearchParams(location.search).get("theme");
-    const stored = localStorage.getItem(themeKey());
-    const mode = localStorage.getItem("sc-mode") || "";
+    const stored = store.get(themeKey());
+    const mode = store.get("sc-mode") || "";
     const theme = urlTheme != null ? urlTheme : (stored != null ? stored : (kommuneDefault || ""));
     applyTheme(theme, mode);
     return { theme, mode };
@@ -532,12 +574,12 @@
       const sw = ev.target.closest(".sw"), md = ev.target.closest(".mode");
       if (sw) {
         el.querySelectorAll(".sw").forEach(x => x.classList.toggle("active", x === sw));
-        localStorage.setItem(themeKey(), sw.dataset.t);
-        applyTheme(sw.dataset.t, localStorage.getItem("sc-mode") || "");
+        store.set(themeKey(), sw.dataset.t);
+        applyTheme(sw.dataset.t, store.get("sc-mode") || "");
       }
       if (md) {
         el.querySelectorAll(".mode").forEach(x => x.classList.toggle("active", x === md));
-        localStorage.setItem("sc-mode", md.dataset.m);
+        store.set("sc-mode", md.dataset.m);
         applyTheme(document.documentElement.dataset.theme || "", md.dataset.m);
       }
     });
@@ -701,7 +743,7 @@
     const av = ang(o.v), tip = _pol(cx, cy, r - 2, av), bl = _pol(cx, cy, 7, av - 90), br = _pol(cx, cy, 7, av + 90);
     const cat = (o.stops || []).filter(s => o.v >= s[0] && o.v < s[1])[0];
     const state = o.state || (cat ? cat[3] : "");
-    return `<div class="viz-gauge"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label || ""} ${o.v}${o.unit || ""} ${state}">
+    return `<div class="viz-gauge"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label || "")} ${esc(o.v)}${esc(o.unit || "")} ${esc(state)}">
       ${seg}${mark}
       <path d="M${bl[0].toFixed(1)},${bl[1].toFixed(1)}L${tip[0].toFixed(1)},${tip[1].toFixed(1)}L${br[0].toFixed(1)},${br[1].toFixed(1)}Z" fill="var(--text-primary)"/>
       <circle cx="${cx}" cy="${cy}" r="6.5" fill="var(--text-primary)"/>
@@ -709,7 +751,7 @@
       ${o.unit ? `<text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text-secondary)">${o.unit}</text>` : ""}
       <text x="${cx - r}" y="${cy + 18}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${o.flip ? o.max : o.min}</text>
       <text x="${cx + r}" y="${cy + 18}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${o.flip ? o.min : o.max}</text>
-    </svg><div class="viz-state"${cat ? ` style="color:${cat[2]}"` : ""}>${state}</div></div>`;
+    </svg><div class="viz-state"${cat ? ` style="color:${cat[2]}"` : ""}>${esc(state)}</div></div>`;
   }
 
   // Windkompass. o = {deg (Herkunft, met.), speed, unit}
@@ -742,8 +784,8 @@
     });
     const mx = sc(o.v), cat = (o.stops || []).filter(s => o.v >= s[0] && o.v < s[1])[0] || (o.stops || [])[o.stops.length - 1];
     const thr = o.threshold != null ? `<line x1="${sc(o.threshold).toFixed(1)}" y1="${y - 5}" x2="${sc(o.threshold).toFixed(1)}" y2="${y + h + 4}" stroke="var(--text-primary)" stroke-width="1.5" stroke-dasharray="2 2"/>` : "";
-    return `<div class="viz-band"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label} ${o.v} ${o.unit} ${cat ? cat[3] : ""}">
-      <text x="${x0}" y="20" font-size="11" font-weight="600" fill="var(--text-secondary)">${o.label}</text>
+    return `<div class="viz-band"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label)} ${esc(o.v)} ${esc(o.unit)} ${cat ? esc(cat[3]) : ""}">
+      <text x="${x0}" y="20" font-size="11" font-weight="600" fill="var(--text-secondary)">${esc(o.label)}</text>
       <text x="${x1}" y="20" text-anchor="end" font-size="17" font-weight="800" fill="var(--text-primary)">${fmtN(o.v)} ${o.unit}</text>
       ${seg}${thr}${ticks}
       <text x="${x1}" y="${y + h + 13}" text-anchor="end" font-size="8.5" fill="var(--text-muted)">${o.max}</text>
@@ -1013,6 +1055,31 @@
     await Promise.allSettled(jobs);
   }
 
+  // Periodic page refresh that rests in background tabs: while the tab is
+  // hidden its turns are skipped (no queries nobody sees), and once it is
+  // visible again it refreshes at once if it skipped one. `due()` may hold a
+  // turn back (e.g. while a detail view is open); that turn is not made up.
+  function autoRefresh(fn, ms, due) {
+    let missed = false;
+    const hidden = () => document.visibilityState === "hidden";
+    const run = () => { missed = false; Promise.resolve().then(fn).catch(() => {}); };
+    const timer = setInterval(() => {
+      if (hidden()) { missed = true; return; }
+      if (!due || due()) run();
+    }, ms);
+    document.addEventListener("visibilitychange", () => {
+      if (!hidden() && missed && (!due || due())) run();
+    });
+    return timer;
+  }
+
+  // Data-source credits from the connector registry (connectors-status.json):
+  // the attribution texts of the given connectors, split at " · " so combined
+  // entries (»A · B«) do not repeat their single parts.
+  const attributions = conns => [...new Set((conns || [])
+    .filter(c => c && c.active !== false && c.attribution)
+    .flatMap(c => String(c.attribution).split(" · ").map(x => x.trim()).filter(Boolean)))];
+
   // PWA: Service-Worker registrieren (installierbar, Offline-Kiosk). Läuft auf
   // jeder Seite, die die Lib lädt; Fehler still ignorieren (z. B. ohne HTTPS).
   if ("serviceWorker" in navigator && location.protocol !== "file:")
@@ -1021,7 +1088,8 @@
   // Nur die von den Seiten genutzte Oberfläche exportieren; Interna (SLOT, Themes,
   // Modal-Innereien, navLinks) bleiben privat.
   w.SC = { GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
-           jget, fetchRetry, entities, entity, byAgs, jlist, hist, series, asRows,
+           jget, fetchRetry, entities, entity, byAgs, jlist, hist, histSince, series, asRows, store,
+           autoRefresh, attributions, MAP_CREDIT,
            failed, loadMark, loadSince, bannerDue, loadBanner, errorTile, tileMemory, errorTiles, LOAD_ERR_TXT,
            tile, grade, sharingSplit, chart, barSvg, stackBar, popupHtml, groupColor, pos, baseLayer,
            themeSelector, modalOpen, wireTileDetails, openDetailByKey, markerIcon,

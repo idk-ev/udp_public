@@ -33,8 +33,11 @@
                 border: 1px solid color-mix(in srgb, var(--series-1) 40%, var(--surface-1)); font-weight: 600; font-size: .8rem; }
   .delay-0 { color: var(--text-muted); } .delay-w { color: var(--status-warn); font-weight: 600; }
   .delay-s { color: var(--status-serious); font-weight: 600; }
-  body.embed header, body.embed footer, body.embed .legal-links, body.embed .searchlink { display: none; }
+  body.embed header, body.embed .legal-links, body.embed .searchlink, body.embed .footer-nav { display: none; }
   body.embed { padding: 8px; }
+  /* Embedded, the source credits stay (CC BY / dl-de/by require them where
+     the data is shown) – as one compact line. */
+  body.embed footer { margin-top: 8px; font-size: .68rem; line-height: 1.5; }
   /* Service-Link-Kacheln: dezente, klar als „führt zu externem Angebot“ lesbare Optik */
   a.tile.tile-link { background: color-mix(in srgb, var(--accent) 14%, var(--surface-1));
                      border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--surface-1)); color: var(--text-primary); }
@@ -298,7 +301,7 @@ const groupIcon = g => g.scooter ? scooterGlyph(g.color) : LADE_GRP[g.name] ? bo
 // E-Scooter je Anbieter (Roller-Silhouette in Markenfarbe).
 const symFor = (g, it) => g.scooter ? scooterGlyph(it.color || g.color)
   : LADE_GRP[g.name] ? boltGlyph(it.color)
-  : AMEN_ICON[it.extra] ? glyphA(it.color || g.color, AMEN_ICON[it.extra])
+  : AMEN_ICON[it.kind] ? glyphA(it.color || g.color, AMEN_ICON[it.kind])
     : glyphA(it.color || g.color, ICON[g.name] || FALLBACK_ICON);
 // Symbole auf eine Gruppenliste anwenden (für Haupt- und Detailkarten).
 const applySymbols = groups => (groups || []).forEach(g => {
@@ -516,7 +519,7 @@ async function render() {
   // doppelt und würde »Leihräder« falsch benennen. Conversely, Sharing leaves out
   // bikes docked in a station-based system (sharing-bw).
   const radFlotten = alleFlotten.filter(e => ["bicycle", "cargo_bicycle"].includes(bauform(e)));
-  const summe = (arr, a) => arr.reduce((n, e) => n + (val(e, a) || 0), 0);
+  const summe = (arr, a) => arr.reduce((n, e) => n + (Number(val(e, a)) || 0), 0);
   const csFrei = summe(csFlotten, "availableVehicles"), csStationen = summe(csFlotten, "stationCount");
   const csTop = csFlotten.slice().sort((a, b) => (val(b, "availableVehicles") || 0) - (val(a, "availableVehicles") || 0))[0];
   // Ladepunkt-Anzeige: online = grün (Station liefert Livedaten), offline = grau
@@ -644,8 +647,8 @@ async function render() {
     hint: "DWD + NINA, " + esc(districtName), explain: "Amtliche Warnungen gelten auf Kreisebene. Klick: aktuelle Warnungen." });
   if (rw.length || rwUmland.length) D.baustellen = { kind: "stations", title: "Baustellen", explain: "Baustellen im Gemeindegebiet und im übrigen Kreis (SVZ-BW, Punkt-in-Polygon).", center: [lat, lon],
     groups: [
-      { name: "Baustellen", color: MAP_C.baustellen, detail: D.baustellen ? "baustellen" : null, items: rw.map(e => ({ ...pos(e), name: val(e, "name"), extra: val(e, "endDate") ? "bis " + String(val(e, "endDate")).slice(0, 10) : "" })).filter(i => i.lat) },
-      { name: "Baustellen Umland (Kreis)", color: MAP_C.umland, items: rwUmland.map(e => ({ ...pos(e), name: val(e, "name"), extra: (val(e, "gemeindeName") || "") + (val(e, "endDate") ? " · bis " + String(val(e, "endDate")).slice(0, 10) : "") })).filter(i => i.lat) },
+      { name: "Baustellen", color: MAP_C.baustellen, detail: D.baustellen ? "baustellen" : null, items: rw.map(e => ({ ...pos(e), name: val(e, "name"), extra: val(e, "endDate") ? "bis " + esc(String(val(e, "endDate")).slice(0, 10)) : "" })).filter(i => i.lat) },
+      { name: "Baustellen Umland (Kreis)", color: MAP_C.umland, items: rwUmland.map(e => ({ ...pos(e), name: val(e, "name"), extra: esc((val(e, "gemeindeName") || "") + (val(e, "endDate") ? " · bis " + String(val(e, "endDate")).slice(0, 10) : "")) })).filter(i => i.lat) },
     ] };
   tiles += failed(kreisRw) ? errorTile("Baustellen", { topic: "mobilitaet" }) : tile("Baustellen", rw.length, "", { topic: "mobilitaet", detail: (rw.length || rwUmland.length) ? "baustellen" : null,
     hint: "im Gemeindegebiet · " + rwUmland.length + " im Umland (Kreis)",
@@ -663,7 +666,7 @@ async function render() {
     tiles += tile("Feinstaub PM2.5", pmV, "µg/m³",
       { topic: "umwelt", detail: "feinstaub", status: (val(sc, "pm25") ?? 0) <= 10 ? css("--status-good") : (val(sc, "pm25") ?? 0) <= 25 ? css("--status-warn") : css("--status-serious"),
         band: pmV != null ? { v: pmV, max: 75, stops: PM_STOPS } : null,
-        hint: (val(sc, "sensorCount") || "?") + (val(sc, "sensorCount") === 1 ? " Bürgersensor" : " Bürgersensoren"), explain: "Median der sensor.community-Sensoren in dieser Gemeinde (15 min). Klick: Schwellenband und Verlauf." });
+        hint: esc(val(sc, "sensorCount") || "?") + (val(sc, "sensorCount") === 1 ? " Bürgersensor" : " Bürgersensoren"), explain: "Median der sensor.community-Sensoren in dieser Gemeinde (15 min). Klick: Schwellenband und Verlauf." });
   }
   if (uba) {
     const AQI = { 1: "sehr gut", 2: "gut", 3: "mäßig", 4: "schlecht", 5: "sehr schlecht" };
@@ -856,7 +859,7 @@ async function render() {
     D.versorgung = { kind: "stations", title: "Familie & Versorgung", center: [lat, lon],
       explain: "Apotheken, Arztpraxen, Kitas, Spielplätze, Defibrillatoren und Trinkwasser laut OpenStreetMap (ODbL): "
         + summ.map(([a, n]) => n + "× " + a).join(", ") + ".",
-      groups: [{ name: "Versorgung", items: versorgItems.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1], color: FARBE[z[1]] || "#64748b" })) }],
+      groups: [{ name: "Versorgung", items: versorgItems.map(z => ({ lat: z[2], lon: z[3], name: z[0], kind: z[1], extra: esc(z[1]), color: FARBE[z[1]] || "#64748b" })) }],
       list: versorgItems.slice(0, 60).map(z => `<b>${esc(z[0])}</b> · <span style="color:var(--text-muted)">${esc(z[1])}</span>`) };
     // Total = sum over all kinds; the list (amenities) is capped at 50.
     const amenityTotal = summ.reduce((n, [, c]) => n + (Number(c) || 0), 0) || val(versorgung, "totalCount") || versorgItems.length;
@@ -875,7 +878,7 @@ async function render() {
   const fuellVoll = (wasteC || []).filter(e => fillPct(e) != null && e.location);
   if (fuellVoll.length) {
     const fMarks = fuellVoll.map(e => { const p = fillPct(e); return { ...pos(e), name: val(e, "name") || fillArt(e),
-      extra: fillArt(e) + " · Füllstand " + p + " %", color: fillCol(p), fill: p }; }).filter(i => i.lat);
+      extra: esc(fillArt(e)) + " · Füllstand " + p + " %", color: fillCol(p), fill: p }; }).filter(i => i.lat);
     const nahVoll = fuellVoll.filter(e => fillPct(e) >= 85).length;
     const avgFill = Math.round(fuellVoll.reduce((s, e) => s + fillPct(e), 0) / fuellVoll.length);
     const FILL_STOPS = [[0, 60, "var(--status-good)"], [60, 85, "var(--status-warn)"], [85, 100, "var(--status-serious)"]];
@@ -902,7 +905,7 @@ async function render() {
     D.ausflug = { kind: "stations", title: "Ausflugsziele (" + ziele.length + ")", center: [lat, lon],
       explain: "Benannte Ausflugsziele laut OpenStreetMap (ODbL): " + artTop.map(([a, n]) => n + "× " + a).join(", ") + "."
         + (zielGesamt > ziele.length ? " Angezeigt: die " + ziele.length + " meistgenannten von " + fmtN(zielGesamt) + "." : ""),
-      groups: [{ name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) }],
+      groups: [{ name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: esc(z[1]) })) }],
       // Zusätzlich zur Karte eine benannte Liste (Name · Art) im Detail.
       list: ziele.slice(0, 60).map(z => `<b>${esc(z[0])}</b> · <span style="color:var(--text-muted)">${esc(z[1])}</span>`) };
     tiles += tile("Ausflugsziele", Math.max(zielGesamt, ziele.length), "", { topic: "freizeit", detail: "ausflug",
@@ -1009,7 +1012,7 @@ async function render() {
     else if (l2) D.laden = { kind: "chart", title: "Ladepunkte frei (live)", explain: "Freie Ladepunkte im Zeitverlauf.", zero: true, series: [{ id: l2.id, attr: "availableEvse", name: "frei" }] };
     tiles += tile("Ladepunkte", fmtN(val(ch, "evseCount")), "", { topic: "energie", detail: D.laden ? "laden" : null,
       status: live == null ? null : chStand ? css("--text-muted") : live > 0 ? css("--status-good") : css("--status-warn"),
-      hint: fmtN(val(ch, "locationCount")) + (val(ch, "locationCount") === 1 ? " Standort" : " Standorte") + (live != null ? " · " + live + " frei " + (chStand ? "(" + chStand + ")" : "(live)") : ""),
+      hint: fmtN(val(ch, "locationCount")) + (val(ch, "locationCount") === 1 ? " Standort" : " Standorte") + (live != null ? " · " + fmtN(live) + " frei " + (chStand ? "(" + chStand + ")" : "(live)") : ""),
       explain: "E-Ladepunkte laut BNetzA-Register; Live-Status (frei/belegt/defekt), wo Betreiber melden." });
   }
   if (radSum) {
@@ -1116,7 +1119,7 @@ async function render() {
   if (medDelay != null && rtZahl > 0) {
     tiles += tile("ÖPNV-Verspätung", String(Number(medDelay)).replace(".", ","), "min",
       { topic: "mobilitaet", detail: D.oepnv ? "oepnv" : null, status: grade(medDelay, 2, 5),
-        hint: esc(haltName) + " · " + rtZahl + " mit Echtzeit",
+        hint: esc(haltName) + " · " + fmtN(rtZahl) + " mit Echtzeit",
         explain: "Median der Verspätungen der nächsten Abfahrten am zentralen Halt (EFA-BW, beim Seitenaufruf abgerufen). Nur Abfahrten mit echter Echtzeitmeldung fließen ein — bei den übrigen ist die Verspätung unbekannt, nicht null. Unplausible Meldungen (über 60 min) werden als Datenartefakt ausgeschlossen. Klick: Fahrplan der nächsten Abfahrten." });
   } else if (D.oepnv) {
     // No realtime delay, but departures: the next departure as the value
@@ -1216,7 +1219,7 @@ async function render() {
       return `<tr><td>${label}</td><td style="color:var(--status-good)">✓ vorhanden</td><td style="color:${farbe}">${alt}</td></tr>`;
     };
     $("#dq").style.display = "block";
-    $("#dq").innerHTML = `<div class="card"><h2>Datenqualität — ${name} (Rathaus-Ansicht)</h2>
+    $("#dq").innerHTML = `<div class="card"><h2>Datenqualität — ${esc(name)} (Rathaus-Ansicht)</h2>
       <div class="desc">Frische je Datenart für diese Gemeinde. Grün &lt; 3 h · gelb &lt; 1 Tag · rot älter. Diese Ansicht ist nicht Teil der öffentlichen Bürgerseite (?daten=1).</div>
       <table><thead><tr><th>Datenart</th><th>Status</th><th>Alter</th></tr></thead>
       <tbody>${rows.map(zeile).join("")}</tbody></table></div>`;
@@ -1373,8 +1376,9 @@ async function render() {
   const stationPts = [
     stop ? { ...pos(stop), name: val(stop, "name") || "ÖPNV-Knoten" } : null,
     w2 ? { ...pos(w2), name: "DWD-Wetterstation" } : null,
-    ...ubaCands.map(e => ({ ...pos(e), name: "UBA " + (val(e, "stationName") || "Station"), extra: "Luftqualitätsindex: " + (val(e, "airQualityIndex") ?? "–") })),
-    rathaus ? { ...pos(rathaus), name: val(rathaus, "name") || "Rathaus", extra: val(rathaus, "openingHours") || "" } : null,
+    // extra is markup: upstream text (OSM opening hours – anyone can edit OSM) is escaped.
+    ...ubaCands.map(e => ({ ...pos(e), name: "UBA " + (val(e, "stationName") || "Station"), extra: "Luftqualitätsindex: " + esc(val(e, "airQualityIndex") ?? "–") })),
+    rathaus ? { ...pos(rathaus), name: val(rathaus, "name") || "Rathaus", extra: esc(val(rathaus, "openingHours") || "") } : null,
   ].filter(i => i && i.lat);
   // Ladepunkte als zwei getrennte, ein-/ausblendbare Ebenen (online/offline).
   const chLadeItems = chList.map(e => { const st = evStatus(e); return { ...pos(e), color: st.color, name: val(e, "name"), online: st.online, legend: st.online ? "online" : "offline",
@@ -1396,13 +1400,13 @@ async function render() {
       items: parkPts.map(p => ({ lat: p.lat, lon: p.lon, name: p.name, extra: esc(p.extra) })) },
     { name: "Pegel", color: MAP_C.pegel, detail: D.pegel ? "pegel" : null, items: pegelListe.map(e => ({ ...pos(e), name: "Pegel " + (val(e, "name") || ""),
         extra: esc((val(e, "water") || "") + ": " + (val(e, "level") ?? "?") + " cm · " + (val(e, "measuredAt") || "")) })).filter(i => i.lat) },
-    { name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) },
+    { name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: esc(z[1]) })) },
     { name: "Familie & Versorgung", color: "#e11d48", detail: D.versorgung ? "versorgung" : null,
-      items: versorgItems.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: z[1] })) },
+      items: versorgItems.map(z => ({ lat: z[2], lon: z[3], name: z[0], kind: z[1], extra: esc(z[1]) })) },
     { name: "Container-Füllstände", color: css("--status-warn"), detail: D.fuellstand ? "fuellstand" : null,
       items: (D.fuellstand && D.fuellstand.groups[0].items) || [] },
     { name: "Feinstaubsensoren", color: MAP_C.sensoren, detail: D.feinstaub ? "feinstaub" : null, items: luft.filter(e => e.id.includes("bw-sensor-")).map(e => ({ ...pos(e), name: val(e, "name") || "Sensor",
-        extra: "PM2.5: " + (val(e, "pm25") ?? "–") + " · PM10: " + (val(e, "pm10") ?? "–") + " µg/m³ (sensor.community)" })).filter(i => i.lat) },
+        extra: esc("PM2.5: " + (val(e, "pm25") ?? "–") + " · PM10: " + (val(e, "pm10") ?? "–")) + " µg/m³ (sensor.community)" })).filter(i => i.lat) },
     { name: "Baustellen", color: MAP_C.baustellen, items: rw.map(e => ({ ...pos(e), name: val(e, "name"),
         extra: esc(val(e, "description") || "") + (val(e, "endDate") ? "<br>bis " + esc(String(val(e, "endDate")).slice(0, 10)) : "") })).filter(i => i.lat) },
     { name: "Baustellen Umland (Kreis)", color: MAP_C.umland, items: rwUmland.map(e => ({ ...pos(e), name: val(e, "name"),
@@ -1424,8 +1428,8 @@ async function render() {
   const eingeklappt = groups.filter(g => window._groupOff[g.name]);
   // Legende = Symbol-Filter: das jeweilige Symbol vorweg, klickbar zum Ein-/Ausblenden.
   $("#map-legend").innerHTML = groups.map((g, i) =>
-    `<span data-group="${g.name}" role="button" tabindex="0" aria-pressed="${!window._groupOff[g.name]}" class="leg-item ${window._groupOff[g.name] ? "off" : ""}" title="Ein-/Ausblenden">` +
-    `<span class="leg-sym">${groupIcon(g)}</span>${g.name} (${g.items.length})</span>`).join("");
+    `<span data-group="${esc(g.name)}" role="button" tabindex="0" aria-pressed="${!window._groupOff[g.name]}" class="leg-item ${window._groupOff[g.name] ? "off" : ""}" title="Ein-/Ausblenden">` +
+    `<span class="leg-sym">${groupIcon(g)}</span>${esc(g.name)} (${g.items.length})</span>`).join("");
   // Deckungsgleiche Marker entzerren: An einem Sammelpunkt (≈11 m Raster) werden
   // mehrere Pins im Kreis aufgefächert — nach dem goldenen Winkel, damit auch
   // dichte Stapel (Ladesäulen/Sensoren in der Innenstadt) gleichmäßig streuen
@@ -1454,14 +1458,11 @@ async function render() {
   $("#mapdesc").textContent = "Standorte aller eingebundenen Datenquellen — Legende klickbar zum Ein-/Ausblenden."
     + (eingeklappt.length ? " Dichte Ebenen (" + eingeklappt.map(g => g.name).join(", ") + ") sind zunächst ausgeblendet." : "");
 
-  // Footer: Attribution aus der Registry
-  // Attributionen an » · « zerlegen, damit zusammengesetzte Angaben
-  // (»A · B«) keine Doppelnennungen mit ihren Einzelteilen erzeugen
-  const attrib = [...new Set(CONN.filter(c => c.active !== false && c.attribution)
-    .flatMap(c => String(c.attribution).split(" · ").map(x => x.trim())))];
-  $("#footer").innerHTML = "Datenquellen: " + esc(attrib.join(" · ")) +
-    " · Karte © <a href='https://basemap.de/' target='_blank' rel='noopener'>basemap.de</a>/BKG (dl-de/by-2-0) · <a href='/'>Kommunen-Suche</a>" +
-    (dashUrl && dashUrl.startsWith("http") ? ` · <a href="${esc(safeUrl(dashUrl))}" target="_blank" rel="noopener">Eigenes Angebot der Kommune</a>` : "");
+  // Footer: attribution from the registry. Embedded, the source credits stay
+  // visible; the navigation links (.footer-nav) do not.
+  $("#footer").innerHTML = "Datenquellen: " + esc(SC.attributions(CONN).join(" · ")) + " · " + SC.MAP_CREDIT +
+    "<span class='footer-nav'> · <a href='/'>Kommunen-Suche</a>" +
+    (dashUrl && dashUrl.startsWith("http") ? ` · <a href="${esc(safeUrl(dashUrl))}" target="_blank" rel="noopener">Eigenes Angebot der Kommune</a>` : "") + "</span>";
 
   $("#stand").textContent = "Stand: " + new Date().toLocaleTimeString("de-DE") + " · Auto-Refresh 120 s";
 }
@@ -1469,7 +1470,17 @@ async function render() {
 (async () => {
   try {
     const qp = new URLSearchParams(location.search);
-    if (qp.get("embed") === "1") document.body.classList.add("embed");
+    if (qp.get("embed") === "1") {
+      document.body.classList.add("embed");
+      // Embedded in another site: links to other pages open in a new tab
+      // instead of replacing the dashboard inside the frame.
+      document.addEventListener("click", ev => {
+        const a = ev.target.closest && ev.target.closest("a[href]");
+        if (a && !a.target && /^https?:/.test(a.href) && !a.getAttribute("href").startsWith("#")) {
+          a.target = "_blank"; a.rel = "noopener";
+        }
+      });
+    }
     if (qp.get("kiosk") === "1") startKiosk();
     // Die generierten Seiten inlinen die Gemeindezeile + amtliche Website in
     // window.STADT — dann entfallen die großen Kataloge (162 KB) je Aufruf.
@@ -1504,7 +1515,8 @@ async function render() {
     const renderOnce = () => rendering || (rendering = render().finally(() => { rendering = null; }));
     document.addEventListener("sc-theme-changed", () => { window._map && renderOnce().catch(() => {}); });
     await renderOnce();
-    setInterval(() => { if (!SC.modalOpen()) renderOnce().catch(() => {}); }, 120e3);
+    // Hidden tabs skip the refresh and catch up once visible again.
+    SC.autoRefresh(renderOnce, 120e3, () => !SC.modalOpen());
   } catch (e) {
     const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
   }
