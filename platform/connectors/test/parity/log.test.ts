@@ -10,7 +10,9 @@
  */
 
 import assert from "node:assert/strict";
-import { createLog, sanitizeLogText } from "../../src/kernel/log.js";
+import { EventEmitter } from "node:events";
+import { createLog, handleFatalErrors, sanitizeLogText } from "../../src/kernel/log.js";
+import { recordingLog } from "../harness/kernel.js";
 
 function capture(work: () => void): string {
   const written: string[] = [];
@@ -55,7 +57,31 @@ function aForgedLineCountsOnce(): void {
   assert.ok(lines.slice(2).every((line) => line.startsWith("    ")));
 }
 
+function fatalErrorsAreLoggedAndShutDown(): void {
+  const log = recordingLog();
+  const source = new EventEmitter();
+  let failed = 0;
+  handleFatalErrors(
+    log,
+    () => {
+      failed += 1;
+    },
+    source,
+  );
+  source.emit("unhandledRejection", new Error("stray"));
+  source.emit("uncaughtException", new TypeError("boom"), "uncaughtException");
+  assert.equal(failed, 2, "both end in the shutdown");
+  assert.deepEqual(
+    log.lines.map((line) => [line.level, line.text]),
+    [
+      ["error", "unhandled promise rejection — shutting down"],
+      ["error", "uncaught exception (uncaughtException) — shutting down"],
+    ],
+  );
+}
+
 export {
+  fatalErrorsAreLoggedAndShutDown as "log: an unhandled rejection or uncaught exception is an [error] and ends in the shutdown",
   controlCharactersAreEscaped as "log: control characters and marker look-alikes are escaped",
   aForgedLineCountsOnce as "log: an external string cannot forge an extra [error] or [warn] line",
 };
