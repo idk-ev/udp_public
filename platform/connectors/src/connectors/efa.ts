@@ -36,14 +36,27 @@
  * small queue in front of the bucket and never holds more than two places in
  * it, so public traffic cannot fill the bucket's queue and starve the
  * periodic run (see abfahrten-on-demand.ts).
+ *
+ * ## Daily cap
+ *
+ * The on-demand endpoint has a daily cap on top ({@link EFA_HOST} in
+ * `ctx.quota`, see abfahrten-on-demand.ts): public traffic walking every
+ * municipality could otherwise send tens of thousands of requests a day. The
+ * periodic run is NOT counted against it and never checks it: its volume is
+ * fixed by the registry (stops × runs, 23 × 288 = 6,624 a day), and a budget
+ * shared with public traffic would let a crawler starve it. Only the endpoint
+ * charges the counter, so the counter is the endpoint's own budget.
  */
 
 import { field, isArray, isRecord, isString, isTruthy, ParseError, path } from "../kernel/parse.js";
 import { scalar } from "./http-payload.js";
 import type { Scalar } from "./http-payload.js";
 
+/** Host of every EFA-BW request — the key of the on-demand daily cap in `ctx.quota`. */
+export const EFA_HOST = "www.efa-bw.de";
+
 /** Departure monitor endpoint of the EFA-BW journey planner (NVBW). */
-export const EFA_DM_URL = "https://www.efa-bw.de/nvbw/XML_DM_REQUEST";
+export const EFA_DM_URL = `https://${EFA_HOST}/nvbw/XML_DM_REQUEST`;
 
 /** An EFA time (ISO, UTC) as the wall-clock time in Berlin, `HH:MM`. */
 export function berlinClock(iso: string): string {

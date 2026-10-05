@@ -44,13 +44,16 @@ import { adminRoutes, DEFAULT_ADMIN_HOST, DEFAULT_ADMIN_PORT, triggerCooldownMs 
 import { createCtx, createKernel, runConnector, startGeoBootstrap } from "./kernel/context.js";
 import type { Kernel } from "./kernel/context.js";
 import { DEFAULT_PORT } from "./kernel/http.js";
-import { sanitizeLogText } from "./kernel/log.js";
+import { handleFatalErrors, sanitizeLogText } from "./kernel/log.js";
 import { loadRegistry, resolveRegistryPath, REGISTRY_PATH_ENV } from "./kernel/registry.js";
 import { storedLastRuns } from "./kernel/run-log.js";
 import { scheduleOf } from "./kernel/scheduler.js";
 import type { RegistryEntry } from "./kernel/types.js";
 
 const VERSION = "1.0.0";
+
+/** How long the shutdown after a fatal error may take before the process exits regardless. */
+const FATAL_EXIT_DEADLINE_MS = 10_000;
 
 /** One log line per registry entry that does not run, and why. */
 function reportPlan(kernel: Kernel, scheduled: readonly RegistryEntry[]): void {
@@ -79,6 +82,40 @@ async function main(): Promise<void> {
   const registryPath = resolveRegistryPath(process.env[REGISTRY_PATH_ENV]);
   const registry = loadRegistry(registryPath);
   const kernel = createKernel(registry, GEO_SOURCES);
+
+  let stopping = false;
+  const stop = (exitCode: number): void => {
+    if (stopping) {
+      // A fatal error during the shutdown: no second attempt.
+      if (exitCode !== 0) process.exit(exitCode);
+      return;
+    }
+    stopping = true;
+    // After a fatal error the shutdown may hang on whatever broke.
+    if (exitCode !== 0) {
+      setTimeout(() => {
+        process.exit(exitCode);
+      }, FATAL_EXIT_DEADLINE_MS).unref();
+    }
+    kernel.shutdown.abort();
+    kernel.scheduler.stop();
+    kernel.geoBootstrap?.stop();
+    // The state store last: its close writes what is still marked and
+    // releases the writer lock for the next instance.
+    void Promise.all([kernel.publicHttp.close(), kernel.adminHttp.close()])
+      .then(() => kernel.persistence?.close())
+      .catch((error: unknown) => {
+        kernel.log.error("state store: close failed", error);
+      })
+      .then(() => {
+        process.exit(exitCode);
+      });
+  };
+  // A stray rejection or exception: logged with the [error] marker, then the
+  // shutdown with exit code 1 (src/kernel/log.ts).
+  handleFatalErrors(kernel.log, () => {
+    stop(1);
+  });
 
   kernel.log.info(`udp-connectors ${VERSION} — registry ${registryPath}`);
 
@@ -131,28 +168,12 @@ async function main(): Promise<void> {
   // The persisted last runs are loaded with the state above.
   kernel.scheduler.start(storedLastRuns(kernel.state));
 
-  const stop = (signal: string): void => {
-    kernel.log.info(`${signal} received, shutting down`);
-    kernel.shutdown.abort();
-    kernel.scheduler.stop();
-    kernel.geoBootstrap?.stop();
-    // The state store last: its close writes what is still marked and
-    // releases the writer lock for the next instance.
-    void Promise.all([kernel.publicHttp.close(), kernel.adminHttp.close()])
-      .then(() => kernel.persistence?.close())
-      .catch((error: unknown) => {
-        kernel.log.error("state store: close failed", error);
-      })
-      .then(() => {
-        process.exit(0);
-      });
-  };
-  process.on("SIGTERM", () => {
-    stop("SIGTERM");
-  });
-  process.on("SIGINT", () => {
-    stop("SIGINT");
-  });
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.on(signal, () => {
+      kernel.log.info(`${signal} received, shutting down`);
+      stop(0);
+    });
+  }
 }
 
 main().catch((error: unknown) => {

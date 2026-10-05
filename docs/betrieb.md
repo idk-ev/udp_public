@@ -117,11 +117,44 @@ Service Workers → Unregister.
 - TLS überall (Ingress, cert-manager), HSTS; interne Netzsegmentierung über
   NetworkPolicies.
 - Mosquitto in Produktion: Authentifizierung + TLS, kein `allow_anonymous`.
-- Keycloak: Brute-Force-Schutz aktiv, MFA für administrative Rollen.
-- APISIX: OIDC-Pflicht auf allen schreibenden Routen, Rate-Limits, IP-Allow-
-  Listen für Admin-Endpunkte.
+- Öffentliche API nur lesend: Der Cockpit-nginx lässt auf `/gateway/…`,
+  `/abfahrten` und `/warnungen.ics` nur `GET`/`HEAD`/`OPTIONS` durch; die
+  CORS-Regel von APISIX erlaubt nur `GET`. Schreibende Zugriffe laufen
+  ausschließlich innerhalb der Plattform (Konnektordienst, Node-RED,
+  IoT-Agent). Details: [`api.md`](api.md#zugriff-und-sicherheitsmodell).
+- APISIX: Rate-Limits je Client auf `/ngsi-ld`, `/temporal`, FROST, CKAN
+  und GeoServer (`apisix.rateLimit`); die Routen zur IoT-Provisionierung und zum Ingest sind
+  standardmäßig aus (`iotAgentJson.exposeRoutes: false`).
+- Keycloak: Brute-Force-Schutz im Realm aktiv. Die Anmeldung im Cockpit ist
+  standardmäßig aus (`cockpit.authEnabled: false`).
+- **Geplant / Voraussetzung vor nicht öffentlichen Mandanten oder schreibendem
+  Zugriff von außen:** OIDC-Pflicht (openid-connect-Plugin) auf den
+  APISIX-Routen, Tenant aus dem Token-Claim (s.
+  [`architektur.md`](architektur.md#mandantenmodell)), MFA für administrative
+  Rollen in Keycloak, IP-Allow-Listen für Admin-Endpunkte. Nichts davon ist
+  heute aktiv.
 - Secrets ausschließlich über Kubernetes-Secrets/External-Secrets, nie im
   Repository (Beispielwerte sind als solche markiert und zu ersetzen).
+
+### Vor dem Einschalten der Anmeldung (Keycloak)
+
+> **Achtung:** Der mitgelieferte Realm
+> (`helm/udp/files/keycloak/udp-realm.json.tpl`, Compose:
+> `platform/config/keycloak/udp-realm.json`) ist ein **Demo-Realm**.
+>
+> - Er legt Demo-Konten (`plattform.admin`, `anna.fach`, `lars.leitstelle`)
+>   mit einem **öffentlich bekannten Passwort** an – vorher löschen oder die
+>   Passwörter ändern.
+> - Das Client-Secret des Clients `udp-gateway` steht im Repository – vorher
+>   neu erzeugen.
+> - `KC_HOSTNAME` auf die öffentliche Adresse setzen; das Chart startet
+>   Keycloak mit `--hostname-strict=false`.
+> - Der Realm-Import greift nur beim **ersten** Start (leere Keycloak-DB).
+>   Änderungen an der Vorlage erreichen eine bestehende Installation nicht;
+>   dort die Konten und das Secret in der Admin-Konsole bereinigen.
+>
+> Das gilt, bevor `cockpit.authEnabled` eingeschaltet oder Keycloak
+> öffentlich erreichbar gemacht wird.
 
 ### Cockpit-Micro-Cache und Zugriffslog
 
@@ -462,6 +495,16 @@ Erstbefüllung oder Nachziehen nach Änderungen:
 Das Skript löst den Konnektor im Konnektordienst aus, ohne Neustart
 (s. unten).
 
+**Cron und Zeitumstellung:** Cron-Ausdrücke gelten in Ortszeit
+(`TZ=Europe/Berlin`). 02:00–02:59 gibt es am letzten Sonntag im März nicht
+und am letzten Sonntag im Oktober zweimal. Der Dienst startet einen Job in
+der doppelten Stunde nicht erneut (maßgeblich ist die Uhrzeit des letzten
+Laufs); ein Cron in Stunde 2 fiele im Frühjahr aber aus. Deshalb liegt kein
+Cron der Registry in dieser Stunde (`poi-bw` sonntags 01:40, `mastr-bw`
+täglich 01:20), ein Test prüft das, und für einen Cron in Stunde 2 meldet
+der Dienst beim Start eine Warnung (`cron "…" fires between 02:00 and 02:59
+local time …`).
+
 ### Open-Meteo-Kontingent
 
 `wetter-bw` und `vorhersage-bw` holen je Lauf alle 1.103 Gemeinden in
@@ -518,6 +561,46 @@ Nicht geholte Batches stehen mit Nummer und Gemeindezahl im Log
 diese Gemeinden behalten ihre bisherigen Werte. Die Stadtseite zeigt Wetter
 und Vorhersage nach 13 h (zwei ausgefallene Läufe plus Reserve) mit
 „Stand: …“ und neutralem Status.
+
+### EFA-BW-Tageskontingent (Abfahrten auf Anfrage)
+
+`/abfahrten?ags=…` fragt die EFA-BW-Auskunft live je Gemeinde-Halt ab
+(30 s zusammengefasst, 60 s im Cockpit-Cache, höchstens 2 gleichzeitig).
+Das begrenzt die Rate je Halt, nicht den Tag: Crawler über alle ~1.100
+Gemeinden könnten ein Vielfaches dessen auslösen, was ohne Vereinbarung mit
+dem Anbieter vertretbar ist. Deshalb zählt der Dienst die EFA-Abrufe des
+Endpunkts je **UTC-Tag** im Zustandsspeicher (übersteht Neustarts, wie beim
+Open-Meteo-Kontingent).
+
+- **Grenze:** **20.000** Abrufe je Tag (`UDP_EFA_ON_DEMAND_DAILY_CAP`; ein
+  Wert, der keine positive Zahl ist, ergibt die Vorgabe und eine Warnung).
+  Gezählt wird jeder gestartete Abruf; zusammengefasste Anfragen kosten
+  nichts. Nur mit Zustimmung des Anbieters anheben.
+- **Gestreckt:** Ab der Hälfte des Kontingents dürfen Abfahrten länger im
+  Cockpit-Cache bleiben (Header `X-Accel-Expires`): ab 50 % 5 min, ab 75 %
+  10 min, ab 90 % 20 min statt 60 s. Wer reihum alle Halte abfragt, verbraucht
+  das Restkontingent so deutlich langsamer; das Alter zeigt der „Stand“.
+- **Ausgeschöpft:** HTTP 503 mit `Retry-After` bis 00:00 UTC und dem Namen
+  des Halts, ohne EFA-Abruf. Die Cockpit-nginx liefert dann die letzte gute
+  Antwort des Halts (bis 24 h alt, mit „Stand“); ohne sie zeigt die
+  Stadtseite „Fahrplanauskunft derzeit gestört“.
+- **Periodischer Abruf:** `efa-abfahrten` (23 Halte alle 5 min, ~6.600
+  Abrufe je Tag) zählt nicht mit und wird nicht begrenzt — öffentlicher
+  Verkehr kann ihn nicht verdrängen.
+- **Sichtbarkeit:** Alle Logzeilen beginnen mit `EFA-BW on-demand daily cap`:
+
+      [warn]  [udp-connectors:abfahrten-on-demand] EFA-BW on-demand daily cap at 80%: used=16000 cap=20000 day=2026-10-05 (UTC)
+      [error] [udp-connectors:abfahrten-on-demand] EFA-BW on-demand daily cap reached: used=20000 cap=20000 day=2026-10-05 (UTC) — /abfahrten answers 503 until 2026-10-06T00:00:00.000Z; …
+
+  Die 80-%-Warnung und der Fehler kommen je einmal am Tag (nach einem
+  Neustart noch einmal); solange die Grenze erreicht ist, wiederholt der
+  stündliche Lauf die `reached`-Zeile als `[warn]`, sodass
+  `scripts/healthcheck.sh` sie in jedem 70-Minuten-Fenster sieht. Für einen
+  Log-Alarm genügt: Text enthält `EFA-BW on-demand daily cap reached`
+  (Stufe `error`, bzw. `warn` für die Wiederholung) und
+  `EFA-BW on-demand daily cap at 80%`.
+- **Zähler:** `PlatformStatus:udp` (von `ops-host`, alle 2 min) trägt
+  `efaOnDemandCallsToday` und `efaOnDemandDailyCap`.
 
 ## Konnektordienst
 
@@ -630,7 +713,11 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   fehlt.
 - **Logs:** Zeilen `<Zeit> [warn] [udp-connectors:<konnektor>] …`;
   `scripts/healthcheck.sh` zählt `[error]`/`[warn]` der letzten 70 Minuten
-  und nennt die häufigsten Warnquellen.
+  und nennt die häufigsten Warnquellen. Ein unbehandelter Fehler
+  (`unhandled promise rejection` / `uncaught exception — shutting down`)
+  ist ein `[error]`; danach beendet sich der Dienst geordnet (Zustand
+  geschrieben, Lock freigegeben, spätestens nach 10 s) mit Exit-Code 1 und
+  wird vom Orchestrator neu gestartet.
 - **Aktualisieren:** Unter Compose baut `deploy/deploy.sh` das Image bei jedem
   Deployment neu; eine Takt- oder Aktivierungsänderung in der Registry braucht
   nur `docker compose restart connectors`. In Kubernetes kommt das Image

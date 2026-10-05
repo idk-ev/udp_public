@@ -9,8 +9,10 @@
    einer Standard-Schnittstelle. Neue Anwendungen (Mobilität, Energie,
    Liegenschaften – oder ein Starkregen-Frühalarmsystem) docken an, ohne
    Bestehendes zu verändern.
-3. **Mandantenfähigkeit durchgängig**: vom Token-Claim (Keycloak) über den
-   `NGSILD-Tenant`-Header (Gateway/Broker) bis zur getrennten Persistenz.
+3. **Mandantenfähigkeit durchgängig angelegt**: vom Token-Claim (Keycloak)
+   über den `NGSILD-Tenant`-Header (Gateway/Broker) bis zur getrennten
+   Persistenz. Heute gibt es nur den öffentlichen Standardmandanten; die
+   Durchsetzung am Gateway ist geplant (s. [Mandantenmodell](#mandantenmodell)).
 4. **GitOps**: Gateway-Routen, Realm, Dashboards, Flows und Manifeste liegen
    versioniert im Repository; Compose und Kubernetes nutzen dieselben Quellen.
 
@@ -20,11 +22,11 @@
 |---|---|
 | Geräte-/Sensorschicht (Edge) | LPWAN-Sensorik der Fachanwendungen (extern; via LoRa/NB-IoT/LTE-M/Mioty) |
 | Konnektivität / Datenaufnahme | Mosquitto (MQTT), FIWARE IoT-Agent JSON, HTTP-Ingest über APISIX (`/ingest`), Konnektordienst (Pull-Quellen, `platform/connectors`), Node-RED (Low-Code-Flüsse/ETL) |
-| Daten- & Kontextmanagement | **Orion-LD** (NGSI-LD Context Broker), **Mintaka** (Temporal), FIWARE Smart Data Models + kommunale Modelle via @context |
+| Daten- & Kontextmanagement | **Orion-LD** (NGSI-LD Context Broker), **Mintaka** (Temporal), eigenes, an FIWARE Smart Data Models angelehntes Vokabular als veröffentlichter @context ([`api.md`](api.md#vokabular)) |
 | Datenhaltung | **PostgreSQL** + **PostGIS** + **TimescaleDB** in der Apache-Edition (Zeitreihen/TRoE als Hypertable, Geodaten; `last()` für Mintaka), MongoDB (Broker-Zustand) |
 | Dienste-/Anwendungsschicht | FROST-Server (SensorThings), GeoServer (OGC), CKAN (Open Data/DCAT-AP.de), Superset, Fachanwendungen |
-| Übergreifend: API-Management | **Apache APISIX**: ein Einstiegspunkt, Zugriffskontrolle (OIDC), Rate-Limits, Metriken, dokumentierte Routen |
-| Übergreifend: Identität & Sicherheit | **Keycloak** (OIDC/SAML, Rollen, Mandanten-Gruppen), TLS am Ingress, Security-Header |
+| Übergreifend: API-Management | **Apache APISIX**: ein Einstiegspunkt, Rate-Limits, Metriken, dokumentierte Routen; Zugriffskontrolle per OIDC geplant (heute öffentlich nur lesend über den Cockpit-nginx) |
+| Übergreifend: Identität & Sicherheit | **Keycloak** (OIDC/SAML, Rollen, Mandanten-Gruppen; Anmeldung im Cockpit optional, auf die APIs noch ohne Wirkung), TLS am Ingress, Security-Header |
 | Übergreifend: Betrieb | Kubernetes, Backups, Prometheus-Metriken; Uptime Kuma als **getrenntes** Deployment (`monitoring/`), damit die Außensicht nicht mit der Plattform ausrollt und ausfällt |
 | Präsentation | **UDP-Cockpit** (Eigenentwicklung, EUPL-1.2), Masterportal |
 
@@ -59,7 +61,8 @@ Referenzimplementierung dieses Pfads ist die Integration **„Smart City
 Reutlingen"** bzw. landesweit Baden-Württemberg: Der **Konnektordienst**
 (`platform/connectors`, TypeScript) liest mit 29 Konnektoren offene Quellen
 (DWD, UBA, sensor.community, MobiData BW ParkAPI/GBFS/OCPDB, EFA-BW, …)
-zyklisch ein und upsertet Smart-Data-Model-Entitäten nach Orion-LD. Takt,
+zyklisch ein und upsertet an Smart Data Models angelehnte Entitäten nach
+Orion-LD (Vokabular: [`api.md`](api.md#vokabular)). Takt,
 Aktivierung und Monitoring stehen in der Registry
 `platform/config/connectors.json`; je Konnektor gibt es ein Modul mit
 Paritäts- bzw. Unit-Test. Darstellung über die Cockpit-Dashboards
@@ -71,24 +74,59 @@ Konnektordienst als PlatformStatus-Entitäten, Zeitreihen die Temporal-API
 
 ### Veröffentlichung
 
-- Echtzeit/Kontext: NGSI-LD über `GET /ngsi-ld/v1/entities…` (Gateway)
-- Zeitreihen: `GET /temporal/…` (Mintaka) bzw. SensorThings `Observations`
+Öffentlich ist alles nur lesend über den Cockpit-nginx (Präfix `/gateway`)
+erreichbar; Pfade, Limits und Stabilitätszusage: [`api.md`](api.md).
+
+- Echtzeit/Kontext: NGSI-LD über `GET /gateway/ngsi-ld/v1/entities…`
+- Zeitreihen: `GET /gateway/temporal/temporal/entities/…` (Mintaka) bzw.
+  SensorThings `Observations`
 - Geodaten: WMS/WFS aus GeoServer (Layer aus PostGIS)
 - Offene Daten: CKAN-Portal + `catalog.rdf` (DCAT-AP), API `package_search`
 
 ## Mandantenmodell
 
+### Stand heute
+
+- Alle Daten liegen im **Standardmandanten** (ohne `NGSILD-Tenant`) und sind
+  öffentliche, offene Daten. Die Auslieferung legt keine weiteren Mandanten an.
+- Die Mandantentrennung wird **nicht durchgesetzt**: Das Gateway wertet kein
+  Token aus und setzt keinen Tenant. Am öffentlichen Pfad verwirft der
+  Cockpit-nginx die Header `NGSILD-Tenant` und `Fiware-Service` und lässt
+  nur lesende Zugriffe durch.
+- Keycloak-Realm (Gruppen, Rollen, Tenant-Claim) und die Mandantenauswahl im
+  Cockpit sind vorbereitet, wirken aber noch nicht auf die APIs.
+
+### Geplant – Voraussetzung vor nicht öffentlichen Mandanten
+
 ```
-Keycloak-Gruppe            NGSI-LD-Tenant     Persistenz
-/lahn-dill-kreis      →    ldk            →   orion_ldk (Mongo) + DB-Schema (TS)
-/lahn-dill-kreis/wetzlar → ldk_wetzlar    →   …
-/vogelsbergkreis      →    vbk            →   …
+Keycloak-Gruppe                        NGSI-LD-Tenant      Persistenz
+/landkreis-reutlingen             →    lkrt            →   eigene Datenbanken je Tenant
+/landkreis-reutlingen/reutlingen  →    lkrt_reutlingen →   (MongoDB und TRoE)
+/landkreis-tuebingen              →    lktue           →   …
 ```
 
-- Der Tenant-Claim des Tokens wird vom Gateway als `NGSILD-Tenant`-Header
-  gesetzt bzw. validiert (openid-connect + serverless-Filter in APISIX).
+- Das Gateway authentifiziert per OIDC und setzt den `NGSILD-Tenant`-Header
+  **aus dem Tenant-Claim des Tokens**; ein vom Client mitgeschickter Header
+  wird verworfen bzw. gegen den Claim geprüft.
 - Übergreifende Auswertungen (Kreis-/Landesebene) erfolgen über die Rolle
   `plattform-admin` mit expliziter Mandantenwahl im Cockpit.
+- Erst wenn das umgesetzt und getestet ist, darf ein Mandant mit nicht
+  öffentlichen Daten angelegt werden. Bis dahin ist jeder Tenant als
+  öffentlich lesbar zu betrachten.
+
+### Benennung der Tenants
+
+Empfohlenes Schema, wie im Keycloak-Realm
+(`helm/udp/files/keycloak/udp-realm.json.tpl`) und in der Cockpit-Auswahl
+(`cockpit.tenants`) verwendet:
+
+- **Kreis:** Kürzel aus Kleinbuchstaben, z. B. `lkrt` (Landkreis Reutlingen),
+  `lktue` (Landkreis Tübingen).
+- **Kommune:** `<kreis>_<kommune>`, z. B. `lkrt_reutlingen`,
+  `lktue_rottenburg`.
+- Nur `a–z`, `0–9` und `_`, keine Umlaute (`ue` statt `ü`), kurz halten –
+  der Name wird Teil der Datenbanknamen.
+- Das Keycloak-Gruppenattribut `tenant` trägt genau diesen Namen.
 
 ## Skalierung & Hochverfügbarkeit
 

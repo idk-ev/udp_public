@@ -32,6 +32,11 @@
  *
  * Written ungated on every run, as before: the entity is one object whose
  * values change every two minutes anyway.
+ *
+ * ONE ADDITION: `efaOnDemandCallsToday` and `efaOnDemandDailyCap`, the EFA-BW
+ * requests `/abfahrten` started today (UTC) and its daily cap
+ * (abfahrten-on-demand.ts, "Daily cap"), read from the shared `ctx.quota`. Added
+ * by {@link runWith}, not by {@link build}, which stays the old node's.
  */
 
 import { exec } from "node:child_process";
@@ -48,6 +53,8 @@ import type {
   NgsiEntity,
   Property,
 } from "../kernel/types.js";
+import { dailyCapOf } from "./abfahrten-on-demand.js";
+import { EFA_HOST } from "./efa.js";
 
 export const ID = "ops-host";
 
@@ -173,6 +180,27 @@ export function build(report: HostReport, _geo: GeoIndex | null, now: IsoTime): 
   };
 }
 
+/** {@link HostStatusEntity} plus the EFA on-demand counter (module comment). */
+export interface PlatformStatusEntity extends HostStatusEntity {
+  readonly efaOnDemandCallsToday: Measured;
+  readonly efaOnDemandDailyCap: Measured;
+}
+
+/** Adds today's EFA on-demand count and the cap to the built entity. */
+export function withEfaOnDemand(entity: HostStatusEntity, ctx: Ctx, now: IsoTime): PlatformStatusEntity {
+  const measured = (value: number): Measured => ({
+    type: "Property",
+    value,
+    unitCode: "C62",
+    observedAt: now,
+  });
+  return {
+    ...entity,
+    efaOnDemandCallsToday: measured(ctx.quota.used(EFA_HOST)),
+    efaOnDemandDailyCap: measured(dailyCapOf(ctx.env)),
+  };
+}
+
 /** The `node.status` line of the old node, from the built values. */
 export function statusText(entity: HostStatusEntity): string {
   const ram = entity.memUsedPct.value === null ? "?" : String(entity.memUsedPct.value);
@@ -208,7 +236,8 @@ export async function runWith(ctx: Ctx, read: (log: Log) => Promise<string>): Pr
     ctx.log.warn("host metrics: unexpected exec output");
     return;
   }
-  const entity = build(report, null, ctx.now());
+  const now = ctx.now();
+  const entity = withEfaOnDemand(build(report, null, now), ctx, now);
   ctx.log.status(statusText(entity));
   await ctx.orion.upsert(ctx.gate.ungated([entity]));
 }

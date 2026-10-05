@@ -78,6 +78,20 @@
  * (~1,500 MaStR requests per run). The registry refuses it on an entry that
  * has neither, so it cannot starve a connector the way reading
  * `refireOnRestart: false` as "skip" would.
+ *
+ * ## Cron and daylight saving time
+ *
+ * Cron is local time (`TZ=Europe/Berlin`), and in that zone 02:00–02:59
+ * happens twice on the last Sunday of October and not at all on the last
+ * Sunday of March. A job is therefore de-duplicated by the WALL-CLOCK minute
+ * of its last firing ({@link cronDue}), not by the minute of the epoch: when
+ * the clocks go back, a minute it already fired in comes round again and is
+ * left out — `"40 02 * * 0"` ran twice that Sunday before. (A cron on every
+ * hour skips the repeated hour as well: 24 runs that day, not 25.) The other
+ * half cannot be repaired by the scheduler without guessing: a time that does
+ * not exist is not run. So a cron with hour 2 draws a `[warn]` at startup
+ * ({@link cronInDstHour}), and the shipped registry keeps all crons out of
+ * that hour (test/parity/scheduler.test.ts).
  */
 
 import { REAL_CLOCK } from "./rate-limit.js";
@@ -239,7 +253,7 @@ export function planStart(schedule: Schedule, nowMs: number, lastRunMs: number |
 
 /* ------------------------------------------------------------------ Cron */
 
-interface CronFields {
+export interface CronFields {
   readonly minute: ReadonlySet<number>;
   readonly hour: ReadonlySet<number>;
   readonly dayOfMonth: ReadonlySet<number>;
@@ -321,6 +335,54 @@ export function cronMatches(fields: CronFields, when: Date): boolean {
   return true;
 }
 
+/**
+ * The minute `when` shows on the local wall clock, as a number that grows
+ * with it — the local date and time read as if they were UTC. Unlike the
+ * minute of the epoch it repeats in the hour the clocks go back.
+ */
+export function wallClockMinute(when: Date): number {
+  return (
+    Date.UTC(when.getFullYear(), when.getMonth(), when.getDate(), when.getHours(), when.getMinutes()) / 60_000
+  );
+}
+
+/**
+ * A wall clock set back by less than this counts as a repeated stretch of
+ * time (the clocks going back, an hour), in which a job does not fire again
+ * at a minute it already fired in. One set back further (a wrong clock
+ * corrected) does not hold the cron off for that long. Three hours, as Vixie
+ * cron.
+ */
+export const CLOCK_BACK_TOLERANCE_MINUTES = 180;
+
+/**
+ * Whether a cron job fires at `now`: the expression matches, and it did not
+ * fire at this wall-clock minute or later already (`lastWallMinute`, see
+ * {@link wallClockMinute}) — the scheduler ticks several times a minute, and
+ * in the hour the clocks go back the same wall-clock minutes come round again.
+ */
+export function cronDue(fields: CronFields, now: Date, lastWallMinute: number | null): boolean {
+  if (!cronMatches(fields, now)) return false;
+  if (lastWallMinute === null) return true;
+  const wall = wallClockMinute(now);
+  return wall > lastWallMinute || lastWallMinute - wall >= CLOCK_BACK_TOLERANCE_MINUTES;
+}
+
+/** Whether the local zone has daylight saving time this year (offsets of January and July differ). */
+export function observesDst(year = new Date().getFullYear()): boolean {
+  return new Date(year, 0, 1).getTimezoneOffset() !== new Date(year, 6, 1).getTimezoneOffset();
+}
+
+/**
+ * Whether `expression` names hour 2 — the hour that does not exist when the
+ * clocks go forward in Europe/Berlin (and that repeats when they go back). A
+ * cron on every hour (`*`) is not meant: losing one of 24 runs is its nature.
+ */
+export function cronInDstHour(expression: string): boolean {
+  const hours = parseCron(expression).hour;
+  return hours.has(2) && hours.size < 24;
+}
+
 /* ------------------------------------------------------------------ Scheduler */
 
 interface Job {
@@ -329,7 +391,8 @@ interface Job {
   readonly task: () => Promise<void>;
   readonly cron: CronFields | null;
   running: boolean;
-  lastCronMinute: number;
+  /** {@link wallClockMinute} of the last cron firing; `null` before the first. */
+  lastCronWallMinute: number | null;
   /** Time of the last accepted manual trigger, for the cooldown. */
   lastTriggerMs: number | null;
 }
@@ -359,13 +422,19 @@ class TimerScheduler implements Scheduler {
 
   add(id: ConnectorId, schedule: Schedule, task: () => Promise<void>): void {
     if (this.#started) throw new Error(`scheduler already started, cannot add ${id}`);
+    if (schedule.cron !== null && observesDst() && cronInDstHour(schedule.cron)) {
+      this.#log.warn(
+        `${id}: cron "${schedule.cron}" fires between 02:00 and 02:59 local time, which does not exist ` +
+          "when the clocks go forward — that run is lost; move the cron out of hour 2",
+      );
+    }
     this.#jobs.set(id, {
       id,
       schedule,
       task,
       cron: schedule.cron === null ? null : parseCron(schedule.cron),
       running: false,
-      lastCronMinute: -1,
+      lastCronWallMinute: null,
       lastTriggerMs: null,
     });
   }
@@ -527,14 +596,12 @@ class TimerScheduler implements Scheduler {
   }
 
   #tickCron(jobs: readonly Job[]): void {
-    const now = new Date();
-    // Minute of the epoch: the tick is faster than a minute, so a match must not
-    // fire twice within the same minute.
-    const minute = Math.floor(now.getTime() / 60_000);
+    const now = new Date(this.#nowMs());
     for (const job of jobs) {
-      if (job.cron === null || job.lastCronMinute === minute) continue;
-      if (!cronMatches(job.cron, now)) continue;
-      job.lastCronMinute = minute;
+      // The tick is faster than a minute, and the hour the clocks go back
+      // repeats wall-clock minutes: neither may fire a job twice (cronDue).
+      if (job.cron === null || !cronDue(job.cron, now, job.lastCronWallMinute)) continue;
+      job.lastCronWallMinute = wallClockMinute(now);
       this.#fire(job, "cron");
     }
   }

@@ -37,6 +37,11 @@ alle Fach-APIs laufen gebündelt über das API-Gateway:
 | Keycloak (Benutzer/Rollen/Mandanten) | http://localhost:8700 |
 | PostgreSQL/PostGIS | localhost:5439 |
 
+Das Gateway unter Port 8780 ist lokal **ohne Anmeldung und auch schreibend**
+erreichbar und deshalb nur an `127.0.0.1` gebunden. Öffentlich ist die API
+ausschließlich lesend über das Cockpit unter `/gateway/…` erreichbar – siehe
+[`docs/api.md`](docs/api.md).
+
 MQTT (Mosquitto) ist bewusst **nicht** am Host veröffentlicht – Sensoren bzw.
 LoRaWAN-Network-Server sprechen den Broker im Plattform-Netz an. Für lokale
 Tests: `docker run --rm --network udp eclipse-mosquitto:2.0 mosquitto_pub -h mosquitto -t test -m hallo`
@@ -144,15 +149,25 @@ flowchart LR
   CK --- GW
   GS --- GW
   GW --> GUI
-  KC -. OIDC .- GW
-  KC -. OIDC .- GUI
+  KC -. OIDC geplant .- GW
+  KC -. OIDC optional .- GUI
   UK -. prüft von außen .-> GW
   UK -. prüft von außen .-> GUI
 ```
 
 Details: [`docs/architektur.md`](docs/architektur.md) ·
+Öffentliche API und Datenvertrag: [`docs/api.md`](docs/api.md) ·
 Anforderungserfüllung: [`docs/anforderungsabdeckung.md`](docs/anforderungsabdeckung.md) ·
 Betrieb/SLA/Backup: [`docs/betrieb.md`](docs/betrieb.md)
+
+## Öffentliche API
+
+Alle Daten sind offene Daten und anonym, **nur lesend** abrufbar:
+NGSI-LD-Kontext-API unter `/gateway/ngsi-ld/v1/…`, Zeitreihen unter
+`/gateway/temporal/temporal/entities/…`, dazu `/abfahrten?ags=…` und
+`/warnungen.ics?kreis=…`. Typ- und Attributnamen sind als JSON-LD-Kontext
+(`/ngsi-ld/udp-context.json`) veröffentlicht und eingefroren. Pfade,
+Rate-Limits, Caching und Stabilitätszusage: [`docs/api.md`](docs/api.md).
 
 ## UDP-Cockpit (GUI)
 
@@ -182,13 +197,21 @@ Neue Städte hinzufügen: [`docs/staedte-hinzufuegen.md`](docs/staedte-hinzufueg
 
 ## Mandantenfähigkeit
 
-- **Datenebene**: NGSI-LD-Tenants (`NGSILD-Tenant`-Header) trennen Kontext-
-  und Zeitreihendaten je Mandant bis in die Datenbank (eigene DBs/Schemata).
-- **Zugriffsebene**: Keycloak bildet Kreise → Kommunen als Gruppenbaum ab;
-  Rollen `plattform-admin`, `mandant-admin`, `fachanwender`, `leitstelle`,
-  `buerger`; Tenant-Claim wird ins Token gemappt.
-- **API-Ebene**: APISIX erzwingt Authentifizierung/Autorisierung pro Route
-  (openid-connect-Plugin) und limitiert Lastspitzen.
+Heute liegen alle Daten im **Standardmandanten** und sind öffentlich; die
+Trennung weiterer Mandanten ist angelegt, aber noch nicht durchgesetzt.
+
+- **Datenebene** (vorhanden): NGSI-LD-Tenants (`NGSILD-Tenant`-Header) trennen
+  Kontext- und Zeitreihendaten je Mandant bis in die Datenbank (eigene
+  Datenbanken je Tenant).
+- **Zugriffsebene** (vorbereitet): Keycloak bildet Kreise → Kommunen als
+  Gruppenbaum ab; Rollen `plattform-admin`, `mandant-admin`, `fachanwender`,
+  `leitstelle`, `buerger`; Tenant-Claim wird ins Token gemappt. Die Anmeldung
+  im Cockpit ist im Helm-Chart standardmäßig aus.
+- **API-Ebene**: APISIX begrenzt Lastspitzen (Rate-Limits je Client), wertet
+  aber **noch keine Tokens aus**; öffentlich ist die API deshalb nur lesend
+  erreichbar. Authentifizierung per OIDC und die Bindung des Tenants an den
+  Token-Claim sind **geplant und Voraussetzung, bevor ein nicht öffentlicher
+  Mandant angelegt wird** – siehe [`docs/architektur.md`](docs/architektur.md#mandantenmodell).
 
 ## Lizenz
 
