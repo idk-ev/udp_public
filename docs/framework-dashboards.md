@@ -52,7 +52,11 @@ Regeln:
   Broker, nicht über das öffentliche Gateway). Die TRoE-Historie bleibt davon
   unberührt und läuft mit der Retention aus (12 Monate). Für ausgeschlossene
   GBFS-Systeme (`excludeSystems`) braucht es das nicht: Ihre Entitäten
-  veralten und der Prune des Konnektors löscht sie nach 24 h.
+  veralten und der Prune des Konnektors löscht sie nach 24 h. Machen sie mehr
+  als 30 % des frischen Bestands aus, sperrt der Prune-Deckel (`PRUNE BLOCKED`
+  im Healthcheck); dann nach 7 Tagen `bash scripts/release-prunes.sh
+  <konnektor-id>` (docs/betrieb.md, Prune). Auch hier bleibt die
+  TRoE-Historie bis zur Retention.
 - Vollständiges Entfernen eines Konnektors = Registry-Eintrag, Modul samt Zeile
   in `src/connectors/index.ts` und Test löschen (`test/parity/registry.test.ts`
   hält beide Listen gleich). Anschließend die verwaisten Alt-Entitäten aus

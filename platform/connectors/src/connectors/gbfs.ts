@@ -107,7 +107,8 @@ export function exclusionOf(id: string, rules: readonly SystemExclusion[]): Syst
  * because the reason is the provider's licence terms (storing the data or
  * building a dataset from it is not allowed or not cleared). What it wrote
  * before is removed by the connectors' ordinary age-based prune, as for a
- * system that left the list.
+ * system that left the list — unless it was more than the prune's share cap,
+ * then the block is released by an operator (scripts/release-prunes.sh).
  */
 export function withoutExcluded(
   systems: readonly GbfsSystem[],
