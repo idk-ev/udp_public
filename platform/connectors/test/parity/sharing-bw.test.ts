@@ -56,6 +56,7 @@ import {
   mobilityCtx,
   staleOptions,
   tableObject,
+  withoutExcludedSystems,
 } from "../harness/mobility.js";
 import { assertPruneSettings, legacyPruneSettings } from "../harness/prune-settings.js";
 import {
@@ -254,8 +255,10 @@ async function runMatchesTheOldFlow(): Promise<void> {
     "ffLast:gone": { "08111000": 3 },
     "ffLast:hopp_konstanz": { "08335043": 2 },
   };
+  // The old node sees the list the port works on: without the systems the
+  // registry excludes (licence terms; bird-basel in the fixture).
   const legacyList = await runFunctionNode(LIST_NODE, {
-    msg: { _msgid: "parity", statusCode: 200, payload: structuredClone(list.payload) },
+    msg: { _msgid: "parity", statusCode: 200, payload: withoutExcludedSystems("sharing-bw", list.payload) },
     global: legacyGlobal(fullGeo()),
     flow: { ...structuredClone(tables), pruneLastRun_GBFS_BW: now - HOUR },
     modules: { http: fakeHttpModule(oldBroker.respond) },
@@ -338,7 +341,8 @@ async function runMatchesTheOldFlow(): Promise<void> {
   const summary = world.log.lines.filter((line) => line.level === "info").at(-1)?.text;
   assert.equal(
     summary,
-    `GBFS-BW: ${String(messagesOf(legacyList).length)} systems, ${String(written.length)} summaries written ` +
+    `GBFS-BW: ${String(messagesOf(legacyList).length)} systems (1 excluded by the registry), ` +
+      `${String(written.length)} summaries written ` +
       `(${String(zeroed)} of them zeroed), prune: 1 deleted`,
   );
 }

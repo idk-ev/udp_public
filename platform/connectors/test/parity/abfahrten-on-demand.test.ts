@@ -366,7 +366,7 @@ async function noDeparturesIsAnEmptyList(): Promise<void> {
       stand: "<timestamp>",
       medianVerspaetung: null,
       echtzeitAbfahrten: 0,
-      quelle: "EFA-BW (naldo/bwegt)",
+      quelle: "MobiData BW; NVBW – EFA-BW (dl-de/by-2-0)",
       abfahrten: [],
     },
   );

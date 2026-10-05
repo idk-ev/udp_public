@@ -57,7 +57,7 @@ export const ID = "pollen-bw";
 
 export const SOURCE_URL = "https://opendata.dwd.de/climate_environment/health/alerts/s31fg.json";
 
-const DATA_PROVIDER = "DWD Pollenflug-Gefahrenindex (GeoNutzV)";
+const DATA_PROVIDER = "DWD Pollenflug-Gefahrenindex (CC BY 4.0)";
 
 /**
  * One species in the forecast — position array, exactly as the old node emits

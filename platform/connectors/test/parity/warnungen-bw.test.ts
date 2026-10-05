@@ -24,8 +24,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  boundedHeadlines,
   build,
   calendarResponse,
+  calendarUrl,
+  HEADLINES_MAX_BYTES,
+  NINA_WARNING_URL,
   esc,
   FOLD_OCTETS,
   foldLine,
@@ -47,7 +51,13 @@ import { createChangeGate, SignatureStore } from "../../src/kernel/change-gate.j
 import type { SignatureScope } from "../../src/kernel/change-gate.js";
 import { chunk } from "../../src/kernel/orion.js";
 import { isArray, isString } from "../../src/kernel/parse.js";
-import type { HttpResponse, RouteRequest, UpsertPlan } from "../../src/kernel/types.js";
+import type {
+  HttpResponse,
+  NgsiEntity,
+  PendingSignature,
+  RouteRequest,
+  UpsertPlan,
+} from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
 import { httpResponse, recordingLog } from "../harness/kernel.js";
 import type { SeenRequest } from "../harness/kernel.js";
@@ -156,7 +166,61 @@ function ported(join: unknown, store: SignatureScope): UpsertPlan {
   return createChangeGate(store, recordingLog()).check(GATE_KEY, entities, signatureOf);
 }
 
-function assertPlanMatches(legacy: Legacy, plan: UpsertPlan): void {
+/** A headline in the old node's shape: cut to 60 characters, no link. */
+function legacyHeadline(item: Readonly<Record<string, unknown>>): { h: string; sev: string } {
+  return {
+    h: typeof item.h === "string" ? item.h.slice(0, 60) : "",
+    sev: typeof item.sev === "string" ? item.sev : "",
+  };
+}
+
+/** A gate signature (`count|severity|headlines JSON`) in the old node's shape. */
+function legacySignature(signature: unknown): unknown {
+  if (typeof signature !== "string") return signature;
+  const [count, severity, ...rest] = signature.split("|");
+  const list: unknown = JSON.parse(rest.join("|"));
+  const headlines = isArray(list) ? list.map((item) => (isRecord(item) ? legacyHeadline(item) : item)) : list;
+  return `${count ?? ""}|${severity ?? ""}|${JSON.stringify(headlines)}`;
+}
+
+/** `.value` of an NGSI-LD attribute read off an untyped entity. */
+function valueOf(attribute: unknown): unknown {
+  return isRecord(attribute) ? attribute.value : undefined;
+}
+
+/**
+ * DELIBERATE DEVIATION (licence, module header): the port keeps every
+ * headline in full and links a NINA warning to its page (`url`); the old node
+ * cut headlines to 60 characters. This puts the port's plan into the old
+ * shape — headlines cut, no links, signatures recomputed over them — so
+ * everything else is still compared with the old node.
+ * {@link headlinesInFullWithLinks} checks the deviation itself.
+ */
+function asLegacyShape(plan: UpsertPlan): UpsertPlan {
+  const entities = plan.entities.map((entity): NgsiEntity => {
+    const headlines = entity.headlines;
+    if (headlines === undefined || typeof headlines === "string" || headlines.type !== "Property")
+      return entity;
+    const list = headlines.value;
+    if (!isArray(list)) return entity;
+    const cut = list.map((item) => (isRecord(item) ? legacyHeadline(item) : item));
+    return { ...entity, headlines: { ...headlines, value: cut } };
+  });
+  const byId = new Map(entities.map((entity) => [entity.id, entity]));
+  const pending = plan.pending.map(([key, field, value, id]): PendingSignature => {
+    const entity = byId.get(id);
+    if (entity === undefined || key !== GATE_KEY || entity.headlines === undefined)
+      return [key, field, value, id];
+    const signature =
+      `${String(valueOf(entity.activeCount))}|${String(valueOf(entity.maxSeverity))}|` +
+      JSON.stringify(valueOf(entity.headlines));
+    return [key, field, signature, id];
+  });
+  return { entities, pending };
+}
+
+function assertPlanMatches(legacy: Legacy, ported: UpsertPlan): void {
+  const plan = asLegacyShape(ported);
   assertEntitiesEqual(legacy.entities, plan.entities);
   assert.deepEqual(normalize(legacy.pending), normalize(plan.pending), "pending signatures differ");
   assert.deepEqual(
@@ -214,6 +278,61 @@ async function recordedJoinIsIdentical(): Promise<void> {
   assert.equal(ludwigsburg.maxSeverity.value, 1);
 }
 
+async function headlinesInFullWithLinks(): Promise<void> {
+  // DELIBERATE DEVIATION (licence): official warnings are passed on unaltered.
+  const join = await legacyJoin(withDwdAlerts(recorded()));
+  const entities = build(parse(join), null, new Date().toISOString());
+  const stuttgart = entities.find((e) => e.id.endsWith("-08111-dwd"));
+  assert.deepEqual(
+    stuttgart?.headlines.value.map((headline) => headline.h),
+    [
+      "Amtliche WARNUNG vor STURMBÖEN",
+      // Longer than 60 characters, which the old node cut; the apostrophe swap stays (TRoE).
+      "Amtliche UNWETTERWARNUNG vor ORKANBÖEN im Kreis ’Stuttgart’ und Umgebung",
+      "FROST",
+    ],
+  );
+  assert.ok(
+    stuttgart.headlines.value.every((headline) => headline.url === undefined),
+    "DWD: no per-warning link",
+  );
+  const ludwigsburg = entities.find((e) => e.id.endsWith("-08118-nina"));
+  assert.deepEqual(ludwigsburg?.headlines.value, [
+    {
+      h: "Trinkwasserverunreinigung - Winzerhausen Holzweiler Hof",
+      sev: "minor",
+      url: `${NINA_WARNING_URL}mow.DE-BW-LB-W026-20260921-000`,
+    },
+  ]);
+
+  // A NINA id that is no plain identifier gets no link; the headline stays.
+  const odd = parse([
+    {
+      kreis: "08111",
+      quelle: "nina",
+      ok: true,
+      body: [{ id: "x/y?q=1", payload: { data: { headline: "H", severity: "Minor" } } }],
+    },
+  ]);
+  assert.deepEqual(odd.parts[0]?.items[0]?.headline, { h: "H", sev: "minor" });
+
+  // Long headlines are never cut; the list is shortened by entries to stay
+  // below the TRoE compound limit, activeCount keeps the true number.
+  const long = (n: number): { h: string; sev: string } => ({
+    h: `${String(n)} ${"Ä".repeat(400)}`,
+    sev: "severe",
+  });
+  const bounded = boundedHeadlines([long(1), long(2), long(3)]);
+  assert.equal(bounded.length, 2);
+  assert.ok(Buffer.byteLength(JSON.stringify(bounded), "utf8") <= HEADLINES_MAX_BYTES);
+  assert.ok(
+    bounded.every((headline) => headline.h.length === 2 + 400),
+    "a headline was cut",
+  );
+  const huge = { h: "Ä".repeat(2000), sev: "extreme" };
+  assert.deepEqual(boundedHeadlines([huge, long(2)]), [huge], "the first headline always stays, in full");
+}
+
 async function failedAndOddPartsAgree(): Promise<void> {
   // Test inputs: a 503 (dropped), an error text as the body (the old
   // "no response" case: ok stays true, zero items), a body without alerts, a
@@ -253,7 +372,9 @@ async function gateCycle(): Promise<void> {
     flow = Object.fromEntries(commit.flow);
   }
   store.commit(plan.pending, new Set(plan.entities.map((entity) => entity.id)));
-  assert.deepEqual(normalize(flow[GATE_KEY]), normalize(Object.fromEntries(store.copy(GATE_KEY))));
+  // The port's table in the old shape (full headlines and links, deliberate; see asLegacyShape).
+  const committed = [...store.copy(GATE_KEY)].map(([id, signature]) => [id, legacySignature(signature)]);
+  assert.deepEqual(normalize(flow[GATE_KEY]), normalize(Object.fromEntries(committed)));
 
   // New warnings for Stuttgart: one entity in full, 87 freshness stamps.
   const changed = await legacyJoin(withDwdAlerts(recorded()));
@@ -540,10 +661,41 @@ async function calendarBytesAgree(): Promise<void> {
     const oldBody = legacy.returned.payload;
     assert.ok(isString(oldBody));
     const newBody = renderCalendar("08111", isArray(alerts) ? alerts : [], new Date().toISOString());
-    assert.equal(unstamped(unfolded(newBody)), unstamped(oldBody));
+    // DELIBERATE DEVIATION (licence): a linked headline adds a URL line, the
+    // old node had none; everything else is byte for byte the old calendar.
+    assert.equal(unstamped(withoutUrlLines(unfolded(newBody))), unstamped(oldBody));
     assert.equal(legacy.returned.statusCode, 200);
     assert.deepEqual(normalize(legacy.returned.headers), { "Content-Type": "text/calendar; charset=utf-8" });
   }
+}
+
+/** The calendar without its URL lines (the link to the original warning, deliberate). */
+function withoutUrlLines(text: string): string {
+  return text.replace(/\r\nURL:[^\r]*/g, "");
+}
+
+function calendarLinksTheOriginalWarning(): void {
+  const body = renderCalendar(
+    "08118",
+    [
+      {
+        id: "urn:ngsi-ld:Alert:bw-kreis-08118-nina",
+        headlines: [
+          { h: "A", sev: "minor", url: `${NINA_WARNING_URL}mow.DE-BW-LB-W026-20260921-000` },
+          // Not a warnung.bund.de page, or not a plain id: no URL line.
+          { h: "B", sev: "minor", url: "https://example.org/x" },
+          { h: "C", sev: "minor", url: `${NINA_WARNING_URL}a\r\nBEGIN:VEVENT` },
+        ],
+      },
+    ],
+    "2026-10-01T12:00:00.000Z",
+  );
+  const urls = unfolded(body)
+    .split("\r\n")
+    .filter((line) => line.startsWith("URL:"));
+  assert.deepEqual(urls, [`URL:${NINA_WARNING_URL}mow.DE-BW-LB-W026-20260921-000`]);
+  assert.equal(calendarUrl(`${NINA_WARNING_URL}mow.x`), `${NINA_WARNING_URL}mow.x`);
+  assert.equal(calendarUrl(42), null);
 }
 
 async function routeServesTheCalendar(): Promise<void> {
@@ -655,6 +807,8 @@ function longLinesAreFoldedAt75Octets(): void {
 export {
   requestsAreTheOldOnes as "warnungen-bw: the 88 (and the fixture's 20) requests are the old FN_KREIS_MSGS URLs, in order",
   recordedJoinIsIdentical as "warnungen-bw: old wrap + FN_WARN_BUILD and ported parse/build + gate agree on the recorded join",
+  headlinesInFullWithLinks as "warnungen-bw: headlines in full, NINA linked to its warning, list bounded by entries (deliberate, licence)",
+  calendarLinksTheOriginalWarning as "warnungen-bw: the calendar links a NINA warning to its page, nothing else (deliberate, licence)",
   failedAndOddPartsAgree as "warnungen-bw: failed, error-text, alert-less and district-less parts agree",
   gateCycle as "warnungen-bw: commit matches the old commit node; changed warnings of one district are sent in full",
   runWritesWhatTheOldChainBuilt as "warnungen-bw: run() fans out, joins and upserts what the old chain built",

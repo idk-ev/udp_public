@@ -12,6 +12,14 @@
  * count is decided per vehicle or station by the strict municipality lookup,
  * never by the system.
  *
+ * ## Excluded systems (licence)
+ *
+ * Some providers' terms do not allow what the platform does with the feed
+ * (storing it, building a dataset): Lime's GBFS terms forbid both, Bird's
+ * terms are not cleared. Such systems are listed in the registry entry of
+ * each GBFS connector (`excludeSystems`, pattern plus reason) and dropped
+ * from the list before anything is fetched ({@link withoutExcluded}).
+ *
  * ## Feed URLs are foreign data (security review)
  *
  * The feed URLs come out of the list as the providers registered them, and
@@ -29,7 +37,7 @@
 
 import { FetchUrlRefusedError } from "../kernel/fetcher.js";
 import { isFiniteNumber, isRecord, isString, isTruthy } from "../kernel/parse.js";
-import type { FetchOptions, Log } from "../kernel/types.js";
+import type { FetchOptions, Log, SystemExclusion } from "../kernel/types.js";
 
 /** The `http request` node "GBFS-Systeme" of both flows. */
 export const SYSTEMS_URL = "https://api.mobidata-bw.de/sharing/gbfs";
@@ -78,6 +86,38 @@ export function prevailingFormFactor(types: unknown): string | null {
   // Stable sort by count, descending: ties keep the order of first sighting.
   const top = [...counts].sort((a, b) => b[1] - a[1])[0];
   return top === undefined ? null : top[0];
+}
+
+/* ------------------------------------------------------------------ exclusions */
+
+/** `pattern` of an exclusion rule as an anchored regex: `*` matches any run of characters. */
+function exclusionRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`);
+}
+
+/** The first rule of the registry's `excludeSystems` that matches a system id, or `null`. */
+export function exclusionOf(id: string, rules: readonly SystemExclusion[]): SystemExclusion | null {
+  return rules.find((rule) => exclusionRegex(rule.pattern).test(id)) ?? null;
+}
+
+/**
+ * Splits the system list by the registry's `excludeSystems`. An excluded
+ * system is neither fetched nor written — not even its `vehicle_types` —
+ * because the reason is the provider's licence terms (storing the data or
+ * building a dataset from it is not allowed or not cleared). What it wrote
+ * before is removed by the connectors' ordinary age-based prune, as for a
+ * system that left the list.
+ */
+export function withoutExcluded(
+  systems: readonly GbfsSystem[],
+  rules: readonly SystemExclusion[],
+): { readonly kept: readonly GbfsSystem[]; readonly excluded: readonly GbfsSystem[] } {
+  if (rules.length === 0) return { kept: systems, excluded: [] };
+  const kept: GbfsSystem[] = [];
+  const excluded: GbfsSystem[] = [];
+  for (const system of systems) (exclusionOf(system.id, rules) === null ? kept : excluded).push(system);
+  return { kept, excluded };
 }
 
 /** `s.url.replace(/\/gbfs$/, '/<feed>')`. */

@@ -57,6 +57,7 @@ import {
   withoutWeeklyRefresh,
   mobilityCtx,
   staleOptions,
+  withoutExcludedSystems,
 } from "../harness/mobility.js";
 import { assertPruneSettings, legacyPruneSettings } from "../harness/prune-settings.js";
 import {
@@ -370,13 +371,16 @@ async function runMatchesTheOldFlows(): Promise<void> {
   const master = (await legacyMasterData(realInputs())).flow;
 
   // Old list nodes: the requests they fan out, and the status list node's prunes.
+  // Both see the list the port works on: without the systems the registry
+  // excludes (licence terms; bird-basel in the fixture).
+  const listed = withoutExcludedSystems("carsharing-bw", list.payload);
   const infoList = await runFunctionNode(INFO_LIST_NODE, {
-    msg: { _msgid: "parity", statusCode: 200, payload: structuredClone(list.payload) },
+    msg: { _msgid: "parity", statusCode: 200, payload: structuredClone(listed) },
   });
   const oldBroker = new Broker(fullGeo().municipalities.length);
   seed(oldBroker, now);
   const statusList = await runFunctionNode(STATUS_LIST_NODE, {
-    msg: { _msgid: "parity", statusCode: 200, payload: structuredClone(list.payload) },
+    msg: { _msgid: "parity", statusCode: 200, payload: structuredClone(listed) },
     global: legacyGlobal(fullGeo()),
     flow: {
       ...master,
