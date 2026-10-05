@@ -44,6 +44,10 @@ proxy_cache_path /var/cache/nginx/connectors levels=1:2 keys_zone=udpconnectors:
 # calendar client polls /warnungen.ics every few hours. Beyond the burst: 429.
 limit_req_zone $binary_remote_addr zone=udp_abfahrten:10m rate=30r/m;
 limit_req_zone $binary_remote_addr zone=udp_warnungen:10m rate=10r/m;
+# Login of /dashboard.html: nginx checks the password (bcrypt) in the worker
+# itself, so unthrottled guessing would cost cockpit CPU as well. A person
+# needs a handful of requests; beyond the burst: 429.
+limit_req_zone $binary_remote_addr zone=udp_dashboard:1m rate=20r/m;
 
 # Empty answers of the context API ([]) are cached for 10 s only, not 60 s:
 # a transient empty answer (broker restart, a source being rewritten) would
@@ -196,6 +200,8 @@ server {
     # stored by browsers or shared caches; the service worker leaves the page
     # alone (gui/public/sw.js).
     location ~* ^/dashboard\.html {
+        limit_req zone=udp_dashboard burst=10 nodelay;
+        limit_req_status 429;
         ${UDP_DASHBOARD_ACCESS}
         # add_header here drops the server-level headers, so they are repeated.
         add_header Cache-Control "private, no-store" always;

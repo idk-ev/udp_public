@@ -91,6 +91,23 @@ exports["cockpit image and Compose run the access script"] = () => {
   assert(compose.includes("./config/nginx/udp-auth:/etc/nginx/udp-auth:ro"));
 };
 
+exports["entrypoint scripts are executable in git"] = () => {
+  // Compose bind-mounts them with the mode of the checkout; a non-executable
+  // .envsh is skipped by the nginx entrypoint and the template then fails to
+  // load (unknown directive "${UDP_...}"), taking the whole cockpit down.
+  const r = spawnSync("git", ["ls-files", "-s", "gui/docker/"], { cwd: ROOT, encoding: "utf8" });
+  if (r.status !== 0) return; // not a git checkout (e.g. source tarball)
+  const lines = r.stdout.trim().split("\n").filter(l => /\.envsh$/.test(l));
+  assert(lines.some(l => l.endsWith(ENVSH)), `${ENVSH} not tracked`);
+  for (const l of lines) assert(l.startsWith("100755 "), `not executable: ${l}`);
+};
+
+exports["cockpit nginx: dashboard login is rate-limited"] = () => {
+  assert(/limit_req_zone \$binary_remote_addr zone=udp_dashboard:/.test(NGINX));
+  const body = locationBody("location ~* ^/dashboard\\.html {");
+  assert(body.indexOf("limit_req zone=udp_dashboard") >= 0, "no limit_req in the dashboard location");
+};
+
 exports["helm: htpasswd Secret mounted read-only at the fixed path"] = () => {
   const values = read("helm/udp/values.yaml");
   assert.match(values, /\n  dashboardAuth:\n    existingSecret: ""\n/, "default must stay empty (page answers 404)");

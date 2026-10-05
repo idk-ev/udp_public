@@ -137,7 +137,7 @@ Das Hauptdashboard `/dashboard.html` (Kommunen-Suche plus Betriebsdaten:
 Konnektoren, TRoE-Ingestion, Serverlast, Speicher) ist für den Betrieb da und
 nicht öffentlich. Der Cockpit-nginx schützt es mit HTTP Basic Auth gegen eine
 htpasswd-Datei unter `/etc/nginx/udp-auth/htpasswd`. Fehlt die Datei oder ist
-sie leer, antwortet die Seite mit **404** (Standard). Die öffentlichen Seiten
+sie leer (0 Byte), antwortet die Seite mit **404** (Standard). Die öffentlichen Seiten
 (404-Seite, Fußzeilen, PWA-Manifest) verweisen auf die Startseite `/` mit
 ihrer Kommunen-Suche; `/kommunen.html` leitet dorthin um.
 
@@ -157,7 +157,11 @@ cockpit:
     existingSecret: udp-dashboard-auth
 ```
 
-- Eine Zeile `benutzer:hash` je Konto; bcrypt (`htpasswd -B`) oder apr1.
+- Eine Zeile `benutzer:hash` je Konto; bcrypt (`htpasswd -B`) empfohlen, apr1
+  nur als Notbehelf (schwächer).
+- Basic Auth überträgt die Zugangsdaten im Klartext: nur über HTTPS nutzen
+  (der Compose-Port 3700 ohne TLS taugt nur lokal). Mehr als 20 Anfragen je
+  Minute und Adresse (Spitze 10) beantwortet nginx mit 429.
 - Geänderte Zugangsdaten im selben Secret gelten ohne Neustart (nginx liest
   die Datei bei jeder Anfrage, der kubelet gleicht sie binnen etwa einer
   Minute ab). Fehlt das Secret oder der Schlüssel, startet der Pod nicht.
