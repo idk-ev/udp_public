@@ -137,6 +137,9 @@ exports["gateway catch-all: component allowlist, request and connection limits"]
   assert.match(body, /limit_conn udp_gateway_conn \d+;/);
   assert.match(NGINX, /limit_req_zone \$binary_remote_addr zone=udp_abfahrten:10m rate=120r\/m;/);
   assert.match(location("location = /abfahrten {"), /limit_req zone=udp_abfahrten burst=60 nodelay;/);
+  // The connector service stretches the cache lifetime with X-Accel-Expires
+  // as its daily EFA-BW budget fills; nginx must honour it.
+  assert(!/proxy_ignore_headers/.test(location("location = /abfahrten {")), "/abfahrten ignores X-Accel-Expires");
   // APISIX limits FROST, CKAN and GeoServer per client as well.
   const apisix = read("helm/udp/files/apisix/apisix.yaml.tpl");
   for (const id of ["sensorthings", "open-data", "geo"]) {

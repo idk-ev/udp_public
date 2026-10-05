@@ -627,6 +627,10 @@ server {
         proxy_set_header Host $host;
         proxy_cache udpconnectors;
         proxy_cache_methods GET HEAD;
+        # 60 s – unless the connector service sends X-Accel-Expires: it
+        # stretches the lifetime of departures as its daily EFA-BW budget
+        # fills (abfahrten-on-demand.ts, CACHE_STRETCH). So that header must
+        # not be ignored here; nginx never passes X-Accel-* on.
         proxy_cache_valid 200 60s;
         proxy_cache_valid 404 30s;
         proxy_cache_key "$uri?ags=$arg_ags";
