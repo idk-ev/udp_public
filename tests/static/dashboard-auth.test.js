@@ -54,7 +54,9 @@ exports["service worker: /dashboard.html neither precached nor intercepted"] = (
   assert(!shell[1].includes("/dashboard.html"), "a 401/404 in SHELL makes addAll() fail and the worker never installs");
   assert(/"\/",/.test(shell[1]), "the start page (offline fallback) is not precached");
   assert.match(sw, /const PRIVATE = \[[^\]]*"\/dashboard\.html"[^\]]*\];/);
-  assert.match(sw, /PRIVATE\.includes\(u\.pathname\)\) return;/);
+  // /ops/… (the dashboard's operations data) is private as well.
+  assert.match(sw, /const isPrivate = p => PRIVATE\.includes\(p\) \|\| p\.startsWith\("\/ops\/"\);/);
+  assert.match(sw, /isPrivate\(u\.pathname\)\) return;/);
   assert.match(sw, /caches\.match\("\/"\)/, "offline fallback for pages is not the start page");
 };
 

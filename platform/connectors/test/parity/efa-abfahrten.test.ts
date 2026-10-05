@@ -40,7 +40,8 @@ import {
   stopFromParams,
 } from "../../src/connectors/efa-abfahrten.js";
 import type { StopConfig } from "../../src/connectors/efa-abfahrten.js";
-import { EFA_CONCURRENCY, EFA_MIN_INTERVAL_MS } from "../../src/connectors/efa.js";
+import { DEFAULT_DAILY_CAP } from "../../src/connectors/abfahrten-on-demand.js";
+import { EFA_CONCURRENCY, EFA_HOST, EFA_MIN_INTERVAL_MS } from "../../src/connectors/efa.js";
 import type { HttpResponse } from "../../src/kernel/types.js";
 import { legacyFlowsPath, messageFromFixture, readFixture } from "../harness/fixtures.js";
 import type { GRequest, GRig } from "../harness/g-transport.js";
@@ -466,7 +467,11 @@ async function requestProfileIsCapped(): Promise<void> {
     25,
   );
   const g = rig(entry, network.fetcher);
+  // The on-demand endpoint's daily cap used up: the periodic run neither
+  // checks nor charges it (efa.ts, "Daily cap").
+  g.ctx.quota.charge(EFA_HOST, DEFAULT_DAILY_CAP);
   await run(g.ctx);
+  assert.equal(g.ctx.quota.used(EFA_HOST), DEFAULT_DAILY_CAP, "the periodic run charges nothing");
   const efa = network.seen.filter((request) => !request.url.startsWith(ORION));
   assert.equal(efa.length, agsList.length, "one request per configured stop");
   assert.ok(network.maxInFlight() <= EFA_CONCURRENCY, `at most ${String(EFA_CONCURRENCY)} in flight`);

@@ -215,7 +215,7 @@
       "scope": "land",
       "enabledFor": "*",
       "intervalSeconds": null,
-      "cron": "40 02 * * 0",
+      "cron": "40 01 * * 0",
       "sollMinutes": 12960,
       "sampleEntity": "urn:ngsi-ld:PublicAmenity:bw-08212000",
       "provides": [
@@ -393,7 +393,7 @@
       "scope": "land",
       "enabledFor": "*",
       "intervalSeconds": null,
-      "cron": "20 02 * * *",
+      "cron": "20 01 * * *",
       "fireOnStart": false,
       "sollMinutes": 12960,
       "sampleEntity": "urn:ngsi-ld:EnergyMonitor:bw-08111000",

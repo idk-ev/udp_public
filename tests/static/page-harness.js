@@ -28,10 +28,19 @@ try {
 const json = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 
-const leafletStub = w => {
-  const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain });
+/* Leaflet stub: every property and call yields the stub again. `calls`, if
+   given, collects the arguments of every call (popup markup among them). */
+const leafletStub = (w, calls) => {
+  const chain = new Proxy(function () {}, { get: () => chain, apply: (t, self, args) => { if (calls) calls.push(args); return chain; } });
   w.L = new Proxy({}, { get: () => chain });
 };
+
+/* Makes localStorage throw on any access, as in an iframe with blocked
+   third-party storage. */
+const blockStorage = w => Object.defineProperty(w, "localStorage", {
+  configurable: true,
+  get() { throw new w.DOMException("The operation is insecure.", "SecurityError"); },
+});
 
 async function settled(w, what) {
   const t0 = Date.now();
@@ -47,14 +56,18 @@ const REUTLINGEN = GEM.gemeinden.find(g => g[0] === "08415061");
 /* Renders stadt.html, for Reutlingen unless `opts.row` is another
    bw-gemeinden.json row. `opts.entities` maps entity ids to bodies,
    `opts.types` NGSI-LD types to lists, `opts.fail` is a predicate for URLs
-   answered with 503, `opts.abfahrten` the /abfahrten Response. */
+   answered with 503, `opts.abfahrten` the /abfahrten Response, `opts.query`
+   a query string for the page URL, `opts.noStorage` blocks localStorage.
+   Returns the window, document, fetched URLs and Leaflet call arguments. */
 async function renderStadt(opts = {}) {
   const html = STADT_HTML.replace(/<script src="[^"]*"><\/script>/g, "");
   const row = opts.row || REUTLINGEN;
-  const dom = new JSDOM(html, { url: "https://udp.example/" + row[8], runScripts: "outside-only", pretendToBeVisual: true });
+  const dom = new JSDOM(html, { url: "https://udp.example/" + row[8] + (opts.query || ""), runScripts: "outside-only", pretendToBeVisual: true });
   const w = dom.window;
   const calls = [];
+  const leaflet = [];
   for (const [k, v] of Object.entries(opts.storage || {})) w.localStorage.setItem(k, v);
+  if (opts.noStorage) blockStorage(w);
   w.STADT = { row, website: "https://www.reutlingen.de" };
   w.fetch = async url => {
     const u = decodeURIComponent(String(url));
@@ -73,12 +86,12 @@ async function renderStadt(opts = {}) {
     const type = (u.match(/[?&]type=([^&]+)/) || [])[1];
     return json((opts.types || {})[type] || []);
   };
-  leafletStub(w);
+  leafletStub(w, leaflet);
   w.eval(LIB);
   const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
   for (const src of inline) w.eval(src);
   await settled(w, "stadt.html");
-  return { w, d: w.document, calls };
+  return { w, d: w.document, calls, leaflet };
 }
 
 /* Renders another page; static files come from gui/public, /ops/… files
@@ -122,4 +135,4 @@ const tileOf = (d, label) => {
   return { el, value: text(".value"), hint: text(".hint") };
 };
 
-module.exports = { JSDOM, ROOT, PUB, LIB, CONN, GEM, json, leafletStub, renderStadt, renderPage, labels, errorLabels, tileOf };
+module.exports = { JSDOM, ROOT, PUB, LIB, CONN, GEM, json, leafletStub, blockStorage, renderStadt, renderPage, labels, errorLabels, tileOf };

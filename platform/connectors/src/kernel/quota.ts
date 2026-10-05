@@ -58,6 +58,11 @@ export function utcDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/** Start of the UTC day after the one `ms` lies in: when the counters start over. */
+export function nextUtcDayMs(ms: number): number {
+  return (Math.floor(ms / 86_400_000) + 1) * 86_400_000;
+}
+
 /** Stored as `{ "<host>": { "day": "YYYY-MM-DD", "units": n, "exhausted": true? } }`. */
 const codec: StateCodec<ReadonlyMap<string, DayUnits>> = {
   encode: (value) =>

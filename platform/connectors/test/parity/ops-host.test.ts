@@ -17,10 +17,15 @@
  *
  * Fixture: test/fixtures/ops-host.json — the complete stdout of the command in
  * node:22-alpine, see its `note`.
+ *
+ * The one addition of the port, the EFA on-demand counter, is taken out
+ * before the comparison and pinned on its own ({@link efaOnDemandCounterIsAdded}).
  */
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { DAILY_CAP_ENV, DEFAULT_DAILY_CAP } from "../../src/connectors/abfahrten-on-demand.js";
+import { EFA_HOST } from "../../src/connectors/efa.js";
 import { build, COMMAND, EXEC_TIMEOUT_MS, parse, runWith } from "../../src/connectors/ops-host.js";
 import { ParseError } from "../../src/kernel/parse.js";
 import { legacyFlowsPath, messageFromFixture, readFixture } from "../harness/fixtures.js";
@@ -68,6 +73,18 @@ async function recordedOutputIsIdentical(): Promise<void> {
   assert.equal(entity.memUsedPct.value, 5);
 }
 
+/** Attributes the port adds to the old node's entity (module comment of ops-host.ts). */
+const ADDED = ["efaOnDemandCallsToday", "efaOnDemandDailyCap"];
+
+/** The upserted entities without {@link ADDED}. */
+function withoutAddition(entities: readonly unknown[]): unknown[] {
+  return entities.map((entity) =>
+    isRecord(entity)
+      ? Object.fromEntries(Object.entries(entity).filter(([name]) => !ADDED.includes(name)))
+      : entity,
+  );
+}
+
 async function runUpsertsTheSameEntity(): Promise<void> {
   const output = recorded();
   const legacyClock = openClock();
@@ -93,8 +110,9 @@ async function runUpsertsTheSameEntity(): Promise<void> {
     `${TEST_ORION_URL}/ngsi-ld/v1/entityOperations/upsert?options=update`,
   );
   // What reached Orion, after JSON — against what the old node handed its upsert node.
-  assertEntitiesEqual(JSON.parse(JSON.stringify(solePayload(legacy))), upsertedEntities(t.seen));
-  assertClockStamps(solePayload(legacy), upsertedEntities(t.seen), {
+  const sent = withoutAddition(upsertedEntities(t.seen));
+  assertEntitiesEqual(JSON.parse(JSON.stringify(solePayload(legacy))), sent);
+  assertClockStamps(solePayload(legacy), sent, {
     legacy: legacyWindow,
     ported: portWindow,
   });
@@ -151,6 +169,34 @@ async function truncatedOutputWarnsAndWritesNothing(): Promise<void> {
   }
 }
 
+async function efaOnDemandCounterIsAdded(): Promise<void> {
+  const now = "2026-10-05T10:00:00.000Z";
+  const counted = async (env?: Record<string, string>): Promise<Record<string, unknown>> => {
+    const t = testCtx({ id: "ops-host", now, ...(env === undefined ? {} : { env }) });
+    t.ctx.quota.charge(EFA_HOST, 1234);
+    await runWith(t.ctx, () => Promise.resolve(recorded()));
+    const [entity] = upsertedEntities(t.seen);
+    assert.ok(isRecord(entity));
+    return entity;
+  };
+  const entity = await counted();
+  assert.deepEqual(entity.efaOnDemandCallsToday, {
+    type: "Property",
+    value: 1234,
+    unitCode: "C62",
+    observedAt: now,
+  });
+  assert.deepEqual(entity.efaOnDemandDailyCap, {
+    type: "Property",
+    value: DEFAULT_DAILY_CAP,
+    unitCode: "C62",
+    observedAt: now,
+  });
+  const configured = await counted({ [DAILY_CAP_ENV]: "5000" });
+  assert.ok(isRecord(configured.efaOnDemandDailyCap));
+  assert.equal(configured.efaOnDemandDailyCap.value, 5000);
+}
+
 function commandMatchesTheExecNode(): void {
   // The exec node's command, with the one deliberate change of the disk path.
   const execNode = readExecCommand();
@@ -182,6 +228,7 @@ function readExecCommand(): { command: string; timer: string } {
 export {
   recordedOutputIsIdentical as "ops-host: old FN_OPS and ported build() emit the identical PlatformStatus:udp on the recorded /proc output",
   runUpsertsTheSameEntity as "ops-host: run() upserts exactly the entity the old node handed its upsert node",
+  efaOnDemandCounterIsAdded as "ops-host: run() adds the EFA on-demand calls of the day and the daily cap (addition)",
   unusualOutputsMatch as "ops-host: free without 'available', df header only, missing nproc, decimal commas — identical on both sides",
   truncatedOutputWarnsAndWritesNothing as "ops-host: truncated exec output warns and writes nothing, as before",
   commandMatchesTheExecNode as "ops-host: the command and its 10 s kill timer are the old exec node's (disk path / instead of /data)",

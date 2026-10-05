@@ -175,6 +175,29 @@ export class WarnThrottle {
 }
 
 /**
+ * A promise rejection nobody handles, or an exception nobody catches, ends
+ * the process — as Node 22 does by default. What Node does not do: write it
+ * with the `[error]` marker (it prints a bare stack, which the health check
+ * does not count), and shut down in order. So both are logged here and
+ * handed to `fail`, the service's shutdown with exit code 1 (src/index.ts):
+ * state written, writer lock released, the orchestrator restarts the
+ * container. Carrying on instead would hide the fault and leave the process
+ * in a state nobody planned for.
+ *
+ * `source` is `process`, or an emitter standing in for it in tests.
+ */
+export function handleFatalErrors(log: Log, fail: () => void, source: NodeJS.EventEmitter = process): void {
+  source.on("unhandledRejection", (reason: unknown) => {
+    log.error("unhandled promise rejection — shutting down", reason);
+    fail();
+  });
+  source.on("uncaughtException", (error: unknown, origin: unknown) => {
+    log.error(`uncaught exception (${String(origin)}) — shutting down`, error);
+    fail();
+  });
+}
+
+/**
  * @param component Name in the second bracket pair — the connector id for
  *                  connector logs, so the health check's grouping names the
  *                  connector that is failing.

@@ -100,6 +100,41 @@
  *    The `stand` of a reused answer is the time EFA answered, not the time of
  *    the page view. The old path had none of this: one unpaced EFA request
  *    per nginx cache miss.
+ *  * A daily cap on the EFA requests (below). The old path had none.
+ *
+ * ## Daily cap
+ *
+ * The cockpit's 60 s cache and per-client limit bound the rate per stop and
+ * client, not the day: crawlers walking all ~1,100 municipalities can still
+ * cause one EFA request per stop and minute — far beyond what the
+ * generator's comment above calls acceptable without an agreement with the
+ * provider. The endpoint therefore counts its
+ * upstream requests per UTC day in `ctx.quota` (host {@link EFA_HOST},
+ * persisted, survives a restart; the precedent is Open-Meteo, see
+ * src/kernel/quota.ts) against {@link DEFAULT_DAILY_CAP} calls
+ * (`UDP_EFA_ON_DEMAND_DAILY_CAP`). A request is charged when its upstream
+ * request is started, aborted or not (the safe direction); a coalesced one
+ * costs nothing.
+ *
+ *  * Used up: 503 with `Retry-After` until 00:00 UTC and the stop's name
+ *    (`{ fehler, halt }`, as the 502), no EFA request. The cockpit serves the
+ *    stop's last good answer stale on a 503 (`proxy_cache_use_stale`); a
+ *    stop without one gets the 503, which the city page shows as
+ *    "Fahrplanauskunft derzeit gestört" because the answer names the stop.
+ *  * Stretched: from half the cap on, departure answers carry
+ *    `X-Accel-Expires` ({@link CACHE_STRETCH}: 5, 10, then 20 minutes), so
+ *    the cockpit asks EFA-BW less often per stop and the remaining budget
+ *    lasts longer, e.g. against one actor cycling through all stops.
+ *  * Visible: once a day a `[warn]` at {@link CAP_WARN_SHARE} of the cap and
+ *    an `[error]` when it is reached, both starting with
+ *    {@link CAP_LOG_PREFIX} — what a log-based alert matches. While it stays
+ *    used up, every hourly run repeats it as a `[warn]`, so the health
+ *    check's 70-minute window never loses it. `ops-host` publishes the day's
+ *    count and the cap on `PlatformStatus:udp`.
+ *  * `efa-abfahrten` takes no part: its volume is fixed by the registry, and
+ *    public traffic must not be able to starve it (see efa.ts).
+ *
+ * The refused requests themselves are public traffic: debug only.
  */
 
 import { COCKPIT_URL } from "../kernel/env.js";
@@ -107,10 +142,12 @@ import { FetchAbortedError } from "../kernel/fetcher.js";
 import { weakEtag } from "../kernel/http.js";
 import { WarnThrottle } from "../kernel/log.js";
 import { isRecord, isString, isTruthy, ParseError, requireRecord } from "../kernel/parse.js";
+import { nextUtcDayMs, utcDay } from "../kernel/quota.js";
 import { stateKey } from "../kernel/state.js";
 import type {
   ConnectorModule,
   Ctx,
+  Env,
   GeoIndex,
   HttpResponse,
   IsoTime,
@@ -123,6 +160,7 @@ import type {
 import {
   berlinClock,
   EFA_DM_URL,
+  EFA_HOST,
   EFA_MIN_INTERVAL_MS,
   isEmptyDepartureMonitor,
   parseDepartureMonitor,
@@ -228,6 +266,7 @@ function notLoadable(ctx: Ctx, status: string): void {
  * unchanged file is a 304 and is not parsed again.
  */
 export async function run(ctx: Ctx): Promise<void> {
+  reportCap(ctx);
   const loaded = ctx.state.slot(DIRECTORY).get();
   const validators = ctx.state.slot(VALIDATORS);
   let response: HttpResponse;
@@ -403,6 +442,148 @@ type FlightResult =
   | { readonly kind: "upstream"; readonly upstream: Upstream; readonly stand: IsoTime }
   | { readonly kind: "aborted" };
 
+/* ------------------------------------------------------------------ Daily cap */
+
+/** EFA-BW requests the endpoint may start per UTC day — default of {@link DAILY_CAP_ENV}. */
+export const DEFAULT_DAILY_CAP = 20_000;
+export const DAILY_CAP_ENV = "UDP_EFA_ON_DEMAND_DAILY_CAP";
+
+/** Share of the cap at which the endpoint warns, once a day. */
+export const CAP_WARN_SHARE = 0.8;
+
+/** Start of every log line about the cap: what a log-based alert matches on. */
+export const CAP_LOG_PREFIX = "EFA-BW on-demand daily cap";
+
+/** Answer while the cap is used up. */
+export const CAPPED_TEXT = "Tageskontingent der Fahrplanauskunft aufgebraucht";
+
+/** The configured cap; a value that is not a positive number falls back to the default. */
+export function dailyCapOf(env: Env): number {
+  const cap = Math.floor(env.number(DAILY_CAP_ENV, DEFAULT_DAILY_CAP));
+  return cap > 0 ? cap : DEFAULT_DAILY_CAP;
+}
+
+function capFields(used: number, cap: number, nowMs: number): string {
+  return `used=${String(used)} cap=${String(cap)} day=${utcDay(nowMs)} (UTC)`;
+}
+
+function reachedText(used: number, cap: number, nowMs: number): string {
+  return (
+    `${CAP_LOG_PREFIX} reached: ${capFields(used, cap, nowMs)} — /abfahrten answers 503 until ` +
+    `${new Date(nextUtcDayMs(nowMs)).toISOString()}; raise ${DAILY_CAP_ENV} only with the provider's consent`
+  );
+}
+
+/**
+ * The cap's log lines, each at most once per UTC day and process (a restart
+ * repeats them once, which is wanted). In `ctx.state`, shared by run and route.
+ */
+export class DailyCap {
+  #day = "";
+  #warned = false;
+  #reached = false;
+  #invalidReported = false;
+
+  /** The cap, with one `[warn]` per process for a value that is not a positive number. */
+  cap(ctx: Ctx): number {
+    const raw = ctx.env.number(DAILY_CAP_ENV, DEFAULT_DAILY_CAP);
+    const cap = dailyCapOf(ctx.env);
+    if (cap !== raw && !this.#invalidReported) {
+      this.#invalidReported = true;
+      ctx.log.warn(`${DAILY_CAP_ENV}=${String(raw)} is not a positive whole number, using ${String(cap)}`);
+    }
+    return cap;
+  }
+
+  /**
+   * Whether one more upstream request fits into today's cap; if so, it is
+   * charged. Logs the {@link CAP_WARN_SHARE} and the full mark once a day.
+   */
+  admit(ctx: Ctx, nowMs: number): boolean {
+    const cap = this.cap(ctx);
+    this.#rollover(nowMs);
+    const used = ctx.quota.used(EFA_HOST);
+    if (used >= cap) {
+      this.#reach(ctx, used, cap, nowMs);
+      return false;
+    }
+    ctx.quota.charge(EFA_HOST, 1);
+    const charged = used + 1;
+    if (charged >= cap) this.#reach(ctx, charged, cap, nowMs);
+    else if (!this.#warned && charged >= Math.ceil(cap * CAP_WARN_SHARE)) {
+      this.#warned = true;
+      ctx.log.warn(
+        `${CAP_LOG_PREFIX} at ${String(Math.round(CAP_WARN_SHARE * 100))}%: ${capFields(charged, cap, nowMs)}`,
+      );
+    }
+    return true;
+  }
+
+  #reach(ctx: Ctx, used: number, cap: number, nowMs: number): void {
+    this.#warned = true;
+    if (this.#reached) return;
+    this.#reached = true;
+    ctx.log.error(reachedText(used, cap, nowMs));
+  }
+
+  #rollover(nowMs: number): void {
+    const day = utcDay(nowMs);
+    if (day === this.#day) return;
+    this.#day = day;
+    this.#warned = false;
+    this.#reached = false;
+  }
+}
+
+export const DAILY_CAP = stateKey("abfahrtenDailyCap", () => new DailyCap());
+
+/**
+ * The hourly run's word on the cap: the day's count in the status line, and
+ * while the cap is used up a `[warn]` in every run.
+ */
+function reportCap(ctx: Ctx): void {
+  const cap = ctx.state.slot(DAILY_CAP).get().cap(ctx);
+  const used = ctx.quota.used(EFA_HOST);
+  if (used >= cap) ctx.log.warn(reachedText(used, cap, nowMsOf(ctx)));
+  else ctx.log.status(`EFA-BW on demand: ${String(used)}/${String(cap)} calls today (UTC)`);
+}
+
+/**
+ * How long the cockpit may cache a departure answer once the day's cap fills:
+ * [share of the cap used, seconds], highest share first. Below the first
+ * share the cockpit's own 60 s apply. The nginx in front honours
+ * `X-Accel-Expires` over its proxy_cache_valid (and never passes it on), so
+ * one actor cycling through all stops costs fewer EFA requests per hour and
+ * the rest of the day's budget lasts longer; the `stand` of each answer shows
+ * its age.
+ */
+export const CACHE_STRETCH: readonly (readonly [number, number])[] = [
+  [0.9, 1200],
+  [0.75, 600],
+  [0.5, 300],
+];
+
+/** Cache lifetime in seconds for `used` of `cap` calls, `null` = the cockpit's default. */
+export function stretchedCacheSeconds(used: number, cap: number): number | null {
+  for (const [share, seconds] of CACHE_STRETCH) if (used >= cap * share) return seconds;
+  return null;
+}
+
+/** A 200 answer, with `X-Accel-Expires` while the day's cap is half used or more. */
+function withStretchedCache(ctx: Ctx, response: RouteResponse): RouteResponse {
+  if (response.status !== 200) return response;
+  const seconds = stretchedCacheSeconds(ctx.quota.used(EFA_HOST), ctx.state.slot(DAILY_CAP).get().cap(ctx));
+  if (seconds === null) return response;
+  return { ...response, headers: { ...response.headers, "X-Accel-Expires": String(seconds) } };
+}
+
+/** 503 while the cap is used up: the stop's name, as the 502, and when to come back. */
+export function cappedResponse(halt: Halt, nowMs: number): RouteResponse {
+  const response = nodeRedJson(503, { fehler: CAPPED_TEXT, halt: halt.stopName ?? "" });
+  const seconds = Math.max(1, Math.ceil((nextUtcDayMs(nowMs) - nowMs) / 1000));
+  return { ...response, headers: { ...response.headers, "Retry-After": String(seconds) } };
+}
+
 /** One upstream request for a stop, shared by every client asking for it. */
 interface Flight {
   readonly result: Promise<FlightResult>;
@@ -561,6 +742,12 @@ async function answer(ctx: Ctx, request: RouteRequest): Promise<RouteResponse> {
       ctx.log.debug(`EFA-BW on demand ${resolution.stopId}: queue full, 503`);
       return busy();
     }
+    const nowMs = nowMsOf(ctx);
+    if (!ctx.state.slot(DAILY_CAP).get().admit(ctx, nowMs)) {
+      // The cap is logged once a day (DailyCap); each refusal is public traffic.
+      ctx.log.debug(`EFA-BW on demand ${resolution.stopId}: daily cap used up, 503`);
+      return cappedResponse(resolution.halt, nowMs);
+    }
     flight = startFlight(ctx, gate, resolution.stopId, resolution.url);
     gate.flights.set(resolution.stopId, flight);
   }
@@ -570,7 +757,7 @@ async function answer(ctx: Ctx, request: RouteRequest): Promise<RouteResponse> {
     ctx.log.debug(`EFA-BW on demand ${resolution.stopId}: client gone, request dropped`);
     return busy();
   }
-  return departuresResponse(resolution.halt, result.upstream, result.stand);
+  return withStretchedCache(ctx, departuresResponse(resolution.halt, result.upstream, result.stand));
 }
 
 /** 503 of the shed load, with a hint when to come back. */

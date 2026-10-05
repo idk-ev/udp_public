@@ -63,7 +63,9 @@ exports["Cacheversion folgt der Chart-Version"] = () => {
   assert(cv, "helm/udp/Chart.yaml: version nicht gefunden");
   const sv = /^const V = "([^"]+)";$/m.exec(SW);
   assert(sv, "gui/public/sw.js: const V nicht gefunden");
-  assert.strictEqual(sv[1], "udp-" + cv[1],
+  // Optional "-swN": discards the caches between releases when the worker changes.
+  const base = sv[1].replace(/-sw\d+$/, "");
+  assert.strictEqual(base, "udp-" + cv[1],
     `Cacheversion ${sv[1]} passt nicht zur Chart-Version ${cv[1]} — Clients behalten sonst die alte Shell`);
 };
 
@@ -88,33 +90,70 @@ exports["Jede Datei der Shell existiert"] = () => {
   }
 };
 
-exports["Shell-Treffer wird ausgeliefert UND im Hintergrund aufgefrischt"] = async () => {
-  const alt = { ok: true, alt: true, clone: () => ({ alt: true }) };
-  const w = ladeWorker({ imCache: alt });
-  const r = await anfrage(w, "https://udp.example/smartcity-lib.js", "no-cors");
-  assert.strictEqual(r, alt, "Cache-Treffer wird nicht sofort ausgeliefert");
-  assert.deepStrictEqual(w.spur.geholt, ["https://udp.example/smartcity-lib.js"],
-    "Cache-Treffer löst keine Hintergrund-Auffrischung aus — genau der Fehler, der Clients auf alten Dateien festhielt");
-  assert.strictEqual(w.spur.abgelegt.length, 1, "aufgefrischte Antwort landet nicht im Cache");
-};
-
-exports["Shell-Fehltreffer kommt aus dem Netz"] = async () => {
-  const w = ladeWorker({ imCache: null });
-  const r = await anfrage(w, "https://udp.example/smartcity-theme.css", "no-cors");
-  assert.strictEqual(r, w.frisch);
-  assert.strictEqual(w.spur.abgelegt.length, 1);
-};
-
-exports["Seiten und Live-Daten gehen netz-zuerst"] = async () => {
+/* Scripts, styles and config.js went stale-while-revalidate until 2026-10:
+   after every deploy the first view ran new HTML with the old scripts. */
+exports["Seiten, Skripte, Styles und config.js gehen netz-zuerst und frischen die Offline-Kopie auf"] = async () => {
   for (const [url, mode] of [
     ["https://udp.example/reutlingen", "navigate"],
-    ["https://udp.example/gateway/ngsi-ld/v1/entities?type=ParkingSummary", "cors"],
-    ["https://udp.example/abfahrten/08415061", "cors"],
+    ["https://udp.example/smartcity-lib.js", "no-cors"],
+    ["https://udp.example/smartcity-theme.css", "no-cors"],
+    ["https://udp.example/config.js", "no-cors"],
   ]) {
     const w = ladeWorker({ imCache: { ok: true, veraltet: true, clone: () => ({}) } });
     const r = await anfrage(w, url, mode);
     assert.strictEqual(r, w.frisch, `${url} wird aus dem Cache statt aus dem Netz beantwortet`);
+    assert.deepStrictEqual(w.spur.abgelegt.map(a => a[0]), [url], `${url}: Offline-Kopie wird nicht aufgefrischt`);
   }
+};
+
+exports["Offline: gespeicherte Kopie, für Seiten zuletzt die Startseite"] = async () => {
+  // Worker whose network fails and whose cache answers per URL.
+  const worker = cache => {
+    const handler = {};
+    const matched = [];
+    // eslint-disable-next-line no-new-func
+    new Function("self", "caches", "fetch", "location", "URL", SW)(
+      { addEventListener: (t, fn) => { handler[t] = fn; }, skipWaiting: () => Promise.resolve(), clients: { claim: () => Promise.resolve() } },
+      { open: () => Promise.resolve({ put: () => Promise.resolve() }), keys: () => Promise.resolve([]), delete: () => Promise.resolve(true),
+        match: (rq, o) => {
+          const url = typeof rq === "string" ? rq : rq.url;
+          matched.push([url, o]);
+          return Promise.resolve(cache[o && o.ignoreSearch ? url.split("?")[0] : url] || null);
+        } },
+      () => Promise.reject(new TypeError("offline")), { origin: "https://udp.example" }, URL);
+    return { handler, matched };
+  };
+  const start = { start: true };
+  const page = { page: true };
+  const w1 = worker({ "/": start, "https://udp.example/tuebingen": page });
+  assert.strictEqual(await anfrage(w1, "https://udp.example/tuebingen?embed=1", "navigate"), page,
+    "offline page does not come from its stored copy");
+  assert.deepStrictEqual(w1.matched[0][1], { ignoreSearch: true }, "stored copy is looked up with the query");
+  const w2 = worker({ "/": start });
+  assert.strictEqual(await anfrage(w2, "https://udp.example/aach", "navigate"), start, "no start page fallback offline");
+};
+
+exports["Live-Daten: weder beantwortet noch gespeichert"] = async () => {
+  for (const url of [
+    "https://udp.example/gateway/ngsi-ld/v1/entities?type=ParkingSummary",
+    "https://udp.example/gateway/temporal/temporal/entities/urn%3Ax?attrs=a&timerel=after&timeAt=2026-10-05T10:00:00.000Z",
+    "https://udp.example/abfahrten?ags=08415061",
+    "https://udp.example/warnungen.ics?kreis=08415",
+  ]) {
+    const w = ladeWorker({ imCache: { ok: true, veraltet: true, clone: () => ({}) } });
+    let beantwortet = false;
+    w.handler.fetch({ request: { method: "GET", url, mode: "cors" }, respondWith: () => { beantwortet = true; }, waitUntil: () => {} });
+    assert(!beantwortet, `${url} wird vom Worker beantwortet`);
+    assert.deepStrictEqual(w.spur.geholt, [], `${url} wird vom Worker geholt`);
+    assert.deepStrictEqual(w.spur.abgelegt, [], `${url} landet im Cache Storage`);
+  }
+};
+
+exports["Adressen mit Query werden nicht gespeichert"] = async () => {
+  const w = ladeWorker({ imCache: null });
+  const r = await anfrage(w, "https://udp.example/tuebingen?embed=1&theme=wald", "navigate");
+  assert.strictEqual(r, w.frisch);
+  assert.deepStrictEqual(w.spur.abgelegt, [], "every query string would add a cache entry");
 };
 
 exports["Fremde Origins und Schreibzugriffe bleiben unangetastet"] = async () => {
@@ -124,6 +163,10 @@ exports["Fremde Origins und Schreibzugriffe bleiben unangetastet"] = async () =>
     { method: "POST", url: "https://udp.example/gateway/ngsi-ld/v1/entities", mode: "cors" },
     // Login-protected: the browser's own request must get the 401 (prompt).
     { method: "GET", url: "https://udp.example/dashboard.html", mode: "navigate" },
+    // Operations data behind the same login: neither answered nor stored.
+    { method: "GET", url: "https://udp.example/ops/connectors-status.json", mode: "cors" },
+    { method: "GET", url: "https://udp.example/ops/gateway/ngsi-ld/v1/entities?type=PlatformStatus", mode: "cors" },
+    { method: "GET", url: "https://udp.example/ops/gateway/temporal/temporal/entities/urn%3Ax?attrs=cpuLoadPct", mode: "cors" },
   ]) {
     let beantwortet = false;
     w.handler.fetch({ request: req, respondWith: () => { beantwortet = true; }, waitUntil: () => {} });
