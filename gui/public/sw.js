@@ -12,7 +12,7 @@
    und wird von tests/static/sw-cache.test.js darauf geprüft — jedes Release
    verwirft damit die Caches seines Vorgängers. Bis Sprint 2.9 stand hier ein
    handgepflegtes "udp-v2", das seit dem ersten Release nie erhöht wurde. */
-const V = "udp-1.3.0";
+const V = "udp-1.4.0";
 /* "/" is the public start page (nginx serves mitmachen.html there) and the
    offline fallback for pages. /dashboard.html is not part of the shell: it
    sits behind HTTP basic auth (or answers 404), and a single failing URL makes
