@@ -643,11 +643,12 @@ async function render() {
   // hours). The apparent temperature is shown in the temperature tile.
   if (dwdHum) {
     const hum = dwdHum.e;
+    const humWhich = dwdHum.stand ? "(kein aktueller Messwert im Umkreis)" : "mit aktuellem Messwert";
     // DWD liefert den Anteil (0-1), andere Quellen Prozent — beides normalisieren
     const rh = val(hum, "relativeHumidity"), rhPct = Math.round(rh <= 1 ? rh * 100 : rh);
     // Luftfeuchte-Detailkarte: Halbkreis-Tacho (0–100 %) über dem Verlauf.
     D.luftfeuchte = { kind: "chart", title: "Luftfeuchte · " + dwdHum.name, noSpark: true,
-      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Station mit aktuellem Messwert (behaglich ca. 30–65 %)." + (dwdHum.stand ? " " + dwdHum.stand + "." : ""),
+      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Station " + humWhich + " (behaglich ca. 30–65 %)." + (dwdHum.stand ? " " + dwdHum.stand + "." : ""),
       head: { type: "gauge", label: "Luftfeuchte", v: rhPct, min: 0, max: 100, unit: "%",
         state: rhPct < 30 ? "trocken" : rhPct > 65 ? "feucht" : "behaglich", stops: HUM_STOPS },
       series: [{ id: hum.id, attr: "relativeHumidity", name: "Luftfeuchte %", factor: rh <= 1 ? 100 : 1 }] };
@@ -655,7 +656,7 @@ async function render() {
       status: dwdHum.stand ? css("--text-muted") : null,
       mini: { v: rhPct, min: 0, max: 100, stops: HUM_STOPS },
       hint: esc(dwdHum.name) + " · " + dwdHum.km.toLocaleString("de-DE") + " km entfernt" + (dwdHum.stand ? " · " + dwdHum.stand : ""),
-      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Messstation mit aktuellem Messwert (behaglich ca. 30–65 %). Klick: Feuchte-Tacho und Verlauf." });
+      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Messstation " + humWhich + " (behaglich ca. 30–65 %). Klick: Feuchte-Tacho und Verlauf." });
   }
   if (val(fcEnt, "uvIndex") != null) {
     const uvV = val(fcEnt, "uvIndex");

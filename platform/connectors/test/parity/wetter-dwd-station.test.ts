@@ -59,6 +59,7 @@ import {
   SOURCES_URL,
   STATIC_KEY,
   timestampOf,
+  decodedDescriptions,
 } from "../../src/connectors/wetter-dwd-station.js";
 import type { StationDescription, Weather } from "../../src/connectors/wetter-dwd-station.js";
 import { run } from "../../src/connectors/wetter-dwd-station.js";
@@ -417,6 +418,11 @@ function officialNamesFromTheDescriptionFiles(): void {
   assert.equal(normalizedId("04160"), "04160");
   assert.equal(normalizedId("K988"), "K988");
 
+  // Should DWD switch to UTF-8, the latin-1 reading is repaired, not stored as mojibake.
+  const utf8AsLatin1 = Buffer.from("Dürrheim, Bad", "utf8").toString("latin1");
+  assert.equal(decodedDescriptions(utf8AsLatin1), "Dürrheim, Bad");
+  assert.equal(decodedDescriptions("Dürrheim, Bad"), "Dürrheim, Bad");
+
   const display: [raw: string, shown: string][] = [
     ["Mergentheim, Bad", "Bad Mergentheim"],
     ["Waldsee, Bad-Reute", "Bad Waldsee-Reute"],
@@ -471,10 +477,15 @@ async function namesLoadedWeekly(): Promise<void> {
   const sources = readFixture("wetter-dwd-station-sources");
   let clock = FIXTURE_NOW;
   let served: (index: number) => boolean = () => false;
+  let truncated = false;
   const network = recordingFetcher((request: GRequest) => {
     if (request.url.startsWith(ORION)) return emptyOrion(request);
     if (request.url === SOURCES_URL) return jsonHttp(200, sources.payload);
-    if (NAME_URLS.includes(request.url)) return nameAnswer(request.url, served);
+    if (NAME_URLS.includes(request.url)) {
+      // Truncated: the header and the first row (Aachen, outside the box) only.
+      if (truncated) return httpResponse(200, nameFile(0).split("\r\n").slice(0, 3).join("\r\n"));
+      return nameAnswer(request.url, served);
+    }
     return defaultWeather(stationOf(request.url));
   });
   const g = rig(registryEntry("wetter-dwd-station"), network.fetcher, () => clock);
@@ -520,6 +531,16 @@ async function namesLoadedWeekly(): Promise<void> {
   clock += 1;
   await run(ctx);
   assert.equal(nameRequests().length, 12, "not asked again after a week");
+
+  // A complete load that parses only a few rows (a truncated file, a format
+  // change) adds them; it never takes the other names away.
+  truncated = true;
+  clock += 7 * 24 * HOUR;
+  await run(ctx);
+  assert.equal(nameRequests().length, 15);
+  assert.equal(ctx.state.slot(NAMES_AT).get(), clock);
+  assert.equal(ctx.state.slot(NAMES).get().get("04160"), "Renningen-Ihinger Hof");
+  assert.equal(ctx.state.slot(NAMES).get().get("02159"), "Herrenberg");
 }
 
 /** The recorded answer of a station, its `weather` changed by `edit`. */
@@ -537,6 +558,7 @@ async function splitGateWritesOnlyWhatChanged(): Promise<void> {
   const sources = readFixture("wetter-dwd-station-sources").payload;
   const override = new Map<string, HttpResponse>();
   const deleted: string[] = [];
+  let refuseDeletes = false;
   const store = new SignatureStore();
   const tableSizes = (): number[] =>
     [STATIC_KEY, LIVE_KEY].map((key) => store.scope("wetter-dwd-station").size(key));
@@ -558,16 +580,17 @@ async function splitGateWritesOnlyWhatChanged(): Promise<void> {
       return override.get(station) ?? defaultWeather(station);
     }
     if (request.method === "DELETE") {
+      if (refuseDeletes) return httpResponse(503, "busy");
       deleted.push(decodeURIComponent(request.url.pathname));
       return httpResponse(204);
     }
     return broker.respond(request);
   };
-  const runAt = async (nowMs: number): Promise<unknown[]> => {
+  const runAt = async (nowMs: number, warnings = 0): Promise<unknown[]> => {
     const before = broker.upserts.length;
     const { ctx, log } = testCtx("wetter-dwd-station", geo, respond, { nowMs: () => nowMs, store });
     await run(ctx);
-    assert.deepEqual(log.warnings(), []);
+    assert.equal(log.warnings().length, warnings, log.warnings().join("\n"));
     return broker.upserts.slice(before).flat();
   };
   const renningen = "urn:ngsi-ld:WeatherObserved:bw-dwd-04160";
@@ -612,7 +635,8 @@ async function splitGateWritesOnlyWhatChanged(): Promise<void> {
   assert.equal(dateObservedOf(partial), "2026-09-28T04:00:00.000Z");
   assert.ok(isRecord(partial.temperature) && partial.temperature.observedAt === "2026-09-28T04:00:00.000Z");
 
-  // Echterdingen stops reporting wind: written in full, both wind values deleted.
+  // Echterdingen stops reporting wind: written in full, both wind values
+  // deleted — the broker refuses at first, the next run tries again.
   override.set(
     "04931",
     editedWeather("04931", (weather) => ({
@@ -623,6 +647,11 @@ async function splitGateWritesOnlyWhatChanged(): Promise<void> {
       wind_direction_10: null,
     })),
   );
+  nowMs += HOUR;
+  refuseDeletes = true;
+  await runAt(nowMs, 2);
+  assert.equal(deleted.length, 1);
+  refuseDeletes = false;
   nowMs += HOUR;
   const fourth = await runAt(nowMs);
   const full = fourth.find((entity) => isRecord(entity) && entity.id === echterdingen);
@@ -638,10 +667,11 @@ async function splitGateWritesOnlyWhatChanged(): Promise<void> {
   override.set("04931", httpResponse(503, "busy"));
   await runAt(nowMs + 2 * HOUR);
   assert.deepEqual(tableSizes(), [4, 4]);
-  // Every station answered, one with a 404: replace mode drops it.
+  // Nothing current from it (404): the tables are always merged, its
+  // signatures survive until the prune deletes the station.
   override.set("04931", httpResponse(404, '{"detail":"no data"}'));
   await runAt(nowMs + 3 * HOUR);
-  assert.deepEqual(tableSizes(), [3, 3]);
+  assert.deepEqual(tableSizes(), [4, 4]);
 }
 
 async function staleStationsArePruned(): Promise<void> {

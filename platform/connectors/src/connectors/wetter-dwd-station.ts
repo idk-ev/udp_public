@@ -40,7 +40,9 @@
  *    as before. No retries, as before.
  *  * Malformed data only: a source entry that is not an object, coordinates
  *    that are not numbers, a name that is not a string, and measured values
- *    that are not numbers count as absent.
+ *    that are not numbers count as absent. A station id with characters
+ *    other than letters and digits is skipped (none is real): the prune and
+ *    the seeding could not match it.
  *  * The station id is URL-encoded in the request (the old node concatenated
  *    it); identical bytes for every real id.
  *  * Warning texts are English (the code language of this service).
@@ -60,8 +62,9 @@
  *    the six measured values are signed apart, so a run sends only the values
  *    that changed plus `dateObserved`, and a station whose values did not
  *    change only its `dateObserved`. The old write cost about thirteen TRoE
- *    rows per station and hour. Replace mode only when every station request
- *    was answered; otherwise the tables are merged.
+ *    rows per station and hour. The tables are always merged: a station that
+ *    answers nothing current for a while keeps its signatures until the
+ *    prune deletes it.
  *  * **Values a station no longer reports are deleted** from the broker
  *    ({@link valuesVanished}): an upsert cannot remove an attribute, so the
  *    last wind speed of a station that stopped sending wind stayed next to a
@@ -315,6 +318,15 @@ export function displayName(name: string): string {
   return `Bad ${(match[1] ?? "").trim()}${match[2] ?? ""}`;
 }
 
+/**
+ * The files are ISO-8859-1 today. Should DWD switch to UTF-8, the latin-1
+ * reading shows its typical pairs ("Ã¼" for "ü"): then the bytes are read
+ * as UTF-8 instead of storing mojibake names.
+ */
+export function decodedDescriptions(latin1: string): string {
+  return /Ã[\u0080-¿]/.test(latin1) ? Buffer.from(latin1, "latin1").toString("utf8") : latin1;
+}
+
 /** File name of a description URL, for log lines. */
 function fileOf(url: string): string {
   return url.slice(url.lastIndexOf("/") + 1);
@@ -322,9 +334,9 @@ function fileOf(url: string): string {
 
 /**
  * The official names, loaded at most weekly (after a failure again after
- * {@link NAMES_RETRY_MS}). A complete load replaces the stored names, a
- * partial one adds to them; with none, the stored ones (or none: BrightSky's
- * names) serve.
+ * {@link NAMES_RETRY_MS}). A load adds to the stored names (a new name
+ * replaces an id's old one); only a complete load counts as the weekly one.
+ * Without any, the stored names (or none: BrightSky's) serve.
  */
 export async function stationNames(ctx: Ctx): Promise<ReadonlyMap<string, string>> {
   const names = ctx.state.slot(NAMES);
@@ -350,7 +362,7 @@ export async function stationNames(ctx: Ctx): Promise<ReadonlyMap<string, string
         failures.push(`${fileOf(url)} HTTP ${String(response.status)}`);
         continue;
       }
-      const rows = parseDescriptions(response.body);
+      const rows = parseDescriptions(decodedDescriptions(response.body));
       if (rows.length === 0) failures.push(`${fileOf(url)} without station rows`);
       else lists.push(rows);
     } catch (error) {
@@ -359,7 +371,10 @@ export async function stationNames(ctx: Ctx): Promise<ReadonlyMap<string, string
   }
   if (lists.length > 0) {
     const loaded = namesNearBw(mergeDescriptions(lists));
-    names.set(failures.length === 0 ? loaded : new Map([...names.get(), ...loaded]));
+    // Merged over the stored names, never replacing them: a truncated file or
+    // a format change that still parses a few rows must not take the names
+    // of every other station away (and rewrite every station twice).
+    names.set(new Map([...names.get(), ...loaded]));
     if (failures.length === 0) loadedAt.set(nowMs);
     ctx.log.info(
       `${LABEL}: ${String(names.get().size)} official station names from ${String(lists.length)} of ` +
@@ -434,6 +449,8 @@ function stationOf(raw: unknown): Station | null {
   const lon = raw.lon;
   // `if (!id || !s.lat || !s.lon) continue;` — a latitude of 0 is out as well.
   if (!(isString(id) || isFiniteNumber(id)) || !isTruthy(id)) return null;
+  // Only ids the prune and the seeding can match (PRUNE_PATTERN); real ids are.
+  if (!/^[0-9A-Za-z]+$/.test(String(id))) return null;
   if (!isFiniteNumber(lat) || !isFiniteNumber(lon) || lat === 0 || lon === 0) return null;
   if (raw.observation_type !== "current" && raw.observation_type !== "synop") return null;
   if (lat < BOX.south || lat > BOX.north || lon < BOX.west || lon > BOX.east) return null;
@@ -676,7 +693,6 @@ export async function run(ctx: Ctx): Promise<void> {
 
   const observations = new Map<string, Weather>();
   let failed = 0;
-  let unanswered = 0;
   for (const station of stations) {
     if (ctx.signal.aborted) return;
     let response: HttpResponse;
@@ -687,8 +703,6 @@ export async function run(ctx: Ctx): Promise<void> {
       failed += 1;
       continue;
     }
-    // A 404 is BrightSky's "no data" — an answer; a 5xx is none.
-    if (response.status >= 500) unanswered += 1;
     if (response.status >= 400) continue;
     const weather = parseWeather(nodePayload(response));
     if (weather !== null) observations.set(station.id, weather);
@@ -716,8 +730,9 @@ export async function run(ctx: Ctx): Promise<void> {
     tables: { [LIVE_KEY]: (entity) => dynamicSignature(entity, LIVE_ATTRIBUTES) },
   });
   // Read before the gate drops what goes out: which values the broker holds.
-  const vanished = valuesVanished(entities, ctx.gate.table(LIVE_KEY));
-  const plan = applySplit(
+  const liveBefore = ctx.gate.table(LIVE_KEY);
+  const vanished = valuesVanished(entities, liveBefore);
+  const split = applySplit(
     ctx.gate,
     entities,
     {
@@ -725,25 +740,44 @@ export async function run(ctx: Ctx): Promise<void> {
       dynamicKey: LIVE_KEY,
       staticSignature: (entity) => stationStatic(entity) ?? "",
       dynamic: LIVE_ATTRIBUTES,
-      // Every station answered (a 404 is an answer): this run saw the whole stock.
-      replace: failed === 0 && unanswered === 0,
+      // Always merged: a station asked but not written in this run (404, no
+      // current value) keeps its signatures, so its return is a partial write
+      // and a value it no longer reports is still found then. The prune
+      // forgets the signatures of what it deletes.
+      replace: false,
       periodMs: ctx.intervalMs(),
     },
     Date.parse(now),
   );
-  reportSplit(ctx.log, LABEL, totalsOf(plan));
-  await ctx.orion.upsert(plan);
+  reportSplit(ctx.log, LABEL, totalsOf(split));
   // An upsert cannot remove an attribute: a value the station stopped sending
-  // would stay next to the newer `dateObserved` and pass for current.
+  // would stay next to the newer `dateObserved` and pass for current. Deleted
+  // before the write; where a delete fails, the stored signature (which still
+  // holds the value) is committed instead of the new one, so the next run
+  // finds the value again and retries.
   let deleted = 0;
+  const retry = new Set<string>();
   for (const [id, attribute] of vanished) {
     if (await ctx.orion.deleteAttribute(id, attribute, LABEL)) deleted += 1;
+    else retry.add(id);
   }
   if (vanished.length > 0) {
     ctx.log.info(
       `${LABEL}: ${String(deleted)} of ${String(vanished.length)} values no longer reported deleted`,
     );
   }
+  const plan =
+    retry.size === 0
+      ? split
+      : {
+          ...split,
+          pending: split.pending.map((pending) =>
+            pending[0] === LIVE_KEY && retry.has(pending[1])
+              ? ([LIVE_KEY, pending[1], liveBefore.get(pending[1]) ?? null, pending[3]] as const)
+              : pending,
+          ),
+        };
+  await ctx.orion.upsert(plan);
 
   // Stations not written for a week: gone from the source list, or nothing
   // current to report. Not after a run in which most requests failed — the
