@@ -254,6 +254,26 @@ async function fetcherHoldsTheCapForTheWholeRequest(): Promise<void> {
   }
 }
 
+async function fetcherDecodesLatin1OnRequest(): Promise<void> {
+  // "Dürrheim, Bad" as ISO-8859-1: ü is the single byte 0xFC, invalid as UTF-8.
+  const bytes = Buffer.from([0x44, 0xfc, 0x72, 0x72, 0x68, 0x65, 0x69, 0x6d, 0x2c, 0x20, 0x42, 0x61, 0x64]);
+  const server = await endpoint((_request, response) => {
+    response.writeHead(200, { "Content-Type": "text/plain" });
+    response.end(bytes);
+  });
+  try {
+    const log = recordingLog();
+    const fetcher = createFetcher(log, createRateLimiter(log));
+    const options = { minIntervalMs: 1, retries: 0 };
+    const latin1 = await fetcher.text(`${server.url}/a`, { ...options, encoding: "latin1" });
+    assert.equal(latin1.body, "Dürrheim, Bad");
+    const utf8 = await fetcher.text(`${server.url}/b`, options);
+    assert.equal(utf8.body, "D�rrheim, Bad", "the default stays UTF-8");
+  } finally {
+    await server.close();
+  }
+}
+
 /* ── Orion: reads do not queue behind writes ─────────────────────────────────*/
 
 function entity(n: number): NgsiEntity {
@@ -525,6 +545,7 @@ export {
   sensorDetailForIsNarrowed as 'kernel: registry sensorDetailFor — missing = none, "*", AGS list, rejects anything else',
   concurrencyCapHoldsAcrossCallers as "kernel: maxConcurrent holds across callers of one host, the strictest cap wins, release is safe",
   fetcherHoldsTheCapForTheWholeRequest as "kernel: the fetcher holds a concurrency slot until the answer is read",
+  fetcherDecodesLatin1OnRequest as "kernel: the fetcher decodes ISO-8859-1 when asked (DWD station lists), UTF-8 otherwise",
   orionReadsDoNotWaitBehindWrites as "kernel: Orion reads are not paced — a pending write backlog does not delay find/count/list",
   headAndOptionsAsExpress as "kernel: HEAD and OPTIONS on a GET route answer as Express did",
   conditionalGetAnswers304 as "kernel: If-None-Match against a route's ETag answers 304 as Express's res.send; routes see request headers",

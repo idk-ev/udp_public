@@ -442,7 +442,7 @@ async function render() {
     jlist(`${SC.GW}/ngsi-ld/v1/entities?type=PollenForecast&limit=5`),
     entity(ID.rathaus), entity(ID.ausflug),
     // Amtliche DWD-Stationen im 30-km-Umkreis (statt aller ~183 landesweit).
-    amtlC ? near("WeatherObserved", 30000, "stationName,temperature,relativeHumidity,dwdStationId,location") : [],
+    amtlC ? near("WeatherObserved", 30000, "stationName,temperature,relativeHumidity,dwdStationId,dateObserved,location") : [],
     carsharingC ? byAgs("FleetStatus", ags) : [],
     // Also asked for while the connector is "pending": that flag is fixed in the
     // image, the token arrives at runtime – skipping it would hide the tile
@@ -520,10 +520,22 @@ async function render() {
     const dy = (p.lat - lat) * 111, dx = (p.lon - lon) * 111 * Math.cos(lat * Math.PI / 180);
     return Math.sqrt(dy * dy + dx * dx);
   };
-  const w2 = (dwdSt || []).filter(e => pos(e) && val(e, "temperature") != null)
-    .sort((a, b) => kmZu(a) - kmZu(b))[0] || null;
-  const w2km = w2 ? Math.round(kmZu(w2) * 10) / 10 : null;
-  const w2Name = w2 ? (val(w2, "stationName") || "DWD") : "";
+  // Per value the nearest station whose observation is current (at most
+  // DWD_FRESH old, by dateObserved/observedAt); without one, the nearest that
+  // has the value at all, marked with its stand. Each value may come from a
+  // different station: not every station measures humidity.
+  const DWD_FRESH = 3 * 3600e3;
+  const dwdFor = attr => {
+    const withValue = (dwdSt || []).filter(e => pos(e) && val(e, attr) != null).sort((a, b) => kmZu(a) - kmZu(b));
+    const current = withValue.find(e => !staleStand(e, DWD_FRESH));
+    const e = current || withValue[0];
+    return e ? { e, km: Math.round(kmZu(e) * 10) / 10, name: val(e, "stationName") || "DWD",
+      stand: current ? "" : staleStand(e, DWD_FRESH) } : null;
+  };
+  const dwdTemp = dwdFor("temperature"), dwdHum = dwdFor("relativeHumidity");
+  const w2 = dwdTemp ? dwdTemp.e : null;
+  const w2Name = dwdTemp ? dwdTemp.name : "";
+  const w2Stand = dwdTemp ? dwdTemp.stand : "";
 
   // Mehrere Anbieter je Gemeinde möglich (stadtmobil, teilAuto, Ford-Carsharing …):
   // Kachel zeigt die Summe, der Verlauf die stärkste Flotte.
@@ -603,7 +615,7 @@ async function render() {
   const feelsV = fcStand ? null : val(fcEnt, "apparentTemperature");
   if (wx) {
     // Temperatur-Detailkarte: Thermometer + 7-Tage-Vorhersage + Verlauf
-    D.temperatur = { kind: "chart", title: "Temperatur", explain: (w2 ? "Open-Meteo-Modell und DWD-Stationsmessung im Vergleich." : "Aktuelle Temperatur und Verlauf (Open-Meteo).") + (wxStand ? " Open-Meteo " + wxStand + "." : ""),
+    D.temperatur = { kind: "chart", title: "Temperatur", explain: (w2 ? "Open-Meteo-Modell und DWD-Stationsmessung (" + w2Name + ", " + dwdTemp.km.toLocaleString("de-DE") + " km entfernt) im Vergleich." : "Aktuelle Temperatur und Verlauf (Open-Meteo).") + (wxStand ? " Open-Meteo " + wxStand + "." : "") + (w2Stand ? " DWD-Station " + w2Stand + "." : ""),
       head: { type: "thermo", v: val(wx, "temperature"), min: -10, max: 40, unit: "°C", feels: feelsV },
       forecast: fcStrip.length ? fcStrip : null,
       series: [{ id: wx.id, attr: "temperature", name: "Temperatur °C" },
@@ -629,19 +641,21 @@ async function render() {
       explain: "Aktuelle Windgeschwindigkeit und -richtung (" + omTakt + "); die Windrose zeigt, aus welcher Richtung der Wind weht. Klick: Windkompass und Verlauf." });
   // UV and sun times come from the forecast (Open-Meteo, every OM_TAKT_H
   // hours). The apparent temperature is shown in the temperature tile.
-  if (val(w2, "relativeHumidity") != null) {
+  if (dwdHum) {
+    const hum = dwdHum.e;
     // DWD liefert den Anteil (0-1), andere Quellen Prozent — beides normalisieren
-    const rh = val(w2, "relativeHumidity"), rhPct = Math.round(rh <= 1 ? rh * 100 : rh);
+    const rh = val(hum, "relativeHumidity"), rhPct = Math.round(rh <= 1 ? rh * 100 : rh);
     // Luftfeuchte-Detailkarte: Halbkreis-Tacho (0–100 %) über dem Verlauf.
-    D.luftfeuchte = { kind: "chart", title: "Luftfeuchte" + (w2Name ? " · " + w2Name : ""), noSpark: true,
-      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Station (behaglich ca. 30–65 %).",
+    D.luftfeuchte = { kind: "chart", title: "Luftfeuchte · " + dwdHum.name, noSpark: true,
+      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Station mit aktuellem Messwert (behaglich ca. 30–65 %)." + (dwdHum.stand ? " " + dwdHum.stand + "." : ""),
       head: { type: "gauge", label: "Luftfeuchte", v: rhPct, min: 0, max: 100, unit: "%",
         state: rhPct < 30 ? "trocken" : rhPct > 65 ? "feucht" : "behaglich", stops: HUM_STOPS },
-      series: [{ id: w2.id, attr: "relativeHumidity", name: "Luftfeuchte %", factor: rh <= 1 ? 100 : 1 }] };
+      series: [{ id: hum.id, attr: "relativeHumidity", name: "Luftfeuchte %", factor: rh <= 1 ? 100 : 1 }] };
     tiles += tile("Luftfeuchte", rhPct, "%", { topic: "wetter", detail: "luftfeuchte",
+      status: dwdHum.stand ? css("--text-muted") : null,
       mini: { v: rhPct, min: 0, max: 100, stops: HUM_STOPS },
-      hint: esc(w2Name) + (w2km != null ? " · " + w2km.toLocaleString("de-DE") + " km entfernt" : ""),
-      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Messstation (behaglich ca. 30–65 %). Klick: Feuchte-Tacho und Verlauf." });
+      hint: esc(dwdHum.name) + " · " + dwdHum.km.toLocaleString("de-DE") + " km entfernt" + (dwdHum.stand ? " · " + dwdHum.stand : ""),
+      explain: "Relative Luftfeuchtigkeit an der nächstgelegenen DWD-Messstation mit aktuellem Messwert (behaglich ca. 30–65 %). Klick: Feuchte-Tacho und Verlauf." });
   }
   if (val(fcEnt, "uvIndex") != null) {
     const uvV = val(fcEnt, "uvIndex");
@@ -1095,7 +1109,7 @@ async function render() {
   if (w2) {
     // Amtliche-Station-Kachel entfernt; die Station bleibt als Vergleichsreihe in
     // der Temperatur-Detailkarte (D.temperatur) erhalten.
-    D.amtlich = { kind: "chart", title: "Amtliche Station " + w2Name, explain: "Direkt gemessene Stationstemperatur.", unit: " °C", series: [{ id: w2.id, attr: "temperature", name: "Temperatur" }] };
+    D.amtlich = { kind: "chart", title: "Amtliche Station " + w2Name, explain: "Direkt gemessene Stationstemperatur." + (w2Stand ? " " + w2Stand + "." : ""), unit: " °C", series: [{ id: w2.id, attr: "temperature", name: "Temperatur" }] };
   }
   if (passant && val(passant, "pedestrianCount") != null) {
     D.passanten = { kind: "chart", title: "Passantenfrequenz", explain: "Fußverkehr an der Zählstelle (hystreet).", zero: true, series: [{ id: passant.id, attr: "pedestrianCount", name: "Personen/h" }] };

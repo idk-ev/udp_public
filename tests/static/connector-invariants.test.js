@@ -335,6 +335,8 @@ const PRUNE_SETTINGS = {
   "parken-bw": ["parken-bw", "parken-bw: a complete run prunes the same ids (sites, sums, legacy), never a municipal entity"],
   "puls-bw": ["puls-bw", "puls-bw: dropped pulses are pruned on the second run exactly as by the old node"],
   "sharing-bw": ["sharing-bw", "sharing-bw: run() requests, drops vanished tables, prunes and upserts as the old flow"],
+  // No old prune: compared against the decided settings (deliberate deviation).
+  "wetter-dwd-station": ["wetter-dwd-station", "wetter-dwd-station: stations not written for 7 days are pruned with their own bookkeeping, foreign ids untouched (deliberate deviation)"],
 };
 
 exports["Prune steps carry their safety guards"] = () => {

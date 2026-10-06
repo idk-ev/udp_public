@@ -102,7 +102,7 @@ Ausschnitt. Für die folgenden Bausteine ist **nichts mehr zu tun**:
 | **Ladesäulen: Standorte + Livestatus** | Landesbasis `ladesaeulen-bw` | 11.409 Standorte in 856 Gemeinden, 4.916 mit Livestatus |
 | **Carsharing** (stationsgebunden) | Landesbasis `carsharing-bw` | 308 Gemeinden, 58 Anbieter aus der GBFS-Landesliste |
 | **Leihräder** (stationsgebunden) | Landesbasis `carsharing-bw` | eigene Kachel, nach `vehicle_types` von Autos getrennt |
-| **Amtliche DWD-Station** | Landesbasis `wetter-dwd-station` | 183 Stationen; das Dashboard wählt die nächstgelegene und nennt die Entfernung |
+| **Amtliche DWD-Station** | Landesbasis `wetter-dwd-station` | ~184 Stationen mit amtlichem DWD-Namen; das Dashboard wählt je Messwert (Temperatur, Luftfeuchte) die nächstgelegene Station im 30-km-Umkreis mit aktuellem Wert (höchstens 3 h alt), sonst die nächstgelegene mit „Stand: …“, und nennt die Entfernung |
 | **Vorhersage** (2-h-Takt, gefühlt, UV, Sonnenzeiten) | Landesbasis `vorhersage-bw` | alle 1.103 Gemeinden |
 | **Feinstaub-Einzelsensoren** | Landesbasis `feinstaub-bw` | 909 Sensoren in 346 Gemeinden |
 | **ÖPNV-Abfahrten + Verspätung** | Abruf auf Anfrage `/abfahrten?ags=…` | alle Gemeinden mit Halt in `oepnv-halte.json` |
