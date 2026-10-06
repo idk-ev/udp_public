@@ -16,7 +16,7 @@
    verwirft damit die Caches seines Vorgängers. A "-swN" suffix discards the
    caches between releases when the worker itself changes (here: dropping the
    stored /gateway answers); a release resets it to plain "udp-<version>". */
-const V = "udp-1.5.1";
+const V = "udp-1.5.2";
 /* "/" is the public start page (nginx serves mitmachen.html there) and the
    offline fallback for pages. /dashboard.html is not part of the shell: it
    sits behind HTTP basic auth (or answers 404), and a single failing URL makes

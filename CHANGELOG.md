@@ -2,7 +2,18 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht — Sharing-Prune
+## 1.5.2 — UBA-Luftindex, Carsharing-Karte, Sharing-Prune
+
+> **Upgrade bestehender Installationen:**
+>
+> - `uba-bw` schreibt beim ersten Lauf alle Stationen einmal vollständig; bis
+>   dahin fehlt dem Puls der Luftindex (kein Fehler).
+> - Der Hinweis aus 1.5.1 (`release-prunes.sh sharing-bw`) entfällt:
+>   ausgeschlossene Systeme und leere Zusammenfassungen löscht `sharing-bw`
+>   jetzt selbst. Ein vor dem Upgrade gesperrter Prune braucht ggf. noch
+>   einmalig eine Bereinigung (docs/betrieb.md).
+
+### Sharing-Prune
 
 - `sharing-bw`: Hat ein System in einer Gemeinde kein Fahrzeug mehr, wird
   seine Zusammenfassung gelöscht statt mit 0 geschrieben. Die Nullen zählten
@@ -13,7 +24,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   ausgeschlossener Systeme werden gezielt gelöscht statt über den Prune
   (dort sperrte sie der Deckel; eine Freigabe nach 7 Tagen half nicht).
 
-## Unveröffentlicht — Carsharing-Karte, vollständige Listen
+### Carsharing-Karte, vollständige Listen
 
 - Stadt-Dashboard: Kartenebene und Detailkarte „Carsharing“ zeigen nur noch
   Auto-Stationen (`vehicleType`); stationsgebundene Leihräder bekommen eine
@@ -24,7 +35,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   statt nach 1000 bzw. 200 Entitäten abzuschneiden; eine fehlgeschlagene
   Folgeseite gilt als Fehler, nicht als vollständige Liste.
 
-## Unveröffentlicht — UBA-Luftqualitätsindex
+### UBA-Luftqualitätsindex
 
 - Index auf der UBA-Skala 0–4 (0 = sehr gut … 4 = sehr schlecht): Kachel,
   Gauge und Kartenpopup im Stadt-Dashboard; 0 ist ein Wert, keine
