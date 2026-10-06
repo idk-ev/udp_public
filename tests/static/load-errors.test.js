@@ -120,6 +120,78 @@ exports["smartcity-lib: the retry honours Retry-After, capped"] = async () => {
   w.close(); capped.w.close();
 };
 
+/* byAgs pages (NGSI-LD offset): Orion-LD answers at most 1000 entities per
+   request. One logical query for the banner; a failed page fails the whole
+   list; at most MAX_PAGES requests. `offsetOf(u)` is the offset of a URL. */
+const offsetOf = u => Number((u.match(/[?&]offset=(\d+)/) || [])[1]);
+const ents = (from, n) => Array.from({ length: n }, (_, i) => ({ id: "urn:x:" + (from + i) }));
+
+exports["smartcity-lib: byAgs pages until a short page, one query for the banner"] = async () => {
+  if (!JSDOM) return;
+  const { w, SC, calls } = libWindow(u => {
+    const o = offsetOf(u);
+    if (u.includes("type=Long")) return json(ents(o, o < 2000 ? 1000 : 500));
+    if (u.includes("type=Exact")) return json(o === 0 ? ents(0, 1000) : []);
+    // Overlapping pages (cached at different moments): one entity twice.
+    if (u.includes("type=Overlap")) return json(o === 0 ? ents(0, 1000) : ents(999, 3));
+    return json([]);
+  });
+  const mark = SC.loadMark();
+  const long = await SC.byAgs("Long", "1", "name");
+  assert.strictEqual(long.length, 2500);
+  assert.strictEqual(SC.failed(long), false);
+  assert.deepStrictEqual(calls.filter(u => u.includes("type=Long")).map(offsetOf), [0, 1000, 2000]);
+  assert(calls.every(u => /&limit=1000&offset=\d+$/.test(u)), "page URL without limit/offset");
+  assert(calls[0].includes("&attrs=name&"), "attrs projection lost");
+  const exact = await SC.byAgs("Exact", "1");
+  assert.strictEqual(exact.length, 1000);
+  assert.strictEqual(calls.filter(u => u.includes("type=Exact")).length, 2, "a full page must be followed by another");
+  const overlap = await SC.byAgs("Overlap", "1");
+  assert.strictEqual(overlap.length, 1002, "an entity on two pages counted twice");
+  assert.deepStrictEqual({ ...SC.loadSince(mark) }, { total: 3, failed: 0 }, "a paged list must count as one query");
+  w.close();
+};
+
+exports["smartcity-lib: a failed later page fails the whole list, a later 404 too"] = async () => {
+  if (!JSDOM) return;
+  const { w, SC, calls } = libWindow(u => {
+    const o = offsetOf(u);
+    if (o === 0) return json(ents(0, 1000));
+    if (u.includes("type=Down")) return json({}, 503, { "Retry-After": "0" });
+    if (u.includes("type=Gone")) return json({ title: "Not Found" }, 404);
+    return json([]);
+  });
+  const mark = SC.loadMark();
+  const down = await SC.byAgs("Down", "1");
+  assert.deepStrictEqual([...down], [], "a partial list after a failed page");
+  assert.strictEqual(SC.failed(down), true, "a failed later page is not marked");
+  assert.strictEqual(calls.filter(u => u.includes("type=Down") && offsetOf(u) === 1000).length, 2, "the later page was not retried once");
+  const gone = await SC.byAgs("Gone", "1");
+  assert.deepStrictEqual([...gone], []);
+  assert.strictEqual(SC.failed(gone), true, "a 404 after a full first page is no 'no data'");
+  assert.deepStrictEqual({ ...SC.loadSince(mark) }, { total: 2, failed: 2 });
+  w.close();
+};
+
+exports["smartcity-lib: byAgs stops after MAX_PAGES and warns"] = async () => {
+  if (!JSDOM) return;
+  const { w, SC, calls } = libWindow(u => json(ents(offsetOf(u), 1000)));
+  const warned = [];
+  w.console.warn = (...a) => warned.push(a.join(" "));
+  const all = await SC.byAgs("Endless", "1");
+  assert.strictEqual(calls.length, 10, `${calls.length} requests for one list`);
+  assert.strictEqual(all.length, 10000);
+  assert.strictEqual(SC.failed(all), false);
+  assert(warned.some(t => /cut off after 10000/.test(t)), "a cut-off list without a warning");
+  w.close();
+};
+
+exports["kreis.html: byKreis pages like byAgs"] = () => {
+  const kreis = require("fs").readFileSync(require("path").join(ROOT, "gui", "public", "kreis.html"), "utf8");
+  assert(/const byKreis = \(type, krs\) =>\s*jlistPaged\(/.test(kreis), "byKreis without paging");
+  assert(!/&limit=\d+/.test(kreis.slice(kreis.indexOf("const byKreis"), kreis.indexOf("const sum ="))), "byKreis with its own limit");
+};
+
 exports["smartcity-lib: banner threshold (≥ 3, or ≥ 2 and ≥ 20 %)"] = () => {
   if (!JSDOM) return;
   const { w, SC } = libWindow(() => json([]));

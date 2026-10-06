@@ -163,12 +163,53 @@
   const entity = id => soft(`${GW}/ngsi-ld/v1/entities/${encodeURIComponent(id)}`, () => null, id);
   // Any list query (NGSI-LD query URL): [] for no data, a marked [] on failure.
   const jlist = url => soft(url, () => []);
-  // limit 1000: Großstädte haben mehrere hundert Ladestandorte je Gemeinde.
+  // A list query of any length, page by page (NGSI-LD offset): Orion-LD
+  // answers at most 1000 entities per request, and large cities hold more
+  // (Stuttgart ~1,500 CarSharingStation, Mannheim ~4,500 before the prune of
+  // its backlog, Stuttgart ~900 EVChargingStation). Pages are fetched one
+  // after another, so a long list costs the broker one request at a time.
+  // MAX_PAGES (10,000 entities) is twice the largest list today: growth does
+  // not cut a list off, a runaway type cannot loop on the broker. Past it the
+  // list is cut off with a console warning.
+  // Counts as ONE query (loadMark/loadSince). A failed page fails the whole
+  // list – a marked [] as from jlist, never a partial list that looks
+  // complete. 404 on the first page is no data. Pages cached at different
+  // moments (the gateway caches 60 s) may overlap – duplicates are dropped –
+  // or, after a delete between two pages, miss an entity until the next load.
+  const PAGE_SIZE = 1000, MAX_PAGES = 10;
+  async function jlistPaged(url) {
+    _load.total++;
+    const out = [], seen = new Set();
+    try {
+      for (let p = 0; p < MAX_PAGES; p++) {
+        let page;
+        try {
+          page = await jget(`${url}&limit=${PAGE_SIZE}&offset=${p * PAGE_SIZE}`);
+        } catch (e) {
+          if (e && e.status === 404 && p === 0) return [];
+          throw e;
+        }
+        if (!Array.isArray(page)) throw new Error(url.split("?")[0] + " → no list");
+        for (const e of page) {
+          const id = e && e.id;
+          if (id && seen.has(id)) continue;
+          if (id) seen.add(id);
+          out.push(e);
+        }
+        if (page.length < PAGE_SIZE) return out;
+      }
+      console.warn(`${url.split("?")[0]}: list cut off after ${MAX_PAGES * PAGE_SIZE} entities`);
+      return out;
+    } catch (e) {
+      _load.failed++;
+      return markFailed([]);
+    }
+  }
   // Optionale attrs-Projektion: nur die gebrauchten Felder holen (spart bei
   // dichten Stations-Listen hunderte KB je Seitenaufruf).
   const byAgs = (type, ags, attrs) =>
-    jlist(`${GW}/ngsi-ld/v1/entities?type=${type}&q=ags%3D%3D%22${ags}%22&limit=1000` +
-          (attrs ? `&attrs=${attrs}` : ""));
+    jlistPaged(`${GW}/ngsi-ld/v1/entities?type=${type}&q=ags%3D%3D%22${ags}%22` +
+               (attrs ? `&attrs=${attrs}` : ""));
   // Start of a temporal window, rounded down to the full minute. The cockpit
   // nginx caches temporal answers by request URI: with millisecond precision
   // no two views ever asked the same URL and every chart went to Mintaka.
@@ -1149,7 +1190,7 @@
   // Nur die von den Seiten genutzte Oberfläche exportieren; Interna (SLOT, Themes,
   // Modal-Innereien, navLinks) bleiben privat.
   w.SC = { GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
-           jget, fetchRetry, entities, entity, byAgs, jlist, hist, histSince, series, asRows, store,
+           jget, fetchRetry, entities, entity, byAgs, jlist, jlistPaged, hist, histSince, series, asRows, store,
            autoRefresh, attributions, attributionHtml, MAP_CREDIT, OSM_CREDIT,
            warnHeads, warnLink, warnBannerHtml, WARN_SOURCE,
            failed, loadMark, loadSince, bannerDue, loadBanner, errorTile, tileMemory, errorTiles, LOAD_ERR_TXT,

@@ -2,6 +2,17 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Carsharing-Karte, vollständige Listen
+
+- Stadt-Dashboard: Kartenebene und Detailkarte „Carsharing“ zeigen nur noch
+  Auto-Stationen (`vehicleType`); stationsgebundene Leihräder bekommen eine
+  eigene Ebene „Leihräder“, E-Scooter-Stationen entfallen dort. Stationen,
+  deren letzte Meldung älter als 7 Tage ist, erscheinen nicht mehr auf der
+  Karte; ab 6 h tragen sie „Stand: …“ im Popup.
+- `byAgs`/`byKreis` blättern (NGSI-LD `offset`, höchstens 10 Seiten à 1000)
+  statt nach 1000 bzw. 200 Entitäten abzuschneiden; eine fehlgeschlagene
+  Folgeseite gilt als Fehler, nicht als vollständige Liste.
+
 ## Unveröffentlicht — UBA-Luftqualitätsindex
 
 - Index auf der UBA-Skala 0–4 (0 = sehr gut … 4 = sehr schlecht): Kachel,

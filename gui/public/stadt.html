@@ -248,7 +248,7 @@ const pollenGlyph = name => POLLEN_ICON[name]
 // Markerfarbe (grün/gelb/rot/grau); ihre Legende bleibt neutral. Umland-
 // Baustellen sind Nebeninfo und deshalb bewusst zurückhaltendes Warmgrau.
 const MAP_C = { stadt: "#2563eb", stationen: "#06b6d4", carsharing: "#9333ea",
-                br: "#db2777", sensoren: "#b45309", rad: "#0d9488",
+                leihrad: "#ea580c", br: "#db2777", sensoren: "#b45309", rad: "#0d9488",
                 pegel: "#1e3a8a", ausflug: "#16a34a", baustellen: "#eab308",
                 umland: "#78716c", laden: "#64748b", parken: "#0ea5e9" };
 
@@ -278,6 +278,7 @@ const ICON = {
   "Parken": '<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M9 17V8h3.6a2.7 2.7 0 0 1 0 5.4H9"/>'
 };
 ICON["Versorgung"] = ICON["Familie & Versorgung"];
+ICON["Leihräder"] = ICON["B+R Fahrradparken"];
 ICON["Baustellen Umland (Kreis)"] = ICON["Baustellen"];
 // Einzelsymbole der Ebene »Familie & Versorgung«. Apotheke: neutrales Mörser-
 // Symbol — das rote »Apotheken-A« (mit Äskulapnatter) ist eine geschützte
@@ -451,7 +452,7 @@ async function render() {
     // Ladestandorte der Gemeinde, auf Kartenattribute projiziert (statt vollem NGSI-LD).
     ladenDetailC ? byAgs("EVChargingStation", ags, "name,operator,socketNumber,availableEvse,chargingEvse,defectEvse,liveEvse,ags,location,dateObserved") : [],
     entity(ID.fc),
-    carsharingC ? byAgs("CarSharingStation", ags, "name,operator,availableVehicles,capacity,ags,location,dateObserved") : [],
+    carsharingC ? byAgs("CarSharingStation", ags, "name,operator,vehicleType,availableVehicles,capacity,ags,location,dateObserved") : [],
     // Hitzebelastung: 5 DWD-Vertreterstädte, nächstgelegene wird gewählt.
     jlist(`${SC.GW}/ngsi-ld/v1/entities?type=HeatHealthWarning&limit=10&options=keyValues`),
     // Familie & Versorgung (OSM): Apotheke, Arzt, Kita, Spielplatz, AED, Trinkwasser.
@@ -512,11 +513,6 @@ async function render() {
   // Livesumme der Gemeinde: das Aggregat trägt sie seit dem landesweiten Ausbau
   // selbst; die frühere kommunenspezifische Summen-Entität entfällt.
   const l2 = (ch && val(ch, "liveEvse")) ? ch : null;
-  const csList = csStations || [];
-  // Mehrere Anbieter je Gemeinde möglich (stadtmobil, teilAuto, Ford-Carsharing …):
-  // Kachel zeigt die Summe, der Verlauf die stärkste Flotte.
-  // Die GBFS-Landesliste mischt Auto- und Radverleih. Nur Autos zählen als
-  // Carsharing; stationsgebundene Räder erscheinen als eigene Kachel.
   // Nächstgelegene amtliche Station wählen; die Entfernung wird im Hinweis
   // genannt, damit niemand einen 30 km entfernten Messwert für den eigenen hält.
   const kmZu = e => {
@@ -529,6 +525,10 @@ async function render() {
   const w2km = w2 ? Math.round(kmZu(w2) * 10) / 10 : null;
   const w2Name = w2 ? (val(w2, "stationName") || "DWD") : "";
 
+  // Mehrere Anbieter je Gemeinde möglich (stadtmobil, teilAuto, Ford-Carsharing …):
+  // Kachel zeigt die Summe, der Verlauf die stärkste Flotte.
+  // Die GBFS-Landesliste mischt Auto- und Radverleih. Nur Autos zählen als
+  // Carsharing; stationsgebundene Räder erscheinen als eigene Kachel.
   const bauform = e => val(e, "vehicleType") || "car";
   const alleFlotten = (flotten || []).filter(e => val(e, "availableVehicles") != null);
   const csFlotten = alleFlotten.filter(e => bauform(e) === "car");
@@ -536,7 +536,22 @@ async function render() {
   // der Sharing-Kachel (frei flottierend) — sie hier erneut zu zählen wäre
   // doppelt und würde »Leihräder« falsch benennen. Conversely, Sharing leaves out
   // bikes docked in a station-based system (sharing-bw).
-  const radFlotten = alleFlotten.filter(e => ["bicycle", "cargo_bicycle"].includes(bauform(e)));
+  const isBike = e => ["bicycle", "cargo_bicycle"].includes(bauform(e));
+  const radFlotten = alleFlotten.filter(isBike);
+  // Stations split by form factor like the fleets: the GBFS systems of bikes
+  // and scooters (RegioRad, Dott, Voi …) land in CarSharingStation too. Only
+  // car stations are car sharing; docked bikes get the "Leihräder" layer,
+  // scooter stations none (their vehicles are on the Sharing layers).
+  // The map layers leave out stations whose newest observation is older than
+  // 7 days: stations a provider dropped linger until the prune removes them,
+  // and a paged list would draw hundreds of them. Between STALE.station and
+  // 7 days a station stays, marked "Stand: …" in its popup (csExtra). One
+  // without any timestamp stays as well ("Stand unbekannt"): like staleStand,
+  // an unknown age is marked, not taken for an old one.
+  const STATION_MAP_MAX_AGE = 7 * 864e5;
+  const onMap = e => { const t = obsTime(e); return t == null || Date.now() - t <= STATION_MAP_MAX_AGE; };
+  const csList = (csStations || []).filter(e => bauform(e) === "car" && onMap(e));
+  const bikeStations = (csStations || []).filter(e => isBike(e) && onMap(e));
   const summe = (arr, a) => arr.reduce((n, e) => n + (Number(val(e, a)) || 0), 0);
   const csFrei = summe(csFlotten, "availableVehicles"), csStationen = summe(csFlotten, "stationCount");
   const csTop = csFlotten.slice().sort((a, b) => (val(b, "availableVehicles") || 0) - (val(a, "availableVehicles") || 0))[0];
@@ -1389,6 +1404,8 @@ async function render() {
     // eingeklappt (DICHT-Schwelle greift wie bei den Ladesäulen).
     ...scooterGroups.map(g => ({ ...g, detail: D.sharing && D.sharing.kind === "stations" ? "sharing" : null })),
     { name: "Carsharing", color: MAP_C.carsharing, detail: D.carsharing ? "carsharing" : null, items: csList.map(e => ({ ...pos(e), name: val(e, "name"),
+        extra: csExtra(e) })).filter(i => i.lat) },
+    { name: "Leihräder", color: MAP_C.leihrad, items: bikeStations.map(e => ({ ...pos(e), name: val(e, "name"),
         extra: csExtra(e) })).filter(i => i.lat) },
     { name: "B+R Fahrradparken", color: MAP_C.br, detail: D.br ? "br" : null, items: bikes.map(e => ({ ...pos(e), name: val(e, "name"),
         extra: brExtra(e) })).filter(i => i.lat) },

@@ -62,6 +62,69 @@ exports["stadt.html: Sharing tile shows the free-floating total, split by form f
   w.close();
 };
 
+/* GBFS bike and scooter systems (RegioRad, Dott, Voi …) land in
+   CarSharingStation too. Only car stations are car sharing on the map and in
+   the detail (as the tile, which counts car fleets only); docked bikes have
+   a layer of their own, scooter stations none. No vehicleType counts as car
+   (as for the fleets), "unbekannt" does not. */
+exports["stadt.html: Carsharing map and detail show car stations only, docked bikes their own layer"] = async () => {
+  if (!JSDOM) return;
+  const station = (n, type, lat) => ({ id: "urn:ngsi-ld:CarSharingStation:reutlingen-x-" + n, type: "CarSharingStation",
+    name: P("Station " + n), operator: P("Op"), ...(type ? { vehicleType: P(type) } : {}), availableVehicles: P(1), capacity: P(2),
+    ags: P(AGS), location: { type: "GeoProperty", value: { type: "Point", coordinates: [9.2, lat] } } });
+  const { w, d, calls, leaflet } = await renderStadt(base({ types: {
+    FleetStatus: [{ id: "urn:ngsi-ld:FleetStatus:reutlingen-stadtmobil", type: "FleetStatus", ags: P(AGS),
+      operator: P("Stadtmobil"), vehicleType: P("car"), availableVehicles: P(3), stationCount: P(2) }],
+    CarSharingStation: [station(1, "car", 48.49), station(2, null, 48.491), station(3, "bicycle", 48.492),
+      station(4, "cargo_bicycle", 48.493), station(5, "scooter", 48.494), station(6, "unbekannt", 48.495)],
+  } }));
+  assert(calls.some(u => /type=CarSharingStation&.*attrs=[^&]*vehicleType/.test(u)), "vehicleType not requested");
+  const legend = d.getElementById("map-legend").textContent;
+  assert.match(legend, /Carsharing \(2\)/, `car stations on the Carsharing layer: ${legend}`);
+  assert.match(legend, /Leihräder \(2\)/, `docked bikes not on their own layer: ${legend}`);
+  // Marker latitudes the detail map draws (Leaflet calls with [lat, lon]).
+  const before = leaflet.length;
+  w.SC.openDetailByKey("carsharing");
+  const lats = leaflet.slice(before).map(a => a[0]).filter(p => Array.isArray(p) && p.length === 2 && p[1] === 9.2).map(p => p[0]);
+  assert.deepStrictEqual([...new Set(lats)].sort(), [48.49, 48.491], "detail map with other stations than car ones");
+  w.close();
+};
+
+/* Stations not observed for more than 7 days (dropped by the provider, not
+   yet pruned) stay off the map; between 6 h and 7 days they are drawn with
+   "Stand: …" in the popup; without a timestamp they stay ("Stand unbekannt").
+   The tile counts the fleets and is unaffected. */
+exports["stadt.html: station map layers leave out stations older than 7 days, mark older than 6 h"] = async () => {
+  if (!JSDOM) return;
+  const H = 3600e3;
+  const ago = ms => new Date(Date.now() - ms).toISOString();
+  const station = (n, type, lat, age) => ({ id: "urn:ngsi-ld:CarSharingStation:reutlingen-x-" + n, type: "CarSharingStation",
+    name: P("Station " + n), operator: P("Op"), vehicleType: P(type), availableVehicles: P(1), capacity: P(2), ags: P(AGS),
+    ...(age != null ? { dateObserved: P({ "@type": "DateTime", "@value": ago(age) }) } : {}),
+    location: { type: "GeoProperty", value: { type: "Point", coordinates: [9.2, lat] } } });
+  const { w, d, leaflet } = await renderStadt(base({ types: {
+    FleetStatus: [{ id: "urn:ngsi-ld:FleetStatus:reutlingen-stadtmobil", type: "FleetStatus", ags: P(AGS),
+      operator: P("Stadtmobil"), vehicleType: P("car"), availableVehicles: P(3), stationCount: P(9) }],
+    CarSharingStation: [station(1, "car", 48.49, H), station(2, "car", 48.491, 2 * 24 * H), station(3, "car", 48.492, 8 * 24 * H),
+      station(4, "car", 48.493, null), station(5, "bicycle", 48.494, H), station(6, "bicycle", 48.495, 30 * 24 * H)],
+  } }));
+  const legend = d.getElementById("map-legend").textContent;
+  assert.match(legend, /Carsharing \(3\)/, `stale car station on the map: ${legend}`);
+  assert.match(legend, /Leihräder \(1\)/, `stale bike station on the map: ${legend}`);
+  assert.strictEqual(tileOf(d, "Carsharing").value, "3", "the tile changed with the map filter");
+  const popups = leaflet.flat().filter(a => typeof a === "string");
+  const popup = name => popups.find(t => t.includes(name)) || "";
+  assert.match(popup("Station 2"), /Stand: \d\d\.\d\d\./, "a 2-day-old station without its Stand");
+  assert.doesNotMatch(popup("Station 1"), /Stand/, "a current station marked");
+  assert.match(popup("Station 4"), /Stand unbekannt/);
+  assert(!popups.some(t => /Station [36]/.test(t)), "a station older than 7 days was drawn");
+  const before = leaflet.length;
+  w.SC.openDetailByKey("carsharing");
+  const lats = leaflet.slice(before).map(a => a[0]).filter(p => Array.isArray(p) && p.length === 2 && p[1] === 9.2).map(p => p[0]);
+  assert.deepStrictEqual([...new Set(lats)].sort(), [48.49, 48.491, 48.493], "detail map with a station older than 7 days");
+  w.close();
+};
+
 exports["stadt.html: Sharing without the split (older summaries) shows the total only"] = async () => {
   if (!JSDOM) return;
   const { w, d } = await renderStadt(base({ types: {

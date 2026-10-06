@@ -61,7 +61,7 @@
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";
-const { $, css, esc, val, asArray, jget, jlist, entity, tile, errorTile, failed, sharingSplit, fmtN } = SC;
+const { $, css, esc, val, asArray, jget, jlistPaged, entity, tile, errorTile, failed, sharingSplit, fmtN } = SC;
 
 let KREIS = window.KREIS || null, CONN = [];
 
@@ -81,8 +81,9 @@ const sourcesFor = shown => {
 };
 
 // Regex-Query: alle Entitäten eines Typs, deren ags mit dem Kreisschlüssel beginnt
+// (paged like byAgs: a district can hold more entities than one page).
 const byKreis = (type, krs) =>
-  jlist(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&q=ags~%3D%5E${krs}&limit=200&options=keyValues`);
+  jlistPaged(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&q=ags~%3D%5E${krs}&options=keyValues`);
 const sum = (list, attr) => list.reduce((s, e) => s + (Number(e[attr]) || 0), 0);
 
 async function render(krow, members) {

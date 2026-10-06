@@ -477,7 +477,7 @@ exports["GUI: realtime labels only for current values"] = () => {
     "parking tile without age check of the realtime sum");
   assert(/const brStand = staleStand\(bikes, STALE\.parken\)/.test(page), "B+R tile without age check");
   assert(!/hint: "freie Plätze, Echtzeit", explain/.test(page), "B+R still labelled Echtzeit unconditionally");
-  assert(/"name,operator,availableVehicles,capacity,ags,location,dateObserved"/.test(page), "carsharing popup without dateObserved");
+  assert(/"name,operator,vehicleType,availableVehicles,capacity,ags,location,dateObserved"/.test(page), "carsharing popup without dateObserved or vehicleType");
 };
 
 /* Review follow-ups: OCPDB rate limit and gated sums, pulse share limit,
