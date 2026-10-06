@@ -2,6 +2,17 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Sharing-Prune
+
+- `sharing-bw`: Hat ein System in einer Gemeinde kein Fahrzeug mehr, wird
+  seine Zusammenfassung gelöscht statt mit 0 geschrieben. Die Nullen zählten
+  im Prune als Verlust und hielten ihn seit dem 01.10. über dem Deckel
+  gesperrt. Sichtbar: Die Kreis-Kachel „Sharing“ entfällt statt „0“, wenn im
+  Kreis kein Fahrzeug steht.
+- `sharing-bw`, `carsharing-bw`: Entitäten per `excludeSystems`
+  ausgeschlossener Systeme werden gezielt gelöscht statt über den Prune
+  (dort sperrte sie der Deckel; eine Freigabe nach 7 Tagen half nicht).
+
 ## Unveröffentlicht — Carsharing-Karte, vollständige Listen
 
 - Stadt-Dashboard: Kartenebene und Detailkarte „Carsharing“ zeigen nur noch

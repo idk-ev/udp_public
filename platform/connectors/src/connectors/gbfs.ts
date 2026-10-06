@@ -36,8 +36,8 @@
  */
 
 import { FetchUrlRefusedError } from "../kernel/fetcher.js";
-import { isFiniteNumber, isRecord, isString, isTruthy } from "../kernel/parse.js";
-import type { FetchOptions, Log, SystemExclusion } from "../kernel/types.js";
+import { isEntityId, isFiniteNumber, isRecord, isString, isTruthy } from "../kernel/parse.js";
+import type { Ctx, EntityId, FetchOptions, Log, SystemExclusion } from "../kernel/types.js";
 
 /** The `http request` node "GBFS-Systeme" of both flows. */
 export const SYSTEMS_URL = "https://api.mobidata-bw.de/sharing/gbfs";
@@ -106,9 +106,8 @@ export function exclusionOf(id: string, rules: readonly SystemExclusion[]): Syst
  * system is neither fetched nor written — not even its `vehicle_types` —
  * because the reason is the provider's licence terms (storing the data or
  * building a dataset from it is not allowed or not cleared). What it wrote
- * before is removed by the connectors' ordinary age-based prune, as for a
- * system that left the list — unless it was more than the prune's share cap,
- * then the block is released by an operator (scripts/release-prunes.sh).
+ * before is deleted deliberately ({@link removeExcluded}), not left to the
+ * age-based prune: there it would count as a loss against the share cap.
  */
 export function withoutExcluded(
   systems: readonly GbfsSystem[],
@@ -119,6 +118,78 @@ export function withoutExcluded(
   const excluded: GbfsSystem[] = [];
   for (const system of systems) (exclusionOf(system.id, rules) === null ? kept : excluded).push(system);
   return { kept, excluded };
+}
+
+/** `value` as a literal part of a regular expression. */
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** One kind of entity an excluded system may have written. */
+export interface ExcludedScheme {
+  readonly type: string;
+  /** The anchored id scheme of ONE system's entities of this type. */
+  readonly pattern: (system: string) => string;
+  /** Attributes {@link accept} reads. */
+  readonly attrs: readonly string[];
+  /** Further ownership check of a listed entity (normalized form). */
+  readonly accept?: (system: string, entity: Readonly<Record<string, unknown>>) => boolean;
+  /** Gate tables keyed by entity id whose entries of deleted ids go. */
+  readonly signatureKeys?: readonly string[];
+}
+
+/**
+ * Deletes what the excluded systems of this run's list wrote before their
+ * exclusion: per system and scheme, the listed ids its anchored pattern
+ * matches (checked again locally, plus `accept`), through
+ * `ctx.prune.remove` (master data plausible, signatures out of the store
+ * first). Deliberately not left to the age-based prune — a whole provider
+ * at once would count as a loss against its share cap and block it. A
+ * system whose key is also a kept system's is not touched. Returns the
+ * number of deleted entities; an empty listing costs one read per system
+ * and scheme.
+ */
+export async function removeExcluded(
+  ctx: Ctx,
+  label: string,
+  split: { readonly kept: readonly GbfsSystem[]; readonly excluded: readonly GbfsSystem[] },
+  schemes: readonly ExcludedScheme[],
+): Promise<number> {
+  const kept = new Set(split.kept.map((system) => systemKey(system.id)));
+  const systems = new Set(
+    split.excluded.map((system) => systemKey(system.id)).filter((key) => !kept.has(key)),
+  );
+  let deleted = 0;
+  for (const system of systems) {
+    for (const scheme of schemes) {
+      const pattern = scheme.pattern(system);
+      const own = new RegExp(pattern);
+      const listing = await ctx.orion.list(
+        { type: scheme.type, idPattern: pattern, attrs: scheme.attrs },
+        { maxPages: 100 },
+      );
+      if (!listing.ok) {
+        ctx.log.warn(
+          `${label} ${system}: ${scheme.type} of the excluded system not listed (${listing.reason})`,
+        );
+        continue;
+      }
+      const ids: EntityId[] = [];
+      for (const entity of listing.entities) {
+        if (!isRecord(entity) || !isEntityId(entity.id) || !own.test(entity.id)) continue;
+        if (scheme.accept !== undefined && !scheme.accept(system, entity)) continue;
+        ids.push(entity.id);
+      }
+      const result = await ctx.prune.remove({
+        label: `${label} ${system}: ${scheme.type} of an excluded system`,
+        pattern,
+        ids,
+        signatureKeys: scheme.signatureKeys,
+      });
+      deleted += result.deleted.size;
+    }
+  }
+  return deleted;
 }
 
 /** `s.url.replace(/\/gbfs$/, '/<feed>')`. */

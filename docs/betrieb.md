@@ -783,12 +783,24 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   noch über dem Deckel liegt, lehnt der Dienst ab (HTTP 409) — er würde
   sofort wieder sperren; freigeben, sobald der Verlust zum Altbestand
   geworden ist (7 Tage) und der Deckel wieder passt. Ab dem nächsten Lauf
-  gelten die zurückgehaltenen Entitäten dann als normale Kandidaten.
+  gelten die zurückgehaltenen Entitäten dann als normale Kandidaten. Das
+  klappt nur, wenn die gewöhnlichen Abgänge seit der Sperre allein unter dem
+  Deckel bleiben: Während der Sperre löscht der Prune nichts, sie sammeln
+  sich als kürzlich Verschwundenes an. Liegen sie darüber, kommt die
+  Freigabe nie durch (dauerhaft 409) — dann die Ursache beheben und die
+  geprüften Kandidaten gezielt löschen (wie unter docs/framework-dashboards.md,
+  „Abschalten aus Lizenzgründen“).
   Älterer Bestand aus der Zeit vor der Sperre wird davon unabhängig
   abgebaut (bei Prunes mit Karenzzeit).
   Carsharing löscht zusätzlich Stationen, die zwei Läufe in Folge in der
   vollständigen Stationsliste ihres Systems fehlen (freischwebende
-  „virtuelle Stationen“ erhalten je Parkvorgang eine neue Id).
+  „virtuelle Stationen“ erhalten je Parkvorgang eine neue Id). Sharing
+  löscht die Zusammenfassung einer Gemeinde, sobald ein System dort kein
+  Fahrzeug mehr meldet (statt sie mit 0 zu schreiben), aber nur bei einem
+  Feed mit Fahrzeugen — ein gescheiterter oder leerer Feed löscht nichts.
+  Beide löschen außerdem, was per `excludeSystems` ausgeschlossene Systeme
+  geschrieben haben. Diese gezielten Löschungen laufen am Deckel vorbei und
+  zählen nicht als Verlust.
 - **Auslösen:** `bash scripts/trigger-connector.sh <id>`. Unter Compose läuft
   der Aufruf per `docker exec udp-connectors`, in Kubernetes mit
   `CONNECTORS_EXEC="kubectl -n <namespace> exec deploy/connectors --"`.

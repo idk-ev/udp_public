@@ -141,8 +141,9 @@ const CARRIED_BY = {
     ["sig-commit", "signature commit: each chunk commits only its own pending signatures"],
   ],
   gbfsZero: [
-    ["sharing-bw", "sharing-bw: ffLast zero tables — confirmed zero once, empty feed no zeros, failed zero repeated"],
+    ["sharing-bw", "sharing-bw: ffLast tables — old zeros are the emptied summaries, confirmed once, empty feed none, failed repeated"],
     ["sharing-bw", "sharing-bw: old FN_GBFS_FF and port build the same summaries and pending entries on two live feeds"],
+    ["sharing-bw", "sharing-bw: an emptied summary is deleted, not zeroed — outside the age prune, retried, written anew (deliberate)"],
   ],
   parkingFreshness: [
     ["parken-bw", "parken-bw: entities, pending signatures and parkStatik/parkFrei/parkSummenSig match across two runs"],
@@ -416,7 +417,7 @@ exports["Signatures: failed upsert resends, confirmed upsert gates, 207 per enti
   carriedBy("signatures");
 };
 
-exports["GBFS: vanished municipalities get a confirmed zero, empty feeds do not"] = () => {
+exports["GBFS: vanished municipalities get their summary deleted once, empty feeds do not"] = () => {
   carriedBy("gbfsZero");
 };
 

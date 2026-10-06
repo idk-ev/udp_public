@@ -476,7 +476,76 @@ async function statusWaitsForMasterData(): Promise<void> {
   assert.deepEqual(world.pruneCalls, []);
 }
 
+/**
+ * DELIBERATE DEVIATION (module header): what an excluded system of the list
+ * wrote before is deleted through `ctx.prune.remove` — only its own stations
+ * and fleets (id scheme, `dataProvider`, `operator`), with their signatures.
+ * The age-based prunes keep their settings, and with them the keys of their
+ * persisted bookkeeping.
+ */
+async function excludedSystemsStationsAndFleetsAreDeleted(): Promise<void> {
+  const now = Date.now();
+  const world = mobilityCtx({ id: "carsharing-bw", start: now });
+  serveAll(world.broker);
+  const own = { type: "Property", value: "MobiData BW GBFS" };
+  const put = (id: string, type: string, operator: string, provider: unknown = own): void => {
+    world.broker.entities.set(id, {
+      id,
+      type,
+      operator: { type: "Property", value: operator },
+      dataProvider: provider,
+      dateObserved: {
+        type: "Property",
+        value: { "@type": "DateTime", "@value": new Date(now).toISOString() },
+      },
+    });
+  };
+  // bird-basel is in the fixture list and excluded by the registry.
+  const station = "urn:ngsi-ld:CarSharingStation:ulm-bird-basel-7";
+  const fleet = "urn:ngsi-ld:FleetStatus:ulm-bird-basel";
+  put(station, "CarSharingStation", "Bird Basel");
+  put(fleet, "FleetStatus", "Bird Basel");
+  // Matching the scheme, but not bird-basel's: system "foo" with station
+  // "bird-basel-1", system "bird-basel-2" (not in the list), a municipal
+  // connector's station, and a kept system's fleet.
+  const others: [string, string, string, unknown?][] = [
+    ["urn:ngsi-ld:CarSharingStation:ulm-foo-bird-basel-1", "CarSharingStation", "Foo"],
+    ["urn:ngsi-ld:CarSharingStation:ulm-bird-basel-2-1", "CarSharingStation", "Bird Basel 2"],
+    [
+      "urn:ngsi-ld:CarSharingStation:basel-bird-basel-9",
+      "CarSharingStation",
+      "Bird Basel",
+      { value: "Basel" },
+    ],
+    ["urn:ngsi-ld:FleetStatus:ulm-bird-basel-2", "FleetStatus", "Bird Basel 2"],
+    ["urn:ngsi-ld:FleetStatus:ulm-swu2go", "FleetStatus", "Swu2go"],
+  ];
+  for (const [id, type, operator, provider] of others) put(id, type, operator, provider ?? own);
+  world.store.replace(STATIC_KEY, new Map([[station, "s"]]));
+  world.store.replace(LIVE_KEY, new Map([[station, "[1]"]]));
+
+  await run(world.ctx);
+  assert.deepEqual(world.broker.deletes.flat().sort(), [fleet, station].sort());
+  for (const [id] of others) assert.ok(world.broker.entities.has(id), `${id} deleted`);
+  for (const key of [STATIC_KEY, LIVE_KEY]) assert.ok(!world.store.copy(key).has(station), `${key} kept`);
+  assert.ok(world.pruneCalls.some((call) => call.kind === "remove" && call.key.includes("bird-basel")));
+  assert.ok(!world.broker.requests.some((request) => request.url.href.includes("/bird-basel/")));
+  // The age-based prunes: same label, type and pattern — their bookkeeping key.
+  assert.deepEqual(
+    staleOptions(world).map((options) => `${options.label}|${options.type}|${options.pattern}`),
+    [
+      "Carsharing stations|CarSharingStation|^urn:ngsi-ld:CarSharingStation:[A-Za-z0-9_-]+$",
+      "Carsharing fleets|FleetStatus|^urn:ngsi-ld:FleetStatus:[A-Za-z0-9_-]+$",
+    ],
+  );
+  // Nothing left: the next run deletes nothing more.
+  world.clock.now = now + HOUR;
+  await run(world.ctx);
+  assert.deepEqual(world.broker.deletes.flat().sort(), [fleet, station].sort());
+}
+
 export {
+  excludedSystemsStationsAndFleetsAreDeleted as "carsharing-bw: stations and fleets of an excluded system are deleted deliberately, nothing else (deliberate)",
   masterDataMatches as "carsharing-bw: station cache and form factors match the old master data node on three live systems",
   listWithoutBwStationKeepsTheCache as "carsharing-bw: a station list without a station in BW leaves the cache alone",
   masterDataReplacesTheSystemsStations as "carsharing-bw: a new station list replaces that system's stations, other systems stay",

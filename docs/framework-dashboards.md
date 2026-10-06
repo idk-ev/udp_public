@@ -51,12 +51,13 @@ Regeln:
   `GET /ngsi-ld/v1/entities?type=<Typ>&idPattern=<Präfix>` (intern, am
   Broker, nicht über das öffentliche Gateway). Die TRoE-Historie bleibt davon
   unberührt und läuft mit der Retention aus (12 Monate). Für ausgeschlossene
-  GBFS-Systeme (`excludeSystems`) braucht es das nicht: Ihre Entitäten
-  veralten und der Prune des Konnektors löscht sie nach 24 h. Machen sie mehr
-  als 30 % des frischen Bestands aus, sperrt der Prune-Deckel (`PRUNE BLOCKED`
-  im Healthcheck); dann nach 7 Tagen `bash scripts/release-prunes.sh
-  <konnektor-id>` (docs/betrieb.md, Prune). Auch hier bleibt die
-  TRoE-Historie bis zur Retention.
+  GBFS-Systeme (`excludeSystems`) braucht es das nicht: Solange ein
+  ausgeschlossenes System in der Systemliste der Quelle steht, löschen
+  `sharing-bw` und `carsharing-bw` seine Entitäten im nächsten Lauf gezielt —
+  nur Ids seines eigenen Schemas, bei Carsharing zusätzlich mit eigenem
+  `dataProvider` und dem `operator` des Systems — und außerhalb des
+  Prune-Deckels. Fehlt das System auch in der Liste, baut der Prune den Rest
+  nach 24 h ab. Auch hier bleibt die TRoE-Historie bis zur Retention.
 - Vollständiges Entfernen eines Konnektors = Registry-Eintrag, Modul samt Zeile
   in `src/connectors/index.ts` und Test löschen (`test/parity/registry.test.ts`
   hält beide Listen gleich). Anschließend die verwaisten Alt-Entitäten aus
