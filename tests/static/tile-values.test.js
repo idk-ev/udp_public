@@ -62,6 +62,34 @@ exports["stadt.html: Sharing tile shows the free-floating total, split by form f
   w.close();
 };
 
+/* GBFS bike and scooter systems (RegioRad, Dott, Voi …) land in
+   CarSharingStation too. Only car stations are car sharing on the map and in
+   the detail (as the tile, which counts car fleets only); docked bikes have
+   a layer of their own, scooter stations none. No vehicleType counts as car
+   (as for the fleets), "unbekannt" does not. */
+exports["stadt.html: Carsharing map and detail show car stations only, docked bikes their own layer"] = async () => {
+  if (!JSDOM) return;
+  const station = (n, type, lat) => ({ id: "urn:ngsi-ld:CarSharingStation:reutlingen-x-" + n, type: "CarSharingStation",
+    name: P("Station " + n), operator: P("Op"), ...(type ? { vehicleType: P(type) } : {}), availableVehicles: P(1), capacity: P(2),
+    ags: P(AGS), location: { type: "GeoProperty", value: { type: "Point", coordinates: [9.2, lat] } } });
+  const { w, d, calls, leaflet } = await renderStadt(base({ types: {
+    FleetStatus: [{ id: "urn:ngsi-ld:FleetStatus:reutlingen-stadtmobil", type: "FleetStatus", ags: P(AGS),
+      operator: P("Stadtmobil"), vehicleType: P("car"), availableVehicles: P(3), stationCount: P(2) }],
+    CarSharingStation: [station(1, "car", 48.49), station(2, null, 48.491), station(3, "bicycle", 48.492),
+      station(4, "cargo_bicycle", 48.493), station(5, "scooter", 48.494), station(6, "unbekannt", 48.495)],
+  } }));
+  assert(calls.some(u => /type=CarSharingStation&.*attrs=[^&]*vehicleType/.test(u)), "vehicleType not requested");
+  const legend = d.getElementById("map-legend").textContent;
+  assert.match(legend, /Carsharing \(2\)/, `car stations on the Carsharing layer: ${legend}`);
+  assert.match(legend, /Leihräder \(2\)/, `docked bikes not on their own layer: ${legend}`);
+  // Marker latitudes the detail map draws (Leaflet calls with [lat, lon]).
+  const before = leaflet.length;
+  w.SC.openDetailByKey("carsharing");
+  const lats = leaflet.slice(before).map(a => a[0]).filter(p => Array.isArray(p) && p.length === 2 && p[1] === 9.2).map(p => p[0]);
+  assert.deepStrictEqual([...new Set(lats)].sort(), [48.49, 48.491], "detail map with other stations than car ones");
+  w.close();
+};
+
 exports["stadt.html: Sharing without the split (older summaries) shows the total only"] = async () => {
   if (!JSDOM) return;
   const { w, d } = await renderStadt(base({ types: {
