@@ -531,8 +531,8 @@ export type SignatureValue = string | number;
  * `field` is usually the entity id itself (that is what the change gate
  * stores), but tables keyed otherwise exist: `sharing-bw` keeps
  * `ffLast:<system>` keyed by AGS, `efa-abfahrten` one table per stop keyed by
- * attribute. `value: null` REMOVES the field on commit — the confirmed zero of
- * `sharing-bw`.
+ * attribute. `value: null` REMOVES the field on commit (what the confirmed
+ * zero of `sharing-bw` did before it deleted emptied summaries instead).
  */
 export type PendingSignature = readonly [
   key: string,

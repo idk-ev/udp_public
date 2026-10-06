@@ -7,17 +7,25 @@
  * Parity: sharing-bw — the system list node (`udp-rt-bg-msgs`), FN_GBFS_FF
  * (`udp-rt-bg-fn`) and the commit node (`udp-rt-bg-commit`) against the port.
  *
- * Pinned: the per-system summaries on two real feeds, the zero tables
+ * Pinned: the per-system summaries on two real feeds, the tables
  * `ffLast:<system>` through a sequence of runs with confirmed and failed
- * commits (the confirmed zero written once, an empty feed zeroing nothing, a
- * failed zero written again), the dropping of tables of systems that left
- * the list, the age prune, and the skip without boundaries.
+ * commits (the old confirmed zero once, the port's deletion in its place;
+ * an empty feed emptying nothing; a failed one repeated), the dropping of
+ * tables of systems that left the list, the age prune, and the skip without
+ * boundaries.
  *
  * DELIBERATE DEVIATION (module header, "Form factors and docked vehicles"):
  * every summary carries `vehiclesByFormFactor`, and docked vehicles of
  * station-based systems are not counted. The comparison with the old node strips the
  * new attribute ({@link withoutSplit}) — none of the recorded vehicles is
  * docked — and the tests at the end pin the new behaviour.
+ *
+ * DELIBERATE DEVIATION (module header, "The tables"): where the old node
+ * wrote a zero summary, the port deletes the summary (`emptied`); a confirmed
+ * deletion drops the table entry as a confirmed zero did. The comparison
+ * takes the old node's zeros out of its write and holds them against the
+ * port's `emptied` ({@link assertWriteMatches}); section 5 pins the deletion
+ * in `run()`, and the deletion of excluded systems' summaries.
  *
  * Fixtures: test/fixtures/gbfs-systems.json, sharing-bw-hopp_konstanz.json,
  * sharing-bw-zeus_tuttlingen.json and their -vehicle_types.json (see their
@@ -41,12 +49,15 @@ import {
   TYPES_RETRY_MS,
   typesStale,
 } from "../../src/connectors/sharing-bw.js";
-import type { SharingSummaryEntity, Vehicle } from "../../src/connectors/sharing-bw.js";
+import type { SharingSummaryEntity, SystemPlan, Vehicle } from "../../src/connectors/sharing-bw.js";
 import { formFactorOf as formFactorOfCarsharing } from "../../src/connectors/carsharing-bw.js";
-import type { EntityId, UpsertPlan } from "../../src/kernel/types.js";
+import { SYSTEMS_URL } from "../../src/connectors/gbfs.js";
+import { isArray } from "../../src/kernel/parse.js";
+import type { EntityId, HttpResponse, UpsertPlan } from "../../src/kernel/types.js";
 import { readFixture } from "../harness/fixtures.js";
 import { fakeHttpModule, httpResponse, recordingLog } from "../harness/kernel.js";
 import {
+  arrayField,
   Broker,
   flowObject,
   fullGeo,
@@ -54,6 +65,7 @@ import {
   jsonAnswer,
   legacyGlobal,
   mobilityCtx,
+  type MobilityWorld,
   staleOptions,
   tableObject,
   withoutExcludedSystems,
@@ -127,21 +139,51 @@ async function legacyCommit(write: LegacyWrite, statusCode: number): Promise<Rec
   return flowObject(commit.flow);
 }
 
-function ported(system: string, payload: unknown, store: SignatureScope): UpsertPlan {
+function ported(system: string, payload: unknown, store: SignatureScope): SystemPlan {
   const feed = parse({ system, payload });
   const geo = fullGeo().index;
   const now = new Date().toISOString();
   const gate = createChangeGate(store, recordingLog());
-  return planSystem(feed, build(feed, geo, now), gate.table(lastKey(feed.system)), geo, now);
+  return planSystem(feed, build(feed, geo, now), gate.table(lastKey(feed.system)), geo);
 }
 
-function assertWriteMatches(legacy: LegacyWrite, plan: UpsertPlan, when: string): void {
+function isZero(entity: unknown): boolean {
+  return isRecord(entity) && isRecord(entity.availableVehicles) && entity.availableVehicles.value === 0;
+}
+
+/**
+ * The old write against the port's: DELIBERATE DEVIATION (module header,
+ * "The tables") — the old zeros and their `null` entries are the port's
+ * `emptied`, the rest is compared as it is.
+ */
+function assertWriteMatches(legacy: LegacyWrite, plan: SystemPlan, when: string): void {
   if (legacy.message === null) {
     assert.equal(plan.entities.length, 0, `${when}: the old node wrote nothing`);
+    assert.equal(plan.emptied.length, 0, `${when}: the old node zeroed nothing`);
     return;
   }
-  assertEntitiesEqual(legacy.message.payload, withoutSplit(plan.entities));
-  assert.deepEqual(normalize(legacy.message.sigCommit), normalize(plan.pending), `${when}: pending differs`);
+  const payload = arrayField(legacy.message, "payload");
+  assertEntitiesEqual(
+    payload.filter((entity) => !isZero(entity)),
+    withoutSplit(plan.entities),
+  );
+  assert.deepEqual(
+    normalize(payload.filter(isZero).map((entity) => (isRecord(entity) ? entity.id : undefined))),
+    normalize(plan.emptied.map(([, id]) => id)),
+    `${when}: the old zeros are not the emptied summaries`,
+  );
+  const sigCommit = arrayField(legacy.message, "sigCommit");
+  const removal = (row: unknown): boolean => isArray(row) && row[2] === null;
+  assert.deepEqual(
+    normalize(sigCommit.filter((row) => !removal(row))),
+    normalize(plan.pending),
+    `${when}: pending differs`,
+  );
+  assert.deepEqual(
+    normalize(sigCommit.filter(removal).map((row): unknown => (isArray(row) ? row[1] : undefined))),
+    normalize(plan.emptied.map(([ags]) => ags)),
+    `${when}: the old removals are not the emptied municipalities`,
+  );
 }
 
 /* ── 1. the real feeds ───────────────────────────────────────────────────── */
@@ -156,7 +198,7 @@ async function realFeedsBuildTheSameSummaries(): Promise<void> {
   }
 }
 
-/* ── 2. zero tables ──────────────────────────────────────────────────────── */
+/* ── 2. ffLast tables ──────────────────────────────────────────────────────── */
 
 const STUTTGART = [48.7758, 9.1829] as const;
 const REUTLINGEN = [48.49388, 9.18829] as const;
@@ -173,17 +215,22 @@ async function zeroTablesFollowTheOldSequence(): Promise<void> {
   const store = new SignatureStore().scope("sharing-bw");
   let flow: Record<string, unknown> = {};
 
+  // The status code answers the old write and, for the port, the write AND
+  // the deletion of the emptied summaries (confirmed: the entry goes, as
+  // run() drops it; see section 5 for run() itself).
   const step = async (
     points: readonly (readonly [number, number])[],
     statusCode: number,
     when: string,
-  ): Promise<UpsertPlan> => {
+  ): Promise<SystemPlan> => {
     const legacy = await legacySystem(system, feedOf(points), flow);
     const plan = ported(system, feedOf(points), store);
     assertWriteMatches(legacy, plan, when);
     flow = await legacyCommit(legacy, statusCode);
     const ok = statusCode >= 200 && statusCode < 300;
     store.commit(plan.pending, new Set<EntityId>(ok ? plan.entities.map((entity) => entity.id) : []));
+    const deleted = new Set(ok ? plan.emptied.map(([ags]) => ags) : []);
+    store.retain(key, (field) => !deleted.has(field));
     assert.deepEqual(
       normalize(tableObject(store, key)),
       normalize(flow[key] ?? {}),
@@ -193,23 +240,26 @@ async function zeroTablesFollowTheOldSequence(): Promise<void> {
   };
   const counts = (plan: UpsertPlan): Record<string, unknown> =>
     Object.fromEntries(plan.pending.map(([, ags, value]) => [ags, value]));
+  const emptied = (plan: SystemPlan): string[] => plan.emptied.map(([ags]) => ags);
 
   let plan = await step([STUTTGART, STUTTGART, REUTLINGEN], 201, "first sighting");
   assert.deepEqual(counts(plan), { "08111000": 2, "08415061": 1 });
+  assert.deepEqual(emptied(plan), []);
   plan = await step([STUTTGART], 204, "Reutlingen emptied");
-  assert.deepEqual(
-    counts(plan),
-    { "08111000": 1, "08415061": null },
-    "no zero for the vanished municipality",
-  );
-  plan = await step([STUTTGART], 204, "zero confirmed");
-  assert.deepEqual(counts(plan), { "08111000": 1 }, "zero written again after it was confirmed");
+  assert.deepEqual(counts(plan), { "08111000": 1 });
+  assert.deepEqual(emptied(plan), ["08415061"], "the vanished municipality not emptied");
+  plan = await step([STUTTGART], 204, "deletion confirmed");
+  assert.deepEqual(emptied(plan), [], "emptied again after the deletion was confirmed");
   plan = await step([], 204, "empty feed");
-  assert.equal(plan.entities.length, 0, "an empty feed zeroes every municipality");
-  plan = await step([REUTLINGEN], 500, "Stuttgart emptied, write failed");
-  assert.deepEqual(counts(plan), { "08415061": 1, "08111000": null });
-  plan = await step([REUTLINGEN], 204, "failed zero repeated");
-  assert.deepEqual(counts(plan), { "08415061": 1, "08111000": null }, "failed zero write not repeated");
+  assert.equal(plan.entities.length + plan.emptied.length, 0, "an empty feed empties every municipality");
+  plan = await step([REUTLINGEN], 500, "Stuttgart emptied, write and deletion failed");
+  assert.deepEqual(counts(plan), { "08415061": 1 });
+  assert.deepEqual(emptied(plan), ["08111000"]);
+  plan = await step([REUTLINGEN], 204, "failed deletion repeated");
+  assert.deepEqual(emptied(plan), ["08111000"], "failed deletion not repeated");
+  plan = await step([STUTTGART, REUTLINGEN], 204, "Stuttgart back");
+  assert.deepEqual(counts(plan), { "08111000": 1, "08415061": 1 }, "a returning municipality not written");
+  assert.deepEqual(emptied(plan), []);
 }
 
 /* ── 3. run(): list, dropped tables, prune, upserts ──────────────────────── */
@@ -332,18 +382,15 @@ async function runMatchesTheOldFlow(): Promise<void> {
       `${key} after commit`,
     );
   }
-  // One line confirms the run (the old node logged nothing on success).
+  // One line confirms the run (the old node logged nothing on success). The
+  // port never writes a zero (module header, "The tables").
   const written = world.broker.upserts.flat();
-  const zeroed = written.filter(
-    (entity) =>
-      isRecord(entity) && isRecord(entity.availableVehicles) && entity.availableVehicles.value === 0,
-  ).length;
+  assert.equal(written.filter(isZero).length, 0, "a zero summary was written");
   const summary = world.log.lines.filter((line) => line.level === "info").at(-1)?.text;
   assert.equal(
     summary,
     `GBFS-BW: ${String(messagesOf(legacyList).length)} systems (1 excluded by the registry), ` +
-      `${String(written.length)} summaries written ` +
-      `(${String(zeroed)} of them zeroed), prune: 1 deleted`,
+      `${String(written.length)} summaries written, 0 emptied ones deleted, prune: 1 deleted`,
   );
 }
 
@@ -498,12 +545,11 @@ async function formFactorsSplitTheTotal(): Promise<void> {
     car: 0,
     other: 10,
   });
-  // A zero summary carries an all-zero split.
-  const zero: unknown = planSystem(feed, [], new Map([["08111000", 4]]), geo, now).entities[0];
-  assert.ok(
-    isRecord(zero) && isRecord(zero.vehiclesByFormFactor) && isRecord(zero.vehiclesByFormFactor.value),
-  );
-  assert.deepEqual(Object.values(zero.vehiclesByFormFactor.value), [0, 0, 0, 0, 0, 0]);
+  // An emptied municipality gets no zero summary (and so no all-zero split):
+  // its summary is deleted (module header, "The tables").
+  const zero = planSystem(feed, [], new Map([["08111000", 4]]), geo);
+  assert.deepEqual(zero.entities, []);
+  assert.deepEqual(zero.emptied, [["08111000", "urn:ngsi-ld:SharingSummary:bw-08111000-ff-mixed"]]);
 }
 
 function vehicleTypesAreNarrowed(): void {
@@ -649,13 +695,178 @@ function prevailingFormFactorIsShared(): void {
   assert.equal(parseVehicleTypes(unknown).prevailing, "other");
 }
 
+/* ── 5. emptied summaries and excluded systems (deliberate, module header) ── */
+
+const TEST_LIST = {
+  systems: [
+    { id: "testsys", url: "https://api.mobidata-bw.de/sharing/gbfs/v2/testsys/gbfs" },
+    { id: "lime_bw", url: "https://api.mobidata-bw.de/sharing/gbfs/v2/lime_bw/gbfs" },
+  ],
+};
+const TEST_FEED = "https://api.mobidata-bw.de/sharing/gbfs/v2/testsys/free_bike_status";
+const STUTTGART_ID = "urn:ngsi-ld:SharingSummary:bw-08111000-ff-testsys";
+const REUTLINGEN_ID = "urn:ngsi-ld:SharingSummary:bw-08415061-ff-testsys";
+const RUNS_FROM = Date.parse("2026-10-06T08:00:00Z");
+
+/** One run at `hour`; the broker keeps what it upserted (it does not by itself). */
+async function runAt(world: MobilityWorld, hour: number, feed: HttpResponse): Promise<void> {
+  world.clock.now = RUNS_FROM + hour * HOUR;
+  world.broker.sources.set(TEST_FEED, feed);
+  const before = world.broker.upserts.length;
+  await run(world.ctx);
+  for (const entity of world.broker.upserts.slice(before).flat()) {
+    if (isRecord(entity) && typeof entity.id === "string") world.broker.entities.set(entity.id, entity);
+  }
+}
+
+function testWorld(): MobilityWorld {
+  const world = mobilityCtx({ id: "sharing-bw", start: RUNS_FROM });
+  world.broker.sources.set(SYSTEMS_URL, jsonAnswer(TEST_LIST));
+  return world;
+}
+
+async function emptiedSummaryIsDeletedNotZeroed(): Promise<void> {
+  const world = testWorld();
+  const key = lastKey("testsys");
+  const table = (): Record<string, unknown> => tableObject(world.store, key);
+  const deletes = (): string[] => world.broker.deletes.flat();
+  const lastLine = (): string | undefined => world.log.lines.filter((l) => l.level === "info").at(-1)?.text;
+
+  await runAt(world, 0, jsonAnswer(feedOf([STUTTGART, STUTTGART, REUTLINGEN])));
+  assert.deepEqual(table(), { "08111000": 2, "08415061": 1 });
+
+  // Reutlingen emptied: its summary is deleted, no zero written, the entry goes.
+  await runAt(world, 1, jsonAnswer(feedOf([STUTTGART])));
+  assert.deepEqual(deletes(), [REUTLINGEN_ID]);
+  assert.ok(!world.broker.entities.has(REUTLINGEN_ID));
+  assert.equal(world.broker.upserts.flat().filter(isZero).length, 0, "a zero summary was written");
+  assert.deepEqual(table(), { "08111000": 1 });
+  assert.ok(
+    world.pruneCalls.some((call) => call.kind === "remove" && call.removed?.includes(REUTLINGEN_ID) === true),
+  );
+  assert.match(lastLine() ?? "", /, 1 emptied ones deleted, /);
+
+  // A day later the age prune has nothing to count against its share cap.
+  for (let hour = 2; hour <= 27; hour += 1) await runAt(world, hour, jsonAnswer(feedOf([STUTTGART])));
+  const prune = staleOptions(world).length;
+  const lastStale = world.pruneCalls.filter((call) => call.kind === "stale").at(-1)?.result;
+  assert.ok(prune > 0 && lastStale?.skipped === null, `prune skipped: ${String(lastStale?.skipped)}`);
+  assert.equal(lastStale.listed?.candidates, 0, "the emptied municipality aged into the prune");
+  assert.deepEqual(deletes(), [REUTLINGEN_ID]);
+
+  // Vehicles there again: the summary is written anew.
+  await runAt(world, 28, jsonAnswer(feedOf([STUTTGART, REUTLINGEN])));
+  const rewritten = world.broker.upserts.at(-1) ?? [];
+  assert.ok(rewritten.some((entity) => isRecord(entity) && entity.id === REUTLINGEN_ID));
+  assert.deepEqual(table(), { "08111000": 1, "08415061": 1 });
+
+  // A failed, an unreadable and an empty feed delete nothing.
+  await runAt(world, 29, httpResponse(503, ""));
+  await runAt(world, 30, jsonAnswer({ data: {} }));
+  await runAt(world, 31, jsonAnswer(feedOf([])));
+  assert.deepEqual(deletes(), [REUTLINGEN_ID], "deleted on a failed or empty feed");
+  assert.deepEqual(table(), { "08111000": 1, "08415061": 1 });
+
+  // A refused deletion of a summary the broker still holds: the entry stays,
+  // the next run tries again.
+  world.broker.deleteAnswer = () => httpResponse(500, "");
+  await runAt(world, 32, jsonAnswer(feedOf([STUTTGART])));
+  assert.ok(world.broker.entities.has(REUTLINGEN_ID));
+  assert.deepEqual(table(), { "08111000": 1, "08415061": 1 });
+  world.broker.deleteAnswer = () => httpResponse(204);
+  await runAt(world, 33, jsonAnswer(feedOf([STUTTGART])));
+  assert.deepEqual(deletes(), [REUTLINGEN_ID, REUTLINGEN_ID, REUTLINGEN_ID]);
+  assert.ok(!world.broker.entities.has(REUTLINGEN_ID));
+  assert.deepEqual(table(), { "08111000": 1 });
+
+  // Already gone (an operator, the age prune): refused as not found, the
+  // entry goes all the same — no deletion run after run.
+  await runAt(world, 34, jsonAnswer(feedOf([STUTTGART, REUTLINGEN])));
+  world.broker.entities.delete(REUTLINGEN_ID);
+  world.broker.deleteAnswer = (ids) =>
+    httpResponse(
+      207,
+      JSON.stringify({
+        success: [],
+        errors: ids.map((entityId) => ({ entityId, error: { type: "ResourceNotFound", status: 404 } })),
+      }),
+    );
+  await runAt(world, 35, jsonAnswer(feedOf([STUTTGART])));
+  assert.deepEqual(table(), { "08111000": 1 });
+  const tried = deletes().length;
+  await runAt(world, 36, jsonAnswer(feedOf([STUTTGART])));
+  assert.equal(deletes().length, tried, "a gone summary deleted again");
+  assert.ok(world.broker.entities.has(STUTTGART_ID));
+}
+
+async function emptiedSummaryIsZeroedWhileItMayNotBeDeleted(): Promise<void> {
+  // Master data not plausible (Orion counts far more municipalities than the
+  // geo context holds): no deletion; the old count must not stay on show.
+  const world = testWorld();
+  world.broker.municipalityCount = 100_000;
+  await runAt(world, 0, jsonAnswer(feedOf([STUTTGART, REUTLINGEN])));
+  await runAt(world, 1, jsonAnswer(feedOf([STUTTGART])));
+  assert.deepEqual(world.broker.deletes.flat(), []);
+  const zero = world.broker.upserts
+    .flat()
+    .find((entity) => isRecord(entity) && entity.id === REUTLINGEN_ID && isZero(entity));
+  assert.ok(isRecord(zero) && isRecord(zero.vehiclePositions), "no zero written");
+  assert.deepEqual(zero.vehiclePositions.value, []);
+  // The entry stays: the deletion is tried again in the next run.
+  assert.deepEqual(tableObject(world.store, lastKey("testsys")), { "08111000": 1, "08415061": 1 });
+}
+
+async function excludedSystemsSummariesAreDeleted(): Promise<void> {
+  const world = testWorld();
+  const lime = [
+    "urn:ngsi-ld:SharingSummary:bw-08111000-ff-lime_bw",
+    "urn:ngsi-ld:SharingSummary:bw-08415061-ff-lime_bw",
+  ];
+  // Not lime_bw: another system (excluded, but not in this list), a system
+  // whose key merely contains it, and a kept one.
+  const others = [
+    "urn:ngsi-ld:SharingSummary:bw-08111000-ff-lime_bw-2",
+    "urn:ngsi-ld:SharingSummary:bw-08111000-ff-sublime_bw",
+    STUTTGART_ID,
+  ];
+  // The excluded system's summaries stopped a day ago; the others are fresh,
+  // so the age prune of the second run leaves them alone.
+  for (const id of [...lime, ...others]) {
+    const observedAt = new Date(RUNS_FROM - (lime.includes(id) ? 30 : 1) * HOUR).toISOString();
+    world.broker.entities.set(id, {
+      id,
+      type: "SharingSummary",
+      availableVehicles: { type: "Property", value: 3, observedAt },
+    });
+  }
+  // The first run: its age prune only arms the interval, the deletion is deliberate.
+  await runAt(world, 0, jsonAnswer(feedOf([STUTTGART])));
+  assert.deepEqual(world.broker.deletes.flat().sort(), [...lime].sort());
+  for (const id of others) assert.ok(world.broker.entities.has(id), `${id} deleted`);
+  assert.ok(
+    world.pruneCalls.some(
+      (call) => call.kind === "remove" && call.key.includes("lime_bw") && call.removed?.length === 2,
+    ),
+  );
+  assert.ok(
+    !world.broker.requests.some((request) => request.url.href.includes("/lime_bw/")),
+    "the excluded system was requested",
+  );
+  // Nothing left: listed again, nothing deleted.
+  await runAt(world, 1, jsonAnswer(feedOf([STUTTGART])));
+  assert.deepEqual(world.broker.deletes.flat().sort(), [...lime].sort());
+}
+
 export {
+  emptiedSummaryIsZeroedWhileItMayNotBeDeleted as "sharing-bw: an emptied summary that may not be deleted (master data) is zeroed, its entry kept",
+  emptiedSummaryIsDeletedNotZeroed as "sharing-bw: an emptied summary is deleted, not zeroed — outside the age prune, retried, written anew (deliberate)",
+  excludedSystemsSummariesAreDeleted as "sharing-bw: summaries of an excluded system are deleted deliberately, other systems untouched (deliberate)",
   prevailingFormFactorIsShared as "sharing-bw / carsharing-bw: one prevailing form factor on the raw strings",
   formFactorsSplitTheTotal as "sharing-bw: vehiclesByFormFactor splits the total, docked vehicles of station-based systems are not counted (deliberate)",
   vehicleTypesAreNarrowed as "sharing-bw: vehicle_types narrowed to the six form factors, prevailing one per system",
   vehicleTypesAreFetchedOnceAndOnlyForBw as "sharing-bw: vehicle_types fetched only for systems with BW vehicles and kept for a day",
   realFeedsBuildTheSameSummaries as "sharing-bw: old FN_GBFS_FF and port build the same summaries and pending entries on two live feeds",
-  zeroTablesFollowTheOldSequence as "sharing-bw: ffLast zero tables — confirmed zero once, empty feed no zeros, failed zero repeated",
+  zeroTablesFollowTheOldSequence as "sharing-bw: ffLast tables — old zeros are the emptied summaries, confirmed once, empty feed none, failed repeated",
   runMatchesTheOldFlow as "sharing-bw: run() requests, drops vanished tables, prunes and upserts as the old flow",
   brokenListWarnsOnce as "sharing-bw: an unreadable system list warns and stops, on both sides",
   noBoundariesSkipsEverySystem as "sharing-bw: without boundaries every system run is skipped with a warning",

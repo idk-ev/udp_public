@@ -100,7 +100,12 @@
  *    counted in one `[warn]` per run. The old nodes fetched them as given.
  *  * Systems matching the registry's `excludeSystems` (licence terms, see
  *    src/connectors/gbfs.ts) are dropped from the list before the run and
- *    never requested.
+ *    never requested. What such a system of the current list wrote before
+ *    (stations and fleets of its own id scheme, this connector's
+ *    `dataProvider`, its `operator`) is deleted through `ctx.prune.remove`
+ *    ({@link EXCLUDED_SCHEMES}), not left to the age-based prunes, whose
+ *    share cap would count it as a loss. Those prunes and their bookkeeping
+ *    are unchanged.
  *  * Log texts are English.
  */
 
@@ -146,17 +151,19 @@ import type {
   UpsertPlan,
 } from "../kernel/types.js";
 import {
+  escapeRegExp,
   FEED_FETCH,
   feedAllowed,
   feedUrl,
   parseSystems,
   prevailingFormFactor,
+  removeExcluded,
   SkippedFeeds,
   SYSTEMS_URL,
   systemKey,
   withoutExcluded,
 } from "./gbfs.js";
-import type { GbfsSystem } from "./gbfs.js";
+import type { ExcludedScheme, GbfsSystem } from "./gbfs.js";
 
 export const ID = "carsharing-bw";
 
@@ -471,6 +478,11 @@ export function systemPattern(system: string): string {
   return `^urn:ngsi-ld:CarSharingStation:[A-Za-z0-9_-]+-${escaped}-[A-Za-z0-9_-]+$`;
 }
 
+/** The anchored id scheme of ONE system's fleets (`<slug>-<system>`). */
+export function fleetPattern(system: string): string {
+  return `^urn:ngsi-ld:FleetStatus:[A-Za-z0-9_-]+-${escapeRegExp(system)}$`;
+}
+
 /**
  * Master data of a station — also of one as the broker returns it (seeding),
  * hence over a plain record; `null` when an attribute is missing there. Only
@@ -768,6 +780,28 @@ export function ownGbfs(_id: string, entity: Readonly<Record<string, unknown>>):
   return isTruthy(provider) && isRecord(provider) && provider.value === PROVIDER;
 }
 
+/**
+ * A listed station or fleet of `system`: this connector's (`dataProvider`)
+ * and named after exactly that system. The id scheme alone cannot tell
+ * system "a" with station "b-1" from system "a-b" with station "1"; the
+ * operator name can.
+ */
+export function ownSystem(system: string, entity: Readonly<Record<string, unknown>>): boolean {
+  return ownGbfs(system, entity) && propertyValue(entity, "operator") === operatorName(system);
+}
+
+/** What an excluded system may have written: stations (with their signatures) and fleets. */
+export const EXCLUDED_SCHEMES: readonly ExcludedScheme[] = [
+  {
+    type: "CarSharingStation",
+    pattern: systemPattern,
+    attrs: ["operator", "dataProvider"],
+    accept: ownSystem,
+    signatureKeys: [STATIC_KEY, LIVE_KEY],
+  },
+  { type: "FleetStatus", pattern: fleetPattern, attrs: ["operator", "dataProvider"], accept: ownSystem },
+];
+
 export async function run(ctx: Ctx): Promise<void> {
   let listed: readonly GbfsSystem[] | null = null;
   try {
@@ -781,8 +815,9 @@ export async function run(ctx: Ctx): Promise<void> {
     return;
   }
   // Systems excluded by the registry (licence terms) are not requested at
-  // all; whatever they wrote before ages out through the prunes below.
-  const systems = withoutExcluded(listed, ctx.entry.excludeSystems).kept;
+  // all; whatever they wrote before is deleted below.
+  const split = withoutExcluded(listed, ctx.entry.excludeSystems);
+  const systems = split.kept;
   // Master data: two feeds per system, stations and vehicle types.
   ctx.log.status(`${String(systems.length)} systems, ${String(systems.length * 2)} requests`);
   const skipped = new SkippedFeeds();
@@ -803,6 +838,9 @@ export async function run(ctx: Ctx): Promise<void> {
 
   // Stations gone from their system's complete list in two runs.
   await removeVanished(ctx, lists);
+  // Stations and fleets of excluded systems, before the age-based prunes
+  // would count them against their share caps.
+  await removeExcluded(ctx, "Carsharing", split, EXCLUDED_SCHEMES);
 
   // Like the free-floating summaries, the per-system runs never see the
   // complete inventory, so stations and fleets are pruned by age. Every

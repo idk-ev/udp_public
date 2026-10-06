@@ -46,7 +46,7 @@ const INITIAL: Readonly<Record<string, Readonly<Record<string, string | number>>
   zeroes: { "08311000": 4 },
 };
 
-/** Two tables and a removal (`value: null`), as `sharing-bw` commits a confirmed zero. */
+/** Two tables and a removal (`value: null`), as `sharing-bw` committed a confirmed zero. */
 const PENDING: readonly PendingSignature[] = [
   ["sig", A, "new-a", A],
   ["sig", B, "new-b", B],

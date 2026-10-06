@@ -117,6 +117,8 @@ export class Broker {
   readonly deletes: string[][] = [];
   municipalityCount: number;
   upsertAnswer: (entities: readonly unknown[]) => HttpResponse = () => httpResponse(204);
+  /** Answer of a batch delete; the entities go only on a 2xx other than 207. */
+  deleteAnswer: (ids: readonly string[]) => HttpResponse = () => httpResponse(204);
 
   constructor(municipalityCount: number) {
     this.municipalityCount = municipalityCount;
@@ -177,8 +179,11 @@ export class Broker {
       const parsed: unknown = JSON.parse(request.body ?? "[]");
       const ids = Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
       this.deletes.push(ids);
-      for (const id of ids) this.entities.delete(id);
-      return httpResponse(204);
+      const answer = this.deleteAnswer(ids);
+      if (answer.status >= 200 && answer.status < 300 && answer.status !== 207) {
+        for (const id of ids) this.entities.delete(id);
+      }
+      return answer;
     }
     return httpResponse(404, `unexpected ${request.method} ${request.target}`);
   };

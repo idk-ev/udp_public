@@ -51,7 +51,7 @@
  *
  * Without boundaries every system run is skipped with a warning, as before.
  *
- * ## The zero tables `ffLast:<system>`
+ * ## The tables `ffLast:<system>`
  *
  * No change gate here: every summary a system run produces is written in full
  * each hour. What the connector does keep is one table per system, AGS ->
@@ -63,19 +63,34 @@
  *   > vehicle at all is taken as an outage of the provider, not as "all gone":
  *   > no zeros then.
  *
- * The table entries ride on the upsert as pending signatures; a confirmed zero
- * is committed as `null`, which REMOVES the entry, so the zero goes out once.
+ * Such a summary is now DELETED instead of written as 0 ({@link SystemPlan},
+ * `emptied`): an empty summary says nothing, and left standing it aged into
+ * the 24 h prune below, where every emptied municipality counted as a loss
+ * against the share cap — a larger change of the feed blocked the prune, and
+ * the daily churn kept it blocked. The deletion goes through
+ * `ctx.prune.remove` (master data plausible, ids of the system's own scheme
+ * only). The table entry goes once the summary is gone: the broker confirmed
+ * the deletion, or no complete listing shows the summary any more (the age
+ * prune or an operator took it; the broker refuses such an id run after
+ * run). Refused while still listed: the entry stays and the next run tries
+ * again. Not attempted (master data not plausible, state store not loaded):
+ * the summary is written as 0 for now, as before, and the entry stays. A
+ * later vehicle there writes the summary anew. Still only on a feed that
+ * lists vehicles: a failed, unreadable or empty feed deletes nothing.
+ *
+ * The entries of written summaries ride on the upsert as pending signatures.
  * Tables of systems that left the list are dropped at the start of a run
  * (`ctx.gate.keys()` + `ctx.gate.retain(key, () => false)`), so they neither
- * grow nor zero a returning system's old municipalities.
+ * grow nor empty a returning system's old municipalities.
  *
  * ## Prune
  *
  * The per-system runs never see the complete inventory, so the summaries are
  * pruned by age: one not refreshed for 24 h (24 hourly runs) is no longer
- * confirmed — the system left the list, or its vehicles are outside BW and
- * were assigned to a border municipality before the strict lookup. Skipped if
- * no summary at all was written within 3 h (connector down).
+ * confirmed — the system's feed failed for a day, the system left the list,
+ * or its vehicles are outside BW and were assigned to a border municipality
+ * before the strict lookup. Skipped if no summary at all was written within
+ * 3 h (connector down).
  *
  * ## Deliberate deviations
  *
@@ -98,8 +113,12 @@
  *    counted in one `[warn]` per run. The old node fetched them as given.
  *  * Systems matching the registry's `excludeSystems` (licence terms, see
  *    src/connectors/gbfs.ts) are dropped from the list before the run: never
- *    fetched, their zero tables dropped, their summaries removed by the
- *    age-based prune after 24 h like those of a system that left the list.
+ *    fetched, their tables dropped, and the summaries they wrote before
+ *    deleted through `ctx.prune.remove` (`removeExcluded` in gbfs.ts), not
+ *    left to the age-based prune and its share cap.
+ *  * A municipality that lost all of a system's vehicles gets its summary
+ *    deleted, not a zero written (see "The tables" above). The old node wrote
+ *    the zero and left the summary to the 24 h prune.
  *  * Log texts are English.
  */
 
@@ -111,6 +130,7 @@ import type {
   Ags,
   ConnectorModule,
   Ctx,
+  EntityId,
   GeoIndex,
   IsoTime,
   JsonValue,
@@ -122,11 +142,13 @@ import type {
 } from "../kernel/types.js";
 import type { GbfsSystem } from "./gbfs.js";
 import {
+  escapeRegExp,
   prevailingFormFactor,
   FEED_FETCH,
   feedAllowed,
   feedUrl,
   parseSystems,
+  removeExcluded,
   SkippedFeeds,
   SYSTEMS_URL,
   systemKey,
@@ -135,7 +157,7 @@ import {
 
 export const ID = "sharing-bw";
 
-/** Prefix of the per-system zero tables, unchanged from the flow context. */
+/** Prefix of the per-system tables, unchanged from the flow context. */
 export const LAST_PREFIX = "ffLast:";
 /** Positions kept per municipality and system. */
 const MAX_POSITIONS = 400;
@@ -281,6 +303,16 @@ function zeroCounts(): Record<FormFactor, number> {
   return { scooter_standing: 0, bicycle: 0, cargo_bicycle: 0, moped: 0, car: 0, other: 0 };
 }
 
+/** Entity id of a summary. */
+export function summaryId(ags: Ags, system: string): `urn:ngsi-ld:SharingSummary:bw-${string}` {
+  return `urn:ngsi-ld:SharingSummary:bw-${ags}-ff-${system}`;
+}
+
+/** The anchored id scheme of ONE system's summaries — all a deliberate deletion may touch. */
+export function systemPattern(system: string): string {
+  return `^urn:ngsi-ld:SharingSummary:bw-[0-9]{8}-ff-${escapeRegExp(system)}$`;
+}
+
 function summary(
   feed: FreeBikeFeed,
   ags: Ags,
@@ -290,7 +322,7 @@ function summary(
   now: IsoTime,
 ): SharingSummaryEntity {
   return {
-    id: `urn:ngsi-ld:SharingSummary:bw-${ags}-ff-${feed.system}`,
+    id: summaryId(ags, feed.system),
     type: "SharingSummary",
     ags: { type: "Property", value: ags },
     system: { type: "Property", value: feed.system },
@@ -345,11 +377,21 @@ export function lastKey(system: string): string {
   return `${LAST_PREFIX}${system}`;
 }
 
+/** The write of one system run, and the summaries it empties. */
+export interface SystemPlan extends UpsertPlan {
+  readonly entities: readonly SharingSummaryEntity[];
+  /**
+   * Municipalities that lost all of the system's vehicles since the last
+   * confirmed write, with their summary: deleted, not written as zero.
+   */
+  readonly emptied: readonly (readonly [ags: Ags, id: EntityId])[];
+}
+
 /**
- * The write of one system run: the summaries of {@link build}, the confirmed
- * zeros for municipalities that lost all vehicles since the last confirmed
- * write, and the new table entries as pending signatures (count, or `null`
- * for a zero, which removes the entry once confirmed). Pure over a COPY of
+ * The write of one system run: the summaries of {@link build} with their
+ * table entries as pending signatures, and the summaries of municipalities
+ * that lost all vehicles since the last confirmed write — only when the feed
+ * lists vehicles at all (else an outage, not "all gone"). Pure over a COPY of
  * the table.
  */
 export function planSystem(
@@ -357,28 +399,64 @@ export function planSystem(
   summaries: readonly SharingSummaryEntity[],
   last: ReadonlyMap<string, SignatureValue>,
   geo: GeoIndex | null,
-  now: IsoTime,
-): UpsertPlan {
-  const entities: SharingSummaryEntity[] = [...summaries];
+): SystemPlan {
   const present = new Set(summaries.map((entity) => entity.ags.value));
+  const emptied: (readonly [Ags, EntityId])[] = [];
   if (feed.reported > 0) {
     for (const [ags, count] of last) {
       if (present.has(ags) || !(typeof count === "number" && count > 0) || geo?.byAgs(ags) === undefined) {
         continue;
       }
-      entities.push(summary(feed, ags, 0, zeroCounts(), [], now));
+      emptied.push([ags, summaryId(ags, feed.system)]);
     }
   }
   const key = lastKey(feed.system);
-  const pending: PendingSignature[] = entities.map((entity) => {
-    const count = entity.availableVehicles.value;
-    return [key, entity.ags.value, count > 0 ? count : null, entity.id];
-  });
-  return { entities, pending };
+  const pending: PendingSignature[] = summaries.map((entity) => [
+    key,
+    entity.ags.value,
+    entity.availableVehicles.value,
+    entity.id,
+  ]);
+  return { entities: summaries, pending, emptied };
 }
 
 /**
- * Drops the zero tables of systems that left the list. Only when the list is
+ * Deletes the summaries {@link planSystem} found emptied and drops their
+ * table entries once they are gone (module header, "The tables"). Returns
+ * the number the broker confirmed as deleted, or `null` when the deletion
+ * was not attempted (master data not plausible, state store not loaded):
+ * then the entries stay and the next run tries again.
+ */
+async function removeEmptied(
+  ctx: Ctx,
+  system: string,
+  emptied: SystemPlan["emptied"],
+): Promise<number | null> {
+  if (emptied.length === 0) return 0;
+  const pattern = systemPattern(system);
+  const ids = emptied.map(([, id]) => id);
+  const result = await ctx.prune.remove({ label: `GBFS-BW ${system}: emptied summaries`, pattern, ids });
+  if (result.skipped !== null) return null;
+  const gone = new Set<string>(result.deleted);
+  if (gone.size < ids.length) {
+    // An id the broker no longer holds is refused run after run; one that a
+    // complete listing does not show is gone as well. No listing: entries stay.
+    const listing = await ctx.orion.list(
+      { type: "SharingSummary", idPattern: pattern, attrs: ["ags"] },
+      { maxPages: 10 },
+    );
+    if (listing.ok) {
+      const held = new Set(listing.entities.map((entity) => (isRecord(entity) ? entity.id : undefined)));
+      for (const id of ids) if (!held.has(id)) gone.add(id);
+    }
+  }
+  const done = new Set(emptied.filter(([, id]) => gone.has(id)).map(([ags]) => ags));
+  if (done.size > 0) ctx.gate.retain(lastKey(system), (field) => !done.has(field));
+  return result.deleted.size;
+}
+
+/**
+ * Drops the tables of systems that left the list. Only when the list is
  * not empty — an empty list is an outage, not the end of every system.
  */
 export function dropVanishedTables(ctx: Ctx, activeSystems: readonly string[]): void {
@@ -389,13 +467,13 @@ export function dropVanishedTables(ctx: Ctx, activeSystems: readonly string[]): 
   }
 }
 
-/** What one system's run wrote: summaries sent to the broker, of them zeroed ones. */
+/** What one system's run did: summaries sent to the broker, emptied ones deleted. */
 interface SystemResult {
   readonly written: number;
-  readonly zeroed: number;
+  readonly deleted: number;
 }
 
-const NOTHING: SystemResult = { written: 0, zeroed: 0 };
+const NOTHING: SystemResult = { written: 0, deleted: 0 };
 
 /** How long a system's `vehicle_types` is kept before it is fetched again. */
 export const TYPES_MAX_AGE_MS = 24 * HOUR_MS;
@@ -493,13 +571,21 @@ async function runSystem(ctx: Ctx, system: GbfsSystem, skipped: SkippedFeeds): P
     feed = { ...feed, types: await vehicleTypes(ctx, system, feed, skipped) };
     summaries = build(feed, geo, now);
   }
-  const plan = planSystem(feed, summaries, ctx.gate.table(lastKey(feed.system)), geo, now);
-  if (plan.entities.length === 0) return NOTHING;
-  // One request per system, as the single message of the old node.
-  const result = await ctx.orion.upsert(plan, { chunkSize: plan.entities.length });
-  // A zeroed summary is the one whose signature is removed (`null`, see planSystem).
-  const zeroed = plan.pending.filter(([, , value]) => value === null).length;
-  return { written: result.entities, zeroed: result.failedChunks === 0 ? zeroed : 0 };
+  const plan = planSystem(feed, summaries, ctx.gate.table(lastKey(feed.system)), geo);
+  let written = 0;
+  if (plan.entities.length > 0) {
+    // One request per system, as the single message of the old node.
+    const { entities, pending } = plan;
+    written = (await ctx.orion.upsert({ entities, pending }, { chunkSize: entities.length })).entities;
+  }
+  const deleted = await removeEmptied(ctx, feed.system, plan.emptied);
+  if (deleted !== null) return { written, deleted };
+  // Not deleted for now: written as zero, as the old node did, so the old
+  // count and positions do not stay on show. No table entry goes with it —
+  // the next run deletes the summary once it may.
+  const zeros = plan.emptied.map(([ags]) => summary(feed, ags, 0, zeroCounts(), [], now));
+  const result = await ctx.orion.upsert(ctx.gate.ungated(zeros), { chunkSize: zeros.length });
+  return { written: written + result.entities, deleted: 0 };
 }
 
 export async function run(ctx: Ctx): Promise<void> {
@@ -515,9 +601,13 @@ export async function run(ctx: Ctx): Promise<void> {
     return;
   }
   // Systems excluded by the registry (licence terms) count as not listed: no
-  // request, no write, their zero tables go, and their summaries age out
-  // through the prune below.
-  const { kept: systems, excluded } = withoutExcluded(listed, ctx.entry.excludeSystems);
+  // request, no write, their tables go, and their summaries are deleted
+  // below — before the prune could count them against its share cap.
+  const split = withoutExcluded(listed, ctx.entry.excludeSystems);
+  const { kept: systems, excluded } = split;
+  await removeExcluded(ctx, "GBFS-BW", split, [
+    { type: "SharingSummary", pattern: systemPattern, attrs: ["ags"] },
+  ]);
   if (systems.length === 0 && listed.length > 0) {
     ctx.log.warn("GBFS-BW: every listed system is excluded by the registry — nothing to do");
     return;
@@ -545,19 +635,19 @@ export async function run(ctx: Ctx): Promise<void> {
 
   const skipped = new SkippedFeeds();
   let written = 0;
-  let zeroed = 0;
+  let deleted = 0;
   for (const system of systems) {
     const result = await runSystem(ctx, system, skipped);
     written += result.written;
-    zeroed += result.zeroed;
+    deleted += result.deleted;
   }
   skipped.report(ctx.log, "GBFS-BW");
   // The one line that confirms a run in the log; the old node logged nothing.
   ctx.log.info(
     `GBFS-BW: ${String(systems.length)} systems` +
       (excluded.length > 0 ? ` (${String(excluded.length)} excluded by the registry)` : "") +
-      `, ${String(written)} summaries written ` +
-      `(${String(zeroed)} of them zeroed), prune: ` +
+      `, ${String(written)} summaries written, ` +
+      `${String(deleted)} emptied ones deleted, prune: ` +
       (pruned.skipped === null ? `${String(pruned.deleted)} deleted` : `skipped (${pruned.skipped})`),
   );
 }
