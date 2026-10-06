@@ -542,8 +542,16 @@ async function render() {
   // and scooters (RegioRad, Dott, Voi …) land in CarSharingStation too. Only
   // car stations are car sharing; docked bikes get the "Leihräder" layer,
   // scooter stations none (their vehicles are on the Sharing layers).
-  const csList = (csStations || []).filter(e => bauform(e) === "car");
-  const bikeStations = (csStations || []).filter(isBike);
+  // The map layers leave out stations whose newest observation is older than
+  // 7 days: stations a provider dropped linger until the prune removes them,
+  // and a paged list would draw hundreds of them. Between STALE.station and
+  // 7 days a station stays, marked "Stand: …" in its popup (csExtra). One
+  // without any timestamp stays as well ("Stand unbekannt"): like staleStand,
+  // an unknown age is marked, not taken for an old one.
+  const STATION_MAP_MAX_AGE = 7 * 864e5;
+  const onMap = e => { const t = obsTime(e); return t == null || Date.now() - t <= STATION_MAP_MAX_AGE; };
+  const csList = (csStations || []).filter(e => bauform(e) === "car" && onMap(e));
+  const bikeStations = (csStations || []).filter(e => isBike(e) && onMap(e));
   const summe = (arr, a) => arr.reduce((n, e) => n + (Number(val(e, a)) || 0), 0);
   const csFrei = summe(csFlotten, "availableVehicles"), csStationen = summe(csFlotten, "stationCount");
   const csTop = csFlotten.slice().sort((a, b) => (val(b, "availableVehicles") || 0) - (val(a, "availableVehicles") || 0))[0];
