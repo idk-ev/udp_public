@@ -107,9 +107,10 @@ export function registryEntry(id: string, override: Partial<RegistryEntry> = {})
 
 /**
  * A kernel whose only fake is the network: real change gate, Orion client,
- * geo store, rate limiter and environment; one ctx for `entry`.
+ * geo store, rate limiter and environment; one ctx for `entry`. `nowMs`
+ * replaces the clock (for recorded answers whose own timestamps matter).
  */
-export function rig(entry: RegistryEntry, fetcher: Fetcher): GRig {
+export function rig(entry: RegistryEntry, fetcher: Fetcher, nowMs: () => number = Date.now): GRig {
   const log = recordingLog();
   const env = createEnv();
   const limiter = createRateLimiter(log);
@@ -132,7 +133,7 @@ export function rig(entry: RegistryEntry, fetcher: Fetcher): GRig {
     scheduler: createScheduler(log),
     db: createDb(env),
     shutdown: new AbortController(),
-    nowMs: Date.now,
+    nowMs,
   };
   return { kernel, ctx: createCtx(kernel, entry), log };
 }

@@ -422,6 +422,13 @@ export interface FetchOptions {
    * URLs that come out of foreign data (the GBFS system list).
    */
   readonly allowUrl?: ((url: URL) => boolean) | undefined;
+  /**
+   * How the body bytes become text. Default `"utf-8"` (as `response.text()`).
+   * `"latin1"` for the few sources that still deliver ISO-8859-1 without
+   * saying so (the DWD station description files): read as UTF-8, every
+   * umlaut would turn into a replacement character.
+   */
+  readonly encoding?: "utf-8" | "latin1" | undefined;
 }
 
 export interface HttpResponse {
