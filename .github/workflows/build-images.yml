@@ -498,7 +498,7 @@ jobs:
 
       - name: Digest als Artefakt anhängen
         if: steps.ctx.outputs.push == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digest-${{ matrix.valueKey }}
           path: digests/${{ matrix.valueKey }}
@@ -674,7 +674,7 @@ jobs:
       - name: Chart als Artefakt anhängen
         # Damit sich das Paket auch aus einem Fork-PR herunterladen und lokal
         # installieren lässt, ohne dass es in der Registry landet.
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # Fork-PRs packen ungeprüften Fremdcode. Der Zusatz macht schon am
           # Artefaktnamen sichtbar, dass das Paket nicht aus diesem Repo stammt.
