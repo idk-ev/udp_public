@@ -31,9 +31,7 @@ DASHBOARDS = {
 }
 
 # Fixed slugs instead of the generated ones (shorter or more telling
-# addresses). The cockpit nginx (platform/config/nginx/cockpit.conf.template)
-# redirects the former addresses with a 301 (remseck-am-neckar, malsch-08215,
-# malsch-08226) - add a redirect there for every slug changed here.
+# addresses).
 SLUG_OVERRIDES = {
     "08118081": "remseck",       # Remseck am Neckar
     "08215046": "malsch-baden",  # Malsch, Landkreis Karlsruhe

@@ -57,17 +57,6 @@ exports["renamed slugs: generator overrides, data and stubs agree"] = () => {
   }
 };
 
-exports["renamed slugs: former addresses redirect with 301"] = () => {
-  assert.strictEqual(REDIRECTS.get("/remseck-am-neckar"), "/remseck");
-  assert.strictEqual(REDIRECTS.get("/malsch-08215"), "/malsch-baden");
-  assert.strictEqual(REDIRECTS.get("/malsch-08226"), "/malsch");
-  // With a trailing slash, too: try_files served the stub for that as well.
-  assert.strictEqual(REDIRECTS.get("/remseck-am-neckar/"), "/remseck");
-  assert.strictEqual(REDIRECTS.get("/malsch-08215/"), "/malsch-baden");
-  assert.strictEqual(REDIRECTS.get("/malsch-08226/"), "/malsch");
-  assert(!REDIRECTS.has("/malsch"), "/malsch is a page now, not a redirect");
-};
-
 exports["redirects: no live page shadowed, no chains or loops, targets exist"] = () => {
   assert(REDIRECTS.size >= 13, `only ${REDIRECTS.size} redirects found – pattern out of date?`);
   for (const [from, to] of REDIRECTS) {

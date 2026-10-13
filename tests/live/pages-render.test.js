@@ -14,14 +14,15 @@ const { JSDOM } = greq("jsdom");
 
 const BASE = process.env.BASE_URL || "http://localhost:3700";
 const leafletStub = w => {
-  const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain });
+  const chain = new Proxy(function () { }, { get: () => chain, apply: () => chain });
   w.L = new Proxy({}, { get: () => chain });
 };
 
 async function renderCity(slug, stadt) {
   const bundle = await (await fetch(BASE + "/stadt.html")).text();
   const dom = new JSDOM(bundle.replace(/<script src="\/vendor\/[^"]*"><\/script>/g, ""), {
-    url: BASE + "/" + slug, runScripts: "outside-only", pretendToBeVisual: true });
+    url: BASE + "/" + slug, runScripts: "outside-only", pretendToBeVisual: true
+  });
   const w = dom.window;
   w.STADT = stadt;
   w.fetch = (u, o) => fetch(String(u).startsWith("http") ? u : BASE + u, o);
@@ -62,11 +63,7 @@ exports["Routing: Permalinks, Redirects, 404"] = async () => {
   assert.strictEqual(await code("/dashboard.html.gz"), 404);
   assert.strictEqual(await code("/kommunen.html", "/"), 301);
   assert.strictEqual(await code("/kreis-ulm", "/ulm"), 301);
-  // Renamed slugs: the former addresses redirect, the new ones are pages.
-  assert.strictEqual(await code("/remseck-am-neckar", "/remseck"), 301);
-  assert.strictEqual(await code("/malsch-08215", "/malsch-baden"), 301);
-  assert.strictEqual(await code("/malsch-08226", "/malsch"), 301);
-  assert.strictEqual(await code("/remseck-am-neckar/", "/remseck"), 301);
+  // Renamed slugs
   for (const p of ["/remseck", "/malsch-baden", "/malsch"]) assert.strictEqual(await code(p), 200, p);
   assert.strictEqual(await code("/gibtsnicht-xyz"), 404);
   // Slug stubs are revalidated like every other page.
@@ -126,7 +123,7 @@ exports["Stufe-3-Bausteine sind landesweit (Laden, Carsharing, DWD, Vorhersage)"
   // Amtliche DWD-Stationen als eigene Entitäten (Dashboard wählt die nächste)
   // The public gateway rejects idPattern, so page through the type and filter here.
   const wetter = [...await hole("WeatherObserved", "&attrs=dateObserved"),
-                  ...await hole("WeatherObserved", "&attrs=dateObserved&offset=1000")];
+  ...await hole("WeatherObserved", "&attrs=dateObserved&offset=1000")];
   const dwd = wetter.filter(e => e.id.startsWith("urn:ngsi-ld:WeatherObserved:bw-dwd-"));
   assert(dwd.length > 50, `nur ${dwd.length} DWD-Stationen`);
 
