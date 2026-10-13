@@ -939,15 +939,23 @@ async function render() {
   // Ausflugsziele (OSM) — Freizeit. Detailansicht mit Aufschlüsselung nach Art.
   const ziele = ausflug ? asRows(val(ausflug, "ziele")) : [];
   if (ziele.length) {
-    // Nach Art aufschlüsseln (Sehenswürdigkeit, Museum, Aussichtspunkt, …).
+    // Breakdown by type (Sehenswürdigkeit, Museum, Aussichtspunkt, …): from the
+    // uncapped `counts` of ausflug-bw; entities written before it carry none,
+    // then from the (capped) list as before.
+    const zielCounts = val(ausflug, "counts");
     const nachArt = {};
-    ziele.forEach(z => { const a = z[1] || "Ziel"; nachArt[a] = (nachArt[a] || 0) + 1; });
+    if (zielCounts && typeof zielCounts === "object" && !Array.isArray(zielCounts)) {
+      for (const [a, n] of Object.entries(zielCounts)) if (Number(n) > 0) nachArt[a] = Number(n);
+    }
+    if (!Object.keys(nachArt).length) ziele.forEach(z => { const a = z[1] || "Ziel"; nachArt[a] = (nachArt[a] || 0) + 1; });
     const artTop = Object.entries(nachArt).sort((a, b) => b[1] - a[1]);
-    const artHint = artTop.slice(0, 3).map(([a, n]) => n + "× " + a).join(" · ");
-    const zielGesamt = val(ausflug, "zielCount") || ziele.length;
-    D.ausflug = { kind: "stations", title: "Ausflugsziele (" + ziele.length + ")", center: [lat, lon],
-      explain: "Benannte Ausflugsziele laut OpenStreetMap (ODbL): " + artTop.map(([a, n]) => n + "× " + a).join(", ") + "."
-        + (zielGesamt > ziele.length ? " Angezeigt: die " + ziele.length + " meistgenannten von " + fmtN(zielGesamt) + "." : ""),
+    const artHint = artTop.slice(0, 3).map(([a, n]) => fmtN(n) + "× " + a).join(" · ");
+    const zielGesamt = Number(val(ausflug, "zielCount")) || ziele.length;
+    // "25 von 1.599" where the list is capped, the plain number otherwise.
+    const zielAnzahl = zielGesamt > ziele.length ? ziele.length + " von " + fmtN(zielGesamt) : String(ziele.length);
+    D.ausflug = { kind: "stations", title: "Ausflugsziele (" + zielAnzahl + ")", center: [lat, lon],
+      explain: "Benannte Ausflugsziele laut OpenStreetMap (ODbL): " + artTop.map(([a, n]) => fmtN(n) + "× " + a).join(", ") + "."
+        + (zielGesamt > ziele.length ? " Auf Karte und Liste: " + zielAnzahl + "." : ""),
       groups: [{ name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: esc(z[1]) })) }],
       // Zusätzlich zur Karte eine benannte Liste (Name · Art) im Detail.
       list: ziele.slice(0, 60).map(z => `<b>${esc(z[0])}</b> · <span style="color:var(--text-muted)">${esc(z[1])}</span>`) };
@@ -1443,7 +1451,9 @@ async function render() {
       items: parkPts.map(p => ({ lat: p.lat, lon: p.lon, name: p.name, extra: esc(p.extra) })) },
     { name: "Pegel", color: MAP_C.pegel, detail: D.pegel ? "pegel" : null, items: pegelListe.map(e => ({ ...pos(e), name: "Pegel " + (val(e, "name") || ""),
         extra: esc((val(e, "water") || "") + ": " + (val(e, "level") ?? "?") + " cm · " + (val(e, "measuredAt") || "")) })).filter(i => i.lat) },
-    { name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: esc(z[1]) })) },
+    // total: the uncapped count, so the legend reads "25 von 1.599" (map-legend below).
+    { name: "Ausflugsziele", color: MAP_C.ausflug, detail: D.ausflug ? "ausflug" : null, items: ziele.map(z => ({ lat: z[2], lon: z[3], name: z[0], extra: esc(z[1]) })),
+      total: (ausflug && Number(val(ausflug, "zielCount"))) || 0 },
     { name: "Familie & Versorgung", color: "#e11d48", detail: D.versorgung ? "versorgung" : null,
       items: versorgItems.map(z => ({ lat: z[2], lon: z[3], name: z[0], kind: z[1], extra: esc(z[1]) })) },
     { name: "Container-Füllstände", color: css("--status-warn"), detail: D.fuellstand ? "fuellstand" : null,
@@ -1472,7 +1482,7 @@ async function render() {
   // Legende = Symbol-Filter: das jeweilige Symbol vorweg, klickbar zum Ein-/Ausblenden.
   $("#map-legend").innerHTML = groups.map((g, i) =>
     `<span data-group="${esc(g.name)}" role="button" tabindex="0" aria-pressed="${!window._groupOff[g.name]}" class="leg-item ${window._groupOff[g.name] ? "off" : ""}" title="Ein-/Ausblenden">` +
-    `<span class="leg-sym">${groupIcon(g)}</span>${esc(g.name)} (${g.items.length})</span>`).join("");
+    `<span class="leg-sym">${groupIcon(g)}</span>${esc(g.name)} (${g.total > g.items.length ? g.items.length + " von " + fmtN(g.total) : g.items.length})</span>`).join("");
   // Deckungsgleiche Marker entzerren: An einem Sammelpunkt (≈11 m Raster) werden
   // mehrere Pins im Kreis aufgefächert — nach dem goldenen Winkel, damit auch
   // dichte Stapel (Ladesäulen/Sensoren in der Innenstadt) gleichmäßig streuen

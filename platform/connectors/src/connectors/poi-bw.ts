@@ -22,9 +22,8 @@
  * (04:40) so the three do not compete for the scarce Overpass slots; the
  * flows' 02:40 ran twice on the Sunday the clocks go back and not at all on
  * the one they go forward (src/kernel/scheduler.ts, "Cron and daylight
- * saving time"). Pacing,
- * serialisation and the decision on the join timeout (1,500 s in the flow)
- * are in overpass.ts.
+ * saving time"). Pacing, serialisation, retries, the write guards and the
+ * decision on the join timeout (1,500 s in the flow) are in overpass.ts.
  *
  * The selection is load-bearing and kept exactly: per municipality the items in
  * tile order, grouped by kind in order of first appearance; within a kind the
@@ -35,15 +34,28 @@
  * The old node wrote the length of the SELECTED list (at most 50) there, which
  * the municipality page showed as the total — a deliberate fix, see below.
  *
- * Written in full every run, ungated and without a prune, as before.
+ * Written every run, ungated and without a prune, as before — where the
+ * write guards let it.
  *
- * Start after a restart: the generator set `once: false` on this inject node
- * by hand, so the flow never fired on start. The service schedules it by the
- * registry (`refireOnRestart: false`), i.e. 600 s after a start — see
- * `scheduleOf` in src/kernel/scheduler.ts. Not changed here on purpose.
+ * Start after a restart: none. The generator set `once: false` on this
+ * inject node by hand, so the flow never fired on start; the service fired it
+ * 600 s after every start whose last run was older than a day, i.e. after
+ * nearly every deploy, in the daytime. The registry now says
+ * `"fireOnStart": false`: the Sunday cron is the only trigger, `/trigger`
+ * on the admin port runs it by hand.
  *
  * Deviations:
  *
+ *  * DELIBERATE DEVIATION: every tile declares `[timeout:60][maxsize:128 MiB]`
+ *    instead of `[timeout:90]` and the default 512 MiB ({@link MAXSIZE_BYTES});
+ *    the grid is the old one. Refused tiles are retried (overpass.ts).
+ *  * DELIBERATE DEVIATION: a tile with a `remark` (truncated answer) counts as
+ *    failed, and a run with failed tiles writes only the municipalities whose
+ *    area lies wholly in tiles that answered; a municipality whose
+ *    `totalCount` falls by more than 80 % from at least 20 is not written
+ *    either (overpass.ts, `guardWrites`). The flows wrote whatever arrived
+ *    ("toleranter Teilausfall" — tolerant of the failure, not of what it did
+ *    to the border municipalities).
  *  * `totalCount` is the number of all amenities of the municipality, not of
  *    the capped list (old: at most 50).
  *  * An OSM object is taken once: a way crossing a tile border comes back in
@@ -67,8 +79,16 @@ import type {
   NgsiEntity,
   Property,
 } from "../kernel/types.js";
-import { fetchTiles, overpassUrl, parseParts, reportSkipped } from "./overpass.js";
-import type { OverpassPart, OverpassQuery } from "./overpass.js";
+import {
+  fetchTiles,
+  guardWrites,
+  MIB,
+  overpassSettings,
+  overpassUrl,
+  parseParts,
+  reportSkipped,
+} from "./overpass.js";
+import type { Box, OverpassPart, OverpassQuery } from "./overpass.js";
 
 export const ID = "poi-bw";
 
@@ -85,8 +105,6 @@ const LON0 = 7.4;
 const LON1 = 10.6;
 const ROWS = 3;
 const COLUMNS = 4;
-
-type Box = readonly [south: number, west: number, north: number, east: number];
 
 /**
  * The 4×3 grid, row by row from the south. The arithmetic is the old node's,
@@ -108,10 +126,24 @@ function grid(): Box[] {
   return boxes;
 }
 
-/** The twelve requests, `K1`…`K12`, byte for byte the URLs of the old request node. */
+/**
+ * `[maxsize:128 MiB]`. Measured on the densest tile, K7 around Stuttgart
+ * (2026-10): 13,823 elements, 4.1 MB, answered in 10–12 s with 64 MiB as with
+ * 128 MiB. 128 MiB is twice what is known to suffice and a quarter of the
+ * default 512 MiB that the busy server refused to reserve.
+ */
+export const MAXSIZE_BYTES = 128 * MIB;
+
+/**
+ * The twelve requests, `K1`…`K12`: the URLs of the old request node with the
+ * settings `[out:json][timeout:60][maxsize:…]` instead of `[out:json][timeout:90]`.
+ */
 export const QUERIES: readonly OverpassQuery[] = grid().map((box, index) => ({
   kind: `K${String(index + 1)}`,
-  url: overpassUrl(`[out:json][timeout:90][bbox:${box.join(",")}];(${SELECTOR});out tags center;`),
+  url: overpassUrl(
+    `${overpassSettings(MAXSIZE_BYTES)}[bbox:${box.join(",")}];(${SELECTOR});out tags center;`,
+  ),
+  box,
 }));
 
 /** `emitChunks(node, msg, entities, 100)`. */
@@ -277,7 +309,7 @@ export async function run(ctx: Ctx): Promise<void> {
   const geo = ctx.geo.forRun(LABEL, GEO);
   if (geo === null) return;
 
-  const parts = parse(tiles);
+  const parts = parse(tiles.parts);
   reportSkipped(
     ctx,
     LABEL,
@@ -288,10 +320,22 @@ export async function run(ctx: Ctx): Promise<void> {
     ctx.log.warn(`${LABEL}: no entities (Overpass possibly overloaded)`);
     return;
   }
-  ctx.log.status(`${String(entities.length)} municipalities with amenities`);
+  const writable = await guardWrites(ctx, entities, {
+    label: LABEL,
+    type: "PublicAmenity",
+    attribute: "totalCount",
+    idOf: (entity) => entity.id,
+    agsOf: (entity) => entity.ags.value,
+    countOf: (entity) => entity.totalCount.value,
+    failed: tiles.failed,
+    geo,
+  });
+  if (writable === null) return; // logged, nothing written
+  ctx.log.status(`${String(writable.length)} of ${String(entities.length)} municipalities with amenities`);
+  if (writable.length === 0) return;
 
   // Ungated, as the old flow: `upsert`, not `upsert_commit`.
-  const written = await ctx.orion.upsert(ctx.gate.ungated(entities), { chunkSize: CHUNK_SIZE });
+  const written = await ctx.orion.upsert(ctx.gate.ungated(writable), { chunkSize: CHUNK_SIZE });
   ctx.log.info(
     `${String(written.entities)} municipalities with amenities upserted in ` +
       `${String(written.chunks)} chunks (${String(written.failedChunks)} failed)`,

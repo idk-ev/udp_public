@@ -109,6 +109,26 @@ function nightlyJobsDoNotFireOnStart(): void {
     assert.equal(schedule.kind, "cron", id);
     assert.equal(schedule.fireOnStart, false, `${id} fires on start`);
   }
+  // The weekly Overpass sources likewise (deliberate): a start run after
+  // nearly every deploy sent Overpass a full extra pass in the daytime. Their
+  // Sunday cron is the only trigger; no start run is planned whatever the
+  // last run, and /trigger still starts one by hand.
+  for (const id of ["rathaus-bw", "ausflug-bw", "poi-bw"]) {
+    const schedule = scheduleOf(registryEntry(id), 0, false);
+    assert.equal(schedule.kind, "cron", id);
+    assert.equal(schedule.fireOnStart, false, `${id} fires on start`);
+    assert.equal(planStart(schedule, Date.now(), null).startRunInMs, null, `${id}: start run planned`);
+    assert.equal(planStart(schedule, Date.now(), Date.now() - 30 * 86_400_000).startRunInMs, null, id);
+  }
+  const manual = createScheduler(recordingLog());
+  let ran = 0;
+  manual.add("ausflug-bw", scheduleOf(registryEntry("ausflug-bw"), 0, false), () => {
+    ran += 1;
+    return Promise.resolve();
+  });
+  assert.deepEqual(manual.trigger("ausflug-bw", 60_000), { outcome: "started" });
+  assert.equal(ran, 1);
+  manual.stop();
   // Missing means true, as before.
   assert.equal(scheduleOf(registryEntry("pegel-bw"), 0, false).fireOnStart, true);
   assert.equal(scheduleOf(registryEntry("pegel-bw", { refireOnRestart: false }), 0, false).fireOnStart, true);
@@ -228,7 +248,8 @@ function noExtraRunWithinTheInterval(): void {
   assert.equal(planStart(station, now, now - 3500 * 1000).startRunInMs, delay, "never earlier than 600 s");
   assert.equal(planStart(station, now, now - 2 * HOUR).startRunInMs, delay);
   // Cron (weekly, refireOnRestart false): no start run within a day of the last.
-  const townHalls = scheduleOf(registryEntry("rathaus-bw"), 0, false);
+  // (rathaus-bw itself has no start run at all any more, fireOnStart false.)
+  const townHalls = scheduleOf(registryEntry("rathaus-bw", { fireOnStart: true }), 0, false);
   assert.equal(planStart(townHalls, now, now - 2 * HOUR).startRunInMs, null);
   assert.equal(planStart(townHalls, now, now - 3 * 24 * HOUR).startRunInMs, delay);
   // Without refireOnRestart false the last run is not consulted.
@@ -532,7 +553,7 @@ export {
   slotsAreWallClockAndRestartsAddNoRun as "scheduler: slot jobs fire on their wall-clock slots, also with early timers; a fresh last run skips the start run",
   runConnectorRecordsTheLastRun as "scheduler: runConnector persists the start of a completed run for resuming connectors only",
   registryChecksTheOffset as "scheduler: the registry checks intervalOffsetSeconds",
-  nightlyJobsDoNotFireOnStart as "scheduler: fireOnStart false (troe-retention, mastr-bw) skips the start run; the registry refuses it without a schedule",
+  nightlyJobsDoNotFireOnStart as "scheduler: fireOnStart false (troe-retention, mastr-bw, the weekly Overpass connectors) skips the start run, /trigger still runs it; the registry refuses it without a schedule",
   noStartRunWithoutFireOnStart as "scheduler: a job without fireOnStart runs first on its schedule, not on start",
   intervalCountsFromTheFirstRun as "scheduler: the interval counts from the first run, so a delay equal to it causes no skip",
   routeConnectorsStartFirst as "scheduler: connectors serving public endpoints start right away, not in the stagger",

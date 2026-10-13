@@ -318,7 +318,13 @@ Objekt-Literal für Nachschlagetabellen) und englische Log-Texte.
 - `rathaus-bw`, `ausflug-bw`, `poi-bw`: gemeinsamer 90-s-Takt und höchstens
   eine offene Overpass-Anfrage über alle drei (`rathaus-bw` war ungetaktet);
   Geo-Kontext vor der Anfrage geprüft; kein Join-Timeout — alle Kacheln werden
-  abgewartet, keine späte Teilgruppe mehr.
+  abgewartet, keine späte Teilgruppe mehr. Seit Oktober 2026 außerdem:
+  `[timeout:60][maxsize:128 MiB]` in den Kachel-Abfragen, `ausflug-bw` mit 15
+  Kacheln statt 4 Quadranten (andere Trefferreihenfolge, daher teils andere
+  „Top 25“), Wiederholung abgelehnter Anfragen (429, schneller 504), `remark`
+  als Fehlschlag, Schreibschutz für Gemeinden an fehlgeschlagenen Kacheln und
+  bei Rückgang um mehr als 80 %, `counts` je Art bei `ausflug-bw`, kein Lauf
+  beim Dienststart (`docs/betrieb.md`, „Overpass“).
 - `parken-bw`: Dienst-User-Agent statt eigenem; 2 Retries bei Netzfehlern
   (alt: Abbruch beim ersten Fehler).
 - `sharing-bw`, `carsharing-bw`: Systeme nacheinander statt Fan-out; eine

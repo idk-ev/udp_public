@@ -586,11 +586,16 @@ mindestens das halbe Intervall bis zum nächsten Slot bleibt (bei unbekanntem
 letztem Lauf: höchstens eine Stunde). Ein durch Herunterfahren abgebrochener
 Lauf gilt nicht als gelaufen.
 
-Nächtliche Jobs, denen ihr Cron genügt, tragen dagegen `"fireOnStart": false`
-und laufen beim Dienststart **gar nicht**: `troe-retention` (Indizes,
+Jobs, denen ihr Cron genügt, tragen dagegen `"fireOnStart": false` und laufen
+beim Dienststart **gar nicht**: nächtlich `troe-retention` (Indizes,
 Löschläufe und `VACUUM` der TRoE-Tabellen) und `mastr-bw` (~1.500 Anfragen an
-das Marktstammdatenregister je Lauf). Die Registry lehnt das Feld bei einem
-Eintrag ohne Intervall oder Cron ab.
+das Marktstammdatenregister je Lauf), wöchentlich die drei
+Overpass-Konnektoren `rathaus-bw`, `ausflug-bw` und `poi-bw` (sonst schickte
+fast jedes Deployment tagsüber einen zusätzlichen Overpass-Durchlauf los, s.
+[Overpass](#overpass-rathaus-bw-ausflug-bw-poi-bw)). Die Registry lehnt das
+Feld bei einem Eintrag ohne Intervall oder Cron ab. Fällt der Dienst genau zur
+Cron-Minute aus, entfällt der Lauf bis zur nächsten Woche; dann von Hand
+auslösen.
 
 Erstbefüllung oder Nachziehen nach Änderungen:
 
@@ -608,6 +613,64 @@ Cron der Registry in dieser Stunde (`poi-bw` sonntags 01:40, `mastr-bw`
 täglich 01:20), ein Test prüft das, und für einen Cron in Stunde 2 meldet
 der Dienst beim Start eine Warnung (`cron "…" fires between 02:00 and 02:59
 local time …`).
+
+### Overpass (rathaus-bw, ausflug-bw, poi-bw)
+
+Die drei OSM-Konnektoren fragen `overpass-api.de` (kein Ausweich-Server),
+sonntags nachts: `poi-bw` 01:40 (12 Kacheln), `rathaus-bw` 04:40 (eine
+Anfrage für das Land), `ausflug-bw` 05:10 (15 Kacheln, die Viertel der alten
+vier Quadranten ohne das Viertel westlich von 8,2° und nördlich von 49,3°, in
+dem keine Gemeinde des Landes liegt). Alle Anfragen gehen über einen
+gemeinsamen Takt: höchstens eine gleichzeitig, mindestens 90 s Abstand.
+
+- **Abfragegröße:** Die Kacheln melden `[timeout:60][maxsize:128 MiB]` an.
+  Overpass nimmt eine Abfrage nur an, wenn es den angemeldeten Speicher
+  reservieren kann; ohne `maxsize` sind das 512 MiB, und ein ausgelasteter
+  Server lehnt sofort mit HTTP 504 ab („The server is probably too busy“).
+  Gemessen (Oktober 2026): das dichteste Ausflugs-Viertel (Stuttgart) braucht
+  mehr als 32 und höchstens 64 MiB, 4.855 Elemente in 13 s; die dichteste
+  Versorgungs-Kachel 13.823 Elemente in 10–12 s mit 64 MiB. `rathaus-bw`
+  behält `[timeout:90]` ohne `maxsize` (eine landesweite Abfrage, Speicherbedarf
+  ungemessen; ein zu knappes `maxsize` ließe sie jede Woche scheitern). Sie
+  reserviert damit weiter 512 MiB und kann abgelehnt werden — dann greift die
+  Wiederholung, und die Rathäuser der Vorwoche bleiben stehen.
+- **Wiederholung:** Eine Ablehnung — HTTP 429 oder ein 504 schneller als
+  60 s bzw. mit „too busy“ — wird nach 2, 3,5 und 5 min erneut versucht,
+  länger, wenn `Retry-After` es verlangt (bis 10 min; mehr wird nicht
+  abgewartet). Die Pause gilt für alle drei Konnektoren. Höchstens 6
+  Wiederholungen je Lauf; lehnt Overpass danach erneut ab (oder verlangt mehr
+  als 10 min Pause), schickt der Lauf die restlichen Kacheln nicht mehr ab und
+  wertet sie als fehlgeschlagen. Timeout, `remark`, kaputtes JSON und andere
+  Status werden nicht wiederholt. Ungünstigster Fall je Lauf: `poi-bw` knapp 2 h,
+  `ausflug-bw` gut 2 h, `rathaus-bw` ~38 min; ohne `Retry-After` gut
+  eine Stunde. Ein zweiter Lauf desselben Konnektors startet währenddessen
+  nicht.
+- **Fehlgeschlagene Kachel:** keine Antwort, Status ≥ 400, kein JSON, kein
+  `elements`-Array oder ein `remark` (Overpass meldet so „Query timed out“ /
+  „out of memory“ und liefert dabei abgeschnittene Daten). Geschrieben werden
+  dann nur Gemeinden, deren Begrenzungsrahmen (`bw-grenzen.json`, plus ~1 km)
+  keine fehlgeschlagene Kachel berührt; die übrigen behalten ihren Stand. Bei
+  `ausflug-bw` zählt auch eine Antwort ganz ohne Elemente als fehlgeschlagen
+  (jede Kachel enthält Landesfläche mit vielen Zielen). Früher wurden Gemeinden an Kachelgrenzen mit Bruchstücken überschrieben
+  (Stuttgart mit 1 statt ~1.600 Ausflugszielen).
+- **Plausibilität:** Eine Gemeinde, deren Zahl (`zielCount` bzw.
+  `totalCount`) gegenüber dem Stand im Broker um mehr als 80 % fällt, wird
+  nicht geschrieben, sofern der alte Wert mindestens 20 war. Die alten Werte
+  liest jeder Lauf einmal aus dem Broker; schlägt das fehl, schreibt der Lauf
+  nichts. Ist ein solcher Rückgang echt (z. B. umfassende Umtaggung in OSM),
+  die Entität löschen — der nächste Lauf legt sie neu an.
+- `ausflug-bw` schreibt zusätzlich `counts` (Ziele je Art, ungekappt; Summe =
+  `zielCount`). Die Kommunenseite nimmt die Aufschlüsselung daraus und zeigt
+  bei gekappter Liste „25 von 1.599“. Das sind wöchentlich rund 1.100
+  zusätzliche Attributwerte in der Historie (TRoE).
+
+Log-Zeilen (Konnektordienst, Beispiele):
+
+    [info] [ausflug-bw] Overpass T3: HTTP 504 after 1.8 s: Error: runtime error: … — retry 1/3 in 120 s
+    [warn] [ausflug-bw] Overpass T3: failed after 4 attempts — HTTP 504 after 2.1 s: Error: …
+    [warn] [ausflug-bw] Overpass tourist destinations: 12 of 1085 municipalities not written — they touch the failed tiles T3; previous values kept
+    [warn] [ausflug-bw] Overpass tourist destinations: 1 municipality not written — count fell by more than 80 % (08111000: 1599 → 12); previous values kept
+    [info] [ausflug-bw] 1073 municipalities with destinations upserted in 11 chunks (0 failed)
 
 ### Open-Meteo-Kontingent
 

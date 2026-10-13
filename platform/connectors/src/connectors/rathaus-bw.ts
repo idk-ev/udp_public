@@ -26,6 +26,16 @@
  *    build sees the boundaries current at that time, as the old node did.
  *  * The request is paced by the shared Overpass bucket (one per 90 s, see
  *    overpass.ts); the old flow had no delay node in front of this request.
+ *  * DELIBERATE DEVIATION: an answer with a `remark` (truncated) counts as no
+ *    data, and a refused request (429, fast 504) is retried after a pause —
+ *    both as for the tiled connectors (overpass.ts). The query keeps its
+ *    `[timeout:90]` and the default `maxsize`: one request for the whole
+ *    state that has not been refused so far, and whose memory need has not
+ *    been measured — a `maxsize` set too low would fail it every week.
+ *  * No start run after a restart (`"fireOnStart": false` in the registry):
+ *    a weekly source whose start run after nearly every deploy cost an
+ *    Overpass slot in the daytime. The Sunday cron is the only trigger,
+ *    `/trigger` on the admin port runs it by hand.
  *
  * Deliberate deviation (audit): which town hall wins. The old score was two
  * points for opening hours and one for a name matching Rathaus/Bürger…/
@@ -66,7 +76,16 @@ import type {
   NgsiEntity,
   Property,
 } from "../kernel/types.js";
-import { fetchOverpass, hasElements, overpassUrl, parseElements, reportSkipped } from "./overpass.js";
+import {
+  describeAnswer,
+  failureOf,
+  fetchOverpassRetrying,
+  hasElements,
+  overpassUrl,
+  parseElements,
+  reportSkipped,
+  retryBudget,
+} from "./overpass.js";
 import type { OverpassElement, OverpassResult } from "./overpass.js";
 
 export const ID = "rathaus-bw";
@@ -327,9 +346,12 @@ function locate(element: OverpassElement, geo: GeoIndex): [ags: string, found: C
 export async function run(ctx: Ctx): Promise<void> {
   if (ctx.geo.forRun(LABEL, GEO) === null) return; // logged; no Overpass slot spent on a discarded result
 
-  const response = await fetchOverpass(ctx, REQUEST_URL);
-  if (response.status === null || response.status >= 400 || !hasElements(response.body)) {
-    ctx.log.warn(`${LABEL}: no data (${response.detail})`);
+  const attempted = await fetchOverpassRetrying(ctx, LABEL, REQUEST_URL, retryBudget());
+  if (attempted === null) return; // shutdown
+  const { response, attempts } = attempted;
+  if (failureOf(response) !== null || !hasElements(response.body)) {
+    const tries = attempts > 1 ? ` after ${String(attempts)} attempts` : "";
+    ctx.log.warn(`${LABEL}: no data${tries} (${describeAnswer(response)})`);
     return;
   }
   const geo = ctx.geo.forRun(LABEL, GEO);

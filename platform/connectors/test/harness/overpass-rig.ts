@@ -8,12 +8,18 @@
  * context both sides assign against, the flattening of the old chunk messages,
  * and a real `Ctx` whose only scripted edge is the network.
  *
- * The rig's fetcher answers Overpass from a callback and Orion with 204, and it
- * records what the connector asked for: the URL, the fetch options (pacing,
- * retries, timeout, User-Agent — the politeness towards Overpass is behaviour
- * and is asserted) and how many requests were in flight at once. It answers
+ * The rig's fetcher answers Overpass from a callback, Orion listings from
+ * `stored` (none by default) and every other Orion request with 204, and it
+ * records what the connector asked for: the URL, the fetch options (retries,
+ * timeout, User-Agent — the politeness towards Overpass is behaviour and is
+ * asserted) and how many requests were in flight at once. It answers
  * asynchronously, so a connector that fired its tiles in parallel would show
  * up in `maxInFlight`.
+ *
+ * The rate limiter records every token taken and every pause asked for
+ * (`acquired`, `pauses`). By default it hands out tokens at once, so a test
+ * does not wait out the 90 s spacing; with `clock` it is the real limiter on
+ * that simulated clock, and `seen[].at` tells when each request went out.
  *
  * Everything else is the real kernel from src/kernel/ — geo view, change gate,
  * Orion client with its chunking — so a `run()` test pins the port, not a mock.
@@ -40,11 +46,14 @@ import type {
   GeoIndex,
   HttpResponse,
   JsonResponse,
+  RateLimiter,
+  RateLimitOptions,
 } from "../../src/kernel/types.js";
 import { readFixture, repositoryRoot } from "./fixtures.js";
 import { httpResponse, recordingLog } from "./kernel.js";
 import type { RecordedLog } from "./kernel.js";
 import { isRecord } from "./normalize.js";
+import type { VirtualClock } from "./virtual-clock.js";
 import { messagesOf } from "./vm-runner.js";
 import type { FunctionNodeRun } from "./vm-runner.js";
 
@@ -91,6 +100,16 @@ export interface SeenFetch {
   readonly method: string;
   readonly body: string | undefined;
   readonly options: FetchOptions | undefined;
+  /** When it went out: the simulated time with `clock`, else `Date.now()`. */
+  readonly at: number;
+}
+
+/** A token the connector took from the rate limiter. */
+export interface SeenAcquire {
+  readonly host: string;
+  readonly minIntervalMs: number | undefined;
+  readonly maxConcurrent: number | undefined;
+  readonly signal: boolean;
 }
 
 export interface OverpassRig {
@@ -106,6 +125,12 @@ export interface OverpassRig {
   upsertSizes(): number[];
   /** Largest number of Overpass requests that were open at the same time. */
   maxInFlight(): number;
+  /** Tokens taken from the rate limiter, in order. */
+  readonly acquired: readonly SeenAcquire[];
+  /** `limiter.pause(host, ms)` calls, in order. */
+  readonly pauses: readonly { readonly host: string; readonly ms: number }[];
+  /** `acquire` (granted), `release` and `pause` in the order they happened. */
+  readonly events: readonly ("acquire" | "release" | "pause")[];
 }
 
 export interface RigOptions {
@@ -113,6 +138,68 @@ export interface RigOptions {
   readonly boundaries?: boolean;
   /** Called before the n-th Overpass request is answered (e.g. to abort). */
   readonly beforeAnswer?: (index: number, rig: OverpassRig) => void;
+  /** The real rate limiter on this clock instead of one that never waits. */
+  readonly clock?: VirtualClock;
+  /** What an Orion listing of an entity type answers (keyValues records); none by default. */
+  readonly stored?: Readonly<Record<string, readonly unknown[]>>;
+  /** Status of every Orion listing instead of 200 (a broker fault). */
+  readonly listingStatus?: number;
+}
+
+/**
+ * A rate limiter that records what it is asked: tokens at once, or — with a
+ * clock — the real limiter's tokens and pauses.
+ */
+function recordingLimiter(
+  log: RecordedLog,
+  clock: VirtualClock | undefined,
+  acquired: SeenAcquire[],
+  pauses: { host: string; ms: number }[],
+  events: ("acquire" | "release" | "pause")[],
+): RateLimiter {
+  const real = clock === undefined ? null : createRateLimiter(log, clock);
+  const acquire = async (host: string, options?: RateLimitOptions): Promise<() => void> => {
+    acquired.push({
+      host,
+      minIntervalMs: options?.minIntervalMs,
+      maxConcurrent: options?.maxConcurrent,
+      signal: options?.signal !== undefined,
+    });
+    const release = real === null ? null : await real.acquire(host, options);
+    if (release === null) await Promise.resolve();
+    events.push("acquire");
+    return () => {
+      events.push("release");
+      release?.();
+    };
+  };
+  return {
+    acquire,
+    run: async <T>(host: string, task: () => Promise<T>, options?: RateLimitOptions): Promise<T> => {
+      const release = await acquire(host, options);
+      try {
+        return await task();
+      } finally {
+        release();
+      }
+    },
+    pause: (host: string, ms: number): void => {
+      pauses.push({ host, ms });
+      events.push("pause");
+      real?.pause(host, ms);
+    },
+  };
+}
+
+/** An Orion entity listing answered from `stored`, paged as the broker would. */
+function listingAnswer(url: URL, options: RigOptions | undefined): HttpResponse {
+  if (options?.listingStatus !== undefined) return httpResponse(options.listingStatus, "");
+  const records = options?.stored?.[url.searchParams.get("type") ?? ""] ?? [];
+  const offset = Number(url.searchParams.get("offset") ?? "0");
+  const limit = Number(url.searchParams.get("limit") ?? "1000");
+  return httpResponse(200, JSON.stringify(records.slice(offset, offset + limit)), {
+    "ngsild-results-count": String(records.length),
+  });
 }
 
 const ORION = "http://orion-ld:1026";
@@ -137,14 +224,26 @@ export function overpassRig(
   let maxInFlight = 0;
   let overpassCount = 0;
 
+  const acquired: SeenAcquire[] = [];
+  const pauses: { host: string; ms: number }[] = [];
+  const events: ("acquire" | "release" | "pause")[] = [];
+  const clock = options?.clock;
+
   const text = async (url: string, fetchOptions?: FetchOptions): Promise<HttpResponse> => {
+    const method = fetchOptions?.method ?? "GET";
     seen.push({
       url,
-      method: fetchOptions?.method ?? "GET",
+      method,
       body: fetchOptions?.body,
       options: fetchOptions,
+      at: clock === undefined ? Date.now() : clock.now(),
     });
-    if (!isOverpass(url)) return httpResponse(204);
+    if (!isOverpass(url)) {
+      const parsed = new URL(url);
+      if (method === "GET" && parsed.pathname === "/ngsi-ld/v1/entities")
+        return listingAnswer(parsed, options);
+      return httpResponse(204);
+    }
     const index = overpassCount;
     overpassCount += 1;
     inFlight += 1;
@@ -178,7 +277,7 @@ export function overpassRig(
   const kernel: Kernel = {
     log,
     env,
-    limiter: createRateLimiter(log),
+    limiter: recordingLimiter(log, clock, acquired, pauses, events),
     fetch: fetcher,
     orionUrl: ORION,
     signatures: new SignatureStore(),
@@ -211,6 +310,9 @@ export function overpassRig(
     upserted: () => upserts().flat(),
     upsertSizes: () => upserts().map((entities) => entities.length),
     maxInFlight: () => maxInFlight,
+    acquired,
+    pauses,
+    events,
   };
   return rig;
 }
