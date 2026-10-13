@@ -2,6 +2,20 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Seitenadressen, Cache, Pegel
+
+- Neue Seitenadressen: `/remseck` (statt `/remseck-am-neckar`), `/malsch-baden`
+  (Malsch, Lkr. Karlsruhe, statt `/malsch-08215`) und `/malsch` (Malsch,
+  Rhein-Neckar-Kreis, statt `/malsch-08226`); die alten Adressen leiten per 301
+  um.
+- Kommunen- und Kreisseiten (`/<slug>`) werden wie alle Seiten immer
+  revalidiert (`Cache-Control: no-cache`).
+- Während eines Cockpit-Rollouts lädt eine Seite, deren Template und
+  `smartcity-lib.js` aus verschiedenen Builds stammen, einmalig neu statt mit
+  einem Skriptfehler abzubrechen.
+- Kachel „Pegel & Hochwasser“: Hinweis jetzt „Pegelstände und
+  Hochwasservorhersage LUBW“.
+
 ## Unveröffentlicht — DWD-Stationen
 
 > **Upgrade:** `wetter-dwd-station` schreibt beim ersten Lauf jede Station
