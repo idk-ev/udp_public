@@ -10,6 +10,16 @@ COPY gui/package.json gui/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY gui/ .
 RUN npm run build
+# Build marker of the public pages (rollout guard in stadt.html/kreis.html):
+# one value for smartcity-lib.js and both templates, derived from their
+# content - no commit SHA, so an unchanged GUI keeps its image digest
+# (content-addressed reuse in build-images.yml). Fails the build if a file
+# lost its placeholder or one is left over.
+RUN files="dist/smartcity-lib.js dist/stadt.html dist/kreis.html"; \
+    for f in $files; do grep -q '__UDP_BUILD__' "$f" || { echo "no build marker in $f" >&2; exit 1; }; done; \
+    build=$(cat $files | sha256sum | cut -c1-12) && \
+    sed -i "s/__UDP_BUILD__/$build/g" $files && \
+    if grep -q '__UDP_BUILD__' $files; then echo "build marker left unstamped" >&2; exit 1; fi
 # Pre-compressed copies for gzip_static (cockpit.conf.template): nginx serves
 # them as they are instead of compressing the same bytes on every request.
 # config.js is left out – Kubernetes mounts its own over it (ConfigMap), and a

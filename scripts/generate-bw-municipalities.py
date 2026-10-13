@@ -30,6 +30,16 @@ DASHBOARDS = {
     "08135019": "https://www.aahdhgemeinsamdigital.de",       # Heidenheim
 }
 
+# Fixed slugs instead of the generated ones (shorter or more telling
+# addresses). The cockpit nginx (platform/config/nginx/cockpit.conf.template)
+# redirects the former addresses with a 301 (remseck-am-neckar, malsch-08215,
+# malsch-08226) - add a redirect there for every slug changed here.
+SLUG_OVERRIDES = {
+    "08118081": "remseck",       # Remseck am Neckar
+    "08215046": "malsch-baden",  # Malsch, Landkreis Karlsruhe
+    "08226046": "malsch",        # Malsch, Rhein-Neckar-Kreis
+}
+
 # Die 44 Stadt- und Landkreise BW (Kreisschlüssel -> Name); Gebietsstand seit 1973
 # unverändert, daher kuratiert statt aus einer weiteren Quelle geladen.
 KREISE = {
@@ -128,15 +138,27 @@ def main() -> None:
     counts: dict[str, int] = {}
     for r in rows:
         counts[slugify(r[1])] = counts.get(slugify(r[1]), 0) + 1
-    taken: set[str] = set()
+    # Explicit overrides win over the generated slug and are reserved up front,
+    # so no generated slug can take them.
+    taken: set[str] = set(SLUG_OVERRIDES.values())
+    if len(taken) != len(SLUG_OVERRIDES) or taken & RESERVED:
+        sys.exit(f"SLUG_OVERRIDES: duplicate or reserved slug {sorted(SLUG_OVERRIDES.values())}")
     for r in rows:
+        if r[0] in SLUG_OVERRIDES:
+            r.append(SLUG_OVERRIDES[r[0]])
+            continue
         s = slugify(r[1])
         if counts[s] > 1 or s in RESERVED:
             s = f"{s}-{r[4]}"
         if s in taken:  # z. B. Stadt + gemeindefreies Gebiet gleichen Namens im selben Kreis
             s = f"{slugify(r[1])}-{r[0]}"
+        if s in taken:
+            sys.exit(f"slug collision: {s} ({r[0]} {r[1]})")
         taken.add(s)
         r.append(s)
+    missing = set(SLUG_OVERRIDES) - {r[0] for r in rows}
+    if missing:
+        sys.exit(f"SLUG_OVERRIDES: unknown AGS {sorted(missing)}")
     # Kreis-Registry: [krs, name, lat, lon, typ(LK|SK), gemeinden, einwohner, slug]
     # Stadtkreise (genau eine Gemeinde) verweisen auf das Dashboard ihrer Stadt.
     kreise = []

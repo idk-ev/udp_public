@@ -9,6 +9,9 @@
    Farben ausschließlich über CSS-Custom-Properties (smartcity-theme.css). */
 "use strict";
 (function (w) {
+  // Build marker, stamped by the image build (gui/Dockerfile) into this file,
+  // stadt.html and kreis.html alike; the pages reload once on a mismatch.
+  const BUILD = "__UDP_BUILD__";
   const GW = "/gateway";
   const $ = s => document.querySelector(s);
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -1189,7 +1192,7 @@
 
   // Nur die von den Seiten genutzte Oberfläche exportieren; Interna (SLOT, Themes,
   // Modal-Innereien, navLinks) bleiben privat.
-  w.SC = { GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
+  w.SC = { BUILD, GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
            jget, fetchRetry, entities, entity, byAgs, jlist, jlistPaged, hist, histSince, series, asRows, store,
            autoRefresh, attributions, attributionHtml, MAP_CREDIT, OSM_CREDIT,
            warnHeads, warnLink, warnBannerHtml, WARN_SOURCE,

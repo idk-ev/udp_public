@@ -97,7 +97,7 @@ exports["stadt.html: LUBW/HVZ gauges are not shown, the HVZ is linked instead"] 
   const link = [...d.querySelectorAll("#tiles a.tile-link")].find(a => a.querySelector(".label").textContent === "Pegel & Hochwasser");
   assert(link, "no link to the HVZ");
   assert.strictEqual(link.getAttribute("href"), "https://hvz.lubw.baden-wuerttemberg.de/");
-  assert.match(link.textContent, /Pegelstände und Hochwasservorhersage: LUBW Hochwasservorhersagezentrale/);
+  assert.match(link.textContent, /Pegelstände und Hochwasservorhersage LUBW(?! Hochwasservorhersagezentrale)/);
   w.close();
 };
 
