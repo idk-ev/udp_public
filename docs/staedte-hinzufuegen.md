@@ -186,14 +186,16 @@ Modul. Aufbau und verbindliche Typdisziplin: `platform/connectors/README.md`.
    node tests/run.js                              # statische Tests + Konnektor-Tests
    python3 scripts/export-connector-status.py     # connectors-status.json fürs Frontend
    docker compose -f platform/docker-compose.yml up -d --build connectors
-   bash scripts/trigger-connector.sh <id>         # nur bei refireOnRestart:false
+   bash scripts/trigger-connector.sh <id>         # bei fireOnStart:false oder refireOnRestart:false
    bash scripts/healthcheck.sh                    # Frische-Ampel je Konnektor
    ```
    Quellen mit strengen Anbieter-Limits (Overpass u. a.) bekommen in der
    Registry `"refireOnRestart": false` — sie laufen dann nicht direkt nach
    jedem Neustart, sondern erst 10 Minuten später — und gar nicht, wenn ihr
    letzter Lauf jünger als ihr Intervall ist — und danach nach Zeitplan bzw.
-   auf Zuruf (s. `docs/betrieb.md`).
+   auf Zuruf (s. `docs/betrieb.md`). Die wöchentlichen Overpass-Konnektoren
+   tragen zusätzlich `"fireOnStart": false` und laufen nach einem Neustart gar
+   nicht, nur per Cron oder auf Zuruf.
 5. **Frontend** (nur bei neuem `provides`-Typ): Render-Pfad in `gui/public/stadt.html`
    ergänzen. `provides` steuert, welche Kachel erscheint; `sampleEntity` liefert den
    Wert. Für Klick-Detailtiefe einen Eintrag in die `DETAILS`-Registry setzen:

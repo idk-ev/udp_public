@@ -1,5 +1,5 @@
 {
-  "_doc": "Konnektor-Registry (Masterplan §5 F1). Eine Quelle für Takt, Scope, Aktivierung, Monitoring und Frontend-Fähigkeiten aller Ingestion-Konnektoren. Der Konnektordienst (platform/connectors) führt jeden aktiven Eintrag aus, für den ein Modul existiert (src/connectors/index.ts); Takt und Cron kommen von hier, die Transform-Logik bleibt Code. scripts/export-connector-status.py exportiert daraus gui/public/connectors-status.json für Hauptdashboard und Monitoring. supersededBy ist die Ablöse-Markierung (Migrationsmatrix); die Reutlingen-Migration ist abgeschlossen, aktuell setzt kein Konnektor das Feld. rowBudget24h ist optional und ordnet einem Konnektor sein erwartetes TRoE-Tagesvolumen je Entitätstyp zu ({\"ParkingSite\": 25000}); der Dienst summiert die Budgets aller Konnektoren je Typ, und troe-stats warnt bei Überschreitung im Log des Konnektordienstes. Konnektoren ohne das Feld verhalten sich unverändert. fireOnStart: false (optional, nur mit intervalSeconds oder cron) nimmt dem Konnektor den Lauf beim Dienststart — für nächtliche Jobs, denen ihr Cron genügt (troe-retention, mastr-bw); refireOnRestart: false verzögert dagegen nur. attribution ist der Quellenvermerk der öffentlichen Seiten (Teile mit » · « getrennt), attributionLinks ordnet Textstellen daraus ihr Linkziel zu ({\"Open-Meteo.com\": \"https://open-meteo.com/\"}); license und licenseUrl nennen die Lizenz der Quelle maschinenlesbar (docs/api.md, »Lizenzen der Datenquellen«). Alle drei gehen in den öffentlichen Statusexport. excludeSystems (sharing-bw, carsharing-bw) schließt GBFS-Systeme per Muster (* als Platzhalter) von der Ingestion aus; jede Regel braucht eine Begründung (reason) — Anlass sind Lizenzbedingungen einzelner Anbieter.",
+  "_doc": "Konnektor-Registry (Masterplan §5 F1). Eine Quelle für Takt, Scope, Aktivierung, Monitoring und Frontend-Fähigkeiten aller Ingestion-Konnektoren. Der Konnektordienst (platform/connectors) führt jeden aktiven Eintrag aus, für den ein Modul existiert (src/connectors/index.ts); Takt und Cron kommen von hier, die Transform-Logik bleibt Code. scripts/export-connector-status.py exportiert daraus gui/public/connectors-status.json für Hauptdashboard und Monitoring. supersededBy ist die Ablöse-Markierung (Migrationsmatrix); die Reutlingen-Migration ist abgeschlossen, aktuell setzt kein Konnektor das Feld. rowBudget24h ist optional und ordnet einem Konnektor sein erwartetes TRoE-Tagesvolumen je Entitätstyp zu ({\"ParkingSite\": 25000}); der Dienst summiert die Budgets aller Konnektoren je Typ, und troe-stats warnt bei Überschreitung im Log des Konnektordienstes. Konnektoren ohne das Feld verhalten sich unverändert. fireOnStart: false (optional, nur mit intervalSeconds oder cron) nimmt dem Konnektor den Lauf beim Dienststart — für Jobs, denen ihr Cron genügt (nächtlich: troe-retention, mastr-bw; wöchentlich die drei Overpass-Konnektoren rathaus-bw, ausflug-bw, poi-bw); refireOnRestart: false verzögert dagegen nur. attribution ist der Quellenvermerk der öffentlichen Seiten (Teile mit » · « getrennt), attributionLinks ordnet Textstellen daraus ihr Linkziel zu ({\"Open-Meteo.com\": \"https://open-meteo.com/\"}); license und licenseUrl nennen die Lizenz der Quelle maschinenlesbar (docs/api.md, »Lizenzen der Datenquellen«). Alle drei gehen in den öffentlichen Statusexport. excludeSystems (sharing-bw, carsharing-bw) schließt GBFS-Systeme per Muster (* als Platzhalter) von der Ingestion aus; jede Regel braucht eine Begründung (reason) — Anlass sind Lizenzbedingungen einzelner Anbieter.",
   "connectors": [
     {
       "id": "ops-host",
@@ -237,6 +237,7 @@
       "enabledFor": "*",
       "intervalSeconds": null,
       "cron": "40 04 * * 0",
+      "fireOnStart": false,
       "sollMinutes": 12960,
       "sampleEntity": "urn:ngsi-ld:CivicStructure:bw-08415061-rathaus",
       "provides": [
@@ -260,6 +261,7 @@
       "enabledFor": "*",
       "intervalSeconds": null,
       "cron": "10 05 * * 0",
+      "fireOnStart": false,
       "sollMinutes": 12960,
       "sampleEntity": "urn:ngsi-ld:TouristDestination:bw-08415061",
       "provides": [
@@ -283,6 +285,7 @@
       "enabledFor": "*",
       "intervalSeconds": null,
       "cron": "40 01 * * 0",
+      "fireOnStart": false,
       "sollMinutes": 12960,
       "sampleEntity": "urn:ngsi-ld:PublicAmenity:bw-08212000",
       "provides": [

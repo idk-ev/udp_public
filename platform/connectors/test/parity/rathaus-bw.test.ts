@@ -24,6 +24,10 @@
  * synthetic elements modelled on the real OSM tags of Stuttgart, Baden-Baden,
  * Goeppingen and Neckarsulm ({@link auditExamplesPickTheSeat}).
  *
+ * DELIBERATE DEVIATION (module header, overpass.ts): a refused request (fast
+ * 504, 429) is retried after a pause, and an answer with a `remark` is no
+ * data even when it carries elements ({@link refusedOrTruncatedAnswers}).
+ *
  * Fixture: test/fixtures/rathaus-bw.json — one real Overpass answer for the
  * district of Loerrach and its neighbours across the border, against the
  * boundary fixture test/fixtures/grenzen-bw.json.
@@ -34,6 +38,7 @@ import { build, parse, QUERY, REQUEST_URL, run, score, SCORE } from "../../src/c
 import { createGeoIndex } from "../../src/kernel/geo.js";
 import type { BoundarySet, GeoIndex, MunicipalityRow } from "../../src/kernel/types.js";
 import {
+  OVERPASS_HOST,
   OVERPASS_MAX_BYTES,
   OVERPASS_MAX_CONCURRENT,
   OVERPASS_MIN_INTERVAL_MS,
@@ -211,9 +216,14 @@ async function guardsWarnAndWriteNothing(): Promise<void> {
   const failed = await runLegacy("<html>504 Gateway Timeout</html>", 504);
   assert.deepEqual(failed.warnings, ["Overpass Rathaus: keine Daten (504)"]);
   assert.equal(failed.returned, null);
+  // The port retries a fast 504 three times first (deliberate, see below).
   const rig = overpassRig("rathaus-bw", () => httpResponse(504, "<html>504 Gateway Timeout</html>"));
   await run(rig.ctx);
-  assert.deepEqual(rig.log.warnings(), ["Overpass town halls: no data (HTTP 504)"]);
+  assert.equal(rig.log.warnings().length, 1);
+  assert.match(
+    rig.log.warnings()[0] ?? "",
+    /^Overpass town halls: no data after 4 attempts \(HTTP 504 after \d+\.\d s: 504 Gateway Timeout\)$/,
+  );
   assert.equal(rig.upserted().length, 0);
 
   // 200 without an elements array (Overpass reports some errors that way).
@@ -221,7 +231,11 @@ async function guardsWarnAndWriteNothing(): Promise<void> {
   assert.equal(odd.warnings.length, 1);
   const oddRig = overpassRig("rathaus-bw", () => overpassAnswer({ remark: "runtime error" }));
   await run(oddRig.ctx);
-  assert.deepEqual(oddRig.log.warnings(), ["Overpass town halls: no data (HTTP 200)"]);
+  assert.equal(oddRig.overpass().length, 1, "a remark is not retried");
+  assert.match(
+    oddRig.log.warnings()[0] ?? "",
+    /^Overpass town halls: no data \(HTTP 200, remark after \d+\.\d s: runtime error\)$/,
+  );
 
   // No boundaries: the old node warns after the request; the port warns before
   // it and spends no Overpass slot (deliberate, see the module header).
@@ -262,29 +276,77 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   assert.deepEqual(rig.upsertSizes(), emittedChunkSizes(legacy));
   assertClockStamps(emittedEntities(legacy), rig.upserted(), { legacy: legacyWindow, ported: portWindow });
 
-  // Exactly one request, polite: paced by the shared bucket, no retry, the
-  // Node-RED timeout, the contact address.
+  // Exactly one request, polite: paced by the shared bucket, no transport
+  // retry, the Node-RED timeout, the contact address.
   const requests = rig.overpass();
   const [request] = requests;
   assert.ok(request !== undefined && requests.length === 1);
   assert.equal(request.url, REQUEST_URL);
   assert.deepEqual(normalize(request.options), {
+    bucket: null,
     maxBytes: OVERPASS_MAX_BYTES,
-    maxConcurrent: OVERPASS_MAX_CONCURRENT,
-    minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
     retries: 0,
     timeoutMs: OVERPASS_TIMEOUT_MS,
     userAgent: OVERPASS_USER_AGENT,
   });
+  assert.deepEqual(rig.acquired, [
+    {
+      host: OVERPASS_HOST,
+      minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
+      maxConcurrent: OVERPASS_MAX_CONCURRENT,
+      signal: true,
+    },
+  ]);
 }
 
 async function unreachableOverpassIsAWarning(): Promise<void> {
   const rig = overpassRig("rathaus-bw", () => new Error("overpass-api.de: no response within 120000 ms"));
   await run(rig.ctx);
-  assert.deepEqual(rig.log.warnings(), [
-    "Overpass town halls: no data (overpass-api.de: no response within 120000 ms)",
-  ]);
+  assert.equal(rig.overpass().length, 1, "no answer is not retried");
+  assert.equal(rig.log.warnings().length, 1);
+  assert.match(
+    rig.log.warnings()[0] ?? "",
+    /^Overpass town halls: no data \(overpass-api\.de: no response within 120000 ms after \d+\.\d s\)$/,
+  );
   assert.equal(rig.upserted().length, 0);
+}
+
+async function refusedOrTruncatedAnswers(): Promise<void> {
+  const fixture = readFixture(FIXTURE);
+  // A 429 asking for 180 s, then the answer: retried after the pause, written.
+  const retried = overpassRig("rathaus-bw", (_url, index) =>
+    index === 0
+      ? httpResponse(429, "rate_limited", { "retry-after": "180" })
+      : overpassAnswer(fixture.payload),
+  );
+  await run(retried.ctx);
+  assert.equal(retried.overpass().length, 2);
+  assert.deepEqual(retried.pauses, [{ host: OVERPASS_HOST, ms: 180_000 }]);
+  assert.deepEqual(retried.log.warnings(), []);
+  assert.ok(retried.upserted().length > 0);
+
+  // A Retry-After beyond 10 min is not waited for, but the bucket pauses 10 min.
+  const long = overpassRig("rathaus-bw", () => httpResponse(429, "rate_limited", { "Retry-After": "3600" }));
+  await run(long.ctx);
+  assert.equal(long.overpass().length, 1);
+  assert.deepEqual(long.pauses, [{ host: OVERPASS_HOST, ms: 600_000 }]);
+  assert.equal(long.upserted().length, 0);
+
+  // A remark next to elements: truncated. The old node wrote what it got; the port writes nothing.
+  const payload = {
+    ...(isRecord(fixture.payload) ? fixture.payload : {}),
+    remark: "runtime error: Query timed out",
+  };
+  const legacy = await runLegacy(payload);
+  assert.ok(emittedEntities(legacy).length > 0);
+  const truncated = overpassRig("rathaus-bw", () => overpassAnswer(payload));
+  await run(truncated.ctx);
+  assert.equal(truncated.overpass().length, 1);
+  assert.equal(truncated.upserted().length, 0);
+  assert.match(
+    truncated.log.warnings()[0] ?? "",
+    /^Overpass town halls: no data \(HTTP 200, remark after \d+\.\d s: runtime error: Query timed out\)$/,
+  );
 }
 
 /* ------------------------------------------------ the audit examples */
@@ -564,4 +626,5 @@ export {
   guardsWarnAndWriteNothing as "rathaus-bw: HTTP error, missing elements, missing boundaries and no hit write nothing",
   runUpsertsWhatTheOldFlowSent as "rathaus-bw: run() upserts what the old flow sent, with one polite Overpass request",
   unreachableOverpassIsAWarning as "rathaus-bw: an unreachable Overpass is a warning, not a crash",
+  refusedOrTruncatedAnswers as "rathaus-bw: a 429 is retried after Retry-After (at most 10 min), a remark is no data (deliberate)",
 };

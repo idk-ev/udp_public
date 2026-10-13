@@ -26,7 +26,8 @@
  * The occasion was 21.07.2026, when several restarts in a row drove Open-Meteo
  * and Overpass into HTTP 429 — eight batch requests leave per wetter-bw run.
  * The answer was 600 s of delay, not silence. Reading the flag as "does not fire
- * on start" starves `rathaus-bw`, `ausflug-bw`, `wetter-bw` and `vorhersage-bw`.
+ * on start" starves `wetter-bw` and `vorhersage-bw` (the weekly Overpass sources
+ * now skip the start run on purpose, with their cron as the trigger — below).
  *
  * ## …and not again within the interval
  *
@@ -72,12 +73,17 @@
  * ## fireOnStart: false means SKIPPED
  *
  * The registry's `"fireOnStart": false` takes the start run away completely:
- * the interval or cron is the only trigger. Meant for nightly jobs whose cron
- * is enough and whose run is expensive — `troe-retention` (index checks,
+ * the interval or cron is the only trigger. Meant for jobs whose cron is
+ * enough and whose run is expensive — nightly `troe-retention` (index checks,
  * deletes and a VACUUM of the TRoE tables on every restart) and `mastr-bw`
- * (~1,500 MaStR requests per run). The registry refuses it on an entry that
- * has neither, so it cannot starve a connector the way reading
- * `refireOnRestart: false` as "skip" would.
+ * (~1,500 MaStR requests per run), weekly the three Overpass connectors
+ * (`rathaus-bw`, `ausflug-bw`, `poi-bw`): with the persisted last run a
+ * deploy more than a day after Sunday's run still sent Overpass a full extra
+ * pass, in the daytime, after nearly every deploy. A weekly job loses at
+ * most the run whose cron minute the service was down for; `/trigger` on the
+ * admin port starts one by hand. The registry refuses the flag on an entry
+ * that has neither interval nor cron, so it cannot starve a connector the way
+ * reading `refireOnRestart: false` as "skip" would.
  *
  * ## Cron and daylight saving time
  *
@@ -159,10 +165,9 @@ export function scheduleOf(entry: RegistryEntry, position: number, servesRoutes 
     intervalSeconds: kind === "interval" ? entry.intervalSeconds : null,
     cron: kind === "cron" ? entry.cron : null,
     // Every inject node in the flows had once: true. The single exception,
-    // poi-bw (once: false), was set by hand in the former generator and never
-    // reached the registry; poi-bw carries refireOnRestart: false, so it
-    // starts 600 s delayed instead of not at all, which is the safe direction.
-    // `"fireOnStart": false` in the registry skips the start run (see above).
+    // poi-bw (once: false), was set by hand in the former generator; the
+    // registry now says so for it and the other two weekly Overpass sources:
+    // `"fireOnStart": false` skips the start run (see above).
     fireOnStart: entry.fireOnStart,
     startupDelaySeconds,
     offsetSeconds: kind === "interval" ? entry.intervalOffsetSeconds : null,

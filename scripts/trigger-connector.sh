@@ -3,8 +3,8 @@
 # © 2024–2026 Thomas Kieß and contributors
 
 # Triggers a connector's run right away (first fill, or after changes).
-# Needed for connectors with refireOnRestart=false (e.g. the weekly Overpass
-# sources), which deliberately do not fire right after every restart.
+# Needed for connectors that do not fire on start (fireOnStart=false, e.g. the
+# weekly Overpass sources) or only delayed (refireOnRestart=false).
 #
 #   bash scripts/trigger-connector.sh <connector-id>      e.g. ausflug-bw
 #

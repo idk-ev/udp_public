@@ -2,6 +2,28 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Overpass, Ausflugsziele
+
+> **Upgrade:** Die Overpass-Konnektoren laufen nach einem Deployment nicht mehr
+> von selbst, erst sonntags nachts. Um die Bruchstücke (z. B. Stuttgart mit
+> 1 Ausflugsziel) sofort zu ersetzen: `ausflug-bw` und `poi-bw` einmal per
+> `scripts/trigger-connector.sh` auslösen.
+
+- `ausflug-bw`: 15 kleinere Kacheln statt 4 Quadranten; alle Overpass-Kacheln
+  melden `[timeout:60][maxsize:128 MiB]` an, damit Overpass sie nicht als
+  „too busy“ (504) ablehnt.
+- Abgelehnte Anfragen (429, schneller 504) werden nach 2–5 min wiederholt,
+  `Retry-After` wird beachtet; höchstens 6 Wiederholungen je Lauf.
+- Eine Antwort mit `remark` (abgeschnitten) gilt als fehlgeschlagen.
+- Nach einer fehlgeschlagenen Kachel schreiben `ausflug-bw` und `poi-bw` nur
+  Gemeinden, die ganz in erfolgreichen Kacheln liegen; ein Rückgang um mehr
+  als 80 % (ab 20) wird nicht geschrieben. Die übrigen behalten ihren Stand.
+- `ausflug-bw` schreibt die Anzahl je Art (`counts`); die Kommunenseite zeigt
+  die Aufschlüsselung ungekappt und „25 von 1.599“ in Titel und Legende.
+- `rathaus-bw`, `ausflug-bw`, `poi-bw`: kein Lauf mehr beim Dienststart
+  (`fireOnStart: false`), nur sonntags per Cron oder von Hand.
+- Log je fehlgeschlagener Kachel mit Status, Dauer und Textanfang der Antwort.
+
 ## Unveröffentlicht — Seitenadressen, Cache, Pegel
 
 > **Upgrade:** Ladestationen und Carsharing-Flotten tragen den Slug in der

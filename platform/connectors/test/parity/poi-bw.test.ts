@@ -20,20 +20,27 @@
  * not the length of the capped list — {@link withTrueTotals} applies it to the
  * old node's entities before the comparison — and an OSM object in two tile
  * answers is taken once ({@link repeatedObjectsAreTakenOnce}; the recording
- * has none).
+ * has none). The tiles declare `[timeout:60][maxsize:128 MiB]` instead of
+ * `[timeout:90]` ({@link requestsAreIdentical} compares the rest byte for
+ * byte), refused tiles are retried, and the write guards keep the
+ * municipalities a failed tile touches and refuse a drop of `totalCount` by
+ * more than 80 % ({@link guardsKeepWhatAFailedTileTouches}).
  *
  * Fixture: test/fixtures/poi-bw.json (see its note), against
  * test/fixtures/grenzen-bw.json.
  */
 
 import assert from "node:assert/strict";
-import { build, kindOf, parse, QUERIES, run } from "../../src/connectors/poi-bw.js";
+import { build, kindOf, MAXSIZE_BYTES, parse, QUERIES, run } from "../../src/connectors/poi-bw.js";
 import {
+  OVERPASS_HOST,
   OVERPASS_MAX_BYTES,
   OVERPASS_MAX_CONCURRENT,
   OVERPASS_MIN_INTERVAL_MS,
   OVERPASS_TIMEOUT_MS,
   OVERPASS_USER_AGENT,
+  plainResponse,
+  touches,
   wrapPart,
 } from "../../src/connectors/overpass.js";
 import type { RawPart } from "../../src/connectors/overpass.js";
@@ -88,7 +95,7 @@ async function bothSides(bodies: readonly unknown[]): Promise<{ legacy: Function
       msg: { _msgid: "parity", kind, statusCode: 200, payload: structuredClone(body) },
     });
     joined.push(isRecord(wrap.returned) ? wrap.returned.payload : undefined);
-    parts.push(wrapPart(kind, { status: 200, body, detail: "" }));
+    parts.push(wrapPart(kind, plainResponse(200, body)));
   }
   assert.deepEqual(normalize(parts), normalize(joined), "wrapped parts differ");
   const legacy = await runFunctionNode(BUILD_NODE, {
@@ -115,12 +122,20 @@ async function requestsAreIdentical(): Promise<void> {
   const returned: unknown = Array.isArray(run.returned) ? run.returned[0] : undefined;
   assert.ok(Array.isArray(returned));
   const legacy = returned.map((msg: unknown) => (isRecord(msg) ? [msg.kind, msg.url, msg.headers] : null));
+  // DELIBERATE DEVIATION: the settings `[timeout:60][maxsize:128 MiB]`
+  // instead of `[timeout:90]`; the boxes, the selector and the rest byte for byte.
+  assert.equal(MAXSIZE_BYTES, 134_217_728);
+  const settings = (url: string): string =>
+    url.replace(encodeURIComponent("[timeout:60][maxsize:134217728]"), encodeURIComponent("[timeout:90]"));
   assert.deepEqual(
     normalize(legacy),
-    QUERIES.map((query) => [query.kind, query.url, { "User-Agent": OVERPASS_USER_AGENT }]),
+    QUERIES.map((query) => [query.kind, settings(query.url), { "User-Agent": OVERPASS_USER_AGENT }]),
     "tile URLs differ",
   );
   assert.equal(QUERIES.length, 12);
+  for (const query of QUERIES) {
+    assert.ok(query.url.includes(encodeURIComponent(`[bbox:${query.box.join(",")}]`)), query.kind);
+  }
 }
 
 async function fixtureEntitiesAreIdentical(): Promise<void> {
@@ -255,7 +270,12 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   });
   assert.deepEqual(rig.upsertSizes(), emittedChunkSizes(legacy));
   assertClockStamps(emittedEntities(legacy), rig.upserted(), { legacy: legacyWindow, ported: portWindow });
-  assert.deepEqual(rig.log.warnings(), ["Overpass K5: empty or failed (overpass-api.de: request failed)"]);
+  // No response at all is not retried; the failed tile lies far from Weil am Rhein.
+  assert.equal(rig.log.warnings().length, 1);
+  assert.match(
+    rig.log.warnings()[0] ?? "",
+    /^Overpass K5: failed — overpass-api\.de: request failed after \d+\.\d s$/,
+  );
   assert.deepEqual(
     rig.overpass().map((request) => request.url),
     QUERIES.map((query) => query.url),
@@ -263,14 +283,94 @@ async function runUpsertsWhatTheOldFlowSent(): Promise<void> {
   assert.equal(rig.maxInFlight(), 1, "Overpass requests overlapped");
   for (const request of rig.overpass()) {
     assert.deepEqual(normalize(request.options), {
+      bucket: null,
       maxBytes: OVERPASS_MAX_BYTES,
-      maxConcurrent: OVERPASS_MAX_CONCURRENT,
-      minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
       retries: 0,
       timeoutMs: OVERPASS_TIMEOUT_MS,
       userAgent: OVERPASS_USER_AGENT,
     });
   }
+  assert.deepEqual(
+    rig.acquired,
+    QUERIES.map(() => ({
+      host: OVERPASS_HOST,
+      minIntervalMs: OVERPASS_MIN_INTERVAL_MS,
+      maxConcurrent: OVERPASS_MAX_CONCURRENT,
+      signal: true,
+    })),
+  );
+}
+
+/** A point of `ags` in the fixture boundaries, found on a grid over its bounding box. */
+function pointIn(ags: string): readonly [lat: number, lon: number] {
+  const geo = fixtureGeo();
+  const entry = boundaryFixture().boundaries[ags];
+  assert.ok(entry !== undefined);
+  const [west, south, east, north] = entry.b;
+  for (let i = 1; i < 20; i += 1) {
+    for (let j = 1; j < 20; j += 1) {
+      const lat = south + ((north - south) * i) / 20;
+      const lon = west + ((east - west) * j) / 20;
+      if (geo.agsAt(lat, lon) === ags) return [lat, lon];
+    }
+  }
+  throw new Error(`no point found in ${ags}`);
+}
+
+async function guardsKeepWhatAFailedTileTouches(): Promise<void> {
+  // A modified copy, not fixture data: 30 playgrounds in a municipality that
+  // straddles 8.2°, the border of K1 and K2. K1 answers with them and the
+  // recording; K2 fails with a remark.
+  const border = "08315031";
+  const [lat, lon] = pointIn(border);
+  const playgrounds = Array.from({ length: 30 }, (_, i) => ({
+    type: "node",
+    id: 9_000_000_000 + i,
+    lat: lat + i * 0.00001,
+    lon,
+    tags: { leisure: "playground" },
+  }));
+  const k2 = QUERIES[1];
+  assert.ok(k2 !== undefined && touches(boundaryFixture().boundaries[border]?.b ?? [0, 0, 0, 0], k2.box));
+  const elements = [...fixtureElements(), ...playgrounds];
+  const answer = (index: number): ReturnType<typeof overpassAnswer> => {
+    if (index === 0) return overpassAnswer({ elements });
+    if (index === 1) return overpassAnswer({ elements: [], remark: "runtime error: Query timed out" });
+    return overpassAnswer({ elements: [] });
+  };
+  const rig = overpassRig("poi-bw", (_url, index) => answer(index));
+  await run(rig.ctx);
+  const ids = (entities: readonly unknown[]): unknown[] =>
+    entities.map((entity) => (isRecord(entity) ? entity.id : null));
+  assert.deepEqual(ids(rig.upserted()), [`urn:ngsi-ld:PublicAmenity:bw-${WEIL}`]);
+  assert.ok(
+    rig.log
+      .warnings()
+      .includes(
+        "Overpass amenities: 1 of 2 municipalities not written — they touch the failed tiles K2; previous values kept",
+      ),
+    rig.log.warnings().join("\n"),
+  );
+
+  // Every tile answered, but Weil am Rhein had 500: a fall to 84 is refused,
+  // the border municipality (no previous value) is written.
+  const previous = [{ id: `urn:ngsi-ld:PublicAmenity:bw-${WEIL}`, type: "PublicAmenity", totalCount: 500 }];
+  const whole = overpassRig(
+    "poi-bw",
+    (_url, index) => (index === 1 ? overpassAnswer({ elements: [] }) : answer(index)),
+    { stored: { PublicAmenity: previous } },
+  );
+  await run(whole.ctx);
+  assert.deepEqual(ids(whole.upserted()), [`urn:ngsi-ld:PublicAmenity:bw-${border}`]);
+  assert.ok(
+    whole.log
+      .warnings()
+      .includes(
+        `Overpass amenities: 1 municipality not written — count fell by more than 80 % (${WEIL}: 500 → 84); ` +
+          "previous values kept",
+      ),
+    whole.log.warnings().join("\n"),
+  );
 }
 
 async function nothingUsableWarns(): Promise<void> {
@@ -281,9 +381,13 @@ async function nothingUsableWarns(): Promise<void> {
   const rig = overpassRig("poi-bw", () => httpResponse(504, "busy"));
   await run(rig.ctx);
   const warnings = rig.log.warnings();
-  assert.equal(warnings.length, 13);
+  assert.equal(warnings.length, 4, warnings.join("\n"));
+  assert.match(warnings[2] ?? "", /^Overpass K3,K4,.*,K12: not requested/);
   assert.equal(warnings.at(-1), "Overpass amenities: no entities (Overpass possibly overloaded)");
   assert.equal(rig.upserted().length, 0);
+  // The run's six retries (fast 504s) on K1 and K2, then the run gives up.
+  assert.equal(rig.overpass().length, 2 * 4);
+  assert.equal(rig.pauses.length, 6);
 }
 
 async function repeatedObjectsAreTakenOnce(): Promise<void> {
@@ -316,11 +420,12 @@ async function repeatedObjectsAreTakenOnce(): Promise<void> {
 
 export {
   repeatedObjectsAreTakenOnce as "poi-bw: an OSM object in two tile answers is counted and listed once (deliberate)",
-  requestsAreIdentical as "poi-bw: the twelve tile URLs and the User-Agent are those of the old request node",
+  requestsAreIdentical as "poi-bw: the twelve tile URLs and the User-Agent are those of the old request node, with timeout 60 and maxsize 128 MiB (deliberate)",
+  guardsKeepWhatAFailedTileTouches as "poi-bw: a failed tile keeps the municipalities it touches, a totalCount drop of more than 80 % is not written (deliberate)",
   fixtureEntitiesAreIdentical as "poi-bw: old FN_POI_BUILD and ported build() agree, round-robin cap of 50 on real data, totalCount uncapped (deliberate)",
   twoMunicipalitiesKeepTheOldOrder as "poi-bw: two municipalities (a modified copy) keep the old order and caps",
   kindRulesAreIdentical as "poi-bw: recycling variants, defibrillators, named-first and the name cut as in the old node",
   kindOfCoversEveryBranch as "poi-bw: kindOf covers every branch of the old artOf",
   runUpsertsWhatTheOldFlowSent as "poi-bw: run() upserts what the old flow sent, twelve tiles strictly serialised and paced",
-  nothingUsableWarns as "poi-bw: no usable tile — warned per tile and once for the run, nothing written",
+  nothingUsableWarns as "poi-bw: no usable tile — six retries, warned per tile and once for the run, nothing written",
 };

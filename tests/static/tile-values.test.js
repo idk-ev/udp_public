@@ -186,6 +186,35 @@ exports["stadt.html: Versorgung and Ausflugsziele show the uncapped totals"] = a
   w.close();
 };
 
+exports["stadt.html: Ausflugsziele break down by the uncapped counts and read \"25 von 1.599\" when capped"] = async () => {
+  if (!JSDOM) return;
+  const ID = "urn:ngsi-ld:TouristDestination:bw-" + AGS;
+  const ziele = Array.from({ length: 25 }, (_, i) => [`Ziel ${i}`, i < 20 ? "Museum" : "Aussichtspunkt", 48.49 + i * 1e-4, 9.21]);
+  // With counts (ausflug-bw since the Overpass fix): breakdown, title and legend from the uncapped numbers.
+  const capped = await renderStadt(base({ entities: { [ID]: { id: ID, type: "TouristDestination",
+    ziele: P(ziele), zielCount: P(1599), counts: P({ Ziel: 1200, Museum: 230, "Burg/Schloss": 100, Aussichtspunkt: 69 }) } } }));
+  const t = tileOf(capped.d, "Ausflugsziele");
+  assert.strictEqual(t.value, "1.599");
+  assert.strictEqual(t.hint, "1.200× Ziel · 230× Museum · 100× Burg/Schloss");
+  assert.match(capped.d.getElementById("map-legend").textContent, /Ausflugsziele \(25 von 1\.599\)/);
+  capped.w.SC.openDetailByKey("ausflug");
+  assert.strictEqual(capped.d.getElementById("sc-modal-title").textContent, "Ausflugsziele (25 von 1.599)");
+  assert.match(capped.d.getElementById("sc-modal-explain").textContent,
+    /^Benannte Ausflugsziele laut OpenStreetMap \(ODbL\): 1\.200× Ziel, 230× Museum, 100× Burg\/Schloss, 69× Aussichtspunkt\. Auf Karte und Liste: 25 von 1\.599\.$/);
+  capped.w.close();
+
+  // An entity written before counts existed, not capped: the list as before, plain numbers.
+  const few = ziele.slice(0, 3);
+  const plain = await renderStadt(base({ entities: { [ID]: { id: ID, type: "TouristDestination",
+    ziele: P(few), zielCount: P(3) } } }));
+  assert.strictEqual(tileOf(plain.d, "Ausflugsziele").value, "3");
+  assert.strictEqual(tileOf(plain.d, "Ausflugsziele").hint, "3× Museum");
+  assert.match(plain.d.getElementById("map-legend").textContent, /Ausflugsziele \(3\)/);
+  plain.w.SC.openDetailByKey("ausflug");
+  assert.strictEqual(plain.d.getElementById("sc-modal-title").textContent, "Ausflugsziele (3)");
+  plain.w.close();
+};
+
 /* ---------- Hitze (E3, A7) ---------- */
 
 const heat = (name, lon, lat, today, tomorrow) => ({ id: "urn:ngsi-ld:HeatHealthWarning:bw-" + name, type: "HeatHealthWarning",

@@ -268,7 +268,7 @@ Stand: 26 Entitätstypen, 121 Attributnamen.
 | `PublicTransportStop` | efa-abfahrten | `ags`, `avgDelayMinutes`, `dataProvider`, `dateObserved`, `delayDataQuality`, `departureCount`, `departures`, `location`, `name`, `stopCode` |
 | `RoadWork` | baustellen-bw | `activeCount`, `ags`, `dateObserved`, `endDate`, `gemeindeName`, `location`, `name` |
 | `SharingSummary` | sharing-bw | `ags`, `availableVehicles`, `system`, `vehiclePositions`, `vehiclesByFormFactor` |
-| `TouristDestination` | ausflug-bw | `ags`, `dataProvider`, `dateObserved`, `zielCount`, `ziele` |
+| `TouristDestination` | ausflug-bw | `ags`, `counts`, `dataProvider`, `dateObserved`, `zielCount`, `ziele` |
 | `TrafficFlowObserved` | eco-bw | `ags`, `dailyTotal`, `dateObserved`, `location`, `name`, `siteCount`, `vehicleType` |
 | `WaterLevelObserved` | pegel-bw (pegel-lubw abgeschaltet) | `ags`, `dataProvider`, `dateObserved`, `discharge`, `floodLevels`, `gemeindeName`, `level`, `levelState`, `location`, `meanLevel`, `meanLowLevel`, `measuredAt`, `name`, `water` |
 | `WeatherForecast` | vorhersage-bw | `ags`, `apparentTemperature`, `dataProvider`, `dateObserved`, `days`, `sunrise`, `sunset`, `tomorrowPrecipitation`, `tomorrowTempMax`, `tomorrowTempMin`, `uvIndex` |
