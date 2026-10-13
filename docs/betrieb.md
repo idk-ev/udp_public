@@ -798,6 +798,12 @@ Beispielfluss (s. unten; Geschichte der Ablösung:
   löscht die Zusammenfassung einer Gemeinde, sobald ein System dort kein
   Fahrzeug mehr meldet (statt sie mit 0 zu schreiben), aber nur bei einem
   Feed mit Fahrzeugen — ein gescheiterter oder leerer Feed löscht nichts.
+  Die DWD-Stationen (`wetter-dwd-station`) haben einen eigenen Prune
+  (Label „DWD stations“, nur `WeatherObserved:bw-dwd-*`): Eine Station, die
+  7 Tage nicht geschrieben wurde (aus der Quellliste verschwunden oder ohne
+  aktuellen Messwert), wird gelöscht; als „kürzlich“ unter dem Deckel zählt
+  hier bis 14 Tage. Er läuft nicht nach einem Lauf, in dem die Hälfte der
+  Stationsabfragen scheiterte.
   Beide löschen außerdem, was per `excludeSystems` ausgeschlossene Systeme
   geschrieben haben. Diese gezielten Löschungen laufen am Deckel vorbei und
   zählen nicht als Verlust.
@@ -947,6 +953,18 @@ zielten nur auf den kleineren Teil des Volumens:
    Messwerte Index und Schadstoffe), die vorher stündlich voll geschrieben
    wurden. Ihr `dateObserved` ist die Messstunde, nicht der Abrufzeitpunkt;
    hat das UBA noch keine neue Stunde veröffentlicht, bleibt es unverändert.
+   Ebenso die amtlichen DWD-Stationen (`wetter-dwd-station`; Stammdaten Name,
+   Stations-Id, Anbieter, Lage, AGS/Gemeinde; Messwerte Temperatur, Feuchte,
+   Luftdruck, Wind, Niederschlag): `dateObserved` und `observedAt` sind der
+   Beobachtungszeitpunkt von Bright Sky, nicht der Abruf. Meldet eine
+   Station einen Wert nicht mehr, löscht der Dienst das Attribut
+   (`DELETE …/attrs/<attr>`), statt den alten Wert neben einem frischen
+   `dateObserved` stehen zu lassen. Beim ersten Lauf (leere Tabellen) liest er
+   die Messwerte einmal aus dem Broker, findet so auch Altlasten und schreibt
+   jede Station einmal voll (~184 Stationen × ~13 Zeilen). Die Stationsnamen
+   kommen aus den Stationsbeschreibungen des DWD (Open-Data-Server, CDC;
+   höchstens wöchentlich geladen, im Konnektorzustand gespeichert), sonst wie
+   bisher von Bright Sky.
    Einmal je Woche geht jede dieser Entitäten trotzdem voll heraus: Fehlt
    sie im Broker (gelöscht, Wiederherstellung), entstünde sonst aus den
    Teilschreibvorgängen ein Gerippe ohne Name und Lage.

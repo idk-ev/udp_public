@@ -2,6 +2,21 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — DWD-Stationen
+
+> **Upgrade:** `wetter-dwd-station` schreibt beim ersten Lauf jede Station
+> einmal voll und löscht Messwerte, die eine Station nicht mehr meldet.
+
+- `wetter-dwd-station`: Messzeit statt Abrufzeit (`dateObserved`,
+  `observedAt` aus Bright Sky), geteiltes Änderungsgate statt Vollschrieb je
+  Stunde (weniger TRoE-Zeilen), nicht mehr gemeldete Werte werden gelöscht,
+  Stationen ohne Meldung seit 7 Tagen per Prune entfernt.
+- Amtliche Stationsnamen aus den DWD-Stationsbeschreibungen („Renningen-Ihinger
+  Hof“ statt „Renng. Ihinger-Hof“, „Bad Mergentheim“ statt „Mergentheim, Bad“).
+- Stadt-Dashboard: Temperaturvergleich und Luftfeuchte nehmen je Wert die
+  nächstgelegene Station mit aktuellem Messwert (≤ 3 h), sonst die nächste mit
+  „Stand: …“.
+
 ## 1.5.2 — UBA-Luftindex, Carsharing-Karte, Sharing-Prune
 
 > **Upgrade bestehender Installationen:**

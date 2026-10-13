@@ -266,8 +266,11 @@ exports["stadt.html: Hitze beyond 50 km stays, marked regional with the distance
 
 exports["stadt.html: humidity, cycling, warnings, pollen and ÖPNV values"] = async () => {
   if (!JSDOM) return;
+  // Deliberate deviation (DWD stations, 2026-10): a station counts as current
+  // only with a stamp of at most 3 h; without one the hint carries the stand.
   const station = { id: "urn:ngsi-ld:WeatherObserved:bw-dwd-04160", type: "WeatherObserved", stationName: P("Metzingen"),
-    temperature: P(13), relativeHumidity: P(0.62), location: P({ type: "Point", coordinates: [9.28, 48.53] }) };
+    temperature: P(13), relativeHumidity: P(0.62), dateObserved: P({ "@type": "DateTime", "@value": nowIso() }),
+    location: P({ type: "Point", coordinates: [9.28, 48.53] }) };
   const radSum = { id: "urn:ngsi-ld:TrafficFlowObserved:bw-" + AGS + "-summary", type: "TrafficFlowObserved", ags: P(AGS),
     dailyTotal: P(1234), siteCount: P(2), dateObserved: P({ "@type": "DateTime", "@value": "2026-09-28T00:00:00Z" }) };
   const pollen = { id: "urn:ngsi-ld:PollenForecast:bw-region-112", type: "PollenForecast", name: P("Hohenlohe"),
@@ -288,6 +291,60 @@ exports["stadt.html: humidity, cycling, warnings, pollen and ÖPNV values"] = as
   const oe = tileOf(d, "ÖPNV");
   assert.strictEqual(oe.value, berlinClock(5) + " · 7", "the query limit instead of the next departure");
   assert.strictEqual(oe.hint, "→ Hauptbahnhof · Reutlingen ZOB");
+  w.close();
+};
+
+/* ---------- DWD stations: nearest CURRENT station per value ---------- */
+
+const hoursAgo = h => new Date(Date.now() - h * 3600e3).toISOString();
+// The detail chart loads its series asynchronously; closing the window before
+// it is drawn would let the draw run against a closed document.
+const chartDrawn = async d => {
+  const t0 = Date.now();
+  const wrap = () => d.querySelector("#sc-modal-body .m-chartwrap");
+  while (!wrap() || /lädt/.test(wrap().textContent)) {
+    if (Date.now() - t0 > 5000) throw new Error("detail chart not drawn");
+    await new Promise(r => setTimeout(r, 20));
+  }
+};
+const dwdStation = (id, name, lon, lat, stampedHoursAgo, values) => ({
+  id: "urn:ngsi-ld:WeatherObserved:bw-dwd-" + id, type: "WeatherObserved", stationName: P(name),
+  ...(values.t != null ? { temperature: P(values.t, { observedAt: hoursAgo(stampedHoursAgo) }) } : {}),
+  ...(values.h != null ? { relativeHumidity: P(values.h, { observedAt: hoursAgo(stampedHoursAgo) }) } : {}),
+  dateObserved: P({ "@type": "DateTime", "@value": hoursAgo(stampedHoursAgo) }),
+  location: P({ type: "Point", coordinates: [lon, lat] }) });
+
+exports["stadt.html: DWD temperature and humidity come from the nearest current station, each on its own"] = async () => {
+  if (!JSDOM) return;
+  // Nearest: 5 h old. Next: current, temperature only. Farthest: current with humidity.
+  const { w, d } = await renderStadt(base({ types: { WeatherObserved: [
+    dwdStation("00001", "Nah Alt", 9.24, 48.5, 5, { t: 9, h: 0.9 }),
+    dwdStation("00002", "Mitte Ohne Feuchte", 9.1, 48.5, 0.5, { t: 12 }),
+    dwdStation("00003", "Weit Aktuell", 9.0, 48.6, 1, { t: 11, h: 0.55 }),
+  ] } }));
+  const hum = tileOf(d, "Luftfeuchte");
+  assert.strictEqual(hum.value.replace(/\s/g, ""), "55%");
+  assert.match(hum.hint, /^Weit Aktuell · \d+,\d km entfernt$/, "a stale or farther-off station chosen, or marked");
+  w.SC.openDetailByKey("temperatur");
+  assert.match(d.getElementById("sc-modal-explain").textContent, /DWD-Stationsmessung \(Mitte Ohne Feuchte, \d+,\d km entfernt\)/);
+  assert.doesNotMatch(d.getElementById("sc-modal-explain").textContent, /DWD-Station Stand/);
+  await chartDrawn(d);
+  w.close();
+};
+
+exports["stadt.html: without a current DWD station the nearest one is shown with its stand"] = async () => {
+  if (!JSDOM) return;
+  const { w, d } = await renderStadt(base({ types: { WeatherObserved: [
+    dwdStation("00001", "Nah <b>Alt</b>", 9.24, 48.5, 5, { t: 9, h: 0.9 }),
+    dwdStation("00003", "Weit Alt", 9.0, 48.6, 4, { t: 11, h: 0.55 }),
+  ] } }));
+  const hum = tileOf(d, "Luftfeuchte");
+  assert.strictEqual(hum.value.replace(/\s/g, ""), "90%");
+  assert.match(hum.hint, /^Nah <b>Alt<\/b> · \d+,\d km entfernt · Stand: \d{2}\.\d{2}\. \d{2}:\d{2}$/);
+  assert(!hum.el.querySelector(".hint b"), "the station name is not escaped");
+  w.SC.openDetailByKey("temperatur");
+  assert.match(d.getElementById("sc-modal-explain").textContent, / DWD-Station Stand: \d{2}\.\d{2}\. \d{2}:\d{2}\.$/);
+  await chartDrawn(d);
   w.close();
 };
 

@@ -274,6 +274,11 @@ const stringListMapCodec: StateCodec<Map<string, readonly string[]>> = {
   decode: (raw) => decodePairs(raw, stringList),
 };
 
+const stringMapCodec: StateCodec<Map<string, string>> = {
+  encode: (value) => [...value].map(([key, text]) => [key, text]),
+  decode: (raw) => decodePairs(raw, (text) => (typeof text === "string" ? text : undefined)),
+};
+
 /** Codecs for the value shapes persisted connector state actually has. */
 export const persisted = {
   number: numberCodec,
@@ -282,6 +287,8 @@ export const persisted = {
   numberMap: numberMapCodec,
   /** A `Map` of string lists, stored as pairs as well. */
   stringListMap: stringListMapCodec,
+  /** A `Map` of strings, stored as pairs as well. */
+  stringMap: stringMapCodec,
 } as const;
 
 /** A connector state of its own — for tests and for {@link StateStore}. */

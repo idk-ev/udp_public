@@ -368,7 +368,7 @@ class RetryingFetcher implements Fetcher {
         continue;
       }
 
-      const body = await readCapped(url, response, maxBytes, cap, failure);
+      const body = await readCapped(url, response, maxBytes, cap, failure, options?.encoding);
       return { status: response.status, ok: response.ok, headers: headersOf(response), body };
     }
   }
@@ -418,6 +418,7 @@ async function readCapped(
   maxBytes: number,
   cap: AbortController,
   failure: (error: unknown) => FetchError,
+  encoding: "utf-8" | "latin1" = "utf-8",
 ): Promise<string> {
   const announced = Number.parseInt(response.headers.get("content-length") ?? "", 10);
   if (Number.isFinite(announced) && announced > maxBytes) {
@@ -453,6 +454,8 @@ async function readCapped(
     }
     chunks.push(value);
   }
+  // ISO-8859-1 byte for byte (Buffer's latin1 is that, not windows-1252).
+  if (encoding === "latin1") return Buffer.concat(chunks).toString("latin1");
   // As `response.text()`: UTF-8 with replacement characters, a BOM dropped.
   return new TextDecoder("utf-8").decode(Buffer.concat(chunks));
 }
