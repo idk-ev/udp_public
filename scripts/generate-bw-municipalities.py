@@ -141,6 +141,8 @@ def main() -> None:
     # Explicit overrides win over the generated slug and are reserved up front,
     # so no generated slug can take them.
     taken: set[str] = set(SLUG_OVERRIDES.values())
+    if len(taken) != len(SLUG_OVERRIDES) or taken & RESERVED:
+        sys.exit(f"SLUG_OVERRIDES: duplicate or reserved slug {sorted(SLUG_OVERRIDES.values())}")
     for r in rows:
         if r[0] in SLUG_OVERRIDES:
             r.append(SLUG_OVERRIDES[r[0]])

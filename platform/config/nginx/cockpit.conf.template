@@ -320,9 +320,13 @@ server {
     # Umbenannte Kommunen-Slugs (scripts/generate-bw-municipalities.py,
     # SLUG_OVERRIDES): alte Permalinks führen auf die neue Adresse. /malsch
     # ist seitdem die Seite von Malsch (Rhein-Neckar-Kreis), kein Redirect.
+    # Auch mit Schrägstrich am Ende (lieferte vorher ebenfalls die Seite).
     location = /remseck-am-neckar { return 301 /remseck; }
+    location = /remseck-am-neckar/ { return 301 /remseck; }
     location = /malsch-08215 { return 301 /malsch-baden; }
+    location = /malsch-08215/ { return 301 /malsch-baden; }
     location = /malsch-08226 { return 301 /malsch; }
+    location = /malsch-08226/ { return 301 /malsch; }
 
     # Precompressed copies (gui/Dockerfile) exist for gzip_static only, which
     # opens them itself without a location lookup. Requested by name they

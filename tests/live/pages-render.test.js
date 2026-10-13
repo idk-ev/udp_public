@@ -66,6 +66,7 @@ exports["Routing: Permalinks, Redirects, 404"] = async () => {
   assert.strictEqual(await code("/remseck-am-neckar", "/remseck"), 301);
   assert.strictEqual(await code("/malsch-08215", "/malsch-baden"), 301);
   assert.strictEqual(await code("/malsch-08226", "/malsch"), 301);
+  assert.strictEqual(await code("/remseck-am-neckar/", "/remseck"), 301);
   for (const p of ["/remseck", "/malsch-baden", "/malsch"]) assert.strictEqual(await code(p), 200, p);
   assert.strictEqual(await code("/gibtsnicht-xyz"), 404);
   // Slug stubs are revalidated like every other page.

@@ -4,6 +4,10 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
 ## Unveröffentlicht — Seitenadressen, Cache, Pegel
 
+> **Upgrade:** Ladestationen und Carsharing-Flotten tragen den Slug in der
+> Entitäts-ID. In Remseck und beiden Malsch erscheinen sie bis zum Prune (bis
+> 24 h) doppelt; der Verlauf dieser Stationen beginnt unter der neuen ID neu.
+
 - Neue Seitenadressen: `/remseck` (statt `/remseck-am-neckar`), `/malsch-baden`
   (Malsch, Lkr. Karlsruhe, statt `/malsch-08215`) und `/malsch` (Malsch,
   Rhein-Neckar-Kreis, statt `/malsch-08226`); die alten Adressen leiten per 301
