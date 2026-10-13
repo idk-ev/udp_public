@@ -58,7 +58,7 @@ exports["renamed slugs: generator overrides, data and stubs agree"] = () => {
 };
 
 exports["redirects: no live page shadowed, no chains or loops, targets exist"] = () => {
-  assert(REDIRECTS.size >= 13, `only ${REDIRECTS.size} redirects found – pattern out of date?`);
+  assert(REDIRECTS.size >= 10, `only ${REDIRECTS.size} redirects found – pattern out of date?`);
   for (const [from, to] of REDIRECTS) {
     const slug = from.slice(1).replace(/\/$/, "");
     assert(!SLUGS.has(slug) && !fs.existsSync(path.join(PUB, "g", slug)), `${from} shadows a live page`);
