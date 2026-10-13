@@ -317,6 +317,13 @@ server {
     location = /kreis-freiburg-im-breisgau { return 301 /freiburg-im-breisgau; }
     location = /kreis-ulm { return 301 /ulm; }
 
+    # Umbenannte Kommunen-Slugs (scripts/generate-bw-municipalities.py,
+    # SLUG_OVERRIDES): alte Permalinks führen auf die neue Adresse. /malsch
+    # ist seitdem die Seite von Malsch (Rhein-Neckar-Kreis), kein Redirect.
+    location = /remseck-am-neckar { return 301 /remseck; }
+    location = /malsch-08215 { return 301 /malsch-baden; }
+    location = /malsch-08226 { return 301 /malsch; }
+
     # Precompressed copies (gui/Dockerfile) exist for gzip_static only, which
     # opens them itself without a location lookup. Requested by name they
     # would skip the rules of the original: /dashboard.html.gz through
@@ -519,8 +526,12 @@ server {
 
     # Kommunen-Slugs (F2): /reutlingen -> /g/reutlingen/index.html.
     # Unbekannte Pfade sind ein echter 404 (kein Soft-404 auf die SPA mehr).
+    # try_files serves the stub from THIS location (no second lookup), so the
+    # .html location above never applies to /<slug>: revalidate here as well
+    # (expires -1 => Cache-Control: no-cache), like every other page.
     error_page 404 /404.html;
     location / {
+        expires -1;
         try_files $uri $uri/ /g$uri/index.html =404;
     }
 
