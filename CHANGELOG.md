@@ -32,8 +32,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
 - Neue Seitenadressen: `/remseck` (statt `/remseck-am-neckar`), `/malsch-baden`
   (Malsch, Lkr. Karlsruhe, statt `/malsch-08215`) und `/malsch` (Malsch,
-  Rhein-Neckar-Kreis, statt `/malsch-08226`); die alten Adressen leiten per 301
-  um.
+  Rhein-Neckar-Kreis, statt `/malsch-08226`);
 - Kommunen- und Kreisseiten (`/<slug>`) werden wie alle Seiten immer
   revalidiert (`Cache-Control: no-cache`).
 - Während eines Cockpit-Rollouts lädt eine Seite, deren Template und
