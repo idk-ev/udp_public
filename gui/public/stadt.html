@@ -134,6 +134,21 @@
 <script src="/smartcity-lib.js"></script>
 <script>
 "use strict";
+// Rollout guard (start): during a cockpit rollout old and new pods answer side
+// by side, so this template and smartcity-lib.js can come from different
+// builds (a function missing from the old library -> TypeError). Both carry
+// the build marker the image build stamps in (gui/Dockerfile). On a mismatch
+// the page reloads once per marker and tab session (sessionStorage); without
+// storage, or after that one reload, it renders with what it got.
+if ((window.SC || {}).BUILD !== "__UDP_BUILD__") {
+  let reload = false;
+  try {
+    reload = sessionStorage.getItem("udp-build-reload") !== "__UDP_BUILD__";
+    if (reload) sessionStorage.setItem("udp-build-reload", "__UDP_BUILD__");
+  } catch { reload = false; }
+  if (reload) { location.reload(); throw new Error("build mismatch with smartcity-lib.js, reloading"); }
+}
+// Rollout guard (end)
 const { $, css, esc, safeUrl, val, obsTime, staleStand, asArray, asRows, jget, jlist, entity, byAgs, tile, errorTile, failed, grade, sharingSplit, fmtN, fmtDay, pos, popupHtml, groupColor, hist, series, chart, barSvg } = SC;
 
 let GEM = [], BY_AGS = {}, BY_SLUG = {}, CONN = [], DASH = {}, SERVICES = {}, STADT = window.STADT || null;
