@@ -40,6 +40,12 @@ RUN npm ci --no-audit --no-fund --omit=dev
 # ---------------------------------------------------------------- Runtime
 FROM node:22-alpine
 
+# Version floor: 22.23.4 fixes the October 2026 security release (Brotli
+# decoder in fetch(), TLS certificate validation, DNS). A stale cached
+# node:22-alpine fails the build instead of shipping an unpatched runtime.
+RUN node -e 'const [a, b, c] = process.versions.node.split(".").map(Number); \
+  if (a < 22 || (a === 22 && (b < 23 || (b === 23 && c < 4)))) { console.error(`node ${process.version} < 22.23.4`); process.exit(1); }'
+
 ENV NODE_ENV=production \
     TZ=Europe/Berlin
 

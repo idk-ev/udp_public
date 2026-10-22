@@ -155,7 +155,7 @@ eigenständige Container betrieben. Sie sind nicht Teil dieses Repositorys.
 | FROST-Server | `fraunhoferiosb/frost-server:2.7.3` | OGC SensorThings API | LGPL-3.0 | ✅ |
 | Eclipse Mosquitto | `eclipse-mosquitto:2.0` | MQTT-Broker | EPL-2.0 / EDL-1.0 | ✅ |
 | Apache APISIX | `apache/apisix:3.17.0-debian` | API-Gateway | Apache-2.0 | ✅ |
-| Node-RED | `nodered/node-red:4.1` | Low-Code-Datenflüsse (Beispielfluss) | Apache-2.0 | ✅ |
+| Node-RED | `nodered/node-red:4.1.17-22` | Low-Code-Datenflüsse (Beispielfluss) | Apache-2.0 | ✅ |
 | Keycloak | `quay.io/keycloak/keycloak:26.7` | Identität, Rollen, Mandanten | Apache-2.0 | ✅ |
 | Apache Solr | `ckan/ckan-solr:2.10-solr9` | CKAN-Suchindex | Apache-2.0 | ✅ |
 | Valkey | `valkey/valkey:8-alpine` | CKAN-Queues/Sessions | BSD-3-Clause | ✅ |

@@ -250,7 +250,7 @@ services:
   # Ingestion läuft im Konnektordienst, nicht hier. Deploys aus dem Editor
   # schreiben in ./config/nodered/flows.json im Checkout.
   node-red:
-    image: nodered/node-red:4.1
+    image: nodered/node-red:4.1.17-22
     container_name: udp-node-red
     environment:
       TZ: Europe/Berlin

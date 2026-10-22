@@ -939,7 +939,7 @@ Flows mit beliebigem Code. `settings.js` liest die Anmeldung aus
 `.env`, Helm: `nodeRed.adminAuth`); beide leer = offen, nur eines gesetzt =
 Node-RED startet nicht. Hash erzeugen:
 
-    docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw
+    docker run --rm -it --entrypoint node-red nodered/node-red:4.1.17-22 admin hash-pw
 
 (oder `npx node-red-admin hash-pw`). In `.env` den Hash in einfache
 Anführungszeichen setzen, sonst ersetzt Compose seine `$`-Teile.

@@ -715,7 +715,7 @@ settings.js would refuse to start with them anyway.
 {{- fail "nodeRed.adminAuth: username and passwordHash must be set together (or neither)" -}}
 {{- end -}}
 {{- if and $hash (not (regexMatch "^[$]2[aby][$][0-9]{2}[$][./A-Za-z0-9]{53}$" $hash)) -}}
-{{- fail "nodeRed.adminAuth.passwordHash: not a bcrypt hash – generate it with: docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw" -}}
+{{- fail "nodeRed.adminAuth.passwordHash: not a bcrypt hash – generate it with: docker run --rm -it --entrypoint node-red nodered/node-red:4.1.17-22 admin hash-pw" -}}
 {{- end -}}
 {{- if $existing -}}
 {{- $existing -}}

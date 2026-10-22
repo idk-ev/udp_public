@@ -2,6 +2,15 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht — Node.js-Sicherheitsupdate
+
+- Konnektordienst auf Node 22.23.4 (Sicherheitsupdate Oktober 2026, u. a.
+  CVE-2026-111497 im Brotli-Decoder von `fetch()`); der Build bricht mit
+  einem älteren Node ab.
+- Node-RED auf `nodered/node-red:4.1.17-22` gepinnt: `4.1` lief noch auf dem
+  nicht mehr gepflegten Node 20.
+- CI baut das Cockpit mit Node 24 wie `gui/Dockerfile`.
+
 ## Unveröffentlicht — Overpass, Ausflugsziele
 
 > **Upgrade:** Die Overpass-Konnektoren laufen nach einem Deployment nicht mehr
