@@ -2,7 +2,9 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht — Node.js-Sicherheitsupdate
+## 1.5.3 — Node.js-Sicherheitsupdate, DWD-Stationen, Seitenadressen, Overpass
+
+### Node.js-Sicherheitsupdate
 
 - Konnektordienst auf Node 22.23.4 (Sicherheitsupdate Oktober 2026, u. a.
   CVE-2026-111497 im Brotli-Decoder von `fetch()`); der Build bricht mit
@@ -11,7 +13,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   nicht mehr gepflegten Node 20.
 - CI baut das Cockpit mit Node 24 wie `gui/Dockerfile`.
 
-## Unveröffentlicht — Overpass, Ausflugsziele
+### Overpass, Ausflugsziele
 
 > **Upgrade:** Die Overpass-Konnektoren laufen nach einem Deployment nicht mehr
 > von selbst, erst sonntags nachts. Um die Bruchstücke (z. B. Stuttgart mit
@@ -33,7 +35,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   (`fireOnStart: false`), nur sonntags per Cron oder von Hand.
 - Log je fehlgeschlagener Kachel mit Status, Dauer und Textanfang der Antwort.
 
-## Unveröffentlicht — Seitenadressen, Cache, Pegel
+### Seitenadressen, Cache, Pegel
 
 > **Upgrade:** Ladestationen und Carsharing-Flotten tragen den Slug in der
 > Entitäts-ID. In Remseck und beiden Malsch erscheinen sie bis zum Prune (bis
@@ -41,7 +43,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
 - Neue Seitenadressen: `/remseck` (statt `/remseck-am-neckar`), `/malsch-baden`
   (Malsch, Lkr. Karlsruhe, statt `/malsch-08215`) und `/malsch` (Malsch,
-  Rhein-Neckar-Kreis, statt `/malsch-08226`);
+  Rhein-Neckar-Kreis, statt `/malsch-08226`).
 - Kommunen- und Kreisseiten (`/<slug>`) werden wie alle Seiten immer
   revalidiert (`Cache-Control: no-cache`).
 - Während eines Cockpit-Rollouts lädt eine Seite, deren Template und
@@ -50,7 +52,7 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - Kachel „Pegel & Hochwasser“: Hinweis jetzt „Pegelstände und
   Hochwasservorhersage LUBW“.
 
-## Unveröffentlicht — DWD-Stationen
+### DWD-Stationen
 
 > **Upgrade:** `wetter-dwd-station` schreibt beim ersten Lauf jede Station
 > einmal voll und löscht Messwerte, die eine Station nicht mehr meldet.
