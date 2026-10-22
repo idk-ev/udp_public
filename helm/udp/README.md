@@ -114,7 +114,7 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `connectors.enabled` | `true` | Konnektordienst: die Ingestion (eine Replik, `Recreate`); `false` nur zusammen mit `connectors.disableIngestion: true` |
 | `connectors.image` | `udp-connectors` | Image des Konnektordienstes samt Registry |
 | `connectors.hystreetApiToken` / `.hystreetExistingSecret` | `""` | hystreet-Token bzw. vorhandenes Secret (Schlüssel `HYSTREET_API_TOKEN`), genau eines; `nodeRed.hystreet*` wird weiter gelesen |
-| `nodeRed.image` | `nodered/node-red:4.1` | Upstream-Image; Beispielfluss (deaktiviert) und `settings.js` aus der ConfigMap `node-red-config` |
+| `nodeRed.image` | `nodered/node-red:4.1.17-22` | Upstream-Image; Beispielfluss (deaktiviert) und `settings.js` aus der ConfigMap `node-red-config` |
 | `nodeRed.adminAuth` | leer | Anmeldung am Editor (`username` + bcrypt-`passwordHash` oder `existingSecret`); Pflicht, bevor der Editor irgendwo veröffentlicht wird |
 | `connectors.dbHost` / `orionUrl` | `timescale` / `http://orion-ld:1026` | Ziele des Dienstes; DB-Zugang aus dem DB-Secret |
 | `ingress.clusterIssuer` | `letsencrypt` | cert-manager für TLS |

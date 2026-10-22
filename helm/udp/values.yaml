@@ -1053,13 +1053,13 @@ nodeRed:
   # no ingress route, no NetworkPolicy rule – the editor is reached via
   # kubectl port-forward. The example flow ships DISABLED (it would write
   # random values into the broker); enable it in the editor to try it.
-  image: { repository: nodered/node-red, tag: "4.1" }
+  image: { repository: nodered/node-red, tag: "4.1.17-22" }
   # Login for the editor and the admin API (settings.js adminAuth). Empty =
   # no login, as before – acceptable only while the editor stays behind
   # kubectl port-forward. NEVER expose it (ingress, LoadBalancer,
   # networkPolicies.extraFrom.node-red) without a login: a flow runs arbitrary
   # code with the pod's network access. passwordHash is a bcrypt hash:
-  #   docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw
+  #   docker run --rm -it --entrypoint node-red nodered/node-red:4.1.17-22 admin hash-pw
   # Set -> the chart renders the secret udp-node-red-admin.
   adminAuth:
     username: ""

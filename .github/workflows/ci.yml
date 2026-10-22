@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: gui/package-lock.json
       - name: Abhängigkeiten
@@ -56,9 +56,9 @@ jobs:
             || echo "::warning::Generierte Artefakte weichen vom Generator-Stand ab — generate-city-pages.py bzw. export-connector-status.py laufen lassen und committen"
 
   # A separate job instead of extra steps in build-test: the connector service
-  # needs Node 22 (package.json: engines), the cockpit SPA runs on 20. A second
-  # setup-node in the same job would switch the Node version for every step that
-  # follows — that belongs apart.
+  # needs Node 22 (package.json: engines), the cockpit SPA builds on 24
+  # (gui/Dockerfile). A second setup-node in the same job would switch the Node
+  # version for every step that follows — that belongs apart.
   connectors:
     runs-on: ubuntu-latest
     steps:

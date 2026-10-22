@@ -443,7 +443,7 @@ von der GitHub Action **`.github/workflows/build-images.yml`** nach
 >
 > ```bash
 > # bcrypt-Hash erzeugen (fragt das Passwort ab)
-> docker run --rm -it --entrypoint node-red nodered/node-red:4.1 admin hash-pw
+> docker run --rm -it --entrypoint node-red nodered/node-red:4.1.17-22 admin hash-pw
 > ```
 >
 > ```yaml

@@ -26,7 +26,7 @@ itself ("4.1", "4.1@sha256:…") passes.
 {{- $nrTag := toString .Values.nodeRed.image.tag }}
 {{- $nrBase := splitList "@" $nrTag | first }}
 {{- if or (regexMatch "^(main|sha-.*|pr-.*|[0-3][.].*)$" $nrBase) (eq $nrBase .Chart.Version) (eq $nrBase (toString .Chart.AppVersion)) }}
-{{- fail (printf "nodeRed.image.tag: %q looks like a pin of the former own image node-red-udp (main, sha-*, pr-*, the chart version) – Node-RED runs the upstream image %s now. Remove nodeRed.image.tag from your values (default %q) or set an upstream Node-RED tag (4.x)." $nrTag .Values.nodeRed.image.repository "4.1") }}
+{{- fail (printf "nodeRed.image.tag: %q looks like a pin of the former own image node-red-udp (main, sha-*, pr-*, the chart version) – Node-RED runs the upstream image %s now. Remove nodeRed.image.tag from your values (default %q) or set an upstream Node-RED tag (4.x)." $nrTag .Values.nodeRed.image.repository "4.1.17-22") }}
 {{- end }}
 {{- /*
 connectors.enabled=false switches the WHOLE ingestion off – Node-RED ingests
