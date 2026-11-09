@@ -541,6 +541,117 @@ Sie liegt auf einem **eigenen Host** und nie auf dem öffentlichen: Skripte der
 Origin mit der angemeldeten Sitzung. Der öffentliche Betrieb hängt nicht von diesem
 Dienst ab.
 
+### Seite sperren: Anleitung
+
+Für alle, die eine Stadt, Gemeinde oder einen Landkreis auf Anfrage vom Netz nehmen.
+
+1. Anmelden und **Städte** öffnen.
+2. Den Namen suchen und in den Treffern die richtige Seite öffnen. Gleichnamige Orte
+   unterscheidet der Landkreis in der Trefferzeile.
+3. Bei **Seite sperren** den Grund eintragen, zum Beispiel „Anruf der Stadtverwaltung
+   vom 12.11.“. Bitte keine Namen von Personen: Der Grund bleibt dauerhaft im Protokoll.
+4. Den Namen der Seite zur Bestätigung eintippen und **Seite sperren** wählen.
+5. Die Ansicht zeigt zunächst „noch nicht bestätigt“ und prüft alle 15 Sekunden erneut.
+   In der Regel steht nach etwa zwei Minuten dort, dass Stichproben die Sperre bestätigen.
+
+Neun Namen gibt es in Baden-Württemberg zweimal, etwa Altdorf. Bei diesen steht der Landkreis
+dabei und gehört auch zur Bestätigung: „Altdorf (Landkreis Böblingen)“.
+
+Danach ist die Seite nicht mehr erreichbar und verschwindet aus der Kommunen-Suche, den
+Listen des Landkreises und der Sitemap. Besucher sehen neutral „Diese Seite ist nicht
+verfügbar“, ohne Grund und ohne Hinweis auf eine Sperre. Die Daten bleiben über die
+Schnittstelle (`/gateway`) abrufbar und in den Summen des Landkreises enthalten.
+
+**Zurücknehmen:** Die gesperrte Seite in der Übersicht öffnen, unter **Seite freigeben**
+einen Grund eintragen und bestätigen. Das wirkt genauso schnell.
+
+**Übersicht** zeigt alle Sperren mit Grund, Person und Zeit, dazu den Stand:
+
+| Anzeige | Bedeutung |
+|---|---|
+| Wirksam | mehrere Anfragen an die öffentliche Seite wurden wie gewünscht beantwortet; eine Stichprobe, nicht jede einzelne Instanz |
+| Noch nicht bestätigt, Wird veröffentlicht | kurz nach einer Änderung normal; hält es länger als einige Minuten an, den Betrieb informieren |
+| Die letzte Veröffentlichung ist fehlgeschlagen | die Änderung ist gespeichert, das System versucht es jede Minute erneut; hält es an, den Betrieb informieren |
+| Gesperrt (gehalten), Die Datenbank ist älter als der veröffentlichte Stand | die Seite bleibt gesperrt, obwohl die Datenbank sie nicht mehr kennt; eine falsche Sperre lässt sich einzeln freigeben, sonst den Betrieb informieren, s. [Sperren: Betrieb](#sperren-betrieb) |
+| Eine zurückgespielte Datenbank hat diese Sperren wieder in Kraft gesetzt | prüfen, ob sie noch gelten sollen, und bei Bedarf freigeben; der Hinweis endet nach 14 Tagen |
+
+**Protokoll** zeigt, wer wann was getan hat, die Anmeldungen in einer eigenen Ansicht.
+
+### Sperren: Betrieb
+
+Der Dienst hält die Sperren in PostgreSQL (`city_blocks`) und veröffentlicht sie als
+Dateien, die der nginx des Cockpits je Anfrage prüft: im Chart die ConfigMap
+`udp-city-blocks`, als Verzeichnis gemountet, unter Compose das Volume `city-blocks`.
+Der öffentliche Betrieb fragt den Dienst nie: Fällt er aus, bleibt der letzte
+veröffentlichte Stand gültig, auch über einen Neustart des Cockpits. Geht die ConfigMap
+verloren, ist nichts mehr gesperrt und die Übersicht meldet eine fehlgeschlagene
+Veröffentlichung. Der Dienst darf sie nicht selbst anlegen: `helm upgrade` legt sie wieder
+an, und der Dienst füllt sie binnen einer Minute aus der Datenbank.
+
+**Dauer:** Der Dienst schreibt sofort und gleicht jede Minute erneut ab. Bis jeder Pod
+die Datei sieht, vergeht die Synchronisation des Kubelets. Dazu kommt der Dateicache von
+nginx: Eine Freigabe kann bis zu 30 Sekunden länger dauern, eine neue Sperre nicht.
+Gemessen auf einem Testcluster: Sperren 30 bis 70 Sekunden, Freigaben gut 100 Sekunden.
+Unter Compose wirkt eine Sperre sofort, eine Freigabe nach bis zu 30 Sekunden. Geöffnete Seiten und
+Einbettungen merken eine Sperre beim nächsten Auto-Refresh (bis zu 2 Minuten) und
+laden dann neu. Wer die Seite einmal besucht hat, kann offline noch die alte Kopie des
+Service-Workers sehen; ein Besuch einer ihrer Adressen mit Netz räumt alle ab.
+
+Die Kommandozeile bleibt der Notweg, etwa wenn sich niemand anmelden kann:
+
+```bash
+kubectl -n <namespace> exec deploy/admin -- node build-cli/index.js city <befehl>
+```
+
+| Befehl | Wirkung |
+|---|---|
+| `city block <seite> --reason "<text>"` | sperrt die Seite (Slug, AGS oder Kreisschlüssel) |
+| `city unblock <seite> --reason "<text>"` | gibt sie frei, auch eine gehaltene; nur diese eine |
+| `city list` | zeigt Sperren und Stand der Veröffentlichung; Exit-Code 1 bei Fehler oder Rückstand |
+| `city publish` | veröffentlicht sofort |
+| `city publish --accept-database` | lässt die Datenbank gewinnen, s. unten |
+
+Ein Stadtkreis hat keine eigene Seite: `stuttgart`, `kreis-stuttgart` und `08111`
+führen alle zur Stadt Stuttgart. Ein Landkreis (`kreis-reutlingen`) ist eine eigene
+Seite; die Gemeinden darin bleiben davon unberührt. Verlässt ein Schlüssel das Verzeichnis
+(Gemeindefusion), bleibt die Sperre sichtbar und lässt sich über den Schlüssel aufheben.
+Gehört ihr alter Slug inzwischen einer anderen Seite, wirkt sie dort nicht.
+
+**Datenbank zurückgespielt oder leer:** Jede Änderung bekommt in der Datenbank eine
+zufällige Kennung (`city_block_changes`), und die veröffentlichten Dateien nennen die
+Änderung, aus der sie entstanden sind. Fehlt sie der Datenbank, etwa nach einem Restore,
+oder ist sie ganz neu, hebt der Dienst nichts auf, was sie nicht kennt. Es gibt dafür keinen
+Schwellwert: Schon eine einzige verlorene Sperre zählt, denn oft gibt es nur wenige. Und
+weitere Änderungen ändern daran nichts, denn die Datenbank holt zwar den Zähler ein, aber
+nie die Kennung. Die Seiten bleiben gesperrt, neue Sperren gehen weiter hinaus, das Log
+meldet `CITY BLOCKS HELD`, und Übersicht, Suche und `city list` nennen sie. Dasselbe gilt,
+wenn `publication.json` fehlt oder unlesbar ist oder eine Datei `slug-*`/`ags-*` dort nicht
+aufgeführt ist, also auch für von Hand angelegte. Ungültige Einträge der Datei und Dateien
+ohne bekannte Seite fallen weg und werden gemeldet. Auflösen, je nachdem, was stimmt:
+
+- Die Sperre soll bleiben: `city block <seite> --reason "..."` trägt sie wieder ein.
+- Eine gehaltene Sperre ist falsch: in der Oberfläche freigeben oder
+  `city unblock <seite> --reason "..."`. Das hebt genau diese eine auf.
+- Die Datenbank hat recht: `city publish --accept-database` hebt alle aufgeführten
+  Sperren auf und steht im Protokoll.
+
+Umgekehrt setzt eine zurückgespielte Datenbank Sperren wieder in Kraft, die nach dem
+Backup aufgehoben wurden. Das ist die sichere Richtung und bleibt so, wird aber gemeldet:
+im Log (`CITY BLOCKS RESTORED`), im Protokoll und 14 Tage lang in der Übersicht. Eine
+Sperre, die direkt nach dem Restore neu gesetzt wurde, kann in dieser Meldung mit auftauchen.
+
+**Abschalten nimmt alle Sperren zurück:** `admin.enabled: false` entfernt im Chart den
+Mount der ConfigMap aus dem Cockpit. Die Prüfung in nginx bleibt, findet aber keine Dateien
+mehr, also sind nach dem Neustart der Pods **alle Seiten wieder öffentlich**, auch wenn die
+ConfigMap noch existiert. Beim erneuten Einschalten wirken die Sperren wieder. Wer die
+Oberfläche nur vorübergehend abschalten will, stoppt besser den Dienst
+(`kubectl scale deploy/admin --replicas=0`): Die Sperren bleiben dann in Kraft.
+
+**Live-Prüfung:** Der Dienst fragt die Seite mehrmals über den Service des Cockpits ab, je
+über eine neue Verbindung, und bestätigt nur, wenn jede Antwort passt. Das ist eine
+Stichprobe. Sie sagt nichts Sicheres über jede einzelne Instanz, und die Übersicht prüft
+höchstens die 25 neuesten Sperren und nennt die übrigen „Nicht geprüft“.
+
 ### Einschalten
 
 Den Host anlegen (DNS auf den Ingress), dann in den Werten:
@@ -553,7 +664,8 @@ admin:
 
 Das Chart legt die Datenbank `udp_admin`, die Rolle `udp_admin` (Secret
 `timescale-role-udp-admin`, Passwort zufällig) und einen eigenen Ingress mit
-TLS-Zertifikat an. Mit `secrets.create=false` stellt der Betreiber das Secret selbst
+TLS-Zertifikat an, dazu die ConfigMap `udp-city-blocks` samt eigenem ServiceAccount
+`udp-admin`, der nur diese eine ConfigMap lesen und ändern darf. Mit `secrets.create=false` stellt der Betreiber das Secret selbst
 bereit (Typ `kubernetes.io/basic-auth`, Benutzername `udp_admin`). Hinter jedem
 weiteren Proxy `admin.clientAddress.xffDepth` erhöhen, sonst gelten die Sperren je
 Proxy statt je Client. Zu groß gesetzt kann ein Client seine Adresse selbst wählen.

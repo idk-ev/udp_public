@@ -24,6 +24,8 @@
       <nav aria-label="Hauptnavigation">
         {#if !restricted}
           <a href={resolve("/(app)")}>Übersicht</a>
+          <a href={resolve("/(app)/staedte")}>Städte</a>
+          <a href={resolve("/(app)/protokoll")}>Protokoll</a>
         {/if}
         <a href={resolve("/(app)/konto")}>Konto</a>
       </nav>
@@ -63,7 +65,8 @@
   nav {
     display: flex;
     flex: 1;
-    gap: var(--space-4);
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
   }
 
   .session {
@@ -80,6 +83,8 @@
   .content {
     display: grid;
     gap: var(--space-5);
+    /* Not wider than the screen, whatever the content wants. */
+    grid-template-columns: minmax(0, 1fr);
     margin: 0 auto;
     max-width: var(--width-content);
     padding: var(--space-5) var(--space-4);

@@ -1353,6 +1353,9 @@ cockpit:
 # auf dem öffentlichen. Konten gibt es nur über die Kommandozeile im Container
 # (s. docs/betrieb.md), das Chart legt keine an. Braucht den CloudNativePG-Cluster.
 admin:
+  # true -> false nimmt ALLE Sperren öffentlicher Seiten zurück: Das Cockpit verliert
+  # den Mount der ConfigMap udp-city-blocks. Um nur den Dienst anzuhalten, stattdessen
+  # kubectl scale deploy/admin --replicas=0 (s. docs/betrieb.md).
   enabled: false
   # Host der Oberfläche, z. B. "admin.example.org". Pflicht, wenn enabled, und
   # verschieden von ingress.host. Daraus entsteht die öffentliche Adresse

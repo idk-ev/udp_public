@@ -556,6 +556,8 @@ services:
       - ../gui/docker/18-udp-dashboard-auth.envsh:/docker-entrypoint.d/18-udp-dashboard-auth.envsh:ro
       - ./config/nginx/udp-auth:/etc/nginx/udp-auth:ro
       - ../gui/docker/19-udp-public.envsh:/docker-entrypoint.d/19-udp-public.envsh:ro
+      # In der Verwaltungsoberfläche gesperrte Seiten; ohne Profil admin leer.
+      - city-blocks:/etc/nginx/udp-city-blocks:ro
     ports:
       - "${UI_PORT:-3700}:8080"         # UI-Slot gem. PORTS.md
     restart: unless-stopped
@@ -565,6 +567,21 @@ services:
   # Verwaltungsoberfläche (s. docs/betrieb.md): nur mit --profile admin und nur
   # hinter einem eigenen TLS-Proxy, der den Host-Header unverändert weiterreicht.
   # Konten:  docker compose --profile admin exec admin node build-cli/index.js user list
+  # Einmalig: das Volume gehört sonst root, und die Oberfläche läuft als node.
+  admin-volume-init:
+    profiles: [admin]
+    image: udp/admin:local
+    build:
+      context: ..
+      dockerfile: platform/admin/Dockerfile
+    user: "0:0"
+    command: ["chown", "1000:1000", "/var/lib/udp-city-blocks"]
+    volumes:
+      - city-blocks:/var/lib/udp-city-blocks
+    restart: "no"
+    network_mode: none
+    <<: *default-logging
+
   admin:
     profiles: [admin]
     build:
@@ -575,6 +592,10 @@ services:
     depends_on:
       timescale:
         condition: service_healthy
+      admin-volume-init:
+        condition: service_completed_successfully
+    volumes:
+      - city-blocks:/var/lib/udp-city-blocks
     environment:
       ADMIN_PUBLIC_ORIGIN: ${ADMIN_PUBLIC_ORIGIN:-https://admin.example.org}
       ADMIN_DB_HOST: timescale
@@ -586,6 +607,9 @@ services:
       ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-}
       ADDRESS_HEADER: x-forwarded-for
       XFF_DEPTH: "1"
+      ADMIN_CITY_PUBLISHER: directory
+      ADMIN_CITY_PUBLISH_DIR: /var/lib/udp-city-blocks
+      ADMIN_COCKPIT_URL: http://cockpit:8080
     ports:
       - "127.0.0.1:3800:3000"
     healthcheck:
@@ -612,3 +636,4 @@ volumes:
   solr-data:
   geoserver-data:
   backup-data:
+  city-blocks:

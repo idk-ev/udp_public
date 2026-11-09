@@ -433,8 +433,8 @@ property). All components address each other by DNS name, nothing needs them.
 */}}
 {{- define "udp.podSpec" -}}
 {{- $g := .ctx.Values.global -}}
-serviceAccountName: udp
-automountServiceAccountToken: false
+serviceAccountName: {{ .serviceAccount | default "udp" }}
+automountServiceAccountToken: {{ if .serviceAccount }}true{{ else }}false{{ end }}
 enableServiceLinks: false
 {{- with $g.imagePullSecrets }}
 imagePullSecrets:

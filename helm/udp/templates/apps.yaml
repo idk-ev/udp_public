@@ -325,6 +325,13 @@ spec:
               mountPath: /etc/nginx/udp-auth
               readOnly: true
             {{- end }}
+            {{- if .Values.admin.enabled }}
+            # Pages taken offline in the admin panel. A directory, never subPath: the
+            # kubelet keeps it current in the running pod.
+            - name: city-blocks
+              mountPath: /etc/nginx/udp-city-blocks
+              readOnly: true
+            {{- end }}
           resources:
             {{- toYaml .Values.cockpit.resources | nindent 12 }}
           {{- include "udp.probes" .Values.cockpit.probes | nindent 10 }}
@@ -348,6 +355,13 @@ spec:
             {{- if $dashboardAuthOptional }}
             optional: true
             {{- end }}
+        {{- end }}
+        {{- if .Values.admin.enabled }}
+        - name: city-blocks
+          configMap:
+            name: udp-city-blocks
+            # Without it nothing is blocked; the public site starts regardless.
+            optional: true
         {{- end }}
 ---
 apiVersion: v1

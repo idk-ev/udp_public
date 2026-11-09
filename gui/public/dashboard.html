@@ -110,6 +110,8 @@
 <script>
 "use strict";
 const { $, css, esc, jget, jlist, failed, tile, errorTile, grade, barSvg, fmtN, fmtT, asRows } = SC;
+// During a rollout the library can be an older one, without this function.
+const cityBlocks = () => (SC.cityBlocks ? SC.cityBlocks() : Promise.resolve({ isBlocked: () => false }));
 SC.themeSelector("#thememount");
 // Operations data comes through /ops/… of the cockpit nginx, behind the same
 // login as this page: the public /gateway/ serves no PlatformStatus entities,
@@ -122,6 +124,9 @@ const fmtBytes = b => b == null ? "–" : b > 1073741824 ? (b / 1073741824).toFi
 
 /* ---------- Kommunen-Suche (öffnet Dashboards im neuen Fenster, Permalink) ---------- */
 let GEM = [], KREISE = [], KREIS_NAME = {}, shown = [], active = -1;
+// Operators see pages taken offline too, marked as such.
+let BLOCKS = { isBlocked: () => false };
+const blockedMark = slug => BLOCKS.isBlocked(slug) ? " (gesperrt)" : "";
 const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\u00df/g, "ss");
 const openDash = slug => { if (slug) window.open("/" + slug, "_blank", "noopener"); };
 
@@ -150,10 +155,10 @@ function search(term) {
   sug.innerHTML = shown.length
     ? shown.map((it, i) => it.kreis
       ? `<li data-slug="${esc(it.kreis[7])}" data-i="${i}">
-           <span class="nm">${esc(KREIS_NAME[it.kreis[0]] || it.kreis[1])}</span>
+           <span class="nm">${esc((KREIS_NAME[it.kreis[0]] || it.kreis[1]) + blockedMark(it.kreis[7]))}</span>
            <span class="meta">${esc(it.kreis[5])} Gemeinden · ${fmtN(it.kreis[6])} Ew.</span></li>`
       : `<li data-slug="${esc(it.gem[8])}" data-i="${i}">
-           <span class="nm">${esc(it.gem[1])}</span>
+           <span class="nm">${esc(it.gem[1] + blockedMark(it.gem[8]))}</span>
            <span class="meta">${it.gem[5] === "S" ? "Stadt" : it.gem[5] === "F" ? "Gemeindefreies Gebiet" : "Gemeinde"} · ${fmtN(it.gem[6])} Ew.<br>${esc(KREIS_NAME[it.gem[4]] || "Kreis " + it.gem[4])}</span></li>`).join("")
     : `<li class="empty">Keine Kommune gefunden.</li>`;
 }
@@ -176,7 +181,8 @@ $("#sug").addEventListener("click", e => { const li = e.target.closest("li[data-
 document.addEventListener("click", e => { if (!e.target.closest(".search")) { $("#sug").innerHTML = ""; shown = []; } });
 
 async function loadGemeinden() {
-  const g = await jget("/bw-gemeinden.json");
+  const [g, blocks] = await Promise.all([jget("/bw-gemeinden.json"), cityBlocks()]);
+  BLOCKS = blocks;
   GEM = g.gemeinden; KREISE = g.kreise || [];
   KREISE.forEach(k => KREIS_NAME[k[0]] = k[4] === "SK" ? "Stadtkreis " + k[1]
     : /kreis$/i.test(k[1]) ? k[1] : "Landkreis " + k[1]);
@@ -192,8 +198,8 @@ async function loadGemeinden() {
       .map(k => {
         const members = GEM.filter(x => x[4] === k[0]).slice().sort((a, b) => a[1].localeCompare(b[1], "de"));
         return `<optgroup label="${esc(KREIS_NAME[k[0]])} (${members.length} Gem.)">` +
-          (k[4] === "LK" ? `<option value="${esc(k[7])}">→ Kreis-Dashboard ${esc(k[1])}</option>` : "") +
-          members.map(m => `<option value="${esc(m[8])}">${esc(m[1])}${m[5] === "S" ? " (Stadt)" : ""}</option>`).join("") +
+          (k[4] === "LK" ? `<option value="${esc(k[7])}">→ Kreis-Dashboard ${esc(k[1] + blockedMark(k[7]))}</option>` : "") +
+          members.map(m => `<option value="${esc(m[8])}">${esc(m[1])}${m[5] === "S" ? " (Stadt)" : ""}${esc(blockedMark(m[8]))}</option>`).join("") +
           `</optgroup>`;
       }).join("");
   $("#qsel").addEventListener("change", e => {

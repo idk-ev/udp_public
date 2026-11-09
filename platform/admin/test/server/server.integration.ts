@@ -78,6 +78,21 @@ const PROTECTED_PATHS = [
   "/__data.json",
   "/%6Bonto/__data.json",
   "/konto/__data.json?x-sveltekit-invalidated=01",
+  "/staedte",
+  "/staedte/",
+  "/staedte?q=reutlingen",
+  "/staedte/__data.json",
+  "/%73taedte",
+  "/staedte/reutlingen",
+  "/staedte/reutlingen/__data.json",
+  "/staedte/%72eutlingen",
+  "/staedte/reutlingen/",
+  "/staedte/gibt-es-nicht",
+  "/staedte/..%2Fkonto",
+  "/protokoll",
+  "/protokoll/__data.json",
+  "/protokoll?ansicht=anmeldungen",
+  "/%70rotokoll",
   "/(app)/konto",
   "/(app)",
   "/%28app%29/konto",
@@ -92,7 +107,9 @@ describe("anonymous matrix against the built server", () => {
   it.each(PROTECTED_PATHS)("%s does not show a page", async (path) => {
     const answer = await call(path);
     expect(answer.body, path).not.toContain("Passwort ändern");
-    expect(answer.body, path).not.toContain("Städteverwaltung");
+    expect(answer.body, path).not.toContain("Gesperrte Seiten");
+    expect(answer.body, path).not.toContain("Protokoll</h1>");
+    expect(answer.body, path).not.toContain("Seite sperren");
     // A 200 is only ever the JSON redirect for Kit's client, never a page.
     if (answer.status === 200) expect(JSON.parse(answer.body), path).toMatchObject({ type: "redirect", location: "/login" });
     else expect([303, 308, 400, 404, 405], path).toContain(answer.status);
@@ -143,11 +160,20 @@ describe("forced-change matrix against the built server", () => {
     "/(app)",
     "/%28app%29",
     "/robots.txt",
+    "/staedte",
+    "/staedte?q=reutlingen",
+    "/staedte/__data.json",
+    "/staedte/reutlingen",
+    "/staedte/reutlingen/__data.json",
+    "/%73taedte/reutlingen",
+    "/protokoll",
+    "/protokoll/__data.json",
   ];
 
   it.each(CLOSED)("%s leads to the account page", async (path) => {
     const answer = await call(path, { cookie: forcedCookie });
-    expect(answer.body, path).not.toContain("Städteverwaltung");
+    expect(answer.body, path).not.toContain("Gesperrte Seiten");
+    expect(answer.body, path).not.toContain("Seite sperren");
     if (answer.status === 200) {
       expect(JSON.parse(answer.body)).toEqual({ type: "redirect", status: 303, location: "/konto" });
     } else {
@@ -173,7 +199,7 @@ describe("forced-change matrix against the built server", () => {
   it("the normal user reaches the overview, and unknown paths are a real 404", async () => {
     const page = await call("/", { cookie: fullCookie });
     expect(page.status).toBe(200);
-    expect(page.body).toContain("Städteverwaltung");
+    expect(page.body).toContain("Gesperrte Seiten");
     expect((await call("/nicht-da", { cookie: fullCookie })).status).toBe(404);
   });
 });

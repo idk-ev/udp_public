@@ -122,6 +122,8 @@ Live-Dashboard aus offenen Daten — kostenlos, unter
 <script>
 "use strict";
 const { $, esc, jget, fmtN } = SC;
+// During a rollout the library can be an older one, without this function.
+const cityBlocks = () => (SC.cityBlocks ? SC.cityBlocks() : Promise.resolve({ isBlocked: () => false }));
 
 /* ---------- Eingebettete Kommunen-Suche (öffnet das Dashboard per Permalink) ---------- */
 let GEM = [], KREISE = [], KREIS_NAME = {}, shown = [], active = -1;
@@ -214,8 +216,10 @@ document.addEventListener("click", e => { if (!e.target.closest(".search")) setO
 
 (async () => {
   try {
-    const g = await jget("/bw-gemeinden.json");
-    GEM = g.gemeinden; KREISE = g.kreise || [];
+    const [g, blocks] = await Promise.all([jget("/bw-gemeinden.json"), cityBlocks()]);
+    // Pages taken offline are not offered. A Stadtkreis shares its slug with its town.
+    GEM = g.gemeinden.filter(x => !blocks.isBlocked(x[8], x[0]));
+    KREISE = (g.kreise || []).filter(k => !blocks.isBlocked(k[7]));
     KREISE.forEach(k => KREIS_NAME[k[0]] = k[4] === "SK" ? "Stadtkreis " + k[1]
       : /kreis$/i.test(k[1]) ? k[1] : "Landkreis " + k[1]);
     /* Für die aufgeklappte Liste alphabetisch statt nach AGS sortieren. */
@@ -223,6 +227,12 @@ document.addEventListener("click", e => { if (!e.target.closest(".search")) setO
     const lk = KREISE.filter(k => k[4] === "LK").length;
     $("#count").textContent = fmtN(GEM.length) + " Gemeinden und " + lk +
       " Landkreise — aufklappen oder tippen, öffnet das Live-Dashboard.";
+    // The examples in the text: without a link where the page is offline.
+    document.querySelectorAll("main a[href^='/'], body > a[href^='/']").forEach(a => {
+      if (blocks.isBlocked(a.getAttribute("href").slice(1))) a.replaceWith(a.textContent);
+    });
+    const example = document.querySelector("#slug");
+    if (blocks.isBlocked(example.value)) { example.value = (GEM[0] || [])[8] || ""; upd(); }
   } catch (e) {
     $("#count").textContent = "Kommunenliste konnte nicht geladen werden.";
   }

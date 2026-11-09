@@ -16,7 +16,7 @@
    verwirft damit die Caches seines Vorgängers. A "-swN" suffix discards the
    caches between releases when the worker itself changes (here: dropping the
    stored /gateway answers); a release resets it to plain "udp-<version>". */
-const V = "udp-1.5.3";
+const V = "udp-1.5.3-sw1";
 /* "/" is the public start page (nginx serves mitmachen.html there) and the
    offline fallback for pages. /dashboard.html is not part of the shell: it
    sits behind HTTP basic auth (or answers 404), and a single failing URL makes
@@ -37,7 +37,7 @@ self.addEventListener("install", e => {
 const PRIVATE = ["/dashboard.html"];
 const isPrivate = p => PRIVATE.includes(p) || p.startsWith("/ops/");
 /* Live data: neither answered nor stored by the worker. */
-const LIVE = ["/gateway", "/abfahrten", "/warnungen.ics"];
+const LIVE = ["/gateway", "/abfahrten", "/warnungen.ics", "/city-blocks.json"];
 const isLive = p => LIVE.some(x => p === x || p.startsWith(x + "/"));
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys()
@@ -59,6 +59,14 @@ self.addEventListener("fetch", e => {
     if (r.ok && !u.search) {
       const cp = r.clone();
       stored = caches.open(V).then(c => c.put(e.request, cp));
+    }
+    // A page taken offline (admin panel): its offline copies go as well, under every
+    // address of the page. /stadt.html?ags=… has none: queries are never stored.
+    const page = r.status === 410 ? /^\/(?:g\/)?([a-z0-9-]+)/.exec(u.pathname) : null;
+    if (page) {
+      const s = page[1];
+      stored = caches.open(V).then(c => Promise.all(
+        ["/" + s, "/" + s + "/", "/g/" + s, "/g/" + s + "/", "/g/" + s + "/index.html"].map(a => c.delete(a))));
     }
     return r;
   });

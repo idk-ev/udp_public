@@ -4,7 +4,9 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import http from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createPgDb, type Db, type DbConfig } from "#lib/server/db/client.ts";
@@ -33,6 +35,10 @@ export async function freshDb(): Promise<Db> {
 
 export const ORIGIN = "https://admin.test";
 const PORT = 38471;
+/** The stand-in for the cockpit: see startCockpit. */
+export const COCKPIT_PORT = 38472;
+export const CITY_CATALOG = join("..", "..", "gui", "public", "bw-gemeinden.json");
+export const PUBLISH_DIR = mkdtempSync(join(tmpdir(), "udp-city-blocks-"));
 
 export interface Answer {
   status: number;
@@ -47,6 +53,8 @@ export interface Call {
   accept?: string;
   form?: Readonly<Record<string, string>>;
   host?: string;
+  /** Origin of a POST; by default the panel's own. */
+  origin?: string;
 }
 
 /** Raw HTTP, so that the path reaches the server exactly as written here. */
@@ -58,7 +66,7 @@ export function call(path: string, options: Call = {}): Promise<Answer> {
     "X-Forwarded-For": options.xff ?? "192.0.2.1",
     ...(options.accept === undefined ? {} : { Accept: options.accept }),
     ...(options.cookie === undefined ? {} : { Cookie: options.cookie }),
-    ...(method === "POST" ? { Origin: ORIGIN, "Sec-Fetch-Site": "same-origin" } : {}),
+    ...(method === "POST" ? { Origin: options.origin ?? ORIGIN, "Sec-Fetch-Site": "same-origin" } : {}),
     ...(body === undefined
       ? {}
       : { "Content-Type": "application/x-www-form-urlencoded", "Content-Length": String(Buffer.byteLength(body)) }),
@@ -102,6 +110,10 @@ export async function startServer(): Promise<ChildProcess> {
       ADMIN_DB_PASSWORD: DB_CONFIG.password,
       ADDRESS_HEADER: "x-forwarded-for",
       XFF_DEPTH: "1",
+      ADMIN_CITY_CATALOG: CITY_CATALOG,
+      ADMIN_CITY_PUBLISHER: "directory",
+      ADMIN_CITY_PUBLISH_DIR: PUBLISH_DIR,
+      ADMIN_COCKPIT_URL: `http://127.0.0.1:${String(COCKPIT_PORT)}`,
     },
     stdio: ["ignore", "inherit", "inherit"],
   });

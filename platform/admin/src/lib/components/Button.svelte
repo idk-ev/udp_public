@@ -6,7 +6,7 @@
   import type { Snippet } from "svelte";
 
   interface Props {
-    variant?: "primary" | "secondary";
+    variant?: "primary" | "secondary" | "danger";
     children: Snippet;
   }
 
@@ -33,6 +33,15 @@
 
   .primary:hover {
     background: var(--accent-hover);
+  }
+
+  .danger {
+    background: var(--status-serious-solid);
+    color: var(--on-status-serious-solid);
+  }
+
+  .danger:hover {
+    background: var(--status-serious-solid-hover);
   }
 
   .secondary {

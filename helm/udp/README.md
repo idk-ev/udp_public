@@ -139,6 +139,7 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `admin.enabled` | `false` | Verwaltungsoberfläche (eigener Host, eigene Datenbank `udp_admin`, Rolle `udp_admin`), s. `docs/betrieb.md` |
 | `admin.host` | `""` | Host der Oberfläche, z. B. `admin.example.org`; Pflicht mit `admin.enabled`, verschieden von `ingress.host` |
 | `admin.ingress.enabled` / `.className` / `.tls.secretName` / `.annotations` | `true` / `ingress.className` / `udp-admin-tls` / nginx-Weiterleitung auf https | eigener Ingress; `false` bei eigenem TLS-Proxy |
+| ConfigMap `udp-city-blocks` | wird nur mit `admin.enabled` angelegt, ohne Daten und mit `resource-policy: keep` | gesperrte Seiten; schreibt die Oberfläche über den ServiceAccount `udp-admin`, gemountet im Cockpit |
 | `admin.clientAddress.header` / `.xffDepth` | `x-forwarded-for` / `1` | Client-Adresse für die Sperre bei Fehlversuchen; `xffDepth` = Anzahl vertrauenswürdiger Proxys |
 | `global.priorityClassName` / `nodeSelector` / `tolerations` | leer | Scheduling-Vorgaben für alle Pods |
 | `global.imageRegistry` | `""` | Registry-Prefix für Upstream-Images (Mirror) |

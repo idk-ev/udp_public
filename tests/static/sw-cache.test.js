@@ -21,7 +21,7 @@ const SW = fs.readFileSync(path.join(ROOT, "gui/public/sw.js"), "utf8");
    sw.js greift nur auf self/caches/fetch/location/URL zu — als Function-Parameter
    übergeben, verhält sich der Modulrumpf wie im Browser-Worker-Scope. */
 function ladeWorker({ imCache = null, netz = { ok: true } } = {}) {
-  const spur = { geholt: [], abgelegt: [], geoeffnet: [] };
+  const spur = { geholt: [], abgelegt: [], geoeffnet: [], entfernt: [] };
   const antwort = o => Object.assign({ clone: () => Object.assign({}, o, { istKopie: true }) }, o);
   const frisch = antwort(netz);
   const handler = {};
@@ -31,7 +31,7 @@ function ladeWorker({ imCache = null, netz = { ok: true } } = {}) {
     clients: { claim: () => Promise.resolve() },
   };
   const caches_ = {
-    open: name => { spur.geoeffnet.push(name); return Promise.resolve({ put: (rq, rs) => { spur.abgelegt.push([rq.url, rs]); return Promise.resolve(); }, addAll: () => Promise.resolve(), delete: () => Promise.resolve(true) }); },
+    open: name => { spur.geoeffnet.push(name); return Promise.resolve({ put: (rq, rs) => { spur.abgelegt.push([rq.url, rs]); return Promise.resolve(); }, addAll: () => Promise.resolve(), delete: rq => { spur.entfernt.push(rq); return Promise.resolve(true); } }); },
     match: () => Promise.resolve(imCache),
     keys: () => Promise.resolve([]),
     delete: () => Promise.resolve(true),
@@ -173,4 +173,22 @@ exports["Fremde Origins und Schreibzugriffe bleiben unangetastet"] = async () =>
     assert(!beantwortet, `${req.method} ${req.url} wird vom Worker abgefangen`);
   }
   assert.deepStrictEqual(w.spur.geholt, []);
+};
+
+exports["Gesperrte Seite: 410 kommt durch, wird nicht gespeichert und räumt die Offline-Kopie"] = async () => {
+  const worker = ladeWorker({ netz: { ok: false, status: 410 } });
+  const url = "https://udp.example/reutlingen";
+  const r = await anfrage(worker, url, "navigate");
+  assert.strictEqual(r.status, 410, "die 410 muss den Browser erreichen");
+  assert.deepStrictEqual(worker.spur.abgelegt, [], "eine 410 gehört nicht in den Cache");
+  assert.deepStrictEqual(worker.spur.entfernt,
+    ["/reutlingen", "/reutlingen/", "/g/reutlingen", "/g/reutlingen/", "/g/reutlingen/index.html"],
+    "die alten Kopien müssen weg, unter jeder Adresse der Seite");
+};
+
+exports["Liste der gesperrten Seiten: weder beantwortet noch gespeichert"] = async () => {
+  const worker = ladeWorker();
+  const e = { request: { method: "GET", url: "https://udp.example/city-blocks.json", mode: "cors" }, respondWith() { throw new Error("beantwortet"); }, waitUntil() {} };
+  worker.handler.fetch(e);
+  assert.deepStrictEqual(worker.spur.geholt, []);
 };

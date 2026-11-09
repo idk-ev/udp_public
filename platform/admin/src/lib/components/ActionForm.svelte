@@ -7,14 +7,16 @@
   import type { Snippet } from "svelte";
 
   interface Props {
+    /** A named action of the page, "?/name". Empty: the page's default action. */
+    action?: `?/${string}`;
     children: Snippet;
   }
 
-  const { children }: Props = $props();
+  const { action, children }: Props = $props();
 </script>
 
 <!-- Works without JavaScript as a plain POST; use:enhance only keeps the page. -->
-<form method="POST" use:enhance>
+<form method="POST" {action} use:enhance>
   {@render children()}
 </form>
 

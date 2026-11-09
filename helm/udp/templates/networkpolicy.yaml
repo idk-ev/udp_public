@@ -50,6 +50,8 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- $orionWriters = append $orionWriters "connectors" }}
 {{- $cockpitClients = append $cockpitClients "connectors" }}
 {{- end }}
+{{- /* Admin panel: the live check of a block asks the cockpit for one page. */}}
+{{- if .Values.admin.enabled }}{{ $cockpitClients = append $cockpitClients "admin" }}{{ end }}
 {{- if .Values.ckan.enabled }}{{ $timescaleClients = append $timescaleClients "ckan" }}{{ end }}
 {{- /* Object store configured (templates/backup.yaml): the instances – and the
      side cluster "timescale-restore" of scripts/restore-timescale.sh – talk
@@ -373,6 +375,28 @@ spec:
         {{- range $np.apiServerEgress.ports }}
         - { protocol: TCP, port: {{ . }} }
         {{- end }}
+{{- if .Values.admin.enabled }}
+---
+# The admin panel publishes city blocks to a ConfigMap through the Kubernetes API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-admin-apiserver-egress
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "netpol") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: admin
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- toYaml $np.apiServerEgress.to | nindent 8 }}
+      ports:
+        {{- range $np.apiServerEgress.ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}
 {{- if $objectStore }}
 ---
 # The CNPG instances (Barman Cloud sidecar) reach the object storage of

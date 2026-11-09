@@ -34,7 +34,8 @@ ENV NODE_ENV=production \
     TZ=Europe/Berlin \
     HOST=0.0.0.0 \
     PORT=3000 \
-    BODY_SIZE_LIMIT=16K
+    BODY_SIZE_LIMIT=16K \
+    ADMIN_CITY_CATALOG=/app/data/bw-gemeinden.json
 
 WORKDIR /app
 
@@ -42,9 +43,16 @@ COPY --from=build /build/node_modules ./node_modules
 COPY --from=build /build/build        ./build
 COPY --from=build /build/build-cli    ./build-cli
 COPY --from=build /build/package.json ./package.json
+# The municipalities and districts the public pages have: list and image belong
+# together, like the connector registry in the connector image.
+COPY gui/public/bw-gemeinden.json ./data/bw-gemeinden.json
 
-# node:24-alpine ships with the user "node" (UID 1000). The service writes
-# nothing to the file system, so the image runs with readOnlyRootFilesystem.
+# Target of the directory publisher (Compose: a volume shared with the cockpit).
+RUN mkdir -p /var/lib/udp-city-blocks && chown node:node /var/lib/udp-city-blocks
+
+# node:24-alpine ships with the user "node" (UID 1000). Apart from that volume the
+# service writes nothing to the file system, so the image runs with
+# readOnlyRootFilesystem.
 USER node
 
 EXPOSE 3000

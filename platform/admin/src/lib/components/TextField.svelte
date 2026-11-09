@@ -8,13 +8,15 @@
   interface Props {
     label: string;
     name: string;
-    type?: "text" | "password";
+    type?: "text" | "password" | "search";
     autocomplete: FullAutoFill;
     hint?: string;
     value?: string;
+    /** Ordinary language, not a name or code: spell check and capitals stay on. */
+    natural?: boolean;
   }
 
-  const { label, name, type = "text", autocomplete, hint, value = "" }: Props = $props();
+  const { label, name, type = "text", autocomplete, hint, value = "", natural = false }: Props = $props();
   const id = $derived(`field-${name}`);
 </script>
 
@@ -27,8 +29,8 @@
     {autocomplete}
     {value}
     required
-    spellcheck="false"
-    autocapitalize="none"
+    spellcheck={natural}
+    autocapitalize={natural ? "sentences" : "none"}
     aria-describedby={hint === undefined ? undefined : `${id}-hint`}
   />
   {#if hint !== undefined}

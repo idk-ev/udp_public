@@ -77,6 +77,8 @@ if ((window.SC || {}).BUILD !== "__UDP_BUILD__") {
 }
 // Rollout guard (end)
 const { $, css, esc, val, asArray, jget, jlistPaged, entity, tile, errorTile, failed, sharingSplit, fmtN } = SC;
+// During a rollout the library can be an older one, without this function.
+const cityBlocks = () => (SC.cityBlocks ? SC.cityBlocks() : Promise.resolve({ isBlocked: () => false }));
 
 let KREIS = window.KREIS || null, CONN = [];
 
@@ -101,13 +103,15 @@ const byKreis = (type, krs) =>
   jlistPaged(`${SC.GW}/ngsi-ld/v1/entities?type=${type}&q=ags~%3D%5E${krs}&options=keyValues`);
 const sum = (list, attr) => list.reduce((s, e) => s + (Number(e[attr]) || 0), 0);
 
-async function render(krow, members) {
+async function render(krow, allMembers, blocks) {
   const [krs, name, lat, lon, typ, gemCount, ew] = krow;
+  // Pages taken offline leave lists and map; the district's totals below stay.
+  const members = allMembers.filter(g => !blocks.isBlocked(g[8], g[0]));
   const anzeigeName = typ === "SK" ? "Stadtkreis " + name : /kreis$/i.test(name) ? name : "Landkreis " + name;
   document.title = `${anzeigeName} — Live-Dashboard`;
   $("#title").textContent = anzeigeName;
   $("#subtitle").textContent = `${gemCount} ${gemCount === 1 ? "Gemeinde" : "Gemeinden"} · ${fmtN(ew)} Einwohner`;
-  $("#gem-title").textContent = gemCount === 1 ? "Gemeinde" : `Gemeinden (${gemCount})`;
+  $("#gem-title").textContent = members.length === 1 ? "Gemeinde" : `Gemeinden (${members.length})`;
 
   // Entity ids, also for SC.failed(id): a failed query is not "no data".
   const ID = { dwd: "urn:ngsi-ld:Alert:bw-kreis-" + krs + "-dwd", nina: "urn:ngsi-ld:Alert:bw-kreis-" + krs + "-nina",
@@ -237,11 +241,17 @@ async function render(krow, members) {
     // One render at a time: a refresh while a slow render still runs is
     // skipped, so requests and the banner's failure count do not mix.
     let rendering = null;
-    const renderOnce = () => rendering || (rendering = render(krow, members).finally(() => { rendering = null; }));
+    let blocks = await cityBlocks();
+    const renderOnce = () => rendering || (rendering = render(krow, members, blocks).finally(() => { rendering = null; }));
     document.addEventListener("sc-theme-changed", () => { window._layers && renderOnce().catch(() => {}); });
     await renderOnce();
-    // Hidden tabs skip the refresh and catch up once visible again.
-    SC.autoRefresh(renderOnce, 120e3);
+    // Hidden tabs skip the refresh and catch up once visible again. An open tab of a
+    // page taken offline reloads into the 410 (not on the first load, see stadt.html).
+    SC.autoRefresh(async () => {
+      blocks = await cityBlocks();
+      if (blocks.isBlocked(krow[7])) { location.reload(); return; }
+      await renderOnce();
+    }, 120e3);
   } catch (e) {
     const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
   }

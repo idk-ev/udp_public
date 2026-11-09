@@ -24,6 +24,9 @@
   --status-warn-surface: #fdf3e1;
   --status-serious: #b3202c;
   --status-serious-surface: #fdecec;
+  --status-serious-solid: #b3202c;
+  --status-serious-solid-hover: #8f1a23;
+  --on-status-serious-solid: #ffffff;
   --status-good: #0a6b2a;
   --status-good-surface: #e6f6eb;
   --focus-ring: #0066cc;
@@ -75,6 +78,9 @@
     --status-warn-surface: #33260d;
     --status-serious: #ff8a8a;
     --status-serious-surface: #3a1a1c;
+    --status-serious-solid: #ff8a8a;
+    --status-serious-solid-hover: #ffb0b0;
+    --on-status-serious-solid: #2b0a0c;
     --status-good: #3ce378;
     --status-good-surface: #12301d;
     --focus-ring: #80c8ff;

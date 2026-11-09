@@ -18,6 +18,9 @@ export const HEALTH_ROUTES: ReadonlySet<string> = new Set(["/healthz", "/readyz"
 export const PROTECTED_ROUTES: Readonly<Record<string, Permission>> = {
   "/(app)": "overview:view",
   "/(app)/konto": "account:manage-own",
+  "/(app)/staedte": "cities:manage",
+  "/(app)/staedte/[slug]": "cities:manage",
+  "/(app)/protokoll": "audit:read",
   "/logout": "account:manage-own",
 };
 

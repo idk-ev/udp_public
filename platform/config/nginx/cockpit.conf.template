@@ -104,6 +104,25 @@ map $udp_embeddable $udp_frame_ancestors {
     default  "frame-ancestors 'self'";
 }
 
+# Public pages taken offline in the admin panel (platform/admin). It publishes
+# one file per blocked page into /etc/nginx/udp-city-blocks, Helm: the ConfigMap
+# udp-city-blocks, Compose: a shared volume. The pages check for that file: no
+# reload, no request to the panel, and a missing directory means nothing is
+# blocked. Only slugs and keys of this shape can become part of a path. The gate
+# sits in the locations that serve a page, never in the server block: the 410 goes
+# through error_page, an internal redirect runs the server's rewrite rules again
+# and these maps keep their first value (see the note on $udp_ngsild_path below).
+# The default holds a "/": as the end of a file name it can never exist, whatever
+# lies in that directory (an empty value would look for a file named "slug-").
+map $uri $udp_city_slug {
+    "~^/(?:g/)?([a-z0-9-]+)(?:/(?:index\.html)?)?$"  $1;
+    default                                          "/";
+}
+map $arg_ags $udp_city_ags {
+    "~^[0-9]{8}$"  $arg_ags;
+    default        "/";
+}
+
 # Origin for the absolute URLs in /sitemap.xml and /robots.txt (placeholder
 # __PUBLIC_ORIGIN__ in the files): UDP_PUBLIC_ORIGIN if set (Helm always sets
 # it). Else, e.g. under Compose, the request's Host header including the port
@@ -317,6 +336,19 @@ server {
     location = /kreis-freiburg-im-breisgau { return 301 /freiburg-im-breisgau; }
     location = /kreis-ulm { return 301 /ulm; }
 
+    # Addresses of pages exist in lower case only. On a case-insensitive disk (a
+    # Compose bind mount on Windows or macOS) other spellings would find the same
+    # file, past the check for blocked pages. Only for what has the shape of a page
+    # address, without a file extension, and for everything under /g/: hashed assets
+    # such as /assets/index-AbC.js keep their capitals. The template by any other
+    # spelling than the exact location below, too.
+    location ~ "^/(?:[a-zA-Z0-9-]*[A-Z][a-zA-Z0-9-]*/?$|G/|g/.*[A-Z])" {
+        return 404;
+    }
+    location ~* ^/stadt\.html$ {
+        return 404;
+    }
+
     # Precompressed copies (gui/Dockerfile) exist for gzip_static only, which
     # opens them itself without a location lookup. Requested by name they
     # would skip the rules of the original: /dashboard.html.gz through
@@ -401,6 +433,56 @@ server {
         add_header Referrer-Policy strict-origin-when-cross-origin always;
     }
 
+    # A page taken offline in the admin panel (map $udp_city_slug): a neutral page,
+    # never stored, not for search engines. Other sites may frame it where they may
+    # frame the page it replaces: an embed shows this text, not a browser error.
+    error_page 410 /nicht-verfuegbar.html;
+    location = /nicht-verfuegbar.html {
+        internal;
+        add_header Cache-Control "no-store" always;
+        add_header X-Robots-Tag "noindex" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Content-Security-Policy "frame-ancestors ${UDP_FRAME_ANCESTORS}" always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+    }
+    # The list behind it, for the public pages (SC.cityBlocks): which pages are
+    # offline, nothing about why. Nobody has blocked anything yet, or no list is
+    # mounted: an empty one, not an error.
+    location = /city-blocks.json {
+        root /etc/nginx/udp-city-blocks;
+        default_type application/json;
+        expires -1;
+        add_header X-Robots-Tag "noindex" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'self'; sandbox" always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files /city-blocks.json @udp_city_blocks_empty;
+    }
+    location @udp_city_blocks_empty {
+        default_type application/json;
+        expires -1;
+        add_header X-Robots-Tag "noindex" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'self'; sandbox" always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        return 200 '{"version":1,"blocked":[]}\n';
+    }
+    # The template of the municipality pages: without a query it is what every stub
+    # loads and stays open. With ?ags= it renders one municipality by itself.
+    location = /stadt.html {
+        expires -1;
+        if (-f /etc/nginx/udp-city-blocks/ags-$udp_city_ags) { return 410; }
+        try_files $uri =404;
+    }
+    # A slug page by its file name.
+    location ~ ^/g/[^/]+/index\.html$ {
+        expires -1;
+        if (-f /etc/nginx/udp-city-blocks/slug-$udp_city_slug) { return 410; }
+        try_files $uri =404;
+    }
+
     # Statische Assets immer revalidieren (expires -1 => Cache-Control: no-cache):
     # Palette-/Template-Änderungen kommen so ohne Hard-Reload an; ETag greift,
     # und die server-weiten Security-Header bleiben vererbt.
@@ -445,8 +527,11 @@ server {
     # depends on the request's Host header: never stored by shared caches
     # (expires -1 = no-cache), and an unusable Host gets a 400. add_header
     # here drops the server-level headers, so they are repeated.
+    # While pages are blocked, the admin panel publishes a sitemap without them;
+    # otherwise the one from the image.
     location = /sitemap.xml {
         if ($udp_public_origin = "") { return 400; }
+        root /etc/nginx/udp-city-blocks;
         types { } default_type application/xml;
         expires -1;
         sub_filter_types application/xml;
@@ -455,7 +540,20 @@ server {
         add_header X-Content-Type-Options nosniff always;
         add_header X-Frame-Options SAMEORIGIN always;
         add_header Referrer-Policy strict-origin-when-cross-origin always;
-        try_files $uri =404;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'self'; sandbox" always;
+        try_files /sitemap.xml @udp_sitemap_image;
+    }
+    location @udp_sitemap_image {
+        types { } default_type application/xml;
+        expires -1;
+        sub_filter_types application/xml;
+        sub_filter '__PUBLIC_ORIGIN__' $udp_public_origin;
+        sub_filter_once off;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'self'; sandbox" always;
+        try_files /sitemap.xml =404;
     }
     location = /robots.txt {
         if ($udp_public_origin = "") { return 400; }
@@ -525,6 +623,7 @@ server {
     error_page 404 /404.html;
     location / {
         expires -1;
+        if (-f /etc/nginx/udp-city-blocks/slug-$udp_city_slug) { return 410; }
         try_files $uri $uri/ /g$uri/index.html =404;
     }
 

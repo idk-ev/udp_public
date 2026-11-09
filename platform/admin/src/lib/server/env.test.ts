@@ -12,6 +12,10 @@ const VALID = {
   ADMIN_DB_NAME: "udp_admin",
   ADMIN_DB_USER: "udp_admin",
   ADMIN_DB_PASSWORD: "geheim-geheim",
+  ADMIN_CITY_CATALOG: "data/bw-gemeinden.json",
+  ADMIN_CITY_PUBLISHER: "kubernetes",
+  ADMIN_CITY_CONFIGMAP: "udp-city-blocks",
+  ADMIN_COCKPIT_URL: "http://cockpit.udp.svc.cluster.local:8080",
 };
 
 describe("environment", () => {
@@ -40,6 +44,23 @@ describe("environment", () => {
     expect(parseEnv({ ...VALID, ADMIN_PUBLIC_ORIGIN: "http://localhost:8088" }).publicOrigin).toBe(
       "http://localhost:8088",
     );
+  });
+
+  it("wants a known publisher with its setting", () => {
+    expect(parseEnv(VALID).cityPublish).toEqual({ kind: "kubernetes", configMap: "udp-city-blocks" });
+    expect(
+      parseEnv({ ...VALID, ADMIN_CITY_PUBLISHER: "directory", ADMIN_CITY_PUBLISH_DIR: "/data" }).cityPublish,
+    ).toEqual({ kind: "directory", directory: "/data" });
+    expect(() => parseEnv({ ...VALID, ADMIN_CITY_PUBLISHER: "ftp" })).toThrow("ADMIN_CITY_PUBLISHER");
+    expect(() => parseEnv({ ...VALID, ADMIN_CITY_PUBLISHER: "directory" })).toThrow("ADMIN_CITY_PUBLISH_DIR");
+    expect(() => parseEnv({ ...VALID, ADMIN_CITY_PUBLISHER: "" })).toThrow("ADMIN_CITY_PUBLISHER");
+  });
+
+  it("wants the cockpit address without a path or credentials", () => {
+    expect(parseEnv(VALID).cockpitUrl).toBe("http://cockpit.udp.svc.cluster.local:8080");
+    for (const value of ["cockpit:8080", "http://cockpit/x", "http://a:b@cockpit", "ftp://cockpit", ""]) {
+      expect(() => parseEnv({ ...VALID, ADMIN_COCKPIT_URL: value }), value).toThrow("ADMIN_COCKPIT_URL");
+    }
   });
 
   it("rejects a bad port", () => {

@@ -8,12 +8,13 @@ Plattform. Betrieb, Host und Konten: [`docs/betrieb.md`](../../docs/betrieb.md#v
 ```
 src/
 ├── hooks.server.ts          Start (Migrationen) und Anfrage-Wächter
-├── cli/index.ts             Konten: user add|reset-password|disable|enable|list, throttle clear
+├── cli/index.ts             Konten und Notweg: user …, throttle clear, city block|unblock|list|publish
 ├── lib/design/tokens.css    alle Designwerte, an genau einer Stelle
 ├── lib/design/base.css      Element-Vorgaben
 ├── lib/components/          gemeinsame Bausteine
 ├── lib/server/              nur serverseitig (Kit verhindert den Import im Browser)
 │   ├── auth/                Passwörter, Sitzungen, Bremse, Rollen, Konten
+│   ├── cities/              Sperren: Katalog, Suche, Veröffentlichung, Live-Prüfung
 │   ├── db/                  Verbindung, Zeilen-Prüfung, nummerierte SQL-Migrationen
 │   ├── http/                Wächter, Routenliste, Sicherheits-Header, Formulare
 │   └── audit.ts             Protokoll (nur anhängen)

@@ -46,7 +46,8 @@ spec:
       labels:
         {{- include "udp.podLabels" (dict "ctx" . "component" "admin") | nindent 8 }}
     spec:
-      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.admin) | nindent 6 }}
+      {{- /* The one workload with a token: it publishes the city blocks. */}}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.admin "serviceAccount" "udp-admin") | nindent 6 }}
       containers:
         - name: admin
           image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.admin.image) }}
@@ -67,8 +68,13 @@ spec:
             # Read by adapter-node: the client address for login throttling.
             - { name: ADDRESS_HEADER, value: {{ .Values.admin.clientAddress.header | quote }} }
             - { name: XFF_DEPTH, value: {{ $depth | quote }} }
+            # City blocks: published to this ConfigMap, checked at the cockpit.
+            - { name: ADMIN_CITY_PUBLISHER, value: "kubernetes" }
+            - { name: ADMIN_CITY_CONFIGMAP, value: "udp-city-blocks" }
+            - { name: ADMIN_COCKPIT_URL, value: {{ printf "http://cockpit.%s.svc.%s:8080" .Release.Namespace .Values.global.clusterDomain | quote }} }
           ports: [{ name: http, containerPort: 3000 }]
-          # No volume: state lives in PostgreSQL, hence readOnlyRootFilesystem.
+          # No volume: state lives in PostgreSQL and the ConfigMap, hence
+          # readOnlyRootFilesystem.
           resources:
             {{- toYaml .Values.admin.resources | nindent 12 }}
           {{- include "udp.probes" .Values.admin.probes | nindent 10 }}
@@ -83,6 +89,64 @@ spec:
   selector:
     {{- include "udp.selectorLabels" "admin" | nindent 4 }}
   ports: [{ name: http, port: 3000, targetPort: 3000 }]
+---
+# What the cockpit's nginx reads (mounted as a directory, platform/config/nginx/
+# cockpit.conf.template). The panel writes it; the chart only creates it. Rendered
+# WITHOUT data on purpose: Helm's three-way merge leaves keys alone that neither the
+# old nor the new manifest has, so an upgrade cannot overwrite a block made since the
+# render, and the blocks stay out of the release Secret. keep: uninstalling leaves it,
+# so pages stay blocked. If it does get lost, nothing is blocked until the next helm
+# upgrade creates it again (the panel may not create it, see below) and the panel
+# fills it within a minute; meanwhile the panel reports the failed publish.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udp-city-blocks
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+---
+# Only for the panel: this one ConfigMap and nothing else in the cluster. Kubernetes
+# cannot limit "create" by name, hence the chart creates it above.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: udp-admin
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+automountServiceAccountToken: false
+{{- with .Values.global.imagePullSecrets }}
+imagePullSecrets:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: udp-admin-city-blocks
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [udp-city-blocks]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: udp-admin-city-blocks
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: udp-admin-city-blocks
+subjects:
+  - kind: ServiceAccount
+    name: udp-admin
+    namespace: {{ .Release.Namespace }}
 {{- if .Values.admin.ingress.enabled }}
 ---
 apiVersion: networking.k8s.io/v1

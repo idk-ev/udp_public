@@ -61,6 +61,10 @@ npm --prefix gui run build                               # dist aktualisieren
 zu raten. Nach Grenzänderung den Konnektordienst neu starten oder `grenzen-bw`
 per `scripts/trigger-connector.sh` auslösen.
 
+Soll eine Seite wieder vom Netz, etwa auf Wunsch der Kommune: Sperre in der
+Verwaltungsoberfläche ([`betrieb.md`](betrieb.md#seite-sperren-anleitung)).
+`bw-gemeinden.json` bleibt dabei unverändert.
+
 ## Stufe 2 — individualisieren (Branding + Theme)
 
 Kostenlos gegen offizielle Verlinkung. Ein Aufruf schreibt `dashboards.json`:

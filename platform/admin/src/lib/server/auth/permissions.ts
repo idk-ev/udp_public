@@ -7,7 +7,7 @@
  * Roles and what they may do: the one place to extend for a new feature. A route
  * is only reachable when it is listed in http/routes.ts with a permission.
  */
-export const PERMISSIONS = ["overview:view", "account:manage-own"] as const;
+export const PERMISSIONS = ["overview:view", "account:manage-own", "cities:manage", "audit:read"] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
 
