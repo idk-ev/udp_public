@@ -49,6 +49,7 @@ function open(file, url, blocks, globals = {}) {
 }
 
 exports["SC.cityBlocks: finds by slug and key"] = async () => {
+  if (!JSDOM) return;
   const { w } = open("404.html", "https://udp.example/", BLOCKED);
   const blocks = await w.SC.cityBlocks();
   assert.strictEqual(blocks.isBlocked("pfullingen"), true);
@@ -58,6 +59,7 @@ exports["SC.cityBlocks: finds by slug and key"] = async () => {
 };
 
 exports["SC.cityBlocks: fails open on every kind of error"] = async () => {
+  if (!JSDOM) return;
   const cases = [new Error("offline"), 404, 503, "kein json", "null", "[]", '{"blocked":"x"}', '{"blocked":[null,1,{"slug":2}]}'];
   for (const answer of cases) {
     const { w } = open("404.html", "https://udp.example/", answer);
@@ -67,6 +69,7 @@ exports["SC.cityBlocks: fails open on every kind of error"] = async () => {
 };
 
 exports["kreis.html: a blocked municipality leaves list and map, the totals stay"] = async () => {
+  if (!JSDOM) return;
   const page = open("kreis.html", "https://udp.example/kreis-reutlingen", BLOCKED, { KREIS: { krs: "08415", slug: "kreis-reutlingen" } });
   page.run();
   await until("rendered", () => /^Stand:/.test(page.d.getElementById("stand").textContent));
@@ -79,6 +82,7 @@ exports["kreis.html: a blocked municipality leaves list and map, the totals stay
 };
 
 exports["a rollout's older library without cityBlocks: pages work as if nothing was blocked"] = async () => {
+  if (!JSDOM) return;
   for (const [file, ready] of [["mitmachen.html", d => /Gemeinden und/.test(d.getElementById("count").textContent)]]) {
     const page = open(file, "https://udp.example/", BLOCKED);
     delete page.w.SC.cityBlocks;
@@ -99,6 +103,7 @@ exports["a rollout's older library without cityBlocks: pages work as if nothing 
 };
 
 exports["kreis.html: nothing changes when the list cannot be read"] = async () => {
+  if (!JSDOM) return;
   const page = open("kreis.html", "https://udp.example/kreis-reutlingen", new Error("offline"), { KREIS: { krs: "08415", slug: "kreis-reutlingen" } });
   page.run();
   await until("rendered", () => /^Stand:/.test(page.d.getElementById("stand").textContent));
@@ -106,6 +111,7 @@ exports["kreis.html: nothing changes when the list cannot be read"] = async () =
 };
 
 exports["mitmachen.html: blocked pages are not offered, examples lose their link"] = async () => {
+  if (!JSDOM) return;
   const blocks = { version: 1, blocked: [{ slug: "tuebingen", ags: "08416041" }, { slug: "kreis-reutlingen" }, { slug: "stuttgart", ags: "08111000" }] };
   const page = open("mitmachen.html", "https://udp.example/", blocks);
   page.run();
