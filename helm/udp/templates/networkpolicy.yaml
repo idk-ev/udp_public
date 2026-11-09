@@ -39,6 +39,8 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
 {{- $timescaleClients := list "orion-ld" "mintaka" "frost" "keycloak" }}
 {{- /* Connector service: state store (schema udp_connectors) + SQL connectors. */}}
 {{- if .Values.connectors.enabled }}{{ $timescaleClients = append $timescaleClients "connectors" }}{{ end }}
+{{- /* Admin panel: accounts, sessions, audit log (database udp_admin). */}}
+{{- if .Values.admin.enabled }}{{ $timescaleClients = append $timescaleClients "admin" }}{{ end }}
 {{- /* Callers of Orion-LD: the connector service and Node-RED (its example
      flow upserts to Orion-LD). The cockpit's static data files (cockpit:8080,
      geo context) are read by the connector service only. */}}
@@ -97,6 +99,10 @@ monitoring namespace / Uptime Kuma. Disabled components drop out.
      rule – only the kubelet probes and kubectl exec reach it. */}}
 {{- if .Values.connectors.enabled }}
 {{- $rules = append $rules (dict "app" "connectors" "ports" (list 1880) "from" (list "cockpit")) }}
+{{- end }}
+{{- /* Admin panel: its own host at the ingress, no caller inside the platform. */}}
+{{- if .Values.admin.enabled }}
+{{- $rules = append $rules (dict "app" "admin" "ports" (list 3000) "from" (list) "public" true) }}
 {{- end }}
 {{- if .Values.geoserver.enabled }}
 {{- $rules = append $rules (dict "app" "geoserver" "ports" (list 8080) "from" (list "apisix") "monitored" true) }}

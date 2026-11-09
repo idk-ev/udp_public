@@ -136,6 +136,10 @@ Ingress-Pfad – es bleibt keine Route stehen, die ins Leere zeigt.
 | `cockpit.dashboardAuth.enabled` | `true` | Hauptdashboard `/dashboard.html` mit Basic Auth; `false` → kein Secret, kein Mount, die Seite antwortet mit 404 |
 | `cockpit.dashboardAuth.username` | `betrieb` | Benutzer der vom Chart erzeugten Anmeldung (Secret `udp-dashboard-auth`: `username`, `password`, `htpasswd`; Passwort zufällig, über `lookup` stabil), s. `docs/betrieb.md` |
 | `cockpit.dashboardAuth.existingSecret` | `""` | eigenes Secret mit Schlüssel `htpasswd` statt des erzeugten |
+| `admin.enabled` | `false` | Verwaltungsoberfläche (eigener Host, eigene Datenbank `udp_admin`, Rolle `udp_admin`), s. `docs/betrieb.md` |
+| `admin.host` | `""` | Host der Oberfläche, z. B. `admin.example.org`; Pflicht mit `admin.enabled`, verschieden von `ingress.host` |
+| `admin.ingress.enabled` / `.className` / `.tls.secretName` / `.annotations` | `true` / `ingress.className` / `udp-admin-tls` / nginx-Weiterleitung auf https | eigener Ingress; `false` bei eigenem TLS-Proxy |
+| `admin.clientAddress.header` / `.xffDepth` | `x-forwarded-for` / `1` | Client-Adresse für die Sperre bei Fehlversuchen; `xffDepth` = Anzahl vertrauenswürdiger Proxys |
 | `global.priorityClassName` / `nodeSelector` / `tolerations` | leer | Scheduling-Vorgaben für alle Pods |
 | `global.imageRegistry` | `""` | Registry-Prefix für Upstream-Images (Mirror) |
 | `global.udpRegistry` | `ghcr.io/idk-ev/udp` | Registry der eigenen Images |

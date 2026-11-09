@@ -54,7 +54,7 @@ BY_SUFFIX = {
     ".py": HASH, ".sh": HASH, ".bash": HASH,
     ".yml": HASH, ".yaml": HASH, ".conf": HASH, ".template": HASH,
     ".example": HASH, ".ini": HASH, ".toml": HASH,
-    ".html": XML, ".htm": XML, ".svg": XML, ".xml": XML,
+    ".html": XML, ".htm": XML, ".svg": XML, ".xml": XML, ".svelte": XML,
     ".sql": SQL,
     ".tpl": GOTPL,
 }

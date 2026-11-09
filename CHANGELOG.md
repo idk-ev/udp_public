@@ -2,6 +2,12 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht
+
+- Grundlage der Verwaltungsoberfläche `platform/admin` (SvelteKit, eigener Host,
+  `admin.enabled`, Standard aus): Anmeldung, eigenes Passwort ändern, Konten nur
+  per Kommandozeile im Container (`docs/betrieb.md`).
+
 ## 1.5.3 — Node.js-Sicherheitsupdate, DWD-Stationen, Seitenadressen, Overpass
 
 ### Node.js-Sicherheitsupdate

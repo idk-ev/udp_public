@@ -105,6 +105,27 @@ ESLint (MIT), typescript-eslint (MIT), Prettier (MIT), `@types/node` (MIT),
 `@types/pg` (MIT). Bis auf die beiden `@types`-Pakete dieselben Werkzeuge wie
 im Cockpit — die Lizenzlage ändert sich durch das zweite Paket nicht.
 
+### 3.2 Verwaltungsoberfläche (`platform/admin`)
+
+Eigenes npm-Paket (Node 24, TypeScript). Zur Laufzeit als Abhängigkeit installiert ist
+nur `pg` (MIT); in das ausgelieferte Bundle gehen `svelte`, `@sveltejs/kit` und
+`@sveltejs/adapter-node` (je MIT) ein.
+
+Werkzeuge (`devDependencies`, nicht ausgeliefert): Vite (MIT), Vitest (MIT),
+`@sveltejs/vite-plugin-svelte` (MIT), svelte-check (MIT), TypeScript (Apache-2.0),
+ESLint (MIT), eslint-plugin-svelte (MIT), typescript-eslint (MIT), globals (MIT),
+`@types/node` (MIT), `@types/pg` (MIT), `@electric-sql/pglite` (Apache-2.0, nur
+Tests).
+
+Mitausgeliefert wird die Datei
+`platform/admin/src/lib/server/auth/breached-passwords.txt`: Passwörter ab 15 Zeichen
+aus öffentlichen Listen, damit die Oberfläche sie ablehnen kann. Quelle ist
+[SecLists](https://github.com/danielmiessler/SecLists) (MIT, © 2018 Daniel Miessler),
+Commit `913b327`, Verzeichnis `Passwords/Common-Credentials` (`Pwdb_top-1000000`,
+`xato-net-10-million-passwords-1000000`, `100k-most-used-passwords-NCSC`,
+`darkweb2017_top-10000`); gefiltert, kleingeschrieben und sortiert von
+`scripts/generate-breached-passwords.py`.
+
 MPL-2.0 ist dateibezogenes Copyleft und laut EUPL-Anhang kompatibel; da
 `lightningcss` unverändert als Build-Werkzeug genutzt und nicht ausgeliefert wird,
 entstehen keine weitergehenden Pflichten.
@@ -175,6 +196,7 @@ veröffentlicht — sie werden also **weiterverbreitet**.
 |---|---|---|---|
 | `cockpit` | `nginxinc/nginx-unprivileged:1.30-alpine` (BSD-2-Clause), Build mit `node:24-alpine` (MIT) | eigenes GUI-Bundle | Eigenanteil EUPL-1.2 + permissive Basis — unkritisch |
 | `udp-connectors` | `node:22-alpine` (MIT) | `pg@8` (MIT) | permissiv — unkritisch |
+| `udp-admin` | `node:24-alpine` (MIT) | `pg@8` (MIT), SvelteKit-Bundle (MIT) | permissiv — unkritisch |
 | `ckan-dcat` | `ckan/ckan-base:2.10.10` (**AGPL-3.0**) | `ckanext-dcat>=1.7.0` (AGPL-3.0) | **REVIEW NEEDED** (§8.1) |
 | `postgres-timescale-oss` | `postgis/postgis:16-3.5` — PostgreSQL-Lizenz + PostGIS (**GPL-2.0**) | TimescaleDB **Apache Edition** (`timescaledb-2-oss`, Apache-2.0) | **REVIEW NEEDED** (§8.1) |
 

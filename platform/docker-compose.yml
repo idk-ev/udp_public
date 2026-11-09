@@ -118,6 +118,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-udp}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt — .env aus .env.example anlegen und Secrets setzen}
       POSTGRES_DB: orion
+      # Für die Rolle udp_admin der Verwaltungsoberfläche (config/postgres/init).
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-}
       POSTGRES_HOST_AUTH_METHOD: md5   # Orion-LD-libpq beherrscht kein SCRAM (s. config/postgres/init/00-auth.sh)
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -556,6 +558,44 @@ services:
       - ../gui/docker/19-udp-public.envsh:/docker-entrypoint.d/19-udp-public.envsh:ro
     ports:
       - "${UI_PORT:-3700}:8080"         # UI-Slot gem. PORTS.md
+    restart: unless-stopped
+    networks: [udp]
+    <<: *default-logging
+
+  # Verwaltungsoberfläche (s. docs/betrieb.md): nur mit --profile admin und nur
+  # hinter einem eigenen TLS-Proxy, der den Host-Header unverändert weiterreicht.
+  # Konten:  docker compose --profile admin exec admin node build-cli/index.js user list
+  admin:
+    profiles: [admin]
+    build:
+      context: ..
+      dockerfile: platform/admin/Dockerfile
+    image: udp/admin:local
+    container_name: udp-admin
+    depends_on:
+      timescale:
+        condition: service_healthy
+    environment:
+      ADMIN_PUBLIC_ORIGIN: ${ADMIN_PUBLIC_ORIGIN:-https://admin.example.org}
+      ADMIN_DB_HOST: timescale
+      ADMIN_DB_NAME: udp_admin
+      ADMIN_DB_USER: udp_admin
+      # Eigene Rolle (config/postgres/init). Kein ${VAR:?}: das gälte auch für alle,
+      # die das Profil nicht nutzen. Ohne Wert bricht der Dienst beim Start mit
+      # einer klaren Meldung ab.
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-}
+      ADDRESS_HEADER: x-forwarded-for
+      XFF_DEPTH: "1"
+    ports:
+      - "127.0.0.1:3800:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
     networks: [udp]
     <<: *default-logging

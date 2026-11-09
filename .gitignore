@@ -14,6 +14,9 @@ gui/public/branding/
 platform/config/nginx/udp-auth/
 platform/connectors/dist/
 platform/connectors/tsconfig.tsbuildinfo
+platform/admin/build/
+platform/admin/build-cli/
+platform/admin/.svelte-kit/
 
 # Local tool state of AI coding assistants; never committed.
 .claude/

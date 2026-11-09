@@ -13,5 +13,10 @@ if [ -d platform/connectors/node_modules ]; then
   npm --prefix platform/connectors run -s lint
 fi
 
+# The admin panel, the same way. Its unit tests need Node 24 (Argon2) and run in CI.
+if [ -d platform/admin/node_modules ]; then
+  npm --prefix platform/admin run -s lint
+fi
+
 node tests/run.js
 npm --prefix gui run -s lint

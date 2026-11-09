@@ -8,6 +8,10 @@ CREATE DATABASE frost;
 CREATE DATABASE ckan;
 CREATE DATABASE ckan_datastore;
 CREATE DATABASE keycloak;  -- genutzt im Kubernetes-Deployment (KC_DB=postgres)
+-- Verwaltungsoberfläche (Profil admin): eigene Rolle, Eigentümerin nur dieser
+-- Datenbank. Ohne Passwort keine Anmeldung; das setzt 02-admin-role.sh.
+CREATE ROLE udp_admin LOGIN CONNECTION LIMIT 15;
+CREATE DATABASE udp_admin OWNER udp_admin;
 
 \connect orion
 -- TimescaleDB in der **Apache-Edition** (Apache-2.0): liefert first()/last(),

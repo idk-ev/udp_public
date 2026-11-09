@@ -61,6 +61,7 @@ den Context Broker).
 | `/iot`, `/ingest` | APISIX → IoT-Agent | aus (`iotAgentJson.exposeRoutes: false`) |
 | `/catalog`, `/geoserver`, `/portal` | APISIX → CKAN / GeoServer / Masterportal | aus (`ingress.exposeComponentPaths: false`) |
 | `/auth` | Keycloak (`KC_HTTP_RELATIVE_PATH`) | aus (`cockpit.authEnabled: false`) |
+| `https://<admin.host>/` (eigener Host) | Verwaltungsoberfläche, Anmeldung mit eigenen Konten | aus (`admin.enabled: false`), s. `docs/betrieb.md` |
 
 Alle abgeschalteten Komponenten laufen weiter und sind cluster-intern
 erreichbar — es entfällt nur die öffentliche Route. Zum Öffnen nach Einführung

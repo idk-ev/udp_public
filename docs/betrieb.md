@@ -533,6 +533,124 @@ psql -U udp -d orion -c \
   "SELECT ts::date, count(*) FROM attributes GROUP BY 1 ORDER BY 1;"
 ```
 
+## Verwaltungsoberfläche
+
+Anmeldung für die Verwaltung der Plattform (`platform/admin`), standardmäßig aus.
+Sie liegt auf einem **eigenen Host** und nie auf dem öffentlichen: Skripte der
+öffentlichen Seiten (Webanalyse, Darstellung von Fremddaten) teilen sich sonst den
+Origin mit der angemeldeten Sitzung. Der öffentliche Betrieb hängt nicht von diesem
+Dienst ab.
+
+### Einschalten
+
+Den Host anlegen (DNS auf den Ingress), dann in den Werten:
+
+```yaml
+admin:
+  enabled: true
+  host: admin.example.org
+```
+
+Das Chart legt die Datenbank `udp_admin`, die Rolle `udp_admin` (Secret
+`timescale-role-udp-admin`, Passwort zufällig) und einen eigenen Ingress mit
+TLS-Zertifikat an. Mit `secrets.create=false` stellt der Betreiber das Secret selbst
+bereit (Typ `kubernetes.io/basic-auth`, Benutzername `udp_admin`). Hinter jedem
+weiteren Proxy `admin.clientAddress.xffDepth` erhöhen, sonst gelten die Sperren je
+Proxy statt je Client. Zu groß gesetzt kann ein Client seine Adresse selbst wählen.
+
+Die Rolle `udp_admin` erreicht nur die eigene Datenbank (`pg_hba`) und hat ein
+Verbindungslimit. Die Verbindung zur Datenbank läuft wie bei den übrigen Diensten
+ohne TLS innerhalb der Plattform.
+
+Unter Compose: `docker compose --profile admin up -d admin` hinter einem eigenen
+TLS-Proxy, der den Host-Header unverändert weiterreicht, mit `ADMIN_PUBLIC_ORIGIN`
+und `ADMIN_DB_PASSWORD` in `.env` und Port 3800 auf `127.0.0.1`. Der Dienst nutzt die
+eigene Rolle `udp_admin`; sie entsteht beim ersten Start der Datenbank
+(`config/postgres/init`). Bei einem schon bestehenden Datenbank-Volume beides einmal
+von Hand anlegen, mit demselben Passwort wie in `.env`:
+
+```bash
+docker compose exec timescale psql -U "$POSTGRES_USER" -d orion \
+  -c "CREATE ROLE udp_admin LOGIN CONNECTION LIMIT 15 PASSWORD '<passwort>'" \
+  -c 'CREATE DATABASE udp_admin OWNER udp_admin'
+```
+
+### Konten
+
+Konten gibt es **nur** über die Kommandozeile im Container. Die Oberfläche kann
+keine anlegen und keine fremden ändern, und das Chart legt keine an. Passwörter
+werden erzeugt und nie als Argument übergeben; jede Aktion steht im Protokoll
+(`audit_log`, Akteur `cli`).
+
+```bash
+# Kubernetes
+kubectl -n <namespace> exec deploy/admin -- node build-cli/index.js user <befehl>
+# Compose
+docker compose --profile admin exec admin node build-cli/index.js user <befehl>
+```
+
+| Befehl | Wirkung |
+|---|---|
+| `user add <name>` | legt ein Konto (Rolle `admin`) an und zeigt das erzeugte Passwort einmal an |
+| `user reset-password <name>` | erzeugt ein neues Passwort, beendet alle Sitzungen des Kontos und hebt seine Sperren auf |
+| `user disable <name>` | sperrt das Konto und beendet seine Sitzungen sofort |
+| `user enable <name>` | hebt die Sperre auf; das Passwort bleibt dasselbe |
+| `user list` | zeigt Name, Rolle, Zustand und letzte Anmeldung |
+| `throttle clear <name>` | hebt die Sperren nach Fehlversuchen für diesen Namen auf, von allen Adressen |
+
+Die Ausgabe erscheint nur im eigenen Terminal, nicht im Log des Pods. Bei Fehlern
+endet der Befehl mit einem Exit-Code ungleich 0 und einer Meldung.
+
+**Erstes Konto:** Nach dem Einschalten `user add <name>` ausführen und sich mit dem
+angezeigten Passwort anmelden. Weil der Betreiber es gesehen hat, ist danach nur die
+Seite *Konto* offen, bis ein eigenes Passwort vergeben ist.
+
+**Weiteres Konto, z. B. für die Geschäftsführung:** `user add <name>` und das Passwort
+auf einem sicheren Weg weitergeben. Die Person meldet sich an und vergibt sofort ein
+eigenes Passwort.
+
+**Wiederherstellung:** Passwort vergessen: `user reset-password <name>`. Gesperrt nach
+Fehlversuchen, Passwort aber bekannt: `throttle clear <name>`. Verdacht auf ein
+kompromittiertes Konto:
+`user disable <name>`, danach `user reset-password <name>` und `user enable <name>`.
+Eine Prüfung, ob noch ein aktives Konto übrig bleibt, gibt es bewusst nicht: `user
+enable` hebt jede Sperre wieder auf.
+
+### Anmeldung und Sitzungen
+
+- Eigene Passwörter haben mindestens 15 Zeichen, ohne Vorgaben zur Zusammensetzung.
+  Abgelehnt werden Passwörter von Listen veröffentlichter Passwörter (rund 16.000
+  Einträge, unabhängig von Groß- und Kleinschreibung), solche mit dem Benutzernamen
+  und bloße Wiederholungen.
+- Eine zweite Stufe (2FA) gibt es bisher nicht.
+- Sitzungen enden nach 30 Minuten ohne Aktivität, spätestens nach 8 Stunden. Beim
+  Ändern des eigenen Passworts enden alle anderen Sitzungen des Kontos.
+- Nach 5 Fehlversuchen sperrt die Anmeldung je Paar aus Konto und Client-Adresse (IPv6
+  je /64), zunächst für 2 Sekunden, dann doppelt so lange, höchstens 15 Minuten. Auch
+  das richtige Passwort hilft währenddessen nicht. Eine Sperre je Konto gibt es
+  bewusst nicht: Fehlversuche von anderen Adressen sperren niemanden aus. Wer viele
+  Adressen hat, bekommt die Versuche dafür je Adresse, also hängt der Schutz gegen
+  verteiltes Raten am Passwort selbst. Das Ändern des eigenen Passworts hat eine
+  eigene Sperre je Konto.
+- Zusätzlich gilt je Adresse und Instanz ein Limit von 20 Anmeldeversuchen pro Minute,
+  bevor etwas in die Datenbank geschrieben wird. Ein Rate-Limit am Ingress-Controller
+  setzt das Chart nicht. Es lässt sich über `admin.ingress.annotations` ergänzen, wenn
+  der Controller das per Annotation kann.
+- Die Tabelle der Sperren ist `UNLOGGED`: Nach einem Absturz oder Failover der Datenbank
+  ist sie leer, blockierte Clients haben dann wieder ihre freien Versuche.
+- Die Oberfläche ist für Suchmaschinen gesperrt (`X-Robots-Tag: noindex`) und steht
+  in keiner `robots.txt` und keiner Sitemap. Geheim ist der Host dadurch nicht.
+- Das Protokoll `audit_log` trennt zwei Arten von Einträgen. Anmeldungen und
+  Abmeldungen löscht der Wartungslauf nach 30 Tagen; nur Anmeldungen tragen die
+  Client-Adresse. Alles andere (Kontoänderungen, Aktionen der Kommandozeile) bleibt
+  dauerhaft und enthält keine Adresse, das erzwingt die Tabelle selbst. Bei einem
+  Fehlversuch unter einem unbekannten Namen wird der Name nicht gespeichert, denn dort
+  landen manchmal Passwörter.
+- Trigger verbieten `UPDATE`, `DELETE` und `TRUNCATE` auf `audit_log`, bis auf diesen
+  Wartungslauf. Das schützt vor Fehlern der Anwendung, nicht vor jemandem mit dem
+  Datenbankzugang des Dienstes: Die Rolle `udp_admin` besitzt die Tabelle und könnte
+  die Trigger abschalten.
+
 ## Secrets
 
 `platform/.env` ist verpflichtend: Seit 21.07. sind alle Passwörter in

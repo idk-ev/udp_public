@@ -1348,6 +1348,70 @@ cockpit:
       timeoutSeconds: 5
       failureThreshold: 6
 
+# ---------- Verwaltungsoberfläche ----------
+# Eigene Oberfläche zur Verwaltung der Plattform auf einem EIGENEN Host, nicht
+# auf dem öffentlichen. Konten gibt es nur über die Kommandozeile im Container
+# (s. docs/betrieb.md), das Chart legt keine an. Braucht den CloudNativePG-Cluster.
+admin:
+  enabled: false
+  # Host der Oberfläche, z. B. "admin.example.org". Pflicht, wenn enabled, und
+  # verschieden von ingress.host. Daraus entsteht die öffentliche Adresse
+  # https://<host>, gegen die die Anwendung jede schreibende Anfrage prüft.
+  host: ""
+  # Own image (platform/admin/Dockerfile). registry/tag empty ->
+  # global.udpRegistry / global.udpTag.
+  image: { name: udp-admin, registry: "", tag: "" }
+  ingress:
+    # false: den Host stellt ein eigener Proxy bereit (TLS Pflicht, Host-Header
+    # unverändert weiterreichen).
+    enabled: true
+    # Leer -> ingress.className.
+    className: ""
+    tls:
+      secretName: "udp-admin-tls"
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "16k"
+  # Client-Adresse für die Sperre bei Fehlversuchen (je Konto und Adresse).
+  # xffDepth = Anzahl der vertrauenswürdigen Proxys vor dem Dienst; zu groß gesetzt
+  # kann ein Client seine Adresse selbst wählen und damit die Sperre umgehen.
+  clientAddress:
+    header: "x-forwarded-for"
+    xffDepth: 1
+  # Service of the database; the role udp_admin owns only the database udp_admin.
+  dbHost: "timescale"
+  timezone: "Europe/Berlin"
+  # Argon2 takes about 19 MiB per check, at most two run at a time.
+  resources:
+    requests: { cpu: 25m, memory: 96Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000       # "node" in node:24-alpine
+    runAsGroup: 1000
+  # Writes nothing to disk.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+  # Liveness: process only; a restart does not fix a database. Readiness: the
+  # database answers.
+  probes:
+    startup:
+      httpGet: { path: /healthz, port: 3000 }
+      periodSeconds: 3
+      timeoutSeconds: 3
+      failureThreshold: 40
+    readiness:
+      httpGet: { path: /readyz, port: 3000 }
+      periodSeconds: 10
+      timeoutSeconds: 5
+    liveness:
+      httpGet: { path: /healthz, port: 3000 }
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+
 # ---------- Betrieb ----------
 # Continuous backup of the database cluster "timescale" to S3-compatible object
 # storage: a daily base backup plus the WAL archive, i.e. point-in-time
