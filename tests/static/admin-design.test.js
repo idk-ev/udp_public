@@ -96,3 +96,23 @@ exports["admin panel: tokens cover the colour names of the public theme"] = () =
     assert.strictEqual(uses, 2, `${name} needs a light and a dark value`);
   }
 };
+
+/* A bare meta refresh keeps its timer after a client-side navigation has removed the
+   tag: it reloads the earlier address over whatever is being typed by then. */
+exports["admin panel: no meta refresh outside <noscript>"] = () => {
+  const found = [];
+  const files = walk(SRC).filter(f => /\.(svelte|html)$/.test(f));
+  for (const file of files) {
+    const text = fs.readFileSync(file, "utf8").replace(/<!--[\s\S]*?-->/g, "");
+    const outside = text.replace(/<noscript[\s\S]*?<\/noscript>/g, "");
+    if (/http-equiv\s*=\s*["'{]?\s*["']?refresh/i.test(outside)) found.push(rel(file));
+  }
+  assert.deepStrictEqual(found, [], "use lib/recheck.ts in an $effect instead");
+};
+
+exports["admin panel: the guard against a meta refresh notices one"] = () => {
+  const bare = '<svelte:head>{#if x}<meta http-equiv="refresh" content="15" />{/if}</svelte:head>';
+  assert(/http-equiv\s*=\s*["'{]?\s*["']?refresh/i.test(bare.replace(/<noscript[\s\S]*?<\/noscript>/g, "")));
+  const inside = '<noscript><meta http-equiv="refresh" content="15" /></noscript>';
+  assert(!/http-equiv\s*=\s*["'{]?\s*["']?refresh/i.test(inside.replace(/<noscript[\s\S]*?<\/noscript>/g, "")));
+};

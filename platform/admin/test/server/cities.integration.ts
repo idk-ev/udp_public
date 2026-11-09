@@ -121,7 +121,10 @@ describe("block and unblock through the panel", () => {
     const page = await call("/staedte/reutlingen?erledigt=gesperrt", { cookie });
     expect(page.status).toBe(200);
     expect(page.body).toContain("noch nicht bestätigt");
-    expect(page.body).toContain('http-equiv="refresh"');
+    // Only for browsers without JavaScript. A bare tag keeps its timer across a
+    // client-side navigation and reloads the earlier page over what is being typed.
+    expect(page.body).toMatch(/<noscript[^>]*><meta http-equiv="refresh" content="15"[^>]*><\/noscript>/);
+    expect(page.body.replaceAll(/<noscript[\s\S]*?<\/noscript>/g, "")).not.toContain('http-equiv="refresh"');
     expect(page.body).not.toContain("Seite freigeben</button>");
   });
 

@@ -3,6 +3,7 @@
   © 2024–2026 Thomas Kieß and contributors
 -->
 <script lang="ts">
+  import { refreshAll } from "$app/navigation";
   import { resolve } from "$app/paths";
   import ActionForm from "#lib/components/ActionForm.svelte";
   import Alert from "#lib/components/Alert.svelte";
@@ -12,13 +13,31 @@
   import StatusBadge from "#lib/components/StatusBadge.svelte";
   import TextField from "#lib/components/TextField.svelte";
   import { formatDateTime } from "#lib/format.ts";
+  import { startRecheck } from "#lib/recheck.ts";
   import type { PageProps } from "./$types";
 
   const { data, form }: PageProps = $props();
 
+  const RECHECK_MS = 15_000;
+
   const blocked = $derived(data.block !== null || data.held);
   // Right after a change the page looks again by itself until the check confirms it.
   const waiting = $derived(data.changed !== null && data.live === "pending");
+  // Stops by itself on leaving the page or once confirmed. See lib/recheck.ts for why
+  // this is not a meta refresh; that one stays for browsers without JavaScript.
+  $effect(() => {
+    if (!waiting) return undefined;
+    return startRecheck(async () => {
+      // A failed refresh would replace the page with the error page and end this timer,
+      // so a restart of the panel is waited out instead.
+      const reachable = await fetch(resolve("/readyz")).then(
+        (answer) => answer.ok,
+        () => false,
+      );
+      if (reachable) await refreshAll();
+    }, RECHECK_MS);
+  });
+
   const subtitle = $derived(
     [data.description.category, data.description.context, `/${data.city.slug}`]
       .filter((part) => part !== null)
@@ -28,7 +47,7 @@
 
 <svelte:head>
   {#if waiting}
-    <meta http-equiv="refresh" content="15" />
+    <noscript><meta http-equiv="refresh" content="15" /></noscript>
   {/if}
 </svelte:head>
 
