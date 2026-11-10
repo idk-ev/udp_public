@@ -10,6 +10,7 @@
 #   postgres-timescale-oss   platform/config/postgres       -> Helm: timescale.legacy.image
 #                                                              (+ docker compose)
 #   udp-connectors           platform/connectors            -> Helm: connectors.image
+#   udp-admin                platform/admin                 -> Helm: admin.image
 #
 # Alle übrigen Images (Orion-LD, Keycloak, APISIX, Node-RED, …) kommen
 # unverändert von Upstream und werden hier bewusst NICHT gespiegelt.
@@ -63,6 +64,7 @@ on:
       # The connector image carries the registry (connectors.json) as well.
       - 'platform/connectors/**'
       - 'platform/config/connectors.json'
+      - 'platform/admin/**'
       - 'helm/**'
       - '.github/workflows/build-images.yml'
   pull_request:
@@ -75,6 +77,7 @@ on:
       # The connector image carries the registry (connectors.json) as well.
       - 'platform/connectors/**'
       - 'platform/config/connectors.json'
+      - 'platform/admin/**'
       - 'helm/**'
       - '.github/workflows/build-images.yml'
   # Releases haben absichtlich keinen paths-Filter: ein Release muss immer alle
@@ -141,6 +144,11 @@ jobs:
             dockerfile: platform/connectors/Dockerfile
             valueKey: connectors
             description: UDP-Konnektordienst (Ingestion offener Datenquellen nach NGSI-LD)
+          - name: udp-admin
+            context: .
+            dockerfile: platform/admin/Dockerfile
+            valueKey: admin
+            description: UDP-Verwaltungsoberfläche (Anmeldung, Verwaltung der Plattform)
 
     env:
       # Single source for the build step AND the input hash below.
@@ -645,7 +653,7 @@ jobs:
 
             pinned=""
             if [ "$mode" = "pin" ]; then
-              for key in cockpit ckan timescale timescale.legacy connectors; do
+              for key in cockpit ckan timescale timescale.legacy connectors admin; do
                 if [ ! -s "digests/$key" ]; then pinned=""; break; fi
                 TAGVAL="${tag}@$(cat "digests/$key")" \
                   yq -i ".${key}.image.tag = strenv(TAGVAL)" "$CHART_DIR/values.yaml"

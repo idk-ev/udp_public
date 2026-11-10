@@ -1123,6 +1123,22 @@
     return timer;
   }
 
+  // Public pages taken offline in the admin panel (/city-blocks.json). The pages
+  // only tidy up with this: nginx answers the blocked address itself with a 410.
+  // So any error means "nothing blocked", and the page works as if the list did
+  // not exist.
+  async function cityBlocks() {
+    let list = [];
+    try {
+      const r = await fetch("/city-blocks.json", { headers: { Accept: "application/json" } });
+      const j = r.ok ? await r.json() : null;
+      if (j && Array.isArray(j.blocked)) list = j.blocked.filter(e => e && typeof e.slug === "string");
+    } catch { /* see above */ }
+    const slugs = new Set(list.map(e => e.slug));
+    const ags = new Set(list.map(e => e.ags).filter(Boolean));
+    return { isBlocked: (slug, key) => slugs.has(slug) || (key != null && ags.has(key)) };
+  }
+
   // Data-source credits from the connector registry (connectors-status.json):
   // the attribution texts of the given connectors, split at " · " so combined
   // entries (»A · B«) do not repeat their single parts.
@@ -1194,7 +1210,7 @@
   // Modal-Innereien, navLinks) bleiben privat.
   w.SC = { BUILD, GW, $, css, esc, safeUrl, fmtN, fmtT, fmtDay, val, obsTime, staleStand, asArray,
            jget, fetchRetry, entities, entity, byAgs, jlist, jlistPaged, hist, histSince, series, asRows, store,
-           autoRefresh, attributions, attributionHtml, MAP_CREDIT, OSM_CREDIT,
+           autoRefresh, cityBlocks, attributions, attributionHtml, MAP_CREDIT, OSM_CREDIT,
            warnHeads, warnLink, warnBannerHtml, WARN_SOURCE,
            failed, loadMark, loadSince, bannerDue, loadBanner, errorTile, tileMemory, errorTiles, LOAD_ERR_TXT,
            tile, grade, sharingSplit, chart, barSvg, stackBar, popupHtml, groupColor, pos, baseLayer,

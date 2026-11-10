@@ -1,0 +1,181 @@
+{{- /* SPDX-License-Identifier: EUPL-1.2
+© 2024–2026 Thomas Kieß and contributors */}}
+
+{{- if .Values.admin.enabled }}
+{{- /*
+Admin panel (platform/admin). Public on a host of its own, never on ingress.host:
+scripts on the public pages share an origin with everything on that host. Its
+accounts come from the CLI in the container (docs/betrieb.md); the chart creates
+none. The public site does not depend on this service.
+*/}}
+{{- $host := .Values.admin.host | default "" | toString | trim }}
+{{- if eq $host "" }}
+{{- fail "admin.enabled=true needs admin.host, e.g. admin.example.org" }}
+{{- end }}
+{{- if not (regexMatch "^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$" $host) }}
+{{- fail (printf "admin.host: %q must be a plain host name, without scheme or path" $host) }}
+{{- end }}
+{{- if eq (lower $host) (lower (.Values.ingress.host | toString)) }}
+{{- fail (printf "admin.host: %q equals ingress.host – the panel needs a host of its own" $host) }}
+{{- end }}
+{{- if ne (.Values.timescale.migration.phase | default "") "" }}
+{{- fail "admin.enabled=true needs the CloudNativePG cluster – finish the migration (timescale.migration.phase) first." }}
+{{- end }}
+{{- $depth := .Values.admin.clientAddress.xffDepth | toString }}
+{{- if not (regexMatch "^[1-9][0-9]*$" $depth) }}
+{{- fail (printf "admin.clientAddress.xffDepth: %q must be a whole number of at least 1" $depth) }}
+{{- end }}
+{{- if and (not .Values.secrets.create) (lookup "v1" "Namespace" "" .Release.Namespace) }}
+{{- if not (lookup "v1" "Secret" .Release.Namespace "timescale-role-udp-admin") }}
+{{- fail "Secret timescale-role-udp-admin missing. With secrets.create=false provide it (basic-auth, username udp_admin) before enabling admin – see docs/betrieb.md." }}
+{{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "udp.selectorLabels" "admin" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "udp.podLabels" (dict "ctx" . "component" "admin") | nindent 8 }}
+    spec:
+      {{- /* The one workload with a token: it publishes the city blocks. */}}
+      {{- include "udp.podSpec" (dict "ctx" . "cfg" .Values.admin "serviceAccount" "udp-admin") | nindent 6 }}
+      containers:
+        - name: admin
+          image: {{ include "udp.ownImage" (dict "ctx" . "image" .Values.admin.image) }}
+          {{ include "udp.ownImagePullPolicy" . }}
+          securityContext:
+            {{- include "udp.containerSecurityContext" (dict "ctx" . "override" .Values.admin.containerSecurityContext) | nindent 12 }}
+          env:
+            - { name: TZ, value: {{ .Values.admin.timezone | quote }} }
+            - { name: ADMIN_PUBLIC_ORIGIN, value: {{ printf "https://%s" $host | quote }} }
+            - { name: ADMIN_DB_HOST, value: {{ .Values.admin.dbHost | quote }} }
+            - { name: ADMIN_DB_NAME, value: "udp_admin" }
+            - name: ADMIN_DB_USER
+              valueFrom:
+                secretKeyRef: { name: timescale-role-udp-admin, key: username }
+            - name: ADMIN_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: timescale-role-udp-admin, key: password }
+            # Read by adapter-node: the client address for login throttling.
+            - { name: ADDRESS_HEADER, value: {{ .Values.admin.clientAddress.header | quote }} }
+            - { name: XFF_DEPTH, value: {{ $depth | quote }} }
+            # City blocks: published to this ConfigMap, checked at the cockpit.
+            - { name: ADMIN_CITY_PUBLISHER, value: "kubernetes" }
+            - { name: ADMIN_CITY_CONFIGMAP, value: "udp-city-blocks" }
+            - { name: ADMIN_COCKPIT_URL, value: {{ printf "http://cockpit.%s.svc.%s:8080" .Release.Namespace .Values.global.clusterDomain | quote }} }
+          ports: [{ name: http, containerPort: 3000 }]
+          # No volume: state lives in PostgreSQL and the ConfigMap, hence
+          # readOnlyRootFilesystem.
+          resources:
+            {{- toYaml .Values.admin.resources | nindent 12 }}
+          {{- include "udp.probes" .Values.admin.probes | nindent 10 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+spec:
+  selector:
+    {{- include "udp.selectorLabels" "admin" | nindent 4 }}
+  ports: [{ name: http, port: 3000, targetPort: 3000 }]
+---
+# What the cockpit's nginx reads (mounted as a directory, platform/config/nginx/
+# cockpit.conf.template). The panel writes it; the chart only creates it. Rendered
+# WITHOUT data on purpose: Helm's three-way merge leaves keys alone that neither the
+# old nor the new manifest has, so an upgrade cannot overwrite a block made since the
+# render, and the blocks stay out of the release Secret. keep: uninstalling leaves it,
+# so pages stay blocked. If it does get lost, nothing is blocked until the next helm
+# upgrade creates it again (the panel may not create it, see below) and the panel
+# fills it within a minute; meanwhile the panel reports the failed publish.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udp-city-blocks
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+---
+# Only for the panel: this one ConfigMap and nothing else in the cluster. Kubernetes
+# cannot limit "create" by name, hence the chart creates it above.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: udp-admin
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+automountServiceAccountToken: false
+{{- with .Values.global.imagePullSecrets }}
+imagePullSecrets:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: udp-admin-city-blocks
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [udp-city-blocks]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: udp-admin-city-blocks
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: udp-admin-city-blocks
+subjects:
+  - kind: ServiceAccount
+    name: udp-admin
+    namespace: {{ .Release.Namespace }}
+{{- if .Values.admin.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: admin
+  labels:
+    {{- include "udp.labels" (dict "ctx" . "component" "admin") | nindent 4 }}
+  annotations:
+    {{- if .Values.ingress.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer | quote }}
+    {{- end }}
+    {{- with .Values.admin.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with (.Values.admin.ingress.className | default .Values.ingress.className) }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  tls:
+    - hosts: [{{ $host | quote }}]
+      secretName: {{ .Values.admin.ingress.tls.secretName | quote }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: admin, port: { number: 3000 } }
+{{- end }}
+{{- end }}

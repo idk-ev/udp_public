@@ -1,0 +1,26 @@
+{
+  /* SPDX-License-Identifier: EUPL-1.2
+     © 2024–2026 Thomas Kieß and contributors
+
+     Same hardening as platform/connectors/tsconfig.json. External data (form
+     fields, environment, database rows) enters as unknown and is narrowed. */
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "types": ["node", "$app/types"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "test/server", "*.ts"],
+  "exclude": ["node_modules", "build", "build-cli", "test/hardening"]
+}

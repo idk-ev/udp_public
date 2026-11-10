@@ -1,0 +1,47 @@
+/*
+ * SPDX-License-Identifier: EUPL-1.2
+ * © 2024–2026 Thomas Kieß and contributors
+ */
+
+/* Element defaults. Components style themselves with the tokens. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-width);
+}
+
+/* Kit's route announcer styles itself with a style attribute, which the CSP
+   blocks. Without this its text would show up on the page after a navigation. */
+#svelte-announcer {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}

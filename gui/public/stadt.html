@@ -150,6 +150,8 @@ if ((window.SC || {}).BUILD !== "__UDP_BUILD__") {
 }
 // Rollout guard (end)
 const { $, css, esc, safeUrl, val, obsTime, staleStand, asArray, asRows, jget, jlist, entity, byAgs, tile, errorTile, failed, grade, sharingSplit, fmtN, fmtDay, pos, popupHtml, groupColor, hist, series, chart, barSvg } = SC;
+// During a rollout the library can be an older one, without this function.
+const cityBlocks = () => (SC.cityBlocks ? SC.cityBlocks() : Promise.resolve({ isBlocked: () => false }));
 
 let GEM = [], BY_AGS = {}, BY_SLUG = {}, CONN = [], DASH = {}, SERVICES = {}, STADT = window.STADT || null;
 
@@ -1566,6 +1568,9 @@ async function render() {
             BY_AGS[p.get("ags")] || BY_SLUG[location.pathname.replace(/^\/|\/$/g, "")];
     }
     if (!row) throw new Error("Kommune nicht gefunden");
+    // Reached without a stub (/stadt.html?ags=…) and past the check in nginx, e.g.
+    // with a differently spelled query: its real address answers for it.
+    if (!inlineRow && (await cityBlocks()).isBlocked(row[8], row[0])) { location.replace("/" + row[8]); return; }
     STADT = { ags: row[0], row, website: STADT && STADT.website };
     const cfg0 = (DASH[row[8]] || {});
     SC.themeSelector("#thememount", cfg0.branding && cfg0.branding.theme);
@@ -1575,8 +1580,15 @@ async function render() {
     const renderOnce = () => rendering || (rendering = render().finally(() => { rendering = null; }));
     document.addEventListener("sc-theme-changed", () => { window._map && renderOnce().catch(() => {}); });
     await renderOnce();
-    // Hidden tabs skip the refresh and catch up once visible again.
-    SC.autoRefresh(renderOnce, 120e3, () => !SC.modalOpen());
+    // Hidden tabs skip the refresh and catch up once visible again. An open tab, a
+    // kiosk screen or an embed of a page taken offline reloads into the 410. Not on
+    // the first load: a replica that has not got the block yet would answer 200 and
+    // the page would reload without pause.
+    const refresh = async () => {
+      if ((await cityBlocks()).isBlocked(row[8], row[0])) { location.reload(); return; }
+      await renderOnce();
+    };
+    SC.autoRefresh(refresh, 120e3, () => !SC.modalOpen());
   } catch (e) {
     const el = $("#err"); el.textContent = "Fehler beim Laden: " + e.message; el.style.display = "block";
   }

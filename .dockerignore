@@ -18,3 +18,6 @@ helm
 kubernetes
 deploy
 platform/connectors/dist
+platform/admin/build
+platform/admin/build-cli
+platform/admin/.svelte-kit

@@ -174,7 +174,8 @@ exports["autoRefresh: hidden tabs skip, catch up once visible"] = async () => {
   }
   for (const f of ["stadt.html", "kreis.html"]) {
     const src = read("gui/public/" + f);
-    assert.match(src, /SC\.autoRefresh\(renderOnce, 120e3/, `${f}: refresh does not go through SC.autoRefresh`);
+    assert.match(src, /SC\.autoRefresh\((?:refresh|async \(\) => \{[\s\S]*?await renderOnce\(\);\s*\}), 120e3/,
+      `${f}: refresh does not go through SC.autoRefresh`);
     assert(!/setInterval\([^)]*renderOnce/.test(src), `${f}: unconditional refresh interval left`);
   }
 };

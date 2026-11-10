@@ -163,6 +163,12 @@ spec:
     # Before CNPG's default "scram-sha-256" rule. md5 also accepts clients that
     # speak SCRAM, access is limited by the NetworkPolicies.
     pg_hba:
+      {{- if .Values.admin.enabled }}
+      # The panel's role reaches its own database only. Must stay before the
+      # general rule: PostgreSQL takes the first line that matches.
+      - host udp_admin udp_admin all md5
+      - host all udp_admin all reject
+      {{- end }}
       - host all all all md5
     {{- if gt $instances 1 }}
     synchronous:
@@ -225,6 +231,15 @@ spec:
         ensure: present
         login: true
         passwordSecret: { name: timescale-role-ckan-ro }
+      {{- if .Values.admin.enabled }}
+      # Admin panel: owns its own database and nothing else.
+      - name: udp_admin
+        ensure: present
+        login: true
+        # Pool of 5 per instance, plus the CLI and a rollout's overlap.
+        connectionLimit: 15
+        passwordSecret: { name: timescale-role-udp-admin }
+      {{- end }}
   storage:
     size: {{ $ts.persistence.size }}
     {{- with ($ts.persistence.storageClass | default .Values.global.storageClass) }}
@@ -262,6 +277,9 @@ helm uninstall) leaves the database in place.
   (dict "name" "ckan"       "extensions" (list "postgis"))
   (dict "name" "ckan_datastore" "extensions" (list))
   (dict "name" "keycloak"   "extensions" (list)) }}
+{{- if .Values.admin.enabled }}
+{{- $databases = append $databases (dict "name" "udp_admin" "extensions" (list) "owner" "udp_admin") }}
+{{- end }}
 {{- range $databases }}
 ---
 apiVersion: postgresql.cnpg.io/v1
@@ -273,7 +291,7 @@ metadata:
 spec:
   cluster: { name: timescale }
   name: {{ .name }}
-  owner: {{ $dbUser }}
+  owner: {{ .owner | default $dbUser }}
   ensure: present
   databaseReclaimPolicy: retain
   {{- with .extensions }}

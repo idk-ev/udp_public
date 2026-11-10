@@ -2,6 +2,16 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
+## Unveröffentlicht
+
+- Grundlage der Verwaltungsoberfläche `platform/admin` (SvelteKit, eigener Host,
+  `admin.enabled`, Standard aus): Anmeldung, eigenes Passwort ändern, Konten nur
+  per Kommandozeile im Container (`docs/betrieb.md`).
+- Öffentliche Seiten sperren: Suche, Sperren mit Grund und Bestätigung, Freigabe,
+  Live-Prüfung und Protokoll in der Oberfläche. Gesperrte Seiten antworten neutral mit
+  410 und verschwinden aus Suche, Kreislisten und Sitemap. Daten und Kreissummen
+  bleiben unverändert.
+
 ## 1.5.3 — Node.js-Sicherheitsupdate, DWD-Stationen, Seitenadressen, Overpass
 
 ### Node.js-Sicherheitsupdate

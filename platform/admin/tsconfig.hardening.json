@@ -1,0 +1,12 @@
+{
+  /* SPDX-License-Identifier: EUPL-1.2
+     © 2024–2026 Thomas Kieß and contributors
+
+     The proofs under test/hardening/: these files are NOT supposed to pass (see
+     tests/static/admin-type-discipline.test.js). The options are inherited, so
+     switching off a hardening in tsconfig.json fails that test. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["test/hardening/*.ts", "test/hardening/*.svelte"],
+  "exclude": []
+}
