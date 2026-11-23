@@ -2,7 +2,9 @@
 
 Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 
-## Unveröffentlicht
+## 1.5.4 — Verwaltungsoberfläche, Betriebsfixes
+
+### Verwaltungsoberfläche
 
 - Grundlage der Verwaltungsoberfläche `platform/admin` (SvelteKit, eigener Host,
   `admin.enabled`, Standard aus): Anmeldung, eigenes Passwort ändern, Konten nur
@@ -11,6 +13,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   Live-Prüfung und Protokoll in der Oberfläche. Gesperrte Seiten antworten neutral mit
   410 und verschwinden aus Suche, Kreislisten und Sitemap. Daten und Kreissummen
   bleiben unverändert.
+
+### Betrieb
+
 - MongoDB-Replica-Set: Der Sidecar `replset` schreibt kein mongosh-Logfile mehr.
   Es wuchs unbegrenzt, bis der Pod nach einigen Tagen wegen des vollen
   `emptyDir` verdrängt wurde (mongod inklusive). `emptyDir` zusätzlich auf
@@ -18,6 +23,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
 - TRoE-Retention: Das nächtliche `VACUUM (ANALYZE)` läuft seriell (`PARALLEL 0`).
   Parallel reservierte es `maintenance_work_mem` vorab in `/dev/shm` und
   scheiterte dort jede Nacht am Limit.
+- Abhängigkeiten aktualisiert (Cockpit u. a. MapLibre GL 6.19, React 19.3,
+  Vite 8.3; GitHub Actions). Die Karte liefert den MapLibre-Worker jetzt als
+  eigenes Asset aus; nginx bedient `.mjs` als JavaScript.
 
 ## 1.5.3 — Node.js-Sicherheitsupdate, DWD-Stationen, Seitenadressen, Overpass
 
