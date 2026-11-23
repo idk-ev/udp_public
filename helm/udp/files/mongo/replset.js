@@ -70,8 +70,9 @@ function note(msg) {
 
 const connect = (target) => new Mongo(`mongodb://${target}/?directConnection=true&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000`);
 // The local connection is kept for the life of the process (the driver
-// reconnects by itself); a new connection every few seconds would also add a
-// line to mongosh's log file each time.
+// reconnects by itself) instead of a new one every few seconds. mongosh's own
+// log file is switched off (mongosh.conf): with connections to the peers on
+// every round it would grow until the pod is evicted.
 let localConn = null;
 
 // One admin command against exactly one mongod (directConnection: never

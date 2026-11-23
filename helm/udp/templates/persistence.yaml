@@ -63,6 +63,8 @@ metadata:
 data:
   replset.js: |
 {{ .Files.Get "files/mongo/replset.js" | indent 4 }}
+  mongosh.conf: |
+{{ .Files.Get "files/mongo/mongosh.conf" | indent 4 }}
 ---
 {{- end }}
 apiVersion: apps/v1
@@ -83,7 +85,7 @@ spec:
         {{- include "udp.podLabels" (dict "ctx" . "component" "mongo") | nindent 8 }}
       {{- if $rs }}
       annotations:
-        checksum/replset: {{ .Files.Get "files/mongo/replset.js" | sha256sum }}
+        checksum/replset: {{ print (.Files.Get "files/mongo/replset.js") (.Files.Get "files/mongo/mongosh.conf") | sha256sum }}
       {{- end }}
     spec:
       {{- include "udp.podSpec" (dict "ctx" . "cfg" $m) | nindent 6 }}
@@ -138,13 +140,15 @@ spec:
             - { name: INTERVAL_SECONDS, value: {{ $m.replicaSet.reconciler.intervalSeconds | quote }} }
             - { name: MAX_LAG_SECONDS, value: {{ $m.replicaSet.reconciler.maxLagSeconds | quote }} }
             - { name: READY_FILE, value: /run/replset/ready }
-            # mongosh keeps its config and log under $HOME – the image's home
-            # directory is not writable for uid 999.
+            # mongosh keeps its config under $HOME – the image's home
+            # directory is not writable for uid 999. Its log file is switched
+            # off (files/mongo/mongosh.conf), it would grow without bound.
             - { name: HOME, value: /run/replset }
           securityContext:
             {{- include "udp.containerSecurityContext" (dict "ctx" . "override" $m.containerSecurityContext) | nindent 12 }}
           volumeMounts:
             - { name: replset-script, mountPath: /scripts, readOnly: true }
+            - { name: replset-script, mountPath: /etc/mongosh.conf, subPath: mongosh.conf, readOnly: true }
             - { name: replset-state, mountPath: /run/replset }
           readinessProbe:
             # Fresh file = the loop is alive and the member is usable.
@@ -160,7 +164,8 @@ spec:
         - name: replset-script
           configMap: { name: mongo-replset }
         - name: replset-state
-          emptyDir: { sizeLimit: 64Mi }
+          # Ready file and mongosh's config only – the limit is a safety margin.
+          emptyDir: { sizeLimit: 128Mi }
       {{- end }}
   volumeClaimTemplates:
     - metadata: { name: data }

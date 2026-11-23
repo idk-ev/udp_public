@@ -11,6 +11,10 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   Live-Prüfung und Protokoll in der Oberfläche. Gesperrte Seiten antworten neutral mit
   410 und verschwinden aus Suche, Kreislisten und Sitemap. Daten und Kreissummen
   bleiben unverändert.
+- MongoDB-Replica-Set: Der Sidecar `replset` schreibt kein mongosh-Logfile mehr.
+  Es wuchs unbegrenzt, bis der Pod nach einigen Tagen wegen des vollen
+  `emptyDir` verdrängt wurde (mongod inklusive). `emptyDir` zusätzlich auf
+  128 MiB. Beim Upgrade starten die `mongo`-Pods einmal rollierend neu.
 
 ## 1.5.3 — Node.js-Sicherheitsupdate, DWD-Stationen, Seitenadressen, Overpass
 
