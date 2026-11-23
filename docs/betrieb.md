@@ -1343,9 +1343,10 @@ nächtlichen Typsummen zählen zuerst je Entität und summieren dann je Typ.
 
 **Vacuum:** Die Retention setzt vorab (nur bei Abweichung) je Tabelle
 `autovacuum_vacuum_insert_scale_factor` und `autovacuum_analyze_scale_factor`
-auf 0,01 und fährt nach dem Lauf `VACUUM (ANALYZE)` auf `attributes` und
-`subattributes` (eigene Sitzung, 45 min Timeout, gebremst wie Autovacuum mit
-`vacuum_cost_delay = 2ms`, Fehler nur `[warn]`; bei einer Hypertable wirken
+auf 0,01 und fährt nach dem Lauf `VACUUM (ANALYZE, PARALLEL 0)` auf `attributes`
+und `subattributes` (eigene Sitzung, 45 min Timeout, gebremst wie Autovacuum mit
+`vacuum_cost_delay = 2ms`; seriell, weil ein paralleles `VACUUM`
+`maintenance_work_mem` vorab in `/dev/shm` reserviert und dort am Limit scheitert; Fehler nur `[warn]`; bei einer Hypertable wirken
 Schwellen und `VACUUM` auf alle Chunks, auch künftige) — sonst bleibt die Tabelle
 nach einem Switchover (Statistikzähler zurückgesetzt) unvacuumiert und
 `troe-stats` läuft in seinen Timeout. `VACUUM` wirkt nur als Eigentümer der
