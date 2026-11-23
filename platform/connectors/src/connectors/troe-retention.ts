@@ -59,7 +59,7 @@
  *    `subattributes` ({@link AUTOVACUUM_SETTINGS}) — only where
  *    `pg_class.reloptions` differ, since the ALTER TABLE takes a (brief)
  *    lock — in a short session of its own ({@link TUNING_SESSION});
- *  * and after the night's work runs `VACUUM (ANALYZE)` on both tables in a
+ *  * and after the night's work runs `VACUUM (ANALYZE, PARALLEL 0)` on both tables in a
  *    long session of its own ({@link VACUUM_SESSION}, 45 min on the server),
  *    paced like autovacuum ({@link SQL_VACUUM_PACING}): VACUUM cannot run in
  *    a transaction block and can take many minutes on a large table. It runs
@@ -233,9 +233,16 @@ export function sqlAutovacuumTuning(table: VacuumedTable): string {
   return `ALTER TABLE ${table} SET (${settings})`;
 }
 
-/** Sent on its own, outside any transaction block — VACUUM refuses to run in one. */
+/**
+ * Sent on its own, outside any transaction block — VACUUM refuses to run in one.
+ * `PARALLEL 0`: a parallel VACUUM reserves `maintenance_work_mem` up front as a
+ * dynamic shared memory segment in `/dev/shm`, which a container caps (the chart's
+ * `timescale.shmSize`) — with 256 MB in both it failed every night. Serially the
+ * same memory comes from the backend's own memory; only the indexes are then
+ * vacuumed one after another, and the run is cost-paced anyway.
+ */
 export function sqlVacuum(table: VacuumedTable): string {
-  return `VACUUM (ANALYZE) ${table}`;
+  return `VACUUM (ANALYZE, PARALLEL 0) ${table}`;
 }
 
 // ts indexes (idempotent): they carry the retention AND the 10-minute statistics queries.

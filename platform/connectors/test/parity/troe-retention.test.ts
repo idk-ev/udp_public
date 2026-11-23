@@ -814,7 +814,7 @@ async function vacuumRunsLastInItsOwnSession(): Promise<void> {
   const { ported } = await assertParity(NIGHT);
   assert.deepEqual(
     vacuumCalls().map((call) => call.sql),
-    ["SET vacuum_cost_delay = '2ms'", "VACUUM (ANALYZE) attributes", "VACUUM (ANALYZE) subattributes"],
+    ["SET vacuum_cost_delay = '2ms'", "VACUUM (ANALYZE, PARALLEL 0) attributes", "VACUUM (ANALYZE, PARALLEL 0) subattributes"],
   );
   const lastCommit = ported.db.calls.map((call) => call.sql).lastIndexOf("COMMIT");
   assert.deepEqual(ported.db.calls.slice(lastCommit + 1), vacuumCalls());

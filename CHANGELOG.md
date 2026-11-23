@@ -15,6 +15,9 @@ Chronik der Veröffentlichungen (neueste zuerst). Details: `git log`.
   Es wuchs unbegrenzt, bis der Pod nach einigen Tagen wegen des vollen
   `emptyDir` verdrängt wurde (mongod inklusive). `emptyDir` zusätzlich auf
   128 MiB. Beim Upgrade starten die `mongo`-Pods einmal rollierend neu.
+- TRoE-Retention: Das nächtliche `VACUUM (ANALYZE)` läuft seriell (`PARALLEL 0`).
+  Parallel reservierte es `maintenance_work_mem` vorab in `/dev/shm` und
+  scheiterte dort jede Nacht am Limit.
 
 ## 1.5.3 — Node.js-Sicherheitsupdate, DWD-Stationen, Seitenadressen, Overpass
 
