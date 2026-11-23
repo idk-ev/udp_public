@@ -490,6 +490,15 @@ server {
         expires -1;
         try_files $uri =404;
     }
+    # ES modules loaded as module workers (the map's maplibre-gl worker). The
+    # stock mime.types maps only .js, and a module script served as
+    # application/octet-stream is refused under nosniff. "types" here replaces
+    # the MIME map for this location only.
+    location ~* \.mjs$ {
+        types { application/javascript mjs; }
+        expires -1;
+        try_files $uri =404;
+    }
 
     # Operator logo and favicon (Helm: cockpit.branding -> ConfigMap
     # cockpit-branding mounted here; Compose: gui/public/branding/ in the

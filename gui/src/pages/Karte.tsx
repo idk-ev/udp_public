@@ -8,6 +8,10 @@ import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import { Map as MlMap, Marker, Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+// maplibre-gl >= 6.19 loads its worker as a separate module next to its own
+// import.meta.url; bundled, that file is missing (404, "Worker failed to load").
+// Vite emits it as an asset and the map is pointed at it.
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { NgsiEntity, demoEntities, entityCoords, escapeHtml, fetchEntities, plainValue } from "../api";
 
 // Farbzuordnung folgt der Entität (Typ), nie dem Rang – feste Slots.
@@ -37,6 +41,9 @@ const basemapStyle: maplibregl.StyleSpecification = {
   },
   layers: [{ id: "basemapde", type: "raster", source: "basemapde" }],
 };
+
+// Before the first map is created.
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 export default function Karte() {
   const mapEl = useRef<HTMLDivElement>(null);
